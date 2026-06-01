@@ -619,6 +619,63 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Module: Security (Đổi mật khẩu) -->
+                <div x-show="activeModule === 'security'" x-cloak>
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">Cấu Hình Bảo Mật</h1>
+                            <p class="text-sm text-gray-500 mt-1">Thay đổi thông tin tài khoản đăng nhập admin để đảm bảo an toàn hệ thống.</p>
+                        </div>
+                    </div>
+
+                    <div class="w-full max-w-xl bg-white rounded-xl border border-gray-100 card-shadow p-6 sm:p-8">
+                        <div class="flex items-center gap-3 border-b border-gray-100 pb-4 mb-6">
+                            <div class="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
+                                <i data-lucide="key-round" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h2 class="font-bold text-gray-900">Thay Đổi Mật Khẩu Admin</h2>
+                                <p class="text-xs text-gray-500">Mật khẩu được lưu trữ an toàn trong trình duyệt cục bộ.</p>
+                            </div>
+                        </div>
+
+                        <form @submit.prevent="changePassword()" class="space-y-6">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Tên Đăng Nhập Mới</label>
+                                <div class="relative">
+                                    <i data-lucide="user" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                                    <input x-model="securityForm.newUsername" type="text" required placeholder="admin" class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary transition-all">
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Mật Khẩu Cũ</label>
+                                    <div class="relative">
+                                        <i data-lucide="lock" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                                        <input x-model="securityForm.oldPassword" type="password" required placeholder="••••••••" class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary transition-all">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Mật Khẩu Mới</label>
+                                    <div class="relative">
+                                        <i data-lucide="key" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                                        <input x-model="securityForm.newPassword" type="password" required placeholder="••••••••" class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary transition-all">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-end gap-3 border-t border-gray-100 pt-6 mt-6">
+                                <button type="submit" class="bg-primary hover:bg-orange-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-lg shadow-primary/25">
+                                    <i data-lucide="save" class="w-4 h-4"></i>
+                                    <span>Lưu Thay Đổi</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </main>
         </div>
     </div>
@@ -841,6 +898,11 @@
                     username: 'admin',
                     password: 'admin'
                 },
+                securityForm: {
+                    newUsername: 'admin',
+                    oldPassword: '',
+                    newPassword: ''
+                },
                 sidebarOpen: true,
                 activeModule: 'dashboard',
                 isLoading: false,
@@ -874,7 +936,8 @@
                     { id: 'upsales', name: 'Upsales', icon: 'shopping-bag' }
                 ],
                 managementItems: [
-                    { id: 'github', name: 'GitHub Integration', icon: 'git-branch' }
+                    { id: 'github', name: 'GitHub Integration', icon: 'git-branch' },
+                    { id: 'security', name: 'Bảo mật & Admin', icon: 'key-round' }
                 ],
                 get filteredCustomers() {
                     let filtered = this.customers;
@@ -958,8 +1021,36 @@
                     this.$nextTick(() => lucide.createIcons());
                 },
 
+                changePassword() {
+                    if (this.securityForm.oldPassword !== this.adminCreds.password) {
+                        this.showToast('Mật khẩu cũ không chính xác!');
+                        return;
+                    }
+                    if (this.securityForm.newPassword.length < 4) {
+                        this.showToast('Mật khẩu mới phải từ 4 ký tự trở lên!');
+                        return;
+                    }
+                    this.adminCreds.username = this.securityForm.newUsername;
+                    this.adminCreds.password = this.securityForm.newPassword;
+                    
+                    localStorage.setItem('goshop_admin_creds', JSON.stringify(this.adminCreds));
+                    this.securityForm.oldPassword = '';
+                    this.securityForm.newPassword = '';
+                    
+                    this.showToast('Đã đổi thông tin đăng nhập thành công!');
+                },
+
                 async initApp() {
                     this.isLoggedIn = localStorage.getItem('goshop_admin_logged_in') === 'true';
+                    const savedCreds = localStorage.getItem('goshop_admin_creds');
+                    if (savedCreds) {
+                        try {
+                            this.adminCreds = JSON.parse(savedCreds);
+                            this.securityForm.newUsername = this.adminCreds.username;
+                        } catch (e) {
+                            console.error(e);
+                        }
+                    }
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
