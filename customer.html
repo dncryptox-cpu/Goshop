@@ -549,34 +549,58 @@
 
                 <!-- NEW ORDER QR DISPLAY PANEL -->
                 <div x-show="orderQR.show" x-cloak class="mt-6 pt-6 border-t border-glass-border space-y-4 text-center" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
-                    <div class="bg-white p-3 rounded-xl inline-block relative shadow-xl mx-auto">
+                    <div x-show="!newOrderPaidSuccess" class="bg-white p-3 rounded-xl inline-block relative shadow-xl mx-auto">
                         <img :src="orderQR.url" alt="VietQR Payment" class="w-44 h-44 mx-auto rounded-lg">
                         <div class="absolute inset-0 border-2 border-primary/20 rounded-xl pointer-events-none"></div>
                     </div>
                     
                     <div class="space-y-3">
-                        <div class="bg-green-500/10 border border-green-500/20 text-green-400 p-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                        <div x-show="!newOrderPaidSuccess" class="bg-green-500/10 border border-green-500/20 text-green-400 p-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
                             <i data-lucide="check-circle" class="w-4 h-4"></i>
                             <span>Đơn hàng <span x-text="orderQR.orderId"></span> đã tạo thành công ở trạng thái Chờ thanh toán (Pending Payment)!</span>
                         </div>
 
-                        <p class="text-[10px] text-gray-400 leading-relaxed">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng của bạn để hoàn tất giao dịch tự động.</p>
-                        
-                        <div class="bg-gray-950/60 border border-glass-border p-3 rounded-xl text-left space-y-1.5">
-                            <div class="flex justify-between text-[10px]" x-show="newOrderPromoSuccess && newOrderPromoDiscount > 0">
-                                <span class="text-gray-500">Giá gốc:</span>
-                                <span class="text-gray-400 line-through" x-text="getSelectedCatalogProduct().prices[newOrderForm.duration].toLocaleString('vi-VN') + 'đ'"></span>
-                            </div>
-                            <div class="flex justify-between text-[10px]">
-                                <span class="text-gray-500">Số tiền thanh toán:</span>
-                                <span class="text-white font-extrabold text-sm" x-text="orderQR.finalAmount.toLocaleString('vi-VN') + 'đ'"></span>
-                            </div>
-                            <div class="flex justify-between text-[10px] items-center">
-                                <span class="text-gray-500">Nội dung CK:</span>
-                                <span class="text-primary font-mono font-black text-sm" x-text="orderQR.message"></span>
-                            </div>
+                        <!-- 59s Countdown Checking Status -->
+                        <div x-show="paymentCountdown > 0 && !newOrderPaidSuccess" class="bg-primary/10 border border-primary/20 text-primary p-3.5 rounded-xl text-xs font-bold flex items-center justify-center gap-3">
+                            <span class="animate-spin rounded-full h-3.5 w-3.5 border-2 border-primary border-t-transparent shrink-0"></span>
+                            <span>Hệ thống đang kiểm tra giao dịch tự động... Vui lòng đợi <span class="text-white font-mono text-sm" x-text="paymentCountdown"></span>s</span>
                         </div>
-                        <p class="text-[9px] text-orange-400 font-medium">⚠️ Quan trọng: Vui lòng giữ nguyên nội dung chuyển khoản được tạo tự động để hệ thống duyệt đơn hàng chính xác.</p>
+
+                        <!-- Glowing Confirm Payment Button when Countdown complete -->
+                        <button x-show="paymentCountdown <= 0 && !newOrderPaidSuccess" @click="confirmNewOrderPayment()" class="w-full bg-green-500 hover:bg-green-600 text-white py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-500/25 animate-bounce">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i>
+                            <span>Xác Nhận Đã Thanh Toán</span>
+                        </button>
+
+                        <!-- Gorgeous Success Onboarding Alert -->
+                        <div x-show="newOrderPaidSuccess" class="bg-green-500/10 border border-green-500/20 text-green-400 p-4 rounded-xl text-sm font-bold flex flex-col items-center gap-2.5">
+                            <div class="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-400">
+                                <i data-lucide="sparkles" class="w-5 h-5"></i>
+                            </div>
+                            <span>Giao dịch thành công! Đơn hàng của bạn đã được chuyển đến bộ phận kích hoạt.</span>
+                        </div>
+
+                        <template x-if="!newOrderPaidSuccess">
+                            <div class="space-y-3">
+                                <p class="text-[10px] text-gray-400 leading-relaxed">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng của bạn để hoàn tất giao dịch tự động.</p>
+                                
+                                <div class="bg-gray-950/60 border border-glass-border p-3 rounded-xl text-left space-y-1.5">
+                                    <div class="flex justify-between text-[10px]" x-show="newOrderPromoSuccess && newOrderPromoDiscount > 0">
+                                        <span class="text-gray-500">Giá gốc:</span>
+                                        <span class="text-gray-400 line-through" x-text="getSelectedCatalogProduct().prices[newOrderForm.duration].toLocaleString('vi-VN') + 'đ'"></span>
+                                    </div>
+                                    <div class="flex justify-between text-[10px]">
+                                        <span class="text-gray-500">Số tiền thanh toán:</span>
+                                        <span class="text-white font-extrabold text-sm" x-text="orderQR.finalAmount.toLocaleString('vi-VN') + 'đ'"></span>
+                                    </div>
+                                    <div class="flex justify-between text-[10px] items-center">
+                                        <span class="text-gray-500">Nội dung CK:</span>
+                                        <span class="text-primary font-mono font-black text-sm" x-text="orderQR.message"></span>
+                                    </div>
+                                </div>
+                                <p class="text-[9px] text-orange-400 font-medium">⚠️ Quan trọng: Vui lòng giữ nguyên nội dung chuyển khoản được tạo tự động để hệ thống duyệt đơn hàng chính xác.</p>
+                            </div>
+                        </template>
                     </div>
                 </div>
             </div>
@@ -645,6 +669,9 @@
                 newOrderPromoDiscount: 0,
                 newOrderPromoSuccess: false,
                 newOrderPromoMessage: '',
+                paymentCountdown: 0,
+                countdownInterval: null,
+                newOrderPaidSuccess: false,
                 promoCode: '',
                 promoApplied: false,
                 promoDiscount: 0,
@@ -904,6 +931,31 @@
                     this.orderQR.url = `https://img.vietqr.io/image/${this.RENEWAL_CONFIG.BANK_ID}-${this.RENEWAL_CONFIG.ACCOUNT_NO}-compact2.png?amount=${finalAmount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(this.RENEWAL_CONFIG.ACCOUNT_NAME)}`;
                     this.orderQR.show = true;
 
+                    // Trigger 59-second check simulation
+                    this.paymentCountdown = 59;
+                    this.newOrderPaidSuccess = false;
+                    if (this.countdownInterval) clearInterval(this.countdownInterval);
+                    this.countdownInterval = setInterval(() => {
+                        if (this.paymentCountdown > 0) {
+                            this.paymentCountdown--;
+                        } else {
+                            clearInterval(this.countdownInterval);
+                        }
+                    }, 1000);
+
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                    });
+                },
+
+                confirmNewOrderPayment() {
+                    const existingOrders = JSON.parse(localStorage.getItem('goshop_orders') || '[]');
+                    const orderIdx = existingOrders.findIndex(o => o.orderId === this.orderQR.orderId);
+                    if (orderIdx !== -1) {
+                        existingOrders[orderIdx].status = 'Paid';
+                        localStorage.setItem('goshop_orders', JSON.stringify(existingOrders));
+                    }
+                    this.newOrderPaidSuccess = true;
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
