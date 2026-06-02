@@ -285,6 +285,18 @@
                         </div>
 
                         <form @submit.prevent="generateQR()" class="space-y-4">
+                            <!-- Select subscription to renew if multiple exist -->
+                            <template x-if="matchedOrders.length > 1">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Chọn gói cần gia hạn</label>
+                                    <select x-model="renewalForm.selectedOrderId" @change="showQR = false" class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 px-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium">
+                                        <template x-for="order in matchedOrders" :key="order.id">
+                                            <option :value="order.id" x-text="order.plan + ' (ID: ' + order.id + ')'"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                            </template>
+
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Chọn gói gia hạn</label>
                                 <div class="grid grid-cols-2 gap-3">
@@ -292,14 +304,14 @@
                                            :class="renewalForm.plan === 6 ? 'border-primary bg-primary/5' : 'border-glass-border'">
                                         <input type="radio" x-model="renewalForm.plan" :value="6" @change="showQR = false" class="sr-only">
                                         <span class="text-xs font-extrabold text-white">Gói 6 Tháng</span>
-                                        <span class="text-[10px] text-primary font-bold mt-1">200,000đ</span>
+                                        <span class="text-[10px] text-primary font-bold mt-1" x-text="getPricing().price6.toLocaleString('vi-VN') + 'đ'"></span>
                                     </label>
                                     <label class="relative flex flex-col p-3 rounded-xl border border-glass-border cursor-pointer hover:bg-white/5 transition-all text-left"
                                            :class="renewalForm.plan === 12 ? 'border-primary bg-primary/5' : 'border-glass-border'">
                                         <input type="radio" x-model="renewalForm.plan" :value="12" @change="showQR = false" class="sr-only">
                                         <span class="text-xs font-extrabold text-white">Gói 12 Tháng</span>
-                                        <span class="text-[10px] text-primary font-bold mt-1">375,000đ</span>
-                                        <span class="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1.5 rounded-full font-bold scale-90">Giảm 25k</span>
+                                        <span class="text-[10px] text-primary font-bold mt-1" x-text="getPricing().price12.toLocaleString('vi-VN') + 'đ'"></span>
+                                        <span class="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1.5 rounded-full font-bold scale-90" x-text="'Giảm ' + ((getPricing().price6 * 2 - getPricing().price12) / 1000) + 'k'"></span>
                                     </label>
                                 </div>
                             </div>
@@ -353,11 +365,11 @@
                                 <div class="bg-gray-950/60 border border-glass-border p-3 rounded-xl text-left space-y-1.5">
                                     <div class="flex justify-between text-[10px]" x-show="promoSuccess && promoDiscount > 0">
                                         <span class="text-gray-500">Giá gốc:</span>
-                                        <span class="text-gray-400 line-through" x-text="renewalForm.plan === 6 ? '200,000đ' : '375,000đ'"></span>
+                                        <span class="text-gray-400 line-through" x-text="(renewalForm.plan === 6 ? getPricing().price6 : getPricing().price12).toLocaleString('vi-VN') + 'đ'"></span>
                                     </div>
                                     <div class="flex justify-between text-[10px]">
                                         <span class="text-gray-500" x-text="promoSuccess && promoDiscount > 0 ? 'Số tiền sau giảm:' : 'Số tiền:'"></span>
-                                        <span class="text-white font-extrabold" x-text="(renewalForm.plan === 6 ? Math.max(0, 200000 - promoDiscount) : Math.max(0, 375000 - promoDiscount)).toLocaleString('vi-VN') + 'đ'"></span>
+                                        <span class="text-white font-extrabold" x-text="(renewalForm.plan === 6 ? Math.max(0, getPricing().price6 - promoDiscount) : Math.max(0, getPricing().price12 - promoDiscount)).toLocaleString('vi-VN') + 'đ'"></span>
                                     </div>
                                     <div class="flex justify-between text-[10px] items-center">
                                         <span class="text-gray-500">Nội dung CK:</span>
@@ -458,7 +470,8 @@
                 },
                 renewalForm: {
                     plan: 6,
-                    zalo: ''
+                    zalo: '',
+                    selectedOrderId: ''
                 },
                 promoCode: '',
                 promoApplied: false,
@@ -477,6 +490,14 @@
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
+                    
+                    // Load and sync promo codes
+                    const existing = localStorage.getItem('goshop_promo_codes');
+                    if (!existing) {
+                        localStorage.setItem('goshop_promo_codes', JSON.stringify(this.DISCOUNT_CONFIG.CODES));
+                    } else {
+                        this.DISCOUNT_CONFIG.CODES = JSON.parse(existing);
+                    }
                 },
 
                 resetLookup() {
@@ -488,6 +509,7 @@
                     this.qrCodeUrl = '';
                     this.qrMessage = '';
                     this.renewalForm.zalo = '';
+                    this.renewalForm.selectedOrderId = '';
                     this.promoCode = '';
                     this.promoApplied = false;
                     this.promoDiscount = 0;
@@ -553,6 +575,9 @@
                         }
 
                         this.matchedOrders = customerOrders;
+                        if (this.matchedOrders.length > 0) {
+                            this.renewalForm.selectedOrderId = this.matchedOrders[0].id;
+                        }
                         this.lookupDone = true;
 
                     } catch (error) {
@@ -566,6 +591,29 @@
                     }
                 },
 
+                getSelectedOrder() {
+                    if (!this.renewalForm.selectedOrderId) {
+                        return this.matchedOrders[0] || null;
+                    }
+                    return this.matchedOrders.find(o => o.id === this.renewalForm.selectedOrderId) || this.matchedOrders[0] || null;
+                },
+
+                getPricing() {
+                    const order = this.getSelectedOrder();
+                    if (!order) return { price6: 200000, price12: 375000 };
+
+                    // Normalize plan classification
+                    const planStr = (order.plan || '').toLowerCase().replace(/\s+/g, '');
+                    
+                    // NKPlus, NPlus, Plus: 250k/6th, 445k/12th
+                    if (planStr.includes('nkplus') || planStr.includes('nplus') || planStr === 'plus') {
+                        return { price6: 250000, price12: 445000 };
+                    }
+                    
+                    // FULL, Còn Slot (or default): 200k/6th, 375k/12th
+                    return { price6: 200000, price12: 375000 };
+                },
+
                 generateQR() {
                     const zaloNum = this.renewalForm.zalo.trim();
                     if (!/^\d{10}$/.test(zaloNum)) {
@@ -573,11 +621,13 @@
                         return;
                     }
 
-                    const baseAmount = this.renewalForm.plan === 6 ? 200000 : 375000;
+                    const pricing = this.getPricing();
+                    const baseAmount = this.renewalForm.plan === 6 ? pricing.price6 : pricing.price12;
                     const finalAmount = Math.max(0, baseAmount - this.promoDiscount);
 
                     // Lấy ID khách hàng thực tế hoặc fallback về email để định danh
-                    const customerId = this.matchedOrders.length > 0 ? this.matchedOrders[0].id : 'KH';
+                    const order = this.getSelectedOrder();
+                    const customerId = order ? order.id : 'KH';
 
                     // Nội dung CK: GIAHAN CUS0010 12T 0901234567 [PROMO]
                     const promoSuffix = this.promoSuccess && this.promoDiscount > 0 ? ` ${this.promoCode.trim().toUpperCase()}` : '';
@@ -599,7 +649,9 @@
                         return;
                     }
 
-                    const discount = this.DISCOUNT_CONFIG.CODES[code];
+                    // Retrieve codes from localStorage
+                    const promoCodes = JSON.parse(localStorage.getItem('goshop_promo_codes') || '{}');
+                    const discount = promoCodes[code];
                     if (discount !== undefined) {
                         this.promoApplied = true;
                         this.promoDiscount = discount;
