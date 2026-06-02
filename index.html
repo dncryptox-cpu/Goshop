@@ -175,8 +175,20 @@
                 </div>
                 
                 <div class="flex items-center gap-4">
-                    <a href="customer.html" class="flex items-center gap-2 text-xs font-semibold text-gray-500 hover:text-primary transition-all py-2 px-3 rounded-lg hover:bg-gray-50 border border-gray-200">
-                        <i data-lucide="external-link" class="w-4 h-4"></i>
+                    <!-- Delivery Mode Switch (Smooth Auto Delivery vs Manual Approval) -->
+                    <div class="flex items-center bg-gray-100 border border-gray-200 rounded-xl p-1 gap-1">
+                        <button @click="setDeliveryMode('auto')" :class="deliveryMode === 'auto' ? 'bg-green-600 text-white shadow-sm font-extrabold' : 'text-gray-500 hover:bg-gray-200/50 font-bold'" class="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse" x-show="deliveryMode === 'auto'"></span>
+                            🚀 Auto mượt
+                        </button>
+                        <button @click="setDeliveryMode('manual')" :class="deliveryMode === 'manual' ? 'bg-amber-500 text-white shadow-sm font-extrabold' : 'text-gray-500 hover:bg-gray-200/50 font-bold'" class="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping" x-show="deliveryMode === 'manual'"></span>
+                            🔑 Admin duyệt
+                        </button>
+                    </div>
+
+                    <a href="customer.html" class="flex items-center gap-2 text-xs font-bold text-gray-600 hover:text-primary transition-all py-2 px-3 rounded-lg hover:bg-gray-50 border border-gray-200">
+                        <i data-lucide="external-link" class="w-4 h-4 text-gray-500"></i>
                         <span>Cổng Khách Hàng</span>
                     </a>
                     <button @click="fetchSheetData()" class="p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-all" :class="isLoading && 'animate-spin'">
@@ -2133,6 +2145,26 @@
                         this.orders[idx].status = 'Completed';
                         this.orders[idx].completedDate = new Date().toISOString().split('T')[0];
                         this.saveOrders();
+
+                        // Dynamically allocate stock account on manual complete if not already allocated
+                        const productKey = order.productCode === 'CAPCUT' 
+                            ? (order.duration === 7 ? 'Capcut-7D' : 'Capcut-1T') 
+                            : '';
+                        if (productKey) {
+                            const accounts = JSON.parse(localStorage.getItem('goshop_inventory_accounts') || '[]');
+                            const cleanPrefix = order.email.split('@')[0];
+                            const alreadyAllocated = accounts.find(a => a.buyerPhone === order.phone && a.product === productKey && a.status === 'Đã bán');
+                            if (!alreadyAllocated) {
+                                const availableIdx = accounts.findIndex(a => a.product === productKey && a.status === 'Chưa bán');
+                                if (availableIdx !== -1) {
+                                    accounts[availableIdx].status = 'Đã bán';
+                                    accounts[availableIdx].buyerName = cleanPrefix;
+                                    accounts[availableIdx].buyerPhone = order.phone;
+                                    accounts[availableIdx].purchaseDate = new Date().toLocaleDateString('en-GB');
+                                    localStorage.setItem('goshop_inventory_accounts', JSON.stringify(accounts));
+                                }
+                            }
+                        }
                     }
 
                     // CRM Sync: add/update in appData (this.db.APP_DATA) and upsale (this.db.UPSALE)
@@ -2208,6 +2240,15 @@
                     duration: 7,
                     ctv: 'Dnc',
                     fee: 0
+                },
+                deliveryMode: 'auto',
+                loadDeliveryMode() {
+                    this.deliveryMode = localStorage.getItem('goshop_delivery_mode') || 'auto';
+                },
+                setDeliveryMode(mode) {
+                    this.deliveryMode = mode;
+                    localStorage.setItem('goshop_delivery_mode', mode);
+                    this.showToast(mode === 'auto' ? '🚀 Đã chuyển sang chế độ Tự Động giao hàng siêu mượt!' : '🔑 Đã chuyển sang chế độ Admin Phê Duyệt thủ công!');
                 },
                 catalogProducts: [
                     { id: 'CAPCUT', name: 'CapCut Pro', icon: 'video', desc: 'Trình chỉnh sửa video chuyên nghiệp bằng AI, kho tài nguyên không giới hạn.', prices: { 7: 15000, 30: 45000 } }
@@ -2554,6 +2595,7 @@
                     this.loadOrders();
                     this.loadInventory();
                     this.loadCatalogProducts();
+                    this.loadDeliveryMode();
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
