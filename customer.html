@@ -577,7 +577,32 @@
                             <div class="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-400">
                                 <i data-lucide="sparkles" class="w-5 h-5"></i>
                             </div>
-                            <span>Giao dịch thành công! Đơn hàng của bạn đã được chuyển đến bộ phận kích hoạt.</span>
+                            <span>Giao dịch thành công! Đơn hàng của bạn đã được kích hoạt thành công.</span>
+
+                            <!-- Dynamic Account Delivery Box -->
+                            <template x-if="allocatedAccount">
+                                <div class="w-full mt-3 bg-gray-950/60 border border-green-500/30 p-4 rounded-xl text-left space-y-2">
+                                    <div class="flex items-center gap-2 text-xs font-black text-green-400 uppercase tracking-widest border-b border-green-500/20 pb-2">
+                                        <i data-lucide="shield-check" class="w-4 h-4"></i>
+                                        <span>Tài khoản nhận ngay</span>
+                                    </div>
+                                    <div class="space-y-1.5 font-mono text-xs">
+                                        <div class="flex justify-between items-center bg-white/5 p-2 rounded border border-white/5">
+                                            <span class="text-gray-400">Tài khoản:</span>
+                                            <span class="text-white font-bold select-all" x-text="allocatedAccount.email"></span>
+                                        </div>
+                                        <div class="flex justify-between items-center bg-white/5 p-2 rounded border border-white/5">
+                                            <span class="text-gray-400">Mật khẩu:</span>
+                                            <span class="text-white font-bold select-all" x-text="allocatedAccount.pass || 'Chưa thiết lập'"></span>
+                                        </div>
+                                        <div class="flex justify-between items-center bg-white/5 p-2 rounded border border-white/5">
+                                            <span class="text-gray-400">Hạn dùng (HSD):</span>
+                                            <span class="text-green-400 font-extrabold" x-text="allocatedAccount.expiryDate"></span>
+                                        </div>
+                                    </div>
+                                    <p class="text-[9px] text-gray-500 mt-2 text-center leading-normal">Vui lòng đăng nhập và bảo mật thông tin tài khoản của bạn. Cảm ơn bạn đã lựa chọn Go Shop!</p>
+                                </div>
+                            </template>
                         </div>
 
                         <template x-if="!newOrderPaidSuccess">
@@ -655,6 +680,7 @@
                     zalo: '',
                     promoCode: ''
                 },
+                allocatedAccount: null,
                 orderQR: {
                     show: false,
                     url: '',
@@ -957,6 +983,25 @@
                     if (orderIdx !== -1) {
                         existingOrders[orderIdx].status = 'Paid';
                         localStorage.setItem('goshop_orders', JSON.stringify(existingOrders));
+
+                        // Dynamically allocate available stock account
+                        const order = existingOrders[orderIdx];
+                        const productKey = order.productCode === 'CAPCUT' 
+                            ? (order.duration === 7 ? 'Capcut-7D' : 'Capcut-1T') 
+                            : '';
+                        
+                        if (productKey) {
+                            const accounts = JSON.parse(localStorage.getItem('goshop_inventory_accounts') || '[]');
+                            const availableIdx = accounts.findIndex(a => a.product === productKey && a.status === 'Chưa bán');
+                            if (availableIdx !== -1) {
+                                accounts[availableIdx].status = 'Đã bán';
+                                accounts[availableIdx].buyerName = order.email.split('@')[0];
+                                accounts[availableIdx].buyerPhone = order.phone;
+                                accounts[availableIdx].purchaseDate = new Date().toLocaleDateString('en-GB');
+                                localStorage.setItem('goshop_inventory_accounts', JSON.stringify(accounts));
+                                this.allocatedAccount = accounts[availableIdx];
+                            }
+                        }
                     }
                     this.newOrderPaidSuccess = true;
                     this.$nextTick(() => {
