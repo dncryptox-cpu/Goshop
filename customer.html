@@ -290,13 +290,13 @@
                                 <div class="grid grid-cols-2 gap-3">
                                     <label class="relative flex flex-col p-3 rounded-xl border border-glass-border cursor-pointer hover:bg-white/5 transition-all text-left"
                                            :class="renewalForm.plan === 6 ? 'border-primary bg-primary/5' : 'border-glass-border'">
-                                        <input type="radio" x-model="renewalForm.plan" :value="6" class="sr-only">
+                                        <input type="radio" x-model="renewalForm.plan" :value="6" @change="showQR = false" class="sr-only">
                                         <span class="text-xs font-extrabold text-white">Gói 6 Tháng</span>
                                         <span class="text-[10px] text-primary font-bold mt-1">200,000đ</span>
                                     </label>
                                     <label class="relative flex flex-col p-3 rounded-xl border border-glass-border cursor-pointer hover:bg-white/5 transition-all text-left"
                                            :class="renewalForm.plan === 12 ? 'border-primary bg-primary/5' : 'border-glass-border'">
-                                        <input type="radio" x-model="renewalForm.plan" :value="12" class="sr-only">
+                                        <input type="radio" x-model="renewalForm.plan" :value="12" @change="showQR = false" class="sr-only">
                                         <span class="text-xs font-extrabold text-white">Gói 12 Tháng</span>
                                         <span class="text-[10px] text-primary font-bold mt-1">375,000đ</span>
                                         <span class="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1.5 rounded-full font-bold scale-90">Giảm 25k</span>
@@ -318,6 +318,22 @@
                                 </div>
                             </div>
 
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Mã giảm giá (nếu có)</label>
+                                <div class="flex gap-2">
+                                    <div class="relative flex-1">
+                                        <i data-lucide="ticket" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"></i>
+                                        <input type="text" x-model="promoCode" placeholder="Nhập mã giảm giá" @input="showQR = false; promoApplied = false; promoMessage = ''" class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium uppercase font-mono">
+                                    </div>
+                                    <button type="button" @click="applyPromo()" class="bg-white/5 hover:bg-white/10 text-white border border-glass-border px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0">
+                                        Áp dụng
+                                    </button>
+                                </div>
+                                <template x-if="promoMessage">
+                                    <p class="text-[10px] mt-2 font-semibold" :class="promoSuccess ? 'text-green-400' : 'text-red-400'" x-text="promoMessage"></p>
+                                </template>
+                            </div>
+
                             <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
                                 <i data-lucide="qr-code" class="w-4 h-4"></i>
                                 <span>Tạo Mã QR Chuyển Khoản</span>
@@ -335,9 +351,13 @@
                                 <p class="text-[10px] text-gray-400 leading-relaxed">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng của bạn để hoàn tất giao dịch tự động.</p>
                                 
                                 <div class="bg-gray-950/60 border border-glass-border p-3 rounded-xl text-left space-y-1.5">
+                                    <div class="flex justify-between text-[10px]" x-show="promoSuccess && promoDiscount > 0">
+                                        <span class="text-gray-500">Giá gốc:</span>
+                                        <span class="text-gray-400 line-through" x-text="renewalForm.plan === 6 ? '200,000đ' : '375,000đ'"></span>
+                                    </div>
                                     <div class="flex justify-between text-[10px]">
-                                        <span class="text-gray-500">Số tiền:</span>
-                                        <span class="text-white font-extrabold" x-text="renewalForm.plan === 6 ? '200,000đ' : '375,000đ'"></span>
+                                        <span class="text-gray-500" x-text="promoSuccess && promoDiscount > 0 ? 'Số tiền sau giảm:' : 'Số tiền:'"></span>
+                                        <span class="text-white font-extrabold" x-text="(renewalForm.plan === 6 ? Math.max(0, 200000 - promoDiscount) : Math.max(0, 375000 - promoDiscount)).toLocaleString('vi-VN') + 'đ'"></span>
                                     </div>
                                     <div class="flex justify-between text-[10px] items-center">
                                         <span class="text-gray-500">Nội dung CK:</span>
@@ -428,10 +448,23 @@
                     ACCOUNT_NO: '899123455', // Nhập số tài khoản ngân hàng nhận tiền của bạn
                     ACCOUNT_NAME: 'NGUYEN DINH DINH' // Tên tài khoản ngân hàng viết hoa không dấu
                 },
+                DISCOUNT_CONFIG: {
+                    CODES: {
+                        'GOSHOP50': 50000,  // Giảm 50k
+                        'DNC': 20000,       // Giảm 20k
+                        'KHACHVIP': 30000,  // Giảm 30k
+                        'GIAM10K': 10000    // Giảm 10k
+                    }
+                },
                 renewalForm: {
                     plan: 6,
                     zalo: ''
                 },
+                promoCode: '',
+                promoApplied: false,
+                promoDiscount: 0,
+                promoMessage: '',
+                promoSuccess: false,
                 showQR: false,
                 qrCodeUrl: '',
                 qrMessage: '',
@@ -455,6 +488,11 @@
                     this.qrCodeUrl = '';
                     this.qrMessage = '';
                     this.renewalForm.zalo = '';
+                    this.promoCode = '';
+                    this.promoApplied = false;
+                    this.promoDiscount = 0;
+                    this.promoMessage = '';
+                    this.promoSuccess = false;
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
@@ -535,18 +573,48 @@
                         return;
                     }
 
-                    const amount = this.renewalForm.plan === 6 ? 200000 : 375000;
+                    const baseAmount = this.renewalForm.plan === 6 ? 200000 : 375000;
+                    const finalAmount = Math.max(0, baseAmount - this.promoDiscount);
 
                     // Lấy ID khách hàng thực tế hoặc fallback về email để định danh
                     const customerId = this.matchedOrders.length > 0 ? this.matchedOrders[0].id : 'KH';
 
-                    // Nội dung CK: GIAHAN CUS0010 12T 0901234567
-                    this.qrMessage = `GIAHAN ${customerId} ${this.renewalForm.plan}T ${zaloNum}`.toUpperCase();
+                    // Nội dung CK: GIAHAN CUS0010 12T 0901234567 [PROMO]
+                    const promoSuffix = this.promoSuccess && this.promoDiscount > 0 ? ` ${this.promoCode.trim().toUpperCase()}` : '';
+                    this.qrMessage = `GIAHAN ${customerId} ${this.renewalForm.plan}T ${zaloNum}${promoSuffix}`.toUpperCase();
 
                     // VietQR API URL
-                    this.qrCodeUrl = `https://img.vietqr.io/image/${this.RENEWAL_CONFIG.BANK_ID}-${this.RENEWAL_CONFIG.ACCOUNT_NO}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(this.qrMessage)}&accountName=${encodeURIComponent(this.RENEWAL_CONFIG.ACCOUNT_NAME)}`;
+                    this.qrCodeUrl = `https://img.vietqr.io/image/${this.RENEWAL_CONFIG.BANK_ID}-${this.RENEWAL_CONFIG.ACCOUNT_NO}-compact2.png?amount=${finalAmount}&addInfo=${encodeURIComponent(this.qrMessage)}&accountName=${encodeURIComponent(this.RENEWAL_CONFIG.ACCOUNT_NAME)}`;
 
                     this.showQR = true;
+                },
+
+                applyPromo() {
+                    const code = this.promoCode.trim().toUpperCase();
+                    if (!code) {
+                        this.promoApplied = false;
+                        this.promoDiscount = 0;
+                        this.promoMessage = '';
+                        this.promoSuccess = false;
+                        return;
+                    }
+
+                    const discount = this.DISCOUNT_CONFIG.CODES[code];
+                    if (discount !== undefined) {
+                        this.promoApplied = true;
+                        this.promoDiscount = discount;
+                        this.promoSuccess = true;
+                        this.promoMessage = `✨ Áp dụng mã ${code} thành công! Giảm -${discount.toLocaleString('vi-VN')}đ`;
+                    } else {
+                        this.promoApplied = true;
+                        this.promoDiscount = 0;
+                        this.promoSuccess = false;
+                        this.promoMessage = '❌ Mã giảm giá không tồn tại hoặc đã hết hạn!';
+                    }
+                    this.showQR = false;
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                    });
                 },
 
                 getStatus(row) {
