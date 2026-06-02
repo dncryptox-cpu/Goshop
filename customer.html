@@ -123,9 +123,9 @@
                 <i data-lucide="search" class="w-4 h-4"></i>
                 <span>Tra Cứu Dịch Vụ</span>
             </button>
-            <button @click="activeTab = 'checkout'; showQR = false; promoApplied = false; promoMessage = '';" :class="activeTab === 'checkout' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-gray-400 hover:text-white'" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2">
-                <i data-lucide="zap" class="w-4 h-4"></i>
-                <span>Gia Hạn & Thanh Toán</span>
+            <button @click="activeTab = 'new_order'; orderQR.show = false; newOrderPromoSuccess = false; newOrderPromoMessage = '';" :class="activeTab === 'new_order' ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'text-gray-400 hover:text-white'" class="flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2">
+                <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+                <span>Đăng Ký Mới</span>
             </button>
         </div>
 
@@ -202,9 +202,9 @@
                         Bạn chưa mua dịch vụ hoặc muốn mua thêm dịch vụ mới?
                     </div>
                     <div>
-                        <button @click="activeTab = 'checkout'; renewalForm.email = searchEmail; showQR = false;" class="bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-xs font-bold transition-all shadow-lg shadow-primary/20 inline-flex items-center gap-2">
+                        <button @click="activeTab = 'new_order'; newOrderForm.email = searchEmail; orderQR.show = false;" class="bg-primary hover:bg-primary-dark text-white px-6 py-3 rounded-xl text-xs font-bold transition-all shadow-lg shadow-primary/20 inline-flex items-center gap-2">
                             <i data-lucide="shopping-bag" class="w-4 h-4"></i>
-                            <span>Đăng Ký & Thanh Toán Mới Ngay</span>
+                            <span>Đăng Ký Mới Ngay</span>
                         </button>
                     </div>
                 </div>
@@ -270,17 +270,117 @@
                                         </template>
                                     </div>
                                 </div>
-
-                                <!-- CTA button to switch to renew tab -->
-                                <div class="mt-4 pt-4 border-t border-glass-border/30 flex justify-end ml-2">
-                                    <button @click="activeTab = 'checkout'; renewalForm.email = searchEmail; renewalForm.selectedOrderId = order.id; renewalForm.planType = (order.plan.toLowerCase().includes('plus') ? 'plus' : 'full'); showQR = false; $nextTick(() => lucide.createIcons());" 
-                                            class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg shadow-primary/10">
-                                        <i data-lucide="zap" class="w-3.5 h-3.5 text-white"></i>
-                                        <span>Gia Hạn Nhanh Gói Này</span>
-                                    </button>
-                                </div>
                             </div>
                         </template>
+
+                        <!-- GIA HẠN DỊCH VỤ CARD -->
+                        <div class="glass-panel rounded-2xl p-6 shadow-xl border border-primary/10 space-y-5">
+                            <div class="flex items-center gap-3 border-b border-glass-border pb-4">
+                                <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                                    <i data-lucide="zap" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-sm font-bold text-white">Gia Hạn Dịch Vụ Nhanh</h4>
+                                    <p class="text-[10px] text-gray-400 mt-0.5">Quét mã QR chuyển khoản để kích hoạt gia hạn tức thì</p>
+                                </div>
+                            </div>
+
+                            <form @submit.prevent="generateQR()" class="space-y-4">
+                                <!-- Select subscription to renew if multiple exist -->
+                                <template x-if="matchedOrders.length > 1">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Chọn gói cần gia hạn</label>
+                                        <select x-model="renewalForm.selectedOrderId" @change="showQR = false" class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 px-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium">
+                                            <template x-for="order in matchedOrders" :key="order.id">
+                                                <option :value="order.id" x-text="order.plan + ' (ID: ' + order.id + ')'"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                </template>
+
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Chọn gói gia hạn</label>
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div @click="renewalForm.plan = 6; showQR = false;"
+                                             :class="renewalForm.plan === 6 ? 'border-primary bg-primary/5' : 'border-glass-border'"
+                                             class="relative flex flex-col p-3 rounded-xl border cursor-pointer hover:bg-white/5 transition-all text-left">
+                                            <span class="text-xs font-extrabold text-white">Gói 6 Tháng</span>
+                                            <span class="text-[10px] text-primary font-bold mt-1" x-text="getPricing().price6.toLocaleString('vi-VN') + 'đ'"></span>
+                                        </div>
+                                        <div @click="renewalForm.plan = 12; showQR = false;"
+                                             :class="renewalForm.plan === 12 ? 'border-primary bg-primary/5' : 'border-glass-border'"
+                                             class="relative flex flex-col p-3 rounded-xl border cursor-pointer hover:bg-white/5 transition-all text-left">
+                                            <span class="text-xs font-extrabold text-white">Gói 12 Tháng</span>
+                                            <span class="text-[10px] text-primary font-bold mt-1" x-text="getPricing().price12.toLocaleString('vi-VN') + 'đ'"></span>
+                                            <span class="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1.5 rounded-full font-bold scale-90" x-text="'Giảm ' + ((getPricing().price6 * 2 - getPricing().price12) / 1000) + 'k'"></span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Số điện thoại Zalo</label>
+                                    <div class="relative">
+                                        <i data-lucide="phone" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"></i>
+                                        <input type="text" x-model="renewalForm.zalo" required
+                                            pattern="[0-9]{10}"
+                                            maxlength="10"
+                                            minlength="10"
+                                            placeholder="Nhập SĐT Zalo (10 chữ số)"
+                                            class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium"
+                                            oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Mã giảm giá (nếu có)</label>
+                                    <div class="flex gap-2">
+                                        <div class="relative flex-1">
+                                            <i data-lucide="ticket" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"></i>
+                                            <input type="text" x-model="promoCode" placeholder="Nhập mã giảm giá" @input="showQR = false; promoApplied = false; promoMessage = ''" class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium uppercase font-mono">
+                                        </div>
+                                        <button type="button" @click="applyPromo()" class="bg-white/5 hover:bg-white/10 text-white border border-glass-border px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0">
+                                            Áp dụng
+                                        </button>
+                                    </div>
+                                    <template x-if="promoMessage">
+                                        <p class="text-[10px] mt-2 font-semibold" :class="promoSuccess ? 'text-green-400' : 'text-red-400'" x-text="promoMessage"></p>
+                                    </template>
+                                </div>
+
+                                <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
+                                    <i data-lucide="qr-code" class="w-4 h-4"></i>
+                                    <span>Tạo Mã QR Chuyển Khoản</span>
+                                </button>
+                            </form>
+
+                            <!-- QR DISPLAY PANEL -->
+                            <div x-show="showQR" x-cloak class="mt-6 pt-6 border-t border-glass-border space-y-4 text-center" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+                                <div class="bg-white p-3 rounded-xl inline-block relative shadow-xl mx-auto">
+                                    <img :src="qrCodeUrl" alt="VietQR Payment" class="w-44 h-44 mx-auto rounded-lg">
+                                    <div class="absolute inset-0 border-2 border-primary/20 rounded-xl pointer-events-none"></div>
+                                </div>
+                                
+                                <div class="space-y-3">
+                                    <p class="text-[10px] text-gray-400 leading-relaxed">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng của bạn để hoàn tất giao dịch tự động.</p>
+                                    
+                                    <div class="bg-gray-950/60 border border-glass-border p-3 rounded-xl text-left space-y-1.5">
+                                        <div class="flex justify-between text-[10px]" x-show="promoSuccess && promoDiscount > 0">
+                                            <span class="text-gray-500">Giá gốc:</span>
+                                            <span class="text-gray-400 line-through" x-text="(renewalForm.plan === 6 ? getPricing().price6 : getPricing().price12).toLocaleString('vi-VN') + 'đ'"></span>
+                                        </div>
+                                        <div class="flex justify-between text-[10px]">
+                                            <span class="text-gray-500" x-text="promoSuccess && promoDiscount > 0 ? 'Số tiền sau giảm:' : 'Số tiền:'"></span>
+                                            <span class="text-white font-extrabold" x-text="(renewalForm.plan === 6 ? Math.max(0, getPricing().price6 - promoDiscount) : Math.max(0, getPricing().price12 - promoDiscount)).toLocaleString('vi-VN') + 'đ'"></span>
+                                        </div>
+                                        <div class="flex justify-between text-[10px] items-center">
+                                            <span class="text-gray-500">Nội dung CK:</span>
+                                            <span class="text-primary font-mono font-bold" x-text="qrMessage"></span>
+                                        </div>
+                                    </div>
+                                    <p class="text-[9px] text-orange-400 font-medium">⚠️ Quan trọng: Vui lòng giữ nguyên nội dung chuyển khoản được tạo tự động để hệ thống duyệt hạn sử dụng chính xác.</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Right Panel: Upsell slots & benefits -->
@@ -327,69 +427,84 @@
             </div>
         </div>
 
-        <!-- TAB 2: GIA HẠN & THANH TOÁN -->
-        <div x-show="activeTab === 'checkout'" class="w-full max-w-lg flex flex-col items-center" x-cloak>
-            <div class="w-full glass-panel rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden"
-                 x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95"
-                 x-transition:enter-end="opacity-100 scale-100">
+        <!-- TAB 2: ĐĂNG KÝ MỚI -->
+        <div x-show="activeTab === 'new_order'" class="w-full space-y-8" x-cloak x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0">
+            <div class="text-center max-w-lg mx-auto">
+                <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Đăng Ký Dịch Vụ Mới</h2>
+                <p class="text-sm text-gray-400 mt-2">Lựa chọn gói ứng dụng Premium hàng đầu, kích hoạt tự động nhanh chóng qua VietQR</p>
+            </div>
+
+            <!-- PRODUCT CATALOG GRID -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                <template x-for="prod in products" :key="prod.id">
+                    <div @click="newOrderForm.selectedProductId = prod.id; orderQR.show = false;"
+                         :class="newOrderForm.selectedProductId === prod.id ? 'border-primary ring-2 ring-primary/20 bg-primary/5 shadow-primary/10 shadow-2xl' : 'border-glass-border hover:bg-white/5'"
+                         class="glass-panel rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between h-full relative overflow-hidden group">
+                        
+                        <!-- Top Accent line on active selection -->
+                        <div x-show="newOrderForm.selectedProductId === prod.id" class="absolute top-0 left-0 w-full h-[2px] bg-primary"></div>
+
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <div class="w-10 h-10 rounded-xl bg-white/5 border border-glass-border flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                                    <template x-if="prod.icon === 'video'"><i data-lucide="video" class="w-5 h-5 text-indigo-400"></i></template>
+                                    <template x-if="prod.icon === 'bot'"><i data-lucide="bot" class="w-5 h-5 text-purple-400"></i></template>
+                                    <template x-if="prod.icon === 'palette'"><i data-lucide="palette" class="w-5 h-5 text-cyan-400"></i></template>
+                                    <template x-if="prod.icon === 'music'"><i data-lucide="music" class="w-5 h-5 text-green-400"></i></template>
+                                    <template x-if="prod.icon === 'brush'"><i data-lucide="brush" class="w-5 h-5 text-red-400"></i></template>
+                                </div>
+                                
+                                <span x-show="newOrderForm.selectedProductId === prod.id" class="bg-primary/20 border border-primary/30 text-primary text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                    <i data-lucide="check" class="w-2.5 h-2.5"></i> Đang Chọn
+                                </span>
+                            </div>
+
+                            <div>
+                                <h3 class="text-sm font-extrabold text-white" x-text="prod.name"></h3>
+                                <p class="text-[11px] text-gray-400 mt-1 leading-relaxed h-12 overflow-hidden" x-text="prod.desc"></p>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 pt-4 border-t border-glass-border space-y-3">
+                            <!-- Visual Duration price visual selector inside the card -->
+                            <div class="flex justify-between items-baseline">
+                                <span class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Thời hạn</span>
+                                <div class="flex bg-white/5 border border-glass-border p-0.5 rounded-lg scale-90 origin-right">
+                                    <button type="button" @click.stop="newOrderForm.selectedProductId = prod.id; newOrderForm.duration = 6; orderQR.show = false;" :class="newOrderForm.duration === 6 && newOrderForm.selectedProductId === prod.id ? 'bg-primary text-white font-bold' : 'text-gray-400'" class="px-2 py-1 text-[9px] rounded-md transition-all">6T</button>
+                                    <button type="button" @click.stop="newOrderForm.selectedProductId = prod.id; newOrderForm.duration = 12; orderQR.show = false;" :class="newOrderForm.duration === 12 && newOrderForm.selectedProductId === prod.id ? 'bg-primary text-white font-bold' : 'text-gray-400'" class="px-2 py-1 text-[9px] rounded-md transition-all">12T</button>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Giá tiền</span>
+                                <span class="text-sm font-black text-primary" x-text="prod.prices[newOrderForm.selectedProductId === prod.id ? newOrderForm.duration : 6].toLocaleString('vi-VN') + 'đ'"></span>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- CHECKOUT FORM -->
+            <div class="w-full max-w-lg mx-auto glass-panel rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
                 <div class="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-primary to-orange-400"></div>
 
                 <div class="flex items-center gap-3 border-b border-glass-border pb-4 mb-6">
                     <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                        <i data-lucide="zap" class="w-4 h-4"></i>
+                        <i data-lucide="shopping-cart" class="w-4 h-4"></i>
                     </div>
                     <div>
-                        <h4 class="text-sm font-bold text-white">Gia Hạn & Thanh Toán Nhanh</h4>
-                        <p class="text-[10px] text-gray-400 mt-0.5">Nhập thông tin và quét mã QR để kích hoạt tự động</p>
+                        <h4 class="text-sm font-bold text-white">Thông Tin Đăng Ký Đơn Hàng</h4>
+                        <p class="text-[10px] text-gray-400 mt-0.5">Sản phẩm: <span class="text-white font-bold" x-text="getSelectedCatalogProduct().name"></span> - <span class="text-primary font-bold" x-text="newOrderForm.duration + ' Tháng'"></span></p>
                     </div>
                 </div>
 
-                <form @submit.prevent="generateQR()" class="space-y-5">
-                    <!-- Email đăng ký -->
+                <form @submit.prevent="submitNewOrder()" class="space-y-5">
+                    <!-- Email Khách Hàng -->
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Email Đăng Ký Gói</label>
+                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Email của bạn</label>
                         <div class="relative">
                             <i data-lucide="mail" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"></i>
-                            <input type="email" x-model="renewalForm.email" required placeholder="example@gmail.com" class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium">
-                        </div>
-                    </div>
-
-                    <!-- Phân loại gói -->
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Phân loại gói dịch vụ</label>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div @click="renewalForm.planType = 'full'; showQR = false;"
-                                 :class="renewalForm.planType === 'full' ? 'border-primary bg-primary/5' : 'border-glass-border'"
-                                 class="flex flex-col p-3 rounded-xl border cursor-pointer hover:bg-white/5 transition-all text-left">
-                                <span class="text-xs font-bold text-white">Gói FULL / Còn Slot</span>
-                                <span class="text-[9px] text-primary font-bold mt-1">200k/6th - 375k/12th</span>
-                            </div>
-                            <div @click="renewalForm.planType = 'plus'; showQR = false;"
-                                 :class="renewalForm.planType === 'plus' ? 'border-primary bg-primary/5' : 'border-glass-border'"
-                                 class="flex flex-col p-3 rounded-xl border cursor-pointer hover:bg-white/5 transition-all text-left">
-                                <span class="text-xs font-bold text-white">Gói NKPlus/NPlus/Plus</span>
-                                <span class="text-[9px] text-primary font-bold mt-1">250k/6th - 445k/12th</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Chọn Gói Thời gian -->
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Chọn gói gia hạn</label>
-                        <div class="grid grid-cols-2 gap-3">
-                            <div @click="renewalForm.plan = 6; showQR = false;"
-                                 :class="renewalForm.plan === 6 ? 'border-primary bg-primary/5' : 'border-glass-border'"
-                                 class="relative flex flex-col p-3 rounded-xl border cursor-pointer hover:bg-white/5 transition-all text-left">
-                                <span class="text-xs font-extrabold text-white">Gói 6 Tháng</span>
-                                <span class="text-[10px] text-primary font-bold mt-1" x-text="getPricing().price6.toLocaleString('vi-VN') + 'đ'"></span>
-                            </div>
-                            <div @click="renewalForm.plan = 12; showQR = false;"
-                                 :class="renewalForm.plan === 12 ? 'border-primary bg-primary/5' : 'border-glass-border'"
-                                 class="relative flex flex-col p-3 rounded-xl border cursor-pointer hover:bg-white/5 transition-all text-left">
-                                <span class="text-xs font-extrabold text-white">Gói 12 Tháng</span>
-                                <span class="text-[10px] text-primary font-bold mt-1" x-text="getPricing().price12.toLocaleString('vi-VN') + 'đ'"></span>
-                                <span class="absolute top-1 right-1 text-[8px] bg-red-500 text-white px-1.5 rounded-full font-bold scale-90" x-text="'Giảm ' + ((getPricing().price6 * 2 - getPricing().price12) / 1000) + 'k'"></span>
-                            </div>
+                            <input type="email" x-model="newOrderForm.email" required placeholder="nhapemailcua-ban@gmail.com" class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium">
                         </div>
                     </div>
 
@@ -398,7 +513,7 @@
                         <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Số điện thoại Zalo</label>
                         <div class="relative">
                             <i data-lucide="phone" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"></i>
-                            <input type="text" x-model="renewalForm.zalo" required
+                            <input type="text" x-model="newOrderForm.zalo" required
                                 pattern="[0-9]{10}"
                                 maxlength="10"
                                 minlength="10"
@@ -408,54 +523,60 @@
                         </div>
                     </div>
 
-                    <!-- Mã Giảm Giá -->
+                    <!-- Mã giảm giá -->
                     <div>
                         <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Mã giảm giá (nếu có)</label>
                         <div class="flex gap-2">
                             <div class="relative flex-1">
                                 <i data-lucide="ticket" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"></i>
-                                <input type="text" x-model="promoCode" placeholder="Nhập mã giảm giá" @input="showQR = false; promoApplied = false; promoMessage = ''" class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium uppercase font-mono">
+                                <input type="text" x-model="newOrderForm.promoCode" placeholder="Nhập mã giảm giá" @input="orderQR.show = false; newOrderPromoSuccess = false; newOrderPromoMessage = ''" class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-2.5 pl-9 pr-3 text-xs focus:outline-none focus:border-primary text-white transition-all font-medium uppercase font-mono">
                             </div>
-                            <button type="button" @click="applyPromo()" class="bg-white/5 hover:bg-white/10 text-white border border-glass-border px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0">
+                            <button type="button" @click="applyNewOrderPromo()" class="bg-white/5 hover:bg-white/10 text-white border border-glass-border px-4 py-2.5 rounded-xl text-xs font-bold transition-all shrink-0">
                                 Áp dụng
                             </button>
                         </div>
-                        <template x-if="promoMessage">
-                            <p class="text-[10px] mt-2 font-semibold" :class="promoSuccess ? 'text-green-400' : 'text-red-400'" x-text="promoMessage"></p>
+                        <template x-if="newOrderPromoMessage">
+                            <p class="text-[10px] mt-2 font-semibold" :class="newOrderPromoSuccess ? 'text-green-400' : 'text-red-400'" x-text="newOrderPromoMessage"></p>
                         </template>
                     </div>
 
+                    <!-- Nút tạo đơn hàng -->
                     <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20">
-                        <i data-lucide="qr-code" class="w-4 h-4"></i>
-                        <span>Tạo Mã QR Chuyển Khoản</span>
+                        <i data-lucide="shopping-bag" class="w-4 h-4"></i>
+                        <span>Tạo Đơn Hàng & Thanh Toán</span>
                     </button>
                 </form>
 
-                <!-- QR DISPLAY PANEL -->
-                <div x-show="showQR" x-cloak class="mt-6 pt-6 border-t border-glass-border space-y-4 text-center" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+                <!-- NEW ORDER QR DISPLAY PANEL -->
+                <div x-show="orderQR.show" x-cloak class="mt-6 pt-6 border-t border-glass-border space-y-4 text-center" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
                     <div class="bg-white p-3 rounded-xl inline-block relative shadow-xl mx-auto">
-                        <img :src="qrCodeUrl" alt="VietQR Payment" class="w-44 h-44 mx-auto rounded-lg">
+                        <img :src="orderQR.url" alt="VietQR Payment" class="w-44 h-44 mx-auto rounded-lg">
                         <div class="absolute inset-0 border-2 border-primary/20 rounded-xl pointer-events-none"></div>
                     </div>
                     
                     <div class="space-y-3">
+                        <div class="bg-green-500/10 border border-green-500/20 text-green-400 p-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i>
+                            <span>Đơn hàng <span x-text="orderQR.orderId"></span> đã tạo thành công ở trạng thái Chờ xử lý (Pending)!</span>
+                        </div>
+
                         <p class="text-[10px] text-gray-400 leading-relaxed">Vui lòng quét mã QR trên bằng ứng dụng ngân hàng của bạn để hoàn tất giao dịch tự động.</p>
                         
                         <div class="bg-gray-950/60 border border-glass-border p-3 rounded-xl text-left space-y-1.5">
-                            <div class="flex justify-between text-[10px]" x-show="promoSuccess && promoDiscount > 0">
+                            <div class="flex justify-between text-[10px]" x-show="newOrderPromoSuccess && newOrderPromoDiscount > 0">
                                 <span class="text-gray-500">Giá gốc:</span>
-                                <span class="text-gray-400 line-through" x-text="(renewalForm.plan === 6 ? getPricing().price6 : getPricing().price12).toLocaleString('vi-VN') + 'đ'"></span>
+                                <span class="text-gray-400 line-through" x-text="getSelectedCatalogProduct().prices[newOrderForm.duration].toLocaleString('vi-VN') + 'đ'"></span>
                             </div>
                             <div class="flex justify-between text-[10px]">
-                                <span class="text-gray-500" x-text="promoSuccess && promoDiscount > 0 ? 'Số tiền sau giảm:' : 'Số tiền:'"></span>
-                                <span class="text-white font-extrabold" x-text="(renewalForm.plan === 6 ? Math.max(0, getPricing().price6 - promoDiscount) : Math.max(0, getPricing().price12 - promoDiscount)).toLocaleString('vi-VN') + 'đ'"></span>
+                                <span class="text-gray-500">Số tiền thanh toán:</span>
+                                <span class="text-white font-extrabold text-sm" x-text="orderQR.finalAmount.toLocaleString('vi-VN') + 'đ'"></span>
                             </div>
                             <div class="flex justify-between text-[10px] items-center">
                                 <span class="text-gray-500">Nội dung CK:</span>
-                                <span class="text-primary font-mono font-bold" x-text="qrMessage"></span>
+                                <span class="text-primary font-mono font-black text-sm" x-text="orderQR.message"></span>
                             </div>
                         </div>
-                        <p class="text-[9px] text-orange-400 font-medium">⚠️ Quan trọng: Vui lòng giữ nguyên nội dung chuyển khoản được tạo tự động để hệ thống duyệt hạn sử dụng chính xác.</p>
+                        <p class="text-[9px] text-orange-400 font-medium">⚠️ Quan trọng: Vui lòng giữ nguyên nội dung chuyển khoản được tạo tự động để hệ thống duyệt đơn hàng chính xác.</p>
                     </div>
                 </div>
             </div>
@@ -470,6 +591,7 @@
     <script>
         function customerPortal() {
             return {
+                activeTab: 'search',
                 searchEmail: '',
                 isLoading: false,
                 lookupDone: false,
@@ -480,18 +602,25 @@
                     TABS: ['APP_DATA', 'UPSALE']
                 },
                 RENEWAL_CONFIG: {
-                    BANK_ID: 'mbbank', // Nhập mã ngân hàng VietQR của bạn (ví dụ: mbbank, techcombank, vietcombank...)
-                    ACCOUNT_NO: '899123455', // Nhập số tài khoản ngân hàng nhận tiền của bạn
-                    ACCOUNT_NAME: 'NGUYEN DINH DINH' // Tên tài khoản ngân hàng viết hoa không dấu
+                    BANK_ID: 'mbbank',
+                    ACCOUNT_NO: '899123455',
+                    ACCOUNT_NAME: 'NGUYEN DINH DINH'
                 },
                 DISCOUNT_CONFIG: {
                     CODES: {
-                        'GOSHOP50': 50000,  // Giảm 50k
-                        'DNC': 20000,       // Giảm 20k
-                        'KHACHVIP': 30000,  // Giảm 30k
-                        'GIAM10K': 10000    // Giảm 10k
+                        'GOSHOP50': 50000,
+                        'DNC': 20000,
+                        'KHACHVIP': 30000,
+                        'GIAM10K': 10000
                     }
                 },
+                products: [
+                    { id: 'CAPCUT', name: 'CapCut Pro', icon: 'video', desc: 'Trình chỉnh sửa video chuyên nghiệp bằng AI, kho tài nguyên không giới hạn.', prices: { 6: 180000, 12: 320000 } },
+                    { id: 'GROK', name: 'Grok Premium', icon: 'bot', desc: 'Trợ lý AI thế hệ mới từ xAI, thông minh và cập nhật thời gian thực.', prices: { 6: 250000, 12: 445000 } },
+                    { id: 'CANVA', name: 'Canva Pro', icon: 'palette', desc: 'Thiết kế đồ họa kéo thả đỉnh cao, hàng triệu mẫu và ảnh Premium.', prices: { 6: 99000, 12: 179000 } },
+                    { id: 'SPOTIFY', name: 'Spotify Premium', icon: 'music', desc: 'Nghe nhạc chất lượng cao không quảng cáo, tải nhạc offline tiện lợi.', prices: { 6: 120000, 12: 199000 } },
+                    { id: 'ADOBE', name: 'Adobe CC', icon: 'brush', desc: 'Trọn bộ ứng dụng sáng tạo đỉnh cao (Photoshop, Premiere, Illustrator...).', prices: { 6: 350000, 12: 599000 } }
+                ],
                 renewalForm: {
                     email: '',
                     planType: 'full',
@@ -499,6 +628,23 @@
                     zalo: '',
                     selectedOrderId: ''
                 },
+                newOrderForm: {
+                    selectedProductId: 'CAPCUT',
+                    duration: 6,
+                    email: '',
+                    zalo: '',
+                    promoCode: ''
+                },
+                orderQR: {
+                    show: false,
+                    url: '',
+                    message: '',
+                    orderId: '',
+                    finalAmount: 0
+                },
+                newOrderPromoDiscount: 0,
+                newOrderPromoSuccess: false,
+                newOrderPromoMessage: '',
                 promoCode: '',
                 promoApplied: false,
                 promoDiscount: 0,
@@ -673,6 +819,85 @@
                     this.qrCodeUrl = `https://img.vietqr.io/image/${this.RENEWAL_CONFIG.BANK_ID}-${this.RENEWAL_CONFIG.ACCOUNT_NO}-compact2.png?amount=${finalAmount}&addInfo=${encodeURIComponent(this.qrMessage)}&accountName=${encodeURIComponent(this.RENEWAL_CONFIG.ACCOUNT_NAME)}`;
 
                     this.showQR = true;
+                },
+
+                getSelectedCatalogProduct() {
+                    return this.products.find(p => p.id === this.newOrderForm.selectedProductId) || this.products[0];
+                },
+
+                applyNewOrderPromo() {
+                    const code = this.newOrderForm.promoCode.trim().toUpperCase();
+                    if (!code) {
+                        this.newOrderPromoSuccess = false;
+                        this.newOrderPromoDiscount = 0;
+                        this.newOrderPromoMessage = '';
+                        return;
+                    }
+                    const promoCodes = JSON.parse(localStorage.getItem('goshop_promo_codes') || '{}');
+                    const discount = promoCodes[code];
+                    if (discount !== undefined) {
+                        this.newOrderPromoSuccess = true;
+                        this.newOrderPromoDiscount = discount;
+                        this.newOrderPromoMessage = `✨ Áp dụng mã ${code} thành công! Giảm -${discount.toLocaleString('vi-VN')}đ`;
+                    } else {
+                        this.newOrderPromoSuccess = false;
+                        this.newOrderPromoDiscount = 0;
+                        this.newOrderPromoMessage = '❌ Mã giảm giá không tồn tại hoặc đã hết hạn!';
+                    }
+                    this.orderQR.show = false;
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                    });
+                },
+
+                submitNewOrder() {
+                    const email = this.newOrderForm.email.trim();
+                    const zalo = this.newOrderForm.zalo.trim();
+                    if (!email || !zalo) {
+                        alert('Vui lòng điền đầy đủ Email và Số điện thoại Zalo!');
+                        return;
+                    }
+                    if (!/^\d{10}$/.test(zalo)) {
+                        alert('Số điện thoại Zalo phải nhập đúng định dạng 10 chữ số!');
+                        return;
+                    }
+
+                    const product = this.getSelectedCatalogProduct();
+                    const baseAmount = product.prices[this.newOrderForm.duration];
+                    const finalAmount = Math.max(0, baseAmount - this.newOrderPromoDiscount);
+
+                    // Retrieve existing orders to calculate next ID
+                    const existingOrders = JSON.parse(localStorage.getItem('goshop_orders') || '[]');
+                    const nextNum = existingOrders.length + 1;
+                    const orderId = 'ORD' + String(nextNum).padStart(3, '0');
+
+                    // Create order record
+                    const newOrder = {
+                        orderId: orderId,
+                        email: email,
+                        phone: zalo,
+                        product: product.name,
+                        productCode: product.id,
+                        duration: this.newOrderForm.duration,
+                        amount: finalAmount,
+                        createdDate: new Date().toISOString().split('T')[0],
+                        status: 'Pending'
+                    };
+
+                    existingOrders.push(newOrder);
+                    localStorage.setItem('goshop_orders', JSON.stringify(existingOrders));
+
+                    // Generate VietQR
+                    const addInfo = `${orderId}_${product.id}`.toUpperCase();
+                    this.orderQR.orderId = orderId;
+                    this.orderQR.finalAmount = finalAmount;
+                    this.orderQR.message = addInfo;
+                    this.orderQR.url = `https://img.vietqr.io/image/${this.RENEWAL_CONFIG.BANK_ID}-${this.RENEWAL_CONFIG.ACCOUNT_NO}-compact2.png?amount=${finalAmount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(this.RENEWAL_CONFIG.ACCOUNT_NAME)}`;
+                    this.orderQR.show = true;
+
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                    });
                 },
 
                 applyPromo() {
