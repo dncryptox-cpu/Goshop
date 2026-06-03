@@ -322,37 +322,36 @@
                                         x-text="req.months + ' Tháng'"></span>
                                 </td>
                                 <td class="px-6 py-4 text-center">
-                                    <span class="text-xs font-bold px-3 py-1 rounded-full" :class="{
-                                              'bg-orange-50 text-orange-600': req.status === 'pending',
-                                              'bg-green-50 text-green-600': req.status === 'approved',
-                                              'bg-red-50 text-red-600': req.status === 'rejected'
-                                          }"
-                                        x-text="req.status === 'pending' ? 'Chờ Duyệt' : (req.status === 'approved' ? 'Đã Duyệt' : 'Từ Chối')"></span>
+                                    <template x-if="currentUser?.role === 'admin'">
+                                        <select x-model="req.status" @change="updateRequestStatus(req.id, req.status)"
+                                            class="border border-gray-200 rounded-lg px-2 py-1.5 text-xs font-bold focus:outline-none transition-all cursor-pointer shadow-sm w-full"
+                                            :class="{
+                                                'bg-orange-50 text-orange-700': req.status === 'pending',
+                                                'bg-green-50 text-green-700': req.status === 'approved',
+                                                'bg-red-50 text-red-700': req.status === 'rejected'
+                                            }">
+                                            <option value="pending" class="bg-white text-gray-900">Chờ Duyệt</option>
+                                            <option value="approved" class="bg-white text-gray-900">Đã Duyệt</option>
+                                            <option value="rejected" class="bg-white text-gray-900">Từ Chối</option>
+                                        </select>
+                                    </template>
+                                    <template x-if="currentUser?.role !== 'admin'">
+                                        <span class="text-xs font-bold px-3 py-1 rounded-full" :class="{
+                                                  'bg-orange-50 text-orange-600': req.status === 'pending',
+                                                  'bg-green-50 text-green-600': req.status === 'approved',
+                                                  'bg-red-50 text-red-600': req.status === 'rejected'
+                                              }"
+                                            x-text="req.status === 'pending' ? 'Chờ Duyệt' : (req.status === 'approved' ? 'Đã Duyệt' : 'Từ Chối')"></span>
+                                    </template>
                                 </td>
                                 <td class="px-6 py-4 text-right">
                                     <div class="flex items-center justify-end gap-2"
-                                        x-show="req.status === 'pending'">
-                                        <template x-if="currentUser?.role === 'admin'">
-                                            <div class="flex items-center gap-2">
-                                                <button @click="approveRequest(req.id)"
-                                                    class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
-                                                    title="Duyệt">
-                                                    <i data-lucide="check" class="w-4 h-4"></i>
-                                                </button>
-                                                <button @click="rejectRequest(req.id)"
-                                                    class="w-8 h-8 rounded-full bg-red-50 text-red-600 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
-                                                    title="Từ chối">
-                                                    <i data-lucide="x" class="w-4 h-4"></i>
-                                                </button>
-                                            </div>
-                                        </template>
-                                        <template x-if="currentUser?.role !== 'admin' && currentUser?.name === req.staff">
-                                            <button @click="cancelRequest(req.id)"
-                                                class="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs font-bold transition-all"
-                                                title="Hủy bỏ">
-                                                Hủy bỏ
-                                            </button>
-                                        </template>
+                                        x-show="req.status === 'pending' && currentUser?.role !== 'admin' && currentUser?.name === req.staff">
+                                        <button @click="cancelRequest(req.id)"
+                                            class="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs font-bold transition-all"
+                                            title="Hủy bỏ">
+                                            Hủy bỏ
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
@@ -727,9 +726,16 @@
                     return this.getVisibleRequests().filter(r => r.status === 'pending').length;
                 },
 
-                async approveRequest(reqId) {
+                async updateRequestStatus(reqId, newStatus) {
                     const req = this.renewalRequests.find(r => r.id === reqId);
                     if (!req) return;
+
+                    req.status = newStatus;
+                    localStorage.setItem('goshop_ytb_renewal_requests', JSON.stringify(this.renewalRequests));
+
+                    let statusStr = 'Chờ Duyệt';
+                    if (newStatus === 'approved') statusStr = 'Đã Duyệt';
+                    if (newStatus === 'rejected') statusStr = 'Từ Chối';
 
                     if (this.CONFIG.WEBAPP_URL) {
                         try {
@@ -738,10 +744,9 @@
                                 mode: 'no-cors',
                                 headers: { 'Content-Type': 'text/plain' },
                                 body: JSON.stringify({
-                                    action: 'approve_request',
+                                    action: 'change_request_status',
                                     reqId: reqId,
-                                    email: req.email,
-                                    newExpiry: req.newExpiry
+                                    statusStr: statusStr
                                 })
                             });
                         } catch (e) { }
@@ -749,46 +754,20 @@
 
                     const c = this.customers.find(x => x.email === req.email);
                     if (c) {
-                        const parts = req.newExpiry.split('-');
-                        c.expiry = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                        this.saveStatus(c.email, 'Đã GH');
-                        c.renewalStatus = 'Đã GH';
-                        c.days = (req.months || 1) * 30;
-                    }
-
-                    req.status = 'approved';
-                    this.showToast('Đã duyệt yêu cầu!');
-                    this.$nextTick(() => lucide.createIcons());
-                },
-
-                async rejectRequest(reqId) {
-                    const req = this.renewalRequests.find(r => r.id === reqId);
-                    if (req) {
-                        req.status = 'rejected';
-                        
-                        if (this.CONFIG.WEBAPP_URL) {
-                            try {
-                                await fetch(this.CONFIG.WEBAPP_URL, {
-                                    method: 'POST',
-                                    mode: 'no-cors',
-                                    headers: { 'Content-Type': 'text/plain' },
-                                    body: JSON.stringify({
-                                        action: 'reject_request',
-                                        reqId: reqId
-                                    })
-                                });
-                            } catch (e) {}
-                        }
-                        
-                        const c = this.customers.find(x => x.email === req.email);
-                        if (c && c.renewalStatus === 'Đã GH') {
-                            this.saveStatus(c.email, 'Chờ GH'); // revert status
+                        if (newStatus === 'approved') {
+                            const parts = req.newExpiry.split('-');
+                            c.expiry = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                            this.saveStatus(c.email, 'Đã GH');
+                            c.renewalStatus = 'Đã GH';
+                            c.days = (req.months || 1) * 30;
+                        } else {
+                            this.saveStatus(c.email, 'Chờ GH'); // Revert
                             c.renewalStatus = 'Chờ GH';
                         }
-                        
-                        this.showToast('Đã từ chối yêu cầu!');
-                        this.$nextTick(() => lucide.createIcons());
                     }
+
+                    this.showToast('Đã cập nhật trạng thái yêu cầu!');
+                    this.$nextTick(() => lucide.createIcons());
                 },
 
                 async cancelRequest(reqId) {
