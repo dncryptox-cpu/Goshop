@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTV Dashboard - Gia Hạn Youtube</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f4f7fe; color: #262626; }
+        .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1); }
+        [x-cloak] { display: none !important; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#1890ff', 'primary-light': '#e6f7ff' }
+                }
+            }
+        }
+    </script>
+</head>
+<body x-data="ctvApp()" x-init="initApp()" class="antialiased text-gray-800">
+    
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 py-4 px-6 md:px-12 flex items-center justify-between shadow-sm sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-primary/30">
+                <i data-lucide="youtube" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight text-gray-900">CTV Portal</h1>
+                <p class="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Quản lý Gia hạn Youtube</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="text-xs font-bold text-gray-500" x-show="!isLoading">
+                <span class="text-green-500" x-text="getYoutubeCustomers().length"></span> Khách hàng
+            </span>
+            <button @click="fetchSheetData()" class="p-2 text-gray-400 hover:text-primary hover:bg-primary-light rounded-lg transition-all" :class="{'animate-spin text-primary': isLoading}">
+                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-4 md:p-8">
+        <div x-show="isLoading" class="flex flex-col items-center justify-center py-20 text-gray-400">
+            <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-primary mb-4"></i>
+            <p class="font-medium text-sm">Đang tải dữ liệu từ Google Sheets...</p>
+        </div>
+
+        <div x-show="!isLoading" x-cloak>
+            <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                <div class="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-6 bg-gray-50/50">
+                    <div class="flex flex-wrap items-center gap-6">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                <i data-lucide="user" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTV Phụ Trách</label>
+                                <select x-model="ytbFilterStaff" class="bg-transparent text-sm font-bold text-gray-900 focus:outline-none cursor-pointer">
+                                    <option value="all">Tất cả CTV & Nhân viên</option>
+                                    <option value="Tuan">CTV Tuấn</option>
+                                    <option value="Vuong">CTV Vương</option>
+                                    <option value="Dnc">Dnc</option>
+                                    <option value="Loc">Loc</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
+
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
+                                <i data-lucide="filter" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Lọc Trạng Thái</label>
+                                <select x-model="ytbFilterStatus" class="bg-transparent text-sm font-bold text-gray-900 focus:outline-none cursor-pointer">
+                                    <option value="all">Tất cả trạng thái</option>
+                                    <option value="Chờ GH">Đến hạn (Chờ gia hạn)</option>
+                                    <option value="Đã nhắc GH">Đã nhắc gia hạn</option>
+                                    <option value="Đã GH">Đã gia hạn thành công</option>
+                                    <option value="Hủy GH">Đã hủy</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-white border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            <tr>
+                                <th class="px-6 py-4">Khách Hàng</th>
+                                <th class="px-6 py-4 text-center">Ngày Đăng Ký</th>
+                                <th class="px-6 py-4 text-center">Hạn Sử Dụng</th>
+                                <th class="px-6 py-4 text-center">Trạng Thái Xử Lý</th>
+                                <th class="px-6 py-4 text-right">Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <template x-for="customer in getYoutubeCustomers()" :key="customer.email">
+                                <tr class="hover:bg-blue-50/50 transition-colors group">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center gap-3">
+                                            <div class="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center text-red-500">
+                                                <i data-lucide="play" class="w-4 h-4"></i>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-bold text-gray-900" x-text="customer.email"></p>
+                                                <p class="text-xs text-gray-500 mt-0.5" x-text="customer.plan"></p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="text-xs font-medium text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md" x-text="customer.purchaseDate"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <p class="text-sm font-bold text-gray-900" x-text="customer.expiry"></p>
+                                        <div class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                                             :class="customer.days < 0 ? 'bg-red-50 text-red-600' : (customer.days <= 7 ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600')">
+                                            <i data-lucide="clock" class="w-3 h-3"></i>
+                                            <span x-text="customer.days < 0 ? ('Quá hạn ' + Math.abs(customer.days) + ' ngày') : ('Còn ' + customer.days + ' ngày')"></span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <select x-model="customer.renewalStatus" @change="saveStatus(customer.email, customer.renewalStatus)" 
+                                                class="border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold focus:outline-none transition-all cursor-pointer shadow-sm"
+                                                :class="{
+                                                    'bg-orange-50 text-orange-700 border-orange-200': customer.renewalStatus === 'Chờ GH', 
+                                                    'bg-blue-50 text-blue-700 border-blue-200': customer.renewalStatus === 'Đã nhắc GH', 
+                                                    'bg-green-50 text-green-700 border-green-200': customer.renewalStatus === 'Đã GH', 
+                                                    'bg-red-50 text-red-700 border-red-200': customer.renewalStatus === 'Hủy GH'
+                                                }">
+                                            <option value="Chờ GH" class="text-orange-600">Chờ Gia Hạn</option>
+                                            <option value="Đã nhắc GH" class="text-blue-600">Đã Nhắc Khách</option>
+                                            <option value="Đã GH" class="text-green-600">Đã Gia Hạn</option>
+                                            <option value="Hủy GH" class="text-red-600">Khách Hủy</option>
+                                        </select>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button @click="openUpdateModal(customer)" class="bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all px-4 py-2 rounded-lg inline-flex items-center gap-2 ml-auto shadow-sm">
+                                            <i data-lucide="calendar-plus" class="w-4 h-4"></i>
+                                            <span class="text-[11px] font-bold uppercase tracking-wider">Cập Nhật HSD</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="getYoutubeCustomers().length === 0">
+                                <tr>
+                                    <td colspan="5" class="px-6 py-16 text-center">
+                                        <div class="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-4 text-gray-300">
+                                            <i data-lucide="check-circle" class="w-8 h-8"></i>
+                                        </div>
+                                        <p class="text-gray-900 font-bold mb-1">Không có khách hàng nào</p>
+                                        <p class="text-sm text-gray-500">Tất cả khách hàng Youtube trong bộ lọc hiện tại đã được xử lý.</p>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Update Modal -->
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div @click="showModal = false" class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"></div>
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl relative overflow-hidden" 
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95 transform translate-y-8"
+             x-transition:enter-end="opacity-100 scale-100 transform translate-y-0">
+            
+            <div class="p-6 border-b border-gray-100">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center">
+                        <i data-lucide="calendar" class="w-6 h-6"></i>
+                    </div>
+                    <button @click="showModal = false" class="text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 p-2 rounded-full transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <h2 class="text-xl font-bold text-gray-900">Gia Hạn Khách Hàng</h2>
+                <p class="text-sm text-gray-500 mt-1" x-text="updateForm.email"></p>
+            </div>
+
+            <form @submit.prevent="submitUpdate()" class="p-6 space-y-5 bg-gray-50/50">
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Hạn Sử Dụng Cũ</label>
+                    <input type="text" x-model="updateForm.oldExpiry" readonly class="w-full bg-gray-100 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none text-gray-500 font-bold cursor-not-allowed">
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <div class="flex-1">
+                        <label class="block text-[11px] font-bold text-primary uppercase tracking-widest mb-2">Số tháng cộng thêm</label>
+                        <div class="relative">
+                            <input type="number" x-model.number="updateForm.months" @input="calculateNewDate()" min="1" required class="w-full bg-white border border-primary/30 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 font-bold text-primary transition-all">
+                            <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-primary/50 uppercase">Tháng</span>
+                        </div>
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-[11px] font-bold text-green-600 uppercase tracking-widest mb-2">HSD Mới Sẽ Là</label>
+                        <input type="date" x-model="updateForm.newExpiry" required class="w-full bg-white border border-green-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-500/10 text-green-700 font-bold uppercase transition-all">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 pt-4">
+                    <button type="button" @click="showModal = false" class="flex-1 py-3 text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all">Hủy</button>
+                    <button type="submit" class="flex-[2] bg-primary hover:bg-blue-600 text-white py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-xl shadow-primary/20">
+                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                        <span>Xác Nhận Gia Hạn</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast-container"></div>
+
+    <script>
+        function ctvApp() {
+            return {
+                CONFIG: {
+                    SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
+                    WEBAPP_URL: '', // PASTE GOOGLE APPS SCRIPT URL HERE IF NEEDED
+                    TABS: ['APP_DATA']
+                },
+                isLoading: false,
+                customers: [],
+                ytbFilterStaff: 'Tuan', // Default to Tuan
+                ytbFilterStatus: 'all',
+                ytbStatuses: {},
+                showModal: false,
+                updateForm: { email: '', oldExpiry: '', months: 1, newExpiry: '' },
+
+                async initApp() {
+                    this.ytbStatuses = JSON.parse(localStorage.getItem('goshop_ytb_renewal_statuses') || '{}');
+                    await this.fetchSheetData();
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async fetchSheetData() {
+                    this.isLoading = true;
+                    try {
+                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA`;
+                        const response = await fetch(url);
+                        const csvText = await response.text();
+                        
+                        const lines = csvText.split('\n');
+                        if(lines.length < 2) return;
+                        const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+                        
+                        const appData = lines.slice(1).map(line => {
+                            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
+                            const obj = {};
+                            headers.forEach((header, i) => {
+                                obj[header] = values[i] || '';
+                            });
+                            return obj;
+                        }).filter(row => Object.values(row).some(v => v !== ''));
+
+                        const customerMap = {};
+                        appData.forEach((r, index) => {
+                            const email = r['Email khách'];
+                            if(!email) return;
+                            
+                            const days = parseInt(r['Số ngày còn lại']) || 0;
+                            if (!customerMap[email] || days > customerMap[email].days) {
+                                customerMap[email] = {
+                                    email: email,
+                                    plan: r['Phân loại'] || '--',
+                                    expiry: r['HSD'] || '--',
+                                    purchaseDate: r['Ngày mua'] || r['Ngày đăng ký'] || r['Ngày đk'] || '--',
+                                    days: days,
+                                    staff: r['CTV'] || 'Unassigned',
+                                    renewalStatus: this.ytbStatuses[email] || 'Chờ GH'
+                                };
+                            }
+                        });
+                        this.customers = Object.values(customerMap);
+
+                    } catch (error) {
+                        console.error('Error fetching sheet data:', error);
+                        this.showToast('Lỗi tải dữ liệu. Vui lòng kiểm tra kết nối mạng.');
+                    } finally {
+                        this.isLoading = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                getYoutubeCustomers() {
+                    let filtered = this.customers.filter(c => c.plan.toLowerCase().includes('youtube') || c.plan.toLowerCase().includes('ytb'));
+                    
+                    if (this.ytbFilterStaff !== 'all') {
+                        filtered = filtered.filter(c => (c.staff || '').toLowerCase() === this.ytbFilterStaff.toLowerCase());
+                    }
+                    if (this.ytbFilterStatus !== 'all') {
+                        filtered = filtered.filter(c => c.renewalStatus === this.ytbFilterStatus);
+                    }
+                    
+                    return filtered.sort((a, b) => a.days - b.days);
+                },
+
+                saveStatus(email, status) {
+                    this.ytbStatuses[email] = status;
+                    localStorage.setItem('goshop_ytb_renewal_statuses', JSON.stringify(this.ytbStatuses));
+                    this.showToast('Đã lưu trạng thái: ' + status);
+                },
+
+                openUpdateModal(customer) {
+                    this.updateForm = {
+                        email: customer.email,
+                        oldExpiry: customer.expiry,
+                        months: 1,
+                        newExpiry: ''
+                    };
+                    this.calculateNewDate(customer.expiry);
+                    this.showModal = true;
+                },
+
+                calculateNewDate(oldExpiryStr) {
+                    const expiry = oldExpiryStr || this.updateForm.oldExpiry;
+                    if (!expiry) return;
+                    let date;
+                    if (expiry.includes('/')) {
+                        const parts = expiry.split('/');
+                        if (parts.length === 3) date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                    } else {
+                        date = new Date(expiry);
+                    }
+                    if (isNaN(date.getTime())) date = new Date();
+                    
+                    date.setMonth(date.getMonth() + (this.updateForm.months || 1));
+                    const dd = String(date.getDate()).padStart(2, '0');
+                    const mm = String(date.getMonth() + 1).padStart(2, '0');
+                    const yyyy = date.getFullYear();
+                    this.updateForm.newExpiry = `${yyyy}-${mm}-${dd}`;
+                },
+
+                async submitUpdate() {
+                    if (this.CONFIG.WEBAPP_URL) {
+                        try {
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'update_hsd',
+                                    email: this.updateForm.email,
+                                    newExpiry: this.updateForm.newExpiry
+                                })
+                            });
+                        } catch(e) {}
+                    }
+
+                    const c = this.customers.find(x => x.email === this.updateForm.email);
+                    if (c) {
+                        const parts = this.updateForm.newExpiry.split('-');
+                        c.expiry = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        this.saveStatus(c.email, 'Đã GH');
+                        c.renewalStatus = 'Đã GH';
+                        c.days = (this.updateForm.months || 1) * 30; // approx visually
+                    }
+                    
+                    this.showToast('Cập nhật HSD thành công!');
+                    this.showModal = false;
+                },
+
+                showToast(message) {
+                    const container = document.getElementById('toast-container');
+                    const toast = document.createElement('div');
+                    toast.className = 'fixed bottom-8 right-8 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl z-[100] transform transition-all duration-300 translate-y-20 opacity-0 flex items-center gap-3';
+                    toast.innerHTML = `<i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><span class="font-bold text-sm tracking-wide">${message}</span>`;
+                    container.appendChild(toast);
+                    
+                    setTimeout(() => toast.classList.remove('translate-y-20', 'opacity-0'), 100);
+                    setTimeout(() => {
+                        toast.classList.add('translate-y-20', 'opacity-0');
+                        setTimeout(() => toast.remove(), 300);
+                    }, 3000);
+                    
+                    lucide.createIcons();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
