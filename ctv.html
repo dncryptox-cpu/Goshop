@@ -331,17 +331,28 @@
                                 </td>
                                 <td class="px-6 py-4 text-right">
                                     <div class="flex items-center justify-end gap-2"
-                                        x-show="req.status === 'pending' && currentUser?.role === 'admin'">
-                                        <button @click="approveRequest(req.id)"
-                                            class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
-                                            title="Duyệt">
-                                            <i data-lucide="check" class="w-4 h-4"></i>
-                                        </button>
-                                        <button @click="rejectRequest(req.id)"
-                                            class="w-8 h-8 rounded-full bg-red-50 text-red-600 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
-                                            title="Từ chối">
-                                            <i data-lucide="x" class="w-4 h-4"></i>
-                                        </button>
+                                        x-show="req.status === 'pending'">
+                                        <template x-if="currentUser?.role === 'admin'">
+                                            <div class="flex items-center gap-2">
+                                                <button @click="approveRequest(req.id)"
+                                                    class="w-8 h-8 rounded-full bg-green-50 text-green-600 hover:bg-green-500 hover:text-white flex items-center justify-center transition-all"
+                                                    title="Duyệt">
+                                                    <i data-lucide="check" class="w-4 h-4"></i>
+                                                </button>
+                                                <button @click="rejectRequest(req.id)"
+                                                    class="w-8 h-8 rounded-full bg-red-50 text-red-600 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
+                                                    title="Từ chối">
+                                                    <i data-lucide="x" class="w-4 h-4"></i>
+                                                </button>
+                                            </div>
+                                        </template>
+                                        <template x-if="currentUser?.role !== 'admin' && currentUser?.name === req.staff">
+                                            <button @click="cancelRequest(req.id)"
+                                                class="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs font-bold transition-all"
+                                                title="Hủy bỏ">
+                                                Hủy bỏ
+                                            </button>
+                                        </template>
                                     </div>
                                 </td>
                             </tr>
@@ -495,6 +506,7 @@
                 async fetchSheetData() {
                     this.isLoading = true;
                     try {
+                        await this.fetchRequests();
                         const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA`;
                         const response = await fetch(url);
                         const csvText = await response.text();
@@ -674,6 +686,41 @@
                     return this.renewalRequests.filter(r => r.staff === this.currentUser?.name).reverse();
                 },
 
+                async fetchRequests() {
+                    try {
+                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=YEU_CAU`;
+                        const response = await fetch(url);
+                        const csvText = await response.text();
+                        
+                        const lines = csvText.split('\n');
+                        if (lines.length < 2) return;
+                        const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+                        
+                        const requests = lines.slice(1).map(line => {
+                            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
+                            const obj = {};
+                            headers.forEach((header, i) => {
+                                obj[header] = values[i] || '';
+                            });
+                            return {
+                                id: parseInt(obj['ID']),
+                                email: obj['Email'],
+                                oldExpiry: obj['HSD Cũ'],
+                                months: parseInt(obj['Tháng Gia Hạn']) || 1,
+                                newExpiry: obj['HSD Mới'],
+                                staff: obj['CTV Yêu Cầu'],
+                                createdAt: obj['Thời Gian'],
+                                status: obj['Trạng Thái'] === 'Chờ Duyệt' ? 'pending' : (obj['Trạng Thái'] === 'Đã Duyệt' ? 'approved' : 'rejected')
+                            };
+                        }).filter(r => r.id);
+                        
+                        // Merge local pending requests that haven't synced yet, or just overwrite with sheet data
+                        this.renewalRequests = requests;
+                    } catch (e) {
+                        console.error('Error fetching requests:', e);
+                    }
+                },
+
                 getPendingRequestsCount() {
                     return this.getVisibleRequests().filter(r => r.status === 'pending').length;
                 },
@@ -689,7 +736,8 @@
                                 mode: 'no-cors',
                                 headers: { 'Content-Type': 'text/plain' },
                                 body: JSON.stringify({
-                                    action: 'update_hsd',
+                                    action: 'approve_request',
+                                    reqId: reqId,
                                     email: req.email,
                                     newExpiry: req.newExpiry
                                 })
@@ -707,17 +755,67 @@
                     }
 
                     req.status = 'approved';
-                    localStorage.setItem('goshop_ytb_renewal_requests', JSON.stringify(this.renewalRequests));
                     this.showToast('Đã duyệt yêu cầu!');
                     this.$nextTick(() => lucide.createIcons());
                 },
 
-                rejectRequest(reqId) {
+                async rejectRequest(reqId) {
                     const req = this.renewalRequests.find(r => r.id === reqId);
                     if (req) {
                         req.status = 'rejected';
-                        localStorage.setItem('goshop_ytb_renewal_requests', JSON.stringify(this.renewalRequests));
+                        
+                        if (this.CONFIG.WEBAPP_URL) {
+                            try {
+                                await fetch(this.CONFIG.WEBAPP_URL, {
+                                    method: 'POST',
+                                    mode: 'no-cors',
+                                    headers: { 'Content-Type': 'text/plain' },
+                                    body: JSON.stringify({
+                                        action: 'reject_request',
+                                        reqId: reqId
+                                    })
+                                });
+                            } catch (e) {}
+                        }
+                        
+                        const c = this.customers.find(x => x.email === req.email);
+                        if (c && c.renewalStatus === 'Đã GH') {
+                            this.saveStatus(c.email, 'Chờ GH'); // revert status
+                            c.renewalStatus = 'Chờ GH';
+                        }
+                        
                         this.showToast('Đã từ chối yêu cầu!');
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async cancelRequest(reqId) {
+                    const req = this.renewalRequests.find(r => r.id === reqId);
+                    if (req) {
+                        req.status = 'rejected';
+                        
+                        if (this.CONFIG.WEBAPP_URL) {
+                            try {
+                                await fetch(this.CONFIG.WEBAPP_URL, {
+                                    method: 'POST',
+                                    mode: 'no-cors',
+                                    headers: { 'Content-Type': 'text/plain' },
+                                    body: JSON.stringify({
+                                        action: 'cancel_request',
+                                        reqId: reqId
+                                    })
+                                });
+                            } catch (e) {}
+                        }
+                        
+                        const c = this.customers.find(x => x.email === req.email);
+                        if (c && c.renewalStatus === 'Đã GH') {
+                            this.saveStatus(c.email, 'Chờ GH'); // revert status
+                            c.renewalStatus = 'Chờ GH';
+                        }
+                        
+                        this.showToast('Đã hủy yêu cầu!');
+                        this.$nextTick(() => lucide.createIcons());
                     }
                 },
 
