@@ -29,8 +29,38 @@
 </head>
 <body x-data="ctvApp()" x-init="initApp()" class="antialiased text-gray-800">
     
+    <!-- Login Screen -->
+    <div x-show="!isLoggedIn" x-cloak class="min-h-screen flex flex-col items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm border border-gray-100">
+            <div class="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-white font-bold shadow-lg shadow-primary/30 mx-auto mb-6">
+                <i data-lucide="shield-check" class="w-8 h-8"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-center text-gray-900 mb-2">CTV Đăng Nhập</h2>
+            <p class="text-sm text-center text-gray-500 mb-8">Vui lòng đăng nhập để quản lý khách hàng</p>
+            
+            <form @submit.prevent="login()" class="space-y-5">
+                <div x-show="loginError" x-cloak class="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                    <span x-text="loginError"></span>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Tên Đăng Nhập</label>
+                    <input type="text" x-model="loginForm.username" required class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-primary/10 transition-all font-medium text-gray-900">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Mật Khẩu</label>
+                    <input type="password" x-model="loginForm.password" required class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-primary/10 transition-all font-medium text-gray-900">
+                </div>
+                <button type="submit" class="w-full bg-primary hover:bg-blue-600 text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-xl shadow-primary/20 mt-4">
+                    <span>Đăng Nhập</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
     <!-- Header -->
-    <header class="bg-white border-b border-gray-200 py-4 px-6 md:px-12 flex items-center justify-between shadow-sm sticky top-0 z-50">
+    <header x-show="isLoggedIn" x-cloak class="bg-white border-b border-gray-200 py-4 px-6 md:px-12 flex items-center justify-between shadow-sm sticky top-0 z-50">
         <div class="flex items-center gap-3">
             <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-primary/30">
                 <i data-lucide="youtube" class="w-5 h-5"></i>
@@ -44,13 +74,16 @@
             <span class="text-xs font-bold text-gray-500" x-show="!isLoading">
                 <span class="text-green-500" x-text="getYoutubeCustomers().length"></span> Khách hàng
             </span>
-            <button @click="fetchSheetData()" class="p-2 text-gray-400 hover:text-primary hover:bg-primary-light rounded-lg transition-all" :class="{'animate-spin text-primary': isLoading}">
+            <button @click="fetchSheetData()" class="p-2 text-gray-400 hover:text-primary hover:bg-primary-light rounded-lg transition-all" :class="{'animate-spin text-primary': isLoading}" title="Làm mới">
                 <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            </button>
+            <button @click="logout()" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Đăng xuất">
+                <i data-lucide="log-out" class="w-5 h-5"></i>
             </button>
         </div>
     </header>
 
-    <main class="max-w-7xl mx-auto p-4 md:p-8">
+    <main x-show="isLoggedIn" x-cloak class="max-w-7xl mx-auto p-4 md:p-8">
         <div x-show="isLoading" class="flex flex-col items-center justify-center py-20 text-gray-400">
             <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-primary mb-4"></i>
             <p class="font-medium text-sm">Đang tải dữ liệu từ Google Sheets...</p>
@@ -66,12 +99,12 @@
                             </div>
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTV Phụ Trách</label>
-                                <select x-model="ytbFilterStaff" class="bg-transparent text-sm font-bold text-gray-900 focus:outline-none cursor-pointer">
+                                <select x-model="ytbFilterStaff" :disabled="currentUser?.role !== 'admin'" class="bg-transparent text-sm font-bold text-gray-900 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                                     <option value="all">Tất cả CTV & Nhân viên</option>
                                     <option value="Tuan">CTV Tuấn</option>
                                     <option value="Vuong">CTV Vương</option>
                                     <option value="Dnc">Dnc</option>
-                                    <option value="Loc">Loc</option>
+                                    <option value="Loc">Lộc</option>
                                 </select>
                             </div>
                         </div>
@@ -236,6 +269,17 @@
                     WEBAPP_URL: '', // PASTE GOOGLE APPS SCRIPT URL HERE IF NEEDED
                     TABS: ['APP_DATA']
                 },
+                ctvAccounts: {
+                    'tuan': { username: 'tuan', password: '123', name: 'Tuan', role: 'ctv' },
+                    'vuong': { username: 'vuong', password: '123', name: 'Vương', role: 'ctv' },
+                    'dnc': { username: 'dnc', password: '123', name: 'Dnc', role: 'admin' },
+                    'loc': { username: 'loc', password: '123', name: 'Lộc', role: 'ctv' },
+                    'admin': { username: 'admin', password: '123', name: 'all', role: 'admin' }
+                },
+                isLoggedIn: false,
+                loginForm: { username: '', password: '' },
+                loginError: '',
+                currentUser: null,
                 isLoading: false,
                 customers: [],
                 ytbFilterStaff: 'all', // Default to all
@@ -245,9 +289,39 @@
                 updateForm: { email: '', oldExpiry: '', months: 1, newExpiry: '' },
 
                 async initApp() {
+                    const savedUser = localStorage.getItem('goshop_ctv_user');
+                    if (savedUser) {
+                        this.currentUser = JSON.parse(savedUser);
+                        this.isLoggedIn = true;
+                        this.ytbFilterStaff = this.currentUser.name;
+                        this.fetchSheetData(); // only fetch data if logged in
+                    }
                     this.ytbStatuses = JSON.parse(localStorage.getItem('goshop_ytb_renewal_statuses') || '{}');
-                    await this.fetchSheetData();
                     this.$nextTick(() => lucide.createIcons());
+                },
+
+                login() {
+                    const uname = this.loginForm.username.trim().toLowerCase();
+                    const acc = this.ctvAccounts[uname];
+                    if (acc && acc.password === this.loginForm.password) {
+                        this.isLoggedIn = true;
+                        this.currentUser = acc;
+                        this.ytbFilterStaff = acc.name;
+                        this.loginError = '';
+                        localStorage.setItem('goshop_ctv_user', JSON.stringify(acc));
+                        this.fetchSheetData();
+                        this.$nextTick(() => lucide.createIcons());
+                    } else {
+                        this.loginError = 'Sai tên đăng nhập hoặc mật khẩu';
+                    }
+                },
+
+                logout() {
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    this.loginForm = {username: '', password: ''};
+                    localStorage.removeItem('goshop_ctv_user');
+                    this.customers = [];
                 },
 
                 async fetchSheetData() {
