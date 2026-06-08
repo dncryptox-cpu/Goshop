@@ -1444,15 +1444,30 @@
 
                     <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
                         <div class="p-4 border-b border-gray-100 flex flex-wrap items-center gap-4">
-                            <div class="flex items-center gap-3">
-                                <label class="text-xs font-bold text-gray-500 uppercase tracking-widest">Ngày cần xử lý:</label>
-                                <select x-model="dailyTaskFilterDay" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary text-gray-700 font-bold">
-                                    <option value="recent">Gần đây (Hôm nay ±3 ngày)</option>
-                                    <option value="all">Tất cả các ngày</option>
-                                    <template x-for="day in availableTaskDays">
-                                        <option :value="day" x-text="'Ngày ' + day.replace('D', '')"></option>
+                            <div class="flex items-center gap-4">
+                                <label class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Lọc theo ngày:</label>
+                                <div class="flex items-center gap-2">
+                                    <button @click="dailyTaskFilterDay = 'all'" 
+                                            :class="dailyTaskFilterDay === 'all' ? 'bg-gray-900 text-white shadow-md' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'"
+                                            class="px-4 py-1.5 rounded-full text-xs font-bold transition-all">
+                                        Tất cả
+                                    </button>
+                                    <template x-for="pill in dailyTaskFilterPills" :key="pill.diff">
+                                        <button @click="dailyTaskFilterDay = pill.diff"
+                                                :class="[
+                                                    dailyTaskFilterDay === pill.diff 
+                                                        ? (pill.diff === 0 ? 'bg-blue-50 text-blue-600 border border-blue-200 shadow-sm' : 'bg-gray-900 text-white shadow-md')
+                                                        : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50',
+                                                    pill.diff === 0 ? 'flex items-center gap-1.5' : ''
+                                                ]"
+                                                class="px-4 py-1.5 rounded-full text-xs font-bold transition-all">
+                                            <template x-if="pill.diff === 0">
+                                                <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+                                            </template>
+                                            <span x-text="pill.label"></span>
+                                        </button>
                                     </template>
-                                </select>
+                                </div>
                             </div>
                             <div class="flex items-center gap-3">
                                 <label class="text-xs font-bold text-gray-500 uppercase tracking-widest">Loại gói:</label>
@@ -2151,8 +2166,24 @@
                 ],
 
                 // Daily Tasks State & Methods
-                dailyTaskFilterDay: 'recent',
+                dailyTaskFilterDay: 'all',
                 dailyTaskFilterType: 'all',
+
+                get dailyTaskFilterPills() {
+                    const today = new Date();
+                    const pills = [];
+                    for(let i = -3; i <= 3; i++) {
+                        const d = new Date(today);
+                        d.setDate(today.getDate() + i);
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        pills.push({
+                            label: i === 0 ? 'Hôm nay' : `${dd}/${mm}`,
+                            diff: i
+                        });
+                    }
+                    return pills;
+                },
 
                 get getDailyTasks() {
                     let tasks = this.db.STOCK || [];
@@ -2205,10 +2236,8 @@
 
                     let filtered = processedTasks;
                     
-                    if (this.dailyTaskFilterDay === 'recent') {
-                        filtered = filtered.filter(t => t.diffDays !== null && t.diffDays >= -3 && t.diffDays <= 3);
-                    } else if (this.dailyTaskFilterDay !== 'all') {
-                        filtered = filtered.filter(t => t.renewDay === this.dailyTaskFilterDay);
+                    if (this.dailyTaskFilterDay !== 'all') {
+                        filtered = filtered.filter(t => t.diffDays !== null && t.diffDays === parseInt(this.dailyTaskFilterDay));
                     }
                     
                     if (this.dailyTaskFilterType !== 'all') {
