@@ -1048,7 +1048,12 @@
                 upsaleStatus: null,
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
-                    TABS: ['APP_DATA', 'UPSALE']
+                    TABS: ['APP_DATA', 'UPSALE'],
+                    APPS_SCRIPT_URL: '', // Điền link Google Apps Script (Web App) vào đây để đẩy dữ liệu về Sheet
+                    TELEGRAM: {
+                        BOT_TOKEN: '', // Nhập Bot Token từ @BotFather
+                        CHAT_ID: ''    // Nhập Chat ID của bạn (lấy từ @userinfobot)
+                    }
                 },
                 RENEWAL_CONFIG: {
                     BANK_ID: 'mbbank',
@@ -1375,6 +1380,9 @@
                     this.orderQR.url = `https://img.vietqr.io/image/${this.RENEWAL_CONFIG.BANK_ID}-${this.RENEWAL_CONFIG.ACCOUNT_NO}-compact2.png?amount=${finalAmount}&addInfo=${encodeURIComponent(addInfo)}&accountName=${encodeURIComponent(this.RENEWAL_CONFIG.ACCOUNT_NAME)}`;
                     this.orderQR.show = true;
 
+                    // Đẩy dữ liệu về Google Sheet và Gửi thông báo Telegram
+                    this.pushToSheetAndNotify(newOrder);
+
                     // Trigger 59-second check simulation
                     this.paymentCountdown = 59;
                     this.newOrderPaidSuccess = false;
@@ -1390,6 +1398,52 @@
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
+                },
+
+                async pushToSheetAndNotify(order) {
+                    // 1. Gửi thông báo qua Telegram (Tiện lợi, nhận thông báo đẩy trên điện thoại ngay lập tức)
+                    if (this.CONFIG.TELEGRAM.BOT_TOKEN && this.CONFIG.TELEGRAM.CHAT_ID) {
+                        const message = `🚨 <b>CÓ ĐƠN HÀNG MỚI!</b>\n\n` +
+                                      `📦 <b>Mã ĐH:</b> ${order.orderId}\n` +
+                                      `👤 <b>Khách:</b> ${order.email}\n` +
+                                      `📞 <b>Zalo:</b> ${order.phone}\n` +
+                                      `🛒 <b>Sản phẩm:</b> ${order.product}\n` +
+                                      `⏱ <b>Thời hạn:</b> ${order.duration} ngày\n` +
+                                      `💰 <b>Số tiền:</b> ${order.amount.toLocaleString('vi-VN')}đ\n\n` +
+                                      `⏳ <i>Đang chờ khách quét mã QR thanh toán...</i>`;
+                        try {
+                            fetch(`https://api.telegram.org/bot${this.CONFIG.TELEGRAM.BOT_TOKEN}/sendMessage`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    chat_id: this.CONFIG.TELEGRAM.CHAT_ID,
+                                    text: message,
+                                    parse_mode: 'HTML'
+                                })
+                            });
+                        } catch (e) { console.error('Lỗi gửi Telegram:', e); }
+                    }
+
+                    // 2. Đẩy dữ liệu về Google Sheet thông qua Web App
+                    if (this.CONFIG.APPS_SCRIPT_URL) {
+                        try {
+                            const formData = new FormData();
+                            formData.append('orderId', order.orderId);
+                            formData.append('email', order.email);
+                            formData.append('phone', order.phone);
+                            formData.append('product', order.product);
+                            formData.append('duration', order.duration);
+                            formData.append('amount', order.amount);
+                            formData.append('status', order.status);
+                            formData.append('date', order.createdDate);
+                            
+                            fetch(this.CONFIG.APPS_SCRIPT_URL, {
+                                method: 'POST',
+                                body: formData,
+                                mode: 'no-cors'
+                            });
+                        } catch(e) { console.error('Lỗi đẩy về Sheet:', e); }
+                    }
                 },
 
                 confirmNewOrderPayment() {
