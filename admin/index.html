@@ -1447,6 +1447,7 @@
                             <div class="flex items-center gap-3">
                                 <label class="text-xs font-bold text-gray-500 uppercase tracking-widest">Ngày cần xử lý:</label>
                                 <select x-model="dailyTaskFilterDay" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary text-gray-700 font-bold">
+                                    <option value="recent">Gần đây (Hôm nay ±3 ngày)</option>
                                     <option value="all">Tất cả các ngày</option>
                                     <template x-for="day in availableTaskDays">
                                         <option :value="day" x-text="'Ngày ' + day.replace('D', '')"></option>
@@ -1497,8 +1498,16 @@
                                                 </div>
                                             </td>
                                             <td class="px-6 py-4 text-center">
-                                                <span class="px-2.5 py-1 rounded bg-orange-50 text-orange-700 border border-orange-100 font-bold text-xs" x-text="task.renewDay || 'N/A'"></span>
-                                                <div class="text-[10px] text-gray-500 mt-1" x-text="task['Ngày renew']"></div>
+                                                <span class="px-2.5 py-1 rounded font-bold text-xs" 
+                                                      :class="{
+                                                          'bg-red-50 text-red-700 border border-red-100': task.diffDays < 0,
+                                                          'bg-green-50 text-green-700 border border-green-100': task.diffDays === 0,
+                                                          'bg-orange-50 text-orange-700 border border-orange-100': task.diffDays > 0,
+                                                          'bg-gray-50 text-gray-700 border border-gray-200': task.diffDays === null
+                                                      }"
+                                                      x-text="task.diffDays === 0 ? 'Hôm nay' : (task.diffDays < 0 ? 'Quá hạn ' + Math.abs(task.diffDays) + ' ngày' : (task.diffDays !== null ? 'Còn ' + task.diffDays + ' ngày' : 'N/A'))"></span>
+                                                <div class="text-[10px] text-gray-500 mt-1 font-mono font-bold" x-text="task.effectiveDateStr"></div>
+                                                <div class="text-[9px] text-gray-400 mt-0.5" x-show="task['Ngày renew'] && task['Ngày renew'] !== task.effectiveDateStr" x-text="'Gốc: ' + task['Ngày renew']"></div>
                                             </td>
                                             <td class="px-6 py-4 text-right">
                                                 <div class="flex items-center justify-end gap-2">
@@ -2142,35 +2151,76 @@
                 ],
 
                 // Daily Tasks State & Methods
-                dailyTaskFilterDay: 'all',
+                dailyTaskFilterDay: 'recent',
                 dailyTaskFilterType: 'all',
 
                 get getDailyTasks() {
                     let tasks = this.db.STOCK || [];
                     tasks = tasks.filter(t => t['Mail']);
+                    
+                    const today = new Date();
+                    today.setHours(0,0,0,0);
+                    const currentYear = today.getFullYear();
+                    const currentMonth = today.getMonth();
+
                     const processedTasks = tasks.map(t => {
                         let renewDay = '';
                         let dayVal = null;
+                        let effectiveDate = null;
+                        let diffDays = null;
+                        let effectiveDateStr = '--';
+
                         if (t['Ngày renew']) {
                             const parts = t['Ngày renew'].split('/');
                             if (parts.length >= 1) {
                                 dayVal = parseInt(parts[0], 10);
                                 if (!isNaN(dayVal)) {
                                     renewDay = 'D' + dayVal;
+                                    
+                                    let monthVal = parts.length >= 2 ? parseInt(parts[1], 10) - 1 : currentMonth;
+                                    let yearVal = parts.length >= 3 ? parseInt(parts[2], 10) : currentYear;
+                                    
+                                    const type = t['Trạng thái'] || '';
+                                    if (type.includes('Plus')) {
+                                        // "Plus" users renew on this day every month (current month)
+                                        effectiveDate = new Date(currentYear, currentMonth, dayVal);
+                                    } else {
+                                        // "FULL" / "Còn slot" renew on the exact date
+                                        effectiveDate = new Date(yearVal, monthVal, dayVal);
+                                    }
+                                    
+                                    const timeDiff = effectiveDate.getTime() - today.getTime();
+                                    diffDays = Math.round(timeDiff / (1000 * 60 * 60 * 24));
+                                    
+                                    // Formatting effective date for display
+                                    const dd = String(effectiveDate.getDate()).padStart(2, '0');
+                                    const mm = String(effectiveDate.getMonth() + 1).padStart(2, '0');
+                                    const yyyy = effectiveDate.getFullYear();
+                                    effectiveDateStr = `${dd}/${mm}/${yyyy}`;
                                 }
                             }
                         }
-                        return { ...t, renewDay: renewDay, dayVal: dayVal };
+                        return { ...t, renewDay, dayVal, effectiveDate, diffDays, effectiveDateStr };
                     });
 
                     let filtered = processedTasks;
-                    if (this.dailyTaskFilterDay !== 'all') {
+                    
+                    if (this.dailyTaskFilterDay === 'recent') {
+                        filtered = filtered.filter(t => t.diffDays !== null && t.diffDays >= -3 && t.diffDays <= 3);
+                    } else if (this.dailyTaskFilterDay !== 'all') {
                         filtered = filtered.filter(t => t.renewDay === this.dailyTaskFilterDay);
                     }
+                    
                     if (this.dailyTaskFilterType !== 'all') {
                         filtered = filtered.filter(t => t['Trạng thái'] === this.dailyTaskFilterType);
                     }
-                    return filtered.sort((a, b) => (a.dayVal || 999) - (b.dayVal || 999));
+                    
+                    return filtered.sort((a, b) => {
+                        if (a.diffDays !== null && b.diffDays !== null) {
+                            return a.diffDays - b.diffDays;
+                        }
+                        return (a.dayVal || 999) - (b.dayVal || 999);
+                    });
                 },
                 
                 get availableTaskDays() {
