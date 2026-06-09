@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Affiliate CRM - Premium Shop</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        [x-cloak] { display: none !important; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#2563eb', 'primary-light': '#dbeafe', 'primary-dark': '#1e40af' }
+                }
+            }
+        }
+    </script>
+</head>
+<body x-data="affApp()" x-init="initApp()" class="antialiased min-h-screen flex flex-col">
+
+    <!-- Login Screen -->
+    <div x-show="!isLoggedIn" x-cloak class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-blue-50 to-white">
+        <div class="glass-card rounded-3xl p-8 w-full max-w-md">
+            <div class="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/30 mx-auto mb-6">
+                <i data-lucide="users" class="w-8 h-8"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-center text-gray-900 mb-2">Affiliate CRM</h2>
+            <p class="text-sm text-center text-gray-500 mb-8">Đăng nhập bằng Email mua hàng của bạn</p>
+
+            <form @submit.prevent="login()" class="space-y-5">
+                <div x-show="loginError" x-cloak class="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                    <span x-text="loginError"></span>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Email</label>
+                    <input type="email" x-model="loginForm.email" required
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Mật Khẩu</label>
+                    <input type="password" x-model="loginForm.password" required
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all">
+                </div>
+                <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 mt-2">
+                    <span>Đăng Nhập</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Authenticated Layout -->
+    <div x-show="isLoggedIn" x-cloak class="flex-1 flex flex-col">
+        <!-- Header -->
+        <header class="bg-white border-b border-gray-200 py-4 px-6 sticky top-0 z-50 shadow-sm flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-md shadow-primary/20">
+                    <i data-lucide="network" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-gray-900 leading-tight">Premium Affiliate</h1>
+                    <p class="text-[11px] text-gray-500 font-medium uppercase tracking-wider" x-text="currentUser?.role === 'admin' ? 'Quản trị viên' : 'Đối tác Affiliate'"></p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="hidden sm:block text-right mr-2">
+                    <p class="text-sm font-semibold text-gray-900" x-text="currentUser?.email"></p>
+                </div>
+                <button @click="fetchData()" class="p-2 text-gray-400 hover:text-primary hover:bg-primary-light rounded-lg transition-all" :class="{'animate-spin text-primary': isLoading}" title="Làm mới">
+                    <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                </button>
+                <button @click="logout()" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Đăng xuất">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="bg-white border-b border-gray-200 px-6">
+            <div class="max-w-7xl mx-auto flex gap-6 overflow-x-auto hide-scrollbar">
+                <!-- Admin Tabs -->
+                <template x-if="currentUser?.role === 'admin'">
+                    <div class="flex gap-6">
+                        <button @click="currentTab = 'admin_overview'" :class="currentTab === 'admin_overview' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Tổng Quan</button>
+                        <button @click="currentTab = 'admin_customers'" :class="currentTab === 'admin_customers' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Khách Hàng</button>
+                        <button @click="currentTab = 'admin_affiliates'" :class="currentTab === 'admin_affiliates' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Danh sách Affiliate</button>
+                    </div>
+                </template>
+
+                <!-- Affiliate Tabs -->
+                <template x-if="currentUser?.role === 'affiliate'">
+                    <div class="flex gap-6">
+                        <button @click="currentTab = 'aff_overview'" :class="currentTab === 'aff_overview' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Tổng Quan</button>
+                        <button @click="currentTab = 'aff_referrals'" :class="currentTab === 'aff_referrals' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Khách Được Giới Thiệu</button>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
+            <div x-show="isLoading" class="flex flex-col items-center justify-center py-20 text-gray-400">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-primary mb-4"></i>
+                <p class="text-sm font-medium">Đang đồng bộ dữ liệu...</p>
+            </div>
+
+            <div x-show="!isLoading" x-cloak>
+                <!-- ==================== ADMIN VIEWS ==================== -->
+                <!-- Admin Overview -->
+                <div x-show="currentTab === 'admin_overview'">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <div class="glass-card rounded-2xl p-6">
+                            <div class="flex items-center gap-4 mb-2">
+                                <div class="p-3 bg-blue-50 text-blue-600 rounded-xl"><i data-lucide="users" class="w-5 h-5"></i></div>
+                                <h3 class="text-sm font-semibold text-gray-500">Tổng Khách Hàng</h3>
+                            </div>
+                            <p class="text-3xl font-bold text-gray-900" x-text="customers.length"></p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-6">
+                            <div class="flex items-center gap-4 mb-2">
+                                <div class="p-3 bg-purple-50 text-purple-600 rounded-xl"><i data-lucide="network" class="w-5 h-5"></i></div>
+                                <h3 class="text-sm font-semibold text-gray-500">Tổng Affiliate</h3>
+                            </div>
+                            <p class="text-3xl font-bold text-gray-900" x-text="affiliates.length"></p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-6">
+                            <div class="flex items-center gap-4 mb-2">
+                                <div class="p-3 bg-green-50 text-green-600 rounded-xl"><i data-lucide="dollar-sign" class="w-5 h-5"></i></div>
+                                <h3 class="text-sm font-semibold text-gray-500">Doanh Thu (ước tính)</h3>
+                            </div>
+                            <p class="text-3xl font-bold text-gray-900" x-text="formatCurrency(totalRevenue)"></p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-6">
+                            <div class="flex items-center gap-4 mb-2">
+                                <div class="p-3 bg-orange-50 text-orange-600 rounded-xl"><i data-lucide="gift" class="w-5 h-5"></i></div>
+                                <h3 class="text-sm font-semibold text-gray-500">Hoa Hồng Phải Trả</h3>
+                            </div>
+                            <p class="text-3xl font-bold text-gray-900" x-text="formatCurrency(totalCommission)"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Customers Management -->
+                <div x-show="currentTab === 'admin_customers'">
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 flex flex-wrap gap-4 justify-between items-center bg-white">
+                            <h2 class="text-lg font-bold text-gray-900">Quản Lý Khách Hàng</h2>
+                            <div class="flex items-center gap-3 w-full sm:w-auto">
+                                <div class="relative w-full sm:w-64">
+                                    <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                                    <input type="text" x-model="searchQuery" placeholder="Tìm kiếm khách hàng..." class="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">Khách Hàng</th>
+                                        <th class="px-6 py-4">Sản Phẩm</th>
+                                        <th class="px-6 py-4">HSD & Trạng Thái</th>
+                                        <th class="px-6 py-4">Người Giới Thiệu</th>
+                                        <th class="px-6 py-4 text-center">Nhắc Hạn (30 ngày)</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <template x-for="c in filteredCustomers" :key="c.email">
+                                        <tr class="hover:bg-blue-50/30 transition-colors">
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm font-bold text-gray-900" x-text="c.name || c.email"></p>
+                                                <p class="text-xs text-gray-500" x-text="c.email"></p>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-800" x-text="c.product"></span>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm font-semibold text-gray-900" x-text="c.expiryDate"></p>
+                                                <span class="text-[10px] font-bold uppercase tracking-wider mt-1 block"
+                                                    :class="c.daysRemaining <= 0 ? 'text-red-500' : (c.daysRemaining <= 30 ? 'text-orange-500' : 'text-green-500')"
+                                                    x-text="c.daysRemaining <= 0 ? 'Hết hạn' : (c.daysRemaining <= 30 ? 'Sắp hết hạn (' + c.daysRemaining + ' ngày)' : 'Còn hạn')">
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm font-medium text-primary" x-text="c.referredBy || 'Trực tiếp'"></p>
+                                            </td>
+                                            <td class="px-6 py-4 text-center">
+                                                <div class="flex items-center justify-center gap-3" x-show="c.daysRemaining > 0 && c.daysRemaining <= 30">
+                                                    <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                                        <input type="checkbox" x-model="c.reminders.r1" @change="saveReminders(c)" class="rounded text-primary focus:ring-primary w-4 h-4">
+                                                        <span class="text-[10px] text-gray-500 font-medium">L1</span>
+                                                    </label>
+                                                    <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                                        <input type="checkbox" x-model="c.reminders.r2" @change="saveReminders(c)" class="rounded text-primary focus:ring-primary w-4 h-4">
+                                                        <span class="text-[10px] text-gray-500 font-medium">L2</span>
+                                                    </label>
+                                                    <label class="flex flex-col items-center gap-1 cursor-pointer">
+                                                        <input type="checkbox" x-model="c.reminders.r3" @change="saveReminders(c)" class="rounded text-primary focus:ring-primary w-4 h-4">
+                                                        <span class="text-[10px] text-gray-500 font-medium">L3</span>
+                                                    </label>
+                                                </div>
+                                                <span x-show="!(c.daysRemaining > 0 && c.daysRemaining <= 30)" class="text-xs text-gray-400">-</span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Affiliates List -->
+                <div x-show="currentTab === 'admin_affiliates'">
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 bg-white">
+                            <h2 class="text-lg font-bold text-gray-900">Danh Sách Đối Tác (Affiliates)</h2>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">Email Affiliate</th>
+                                        <th class="px-6 py-4 text-center">Khách Đã GT</th>
+                                        <th class="px-6 py-4 text-right">Tổng Doanh Thu</th>
+                                        <th class="px-6 py-4 text-right">Hoa Hồng</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <template x-for="aff in affiliates" :key="aff.email">
+                                        <tr class="hover:bg-blue-50/30 transition-colors">
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm font-bold text-gray-900" x-text="aff.email"></p>
+                                                <p class="text-xs text-gray-500 font-mono mt-1">Mã: <span class="text-primary font-bold" x-text="aff.code"></span></p>
+                                            </td>
+                                            <td class="px-6 py-4 text-center">
+                                                <span class="inline-flex items-center justify-center bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full text-sm" x-text="aff.referralCount"></span>
+                                            </td>
+                                            <td class="px-6 py-4 text-right">
+                                                <p class="text-sm font-semibold text-gray-900" x-text="formatCurrency(aff.totalRevenue)"></p>
+                                            </td>
+                                            <td class="px-6 py-4 text-right">
+                                                <p class="text-sm font-bold text-green-600" x-text="formatCurrency(aff.totalCommission)"></p>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== AFFILIATE VIEWS ==================== -->
+                <!-- Affiliate Overview -->
+                <div x-show="currentTab === 'aff_overview'">
+                    <!-- Referral Info Box -->
+                    <div class="glass-card rounded-2xl p-6 mb-8 border-l-4 border-primary bg-gradient-to-r from-blue-50 to-white">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">Thông Tin Giới Thiệu Của Bạn</h3>
+                        <div class="grid md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Link Giới Thiệu</label>
+                                <div class="flex gap-2">
+                                    <input type="text" readonly :value="'https://godnc.com?ref=' + myAffiliateData?.code" class="flex-1 bg-white border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium text-gray-700 focus:outline-none">
+                                    <button @click="copyText('https://godnc.com?ref=' + myAffiliateData?.code)" class="bg-primary hover:bg-primary-dark text-white px-4 rounded-xl text-sm font-semibold transition-all">Copy</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Mã Giới Thiệu</label>
+                                <div class="flex gap-2">
+                                    <input type="text" readonly :value="myAffiliateData?.code" class="flex-1 bg-white border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-bold text-primary focus:outline-none text-center uppercase tracking-widest">
+                                    <button @click="copyText(myAffiliateData?.code)" class="bg-gray-800 hover:bg-gray-900 text-white px-4 rounded-xl text-sm font-semibold transition-all">Copy</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <div class="glass-card rounded-2xl p-6">
+                            <h3 class="text-sm font-semibold text-gray-500 mb-2">Khách Đã Giới Thiệu</h3>
+                            <p class="text-3xl font-bold text-gray-900" x-text="myAffiliateData?.referralCount || 0"></p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-6">
+                            <h3 class="text-sm font-semibold text-gray-500 mb-2">Tổng Đơn Hàng</h3>
+                            <p class="text-3xl font-bold text-gray-900" x-text="myAffiliateData?.referralCount || 0"></p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+                            <div class="absolute -right-4 -top-4 w-24 h-24 bg-orange-100 rounded-full opacity-50"></div>
+                            <h3 class="text-sm font-semibold text-gray-500 mb-2 relative z-10">Hoa Hồng Chờ Duyệt</h3>
+                            <p class="text-3xl font-bold text-orange-600 relative z-10" x-text="formatCurrency(myAffiliateData?.totalCommission || 0)"></p>
+                        </div>
+                        <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
+                            <div class="absolute -right-4 -top-4 w-24 h-24 bg-green-100 rounded-full opacity-50"></div>
+                            <h3 class="text-sm font-semibold text-gray-500 mb-2 relative z-10">Đã Thanh Toán</h3>
+                            <p class="text-3xl font-bold text-green-600 relative z-10">0 ₫</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Affiliate Referrals -->
+                <div x-show="currentTab === 'aff_referrals'">
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 bg-white">
+                            <h2 class="text-lg font-bold text-gray-900">Danh Sách Khách Hàng Được Giới Thiệu</h2>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">Email Khách</th>
+                                        <th class="px-6 py-4">Sản Phẩm</th>
+                                        <th class="px-6 py-4">Ngày Mua</th>
+                                        <th class="px-6 py-4">Trạng Thái HSD</th>
+                                        <th class="px-6 py-4 text-right">Hoa Hồng Nhận</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <template x-for="c in myReferrals" :key="c.email">
+                                        <tr class="hover:bg-blue-50/30 transition-colors">
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm font-bold text-gray-900" x-text="maskEmail(c.email)"></p>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span class="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-gray-100 text-gray-800" x-text="c.product"></span>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm text-gray-600" x-text="c.purchaseDate"></p>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                                                    :class="c.daysRemaining <= 0 ? 'bg-red-50 text-red-600' : (c.daysRemaining <= 30 ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600')"
+                                                    x-text="c.daysRemaining <= 0 ? 'Hết hạn' : (c.daysRemaining <= 30 ? 'Sắp hết hạn' : 'Đang sử dụng')">
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 text-right">
+                                                <p class="text-sm font-bold text-green-600" x-text="formatCurrency(c.commission)"></p>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="myReferrals.length === 0">
+                                        <tr>
+                                            <td colspan="5" class="px-6 py-12 text-center text-gray-500 text-sm">Bạn chưa có khách hàng giới thiệu nào. Chia sẻ link ngay!</td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        function affApp() {
+            return {
+                CONFIG: {
+                    SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
+                    COMMISSION_RATE: 0.20, // 20% commission
+                    DEFAULT_PRICE: 200000 // default price if not found
+                },
+                isLoggedIn: false,
+                isLoading: false,
+                loginForm: { email: '', password: '' },
+                loginError: '',
+                currentUser: null,
+                currentTab: 'admin_overview',
+                
+                customers: [],
+                affiliates: [],
+                searchQuery: '',
+                remindersStore: {},
+
+                get filteredCustomers() {
+                    if (!this.searchQuery) return this.customers.sort((a, b) => a.daysRemaining - b.daysRemaining);
+                    const q = this.searchQuery.toLowerCase();
+                    return this.customers.filter(c => c.email.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)).sort((a, b) => a.daysRemaining - b.daysRemaining);
+                },
+
+                get totalRevenue() {
+                    return this.customers.reduce((sum, c) => sum + c.revenue, 0);
+                },
+
+                get totalCommission() {
+                    return this.customers.reduce((sum, c) => sum + c.commission, 0);
+                },
+
+                get myAffiliateData() {
+                    if (!this.currentUser) return null;
+                    return this.affiliates.find(a => a.email === this.currentUser.email) || {
+                        email: this.currentUser.email,
+                        code: this.currentUser.email.split('@')[0],
+                        referralCount: 0,
+                        totalRevenue: 0,
+                        totalCommission: 0
+                    };
+                },
+
+                get myReferrals() {
+                    if (!this.currentUser) return [];
+                    return this.customers.filter(c => c.referredBy === this.currentUser.email);
+                },
+
+                async initApp() {
+                    const savedUser = localStorage.getItem('aff_crm_user');
+                    if (savedUser) {
+                        this.currentUser = JSON.parse(savedUser);
+                        this.isLoggedIn = true;
+                        this.currentTab = this.currentUser.role === 'admin' ? 'admin_overview' : 'aff_overview';
+                        this.remindersStore = JSON.parse(localStorage.getItem('aff_crm_reminders') || '{}');
+                        this.fetchData();
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                login() {
+                    const email = this.loginForm.email.trim().toLowerCase();
+                    const pw = this.loginForm.password;
+
+                    // Admin Login
+                    if ((email === 'admin@godnc.com' || email === 'admin') && pw === 'dnc1m@') {
+                        this.setUser({ email: 'admin@godnc.com', role: 'admin', name: 'Admin' });
+                        return;
+                    }
+
+                    // Affiliate Login (Any email is an affiliate automatically)
+                    // For demo, accept any password "123" or "password"
+                    if (email && pw) {
+                        this.setUser({ email: email, role: 'affiliate', name: email.split('@')[0] });
+                    } else {
+                        this.loginError = 'Vui lòng nhập đầy đủ thông tin';
+                    }
+                },
+
+                setUser(user) {
+                    this.currentUser = user;
+                    this.isLoggedIn = true;
+                    this.loginError = '';
+                    this.currentTab = user.role === 'admin' ? 'admin_overview' : 'aff_overview';
+                    localStorage.setItem('aff_crm_user', JSON.stringify(user));
+                    this.fetchData();
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                logout() {
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    this.loginForm = { email: '', password: '' };
+                    localStorage.removeItem('aff_crm_user');
+                    this.customers = [];
+                    this.affiliates = [];
+                },
+
+                async fetchData() {
+                    this.isLoading = true;
+                    try {
+                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA`;
+                        const response = await fetch(url);
+                        const csvText = await response.text();
+
+                        const lines = csvText.split('\n');
+                        if (lines.length < 2) return;
+                        const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+
+                        const appData = lines.slice(1).map(line => {
+                            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
+                            const obj = {};
+                            headers.forEach((header, i) => {
+                                obj[header] = values[i] || '';
+                            });
+                            return obj;
+                        }).filter(row => row['Email khách']);
+
+                        const parsedCustomers = [];
+                        const affMap = {};
+
+                        appData.forEach(r => {
+                            const email = r['Email khách'];
+                            const days = parseInt(r['Số ngày còn lại']) || 0;
+                            const price = parseInt((r['Doanh thu'] || r['Giá'] || '0').replace(/\D/g, '')) || this.CONFIG.DEFAULT_PRICE;
+                            
+                            // Affiliate tracking via 'Người giới thiệu' or 'Mã Affiliate' or fallback to 'CTV' if it looks like an email
+                            let referredBy = r['Người giới thiệu'] || r['Affiliate'] || '';
+                            if (!referredBy && r['CTV'] && r['CTV'].includes('@')) referredBy = r['CTV'];
+
+                            const comm = referredBy ? price * this.CONFIG.COMMISSION_RATE : 0;
+
+                            const cData = {
+                                email: email,
+                                name: r['Tên'] || email.split('@')[0],
+                                product: r['Phân loại'] || 'Standard',
+                                purchaseDate: r['Ngày mua'] || r['Ngày đk'] || '--',
+                                expiryDate: r['HSD'] || '--',
+                                daysRemaining: days,
+                                referredBy: referredBy,
+                                revenue: price,
+                                commission: comm,
+                                reminders: this.remindersStore[email] || { r1: false, r2: false, r3: false }
+                            };
+                            parsedCustomers.push(cData);
+
+                            // Build Affiliate Stats
+                            // Mọi khách hàng đều tự động thành Affiliate
+                            if (!affMap[email]) {
+                                affMap[email] = {
+                                    email: email,
+                                    code: email.split('@')[0],
+                                    referralCount: 0,
+                                    totalRevenue: 0,
+                                    totalCommission: 0
+                                };
+                            }
+
+                            // If this customer was referred by someone, update referrer stats
+                            if (referredBy) {
+                                if (!affMap[referredBy]) {
+                                    affMap[referredBy] = {
+                                        email: referredBy,
+                                        code: referredBy.split('@')[0],
+                                        referralCount: 0,
+                                        totalRevenue: 0,
+                                        totalCommission: 0
+                                    };
+                                }
+                                affMap[referredBy].referralCount++;
+                                affMap[referredBy].totalRevenue += price;
+                                affMap[referredBy].totalCommission += comm;
+                            }
+                        });
+
+                        this.customers = parsedCustomers;
+                        this.affiliates = Object.values(affMap).sort((a, b) => b.referralCount - a.referralCount);
+
+                    } catch (error) {
+                        console.error('Fetch error:', error);
+                        this.showToast('Lỗi tải dữ liệu Google Sheet');
+                    } finally {
+                        this.isLoading = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                saveReminders(customer) {
+                    this.remindersStore[customer.email] = customer.reminders;
+                    localStorage.setItem('aff_crm_reminders', JSON.stringify(this.remindersStore));
+                    this.showToast('Đã lưu trạng thái nhắc nhở');
+                },
+
+                formatCurrency(value) {
+                    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
+                },
+
+                maskEmail(email) {
+                    if (!email || !email.includes('@')) return email;
+                    const parts = email.split('@');
+                    if (parts[0].length <= 3) return email;
+                    return parts[0].substring(0, 3) + '***@' + parts[1];
+                },
+
+                copyText(text) {
+                    if (!text) return;
+                    navigator.clipboard.writeText(text);
+                    this.showToast('Đã copy: ' + text);
+                },
+
+                showToast(message) {
+                    const container = document.getElementById('toast-container');
+                    const toast = document.createElement('div');
+                    toast.className = 'bg-gray-900 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-3 transition-all duration-300 transform translate-y-10 opacity-0';
+                    toast.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><span class="text-sm font-medium">${message}</span>`;
+                    container.appendChild(toast);
+
+                    setTimeout(() => toast.classList.remove('translate-y-10', 'opacity-0'), 100);
+                    setTimeout(() => {
+                        toast.classList.add('translate-y-10', 'opacity-0');
+                        setTimeout(() => toast.remove(), 300);
+                    }, 3000);
+
+                    lucide.createIcons();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
