@@ -153,6 +153,19 @@
                             <p class="text-3xl font-bold text-gray-900" x-text="formatCurrency(totalCommission)"></p>
                         </div>
                     </div>
+
+                    <!-- Commission Settings -->
+                    <div class="glass-card rounded-2xl p-6 max-w-sm mb-8">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">Cài Đặt Tỉ Lệ Hoa Hồng</h3>
+                        <p class="text-xs text-gray-500 mb-4">Mức hoa hồng này sẽ được tính toán ngay lập tức cho toàn bộ dữ liệu hiện tại.</p>
+                        <div class="flex items-end gap-4">
+                            <div class="flex-1">
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Tỉ lệ (%)</label>
+                                <input type="number" x-model.number="commissionRatePercent" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all">
+                            </div>
+                            <button @click="saveCommissionRate()" class="bg-primary hover:bg-primary-dark text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-md shadow-primary/20">Lưu</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Admin Customers Management -->
@@ -372,9 +385,9 @@
             return {
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
-                    COMMISSION_RATE: 0.20, // 20% commission
                     DEFAULT_PRICE: 200000 // default price if not found
                 },
+                commissionRatePercent: 20,
                 isLoggedIn: false,
                 isLoading: false,
                 loginForm: { email: '', password: '' },
@@ -418,6 +431,11 @@
                 },
 
                 async initApp() {
+                    const savedRate = localStorage.getItem('aff_crm_commission_rate');
+                    if (savedRate !== null) {
+                        this.commissionRatePercent = parseFloat(savedRate);
+                    }
+                    
                     const savedUser = localStorage.getItem('aff_crm_user');
                     if (savedUser) {
                         this.currentUser = JSON.parse(savedUser);
@@ -499,7 +517,7 @@
                             let referredBy = r['Người giới thiệu'] || r['Affiliate'] || '';
                             if (!referredBy && r['CTV'] && r['CTV'].includes('@')) referredBy = r['CTV'];
 
-                            const comm = referredBy ? price * this.CONFIG.COMMISSION_RATE : 0;
+                            const comm = referredBy ? price * (this.commissionRatePercent / 100) : 0;
 
                             const cData = {
                                 email: email,
@@ -560,6 +578,12 @@
                     this.remindersStore[customer.email] = customer.reminders;
                     localStorage.setItem('aff_crm_reminders', JSON.stringify(this.remindersStore));
                     this.showToast('Đã lưu trạng thái nhắc nhở');
+                },
+
+                saveCommissionRate() {
+                    localStorage.setItem('aff_crm_commission_rate', this.commissionRatePercent);
+                    this.showToast('Đã lưu mức hoa hồng mới');
+                    this.fetchData(); // Recalculate
                 },
 
                 formatCurrency(value) {
