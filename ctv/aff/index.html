@@ -416,18 +416,31 @@
 
                 get myAffiliateData() {
                     if (!this.currentUser) return null;
-                    return this.affiliates.find(a => a.email === this.currentUser.email) || {
+                    const myEmail = this.currentUser.email.toLowerCase();
+                    const myCode = myEmail.split('@')[0];
+                    
+                    const referrals = this.myReferrals;
+                    const totalRevenue = referrals.reduce((sum, c) => sum + c.revenue, 0);
+                    const totalCommission = referrals.reduce((sum, c) => sum + c.commission, 0);
+                    
+                    return {
                         email: this.currentUser.email,
-                        code: this.currentUser.email.split('@')[0],
-                        referralCount: 0,
-                        totalRevenue: 0,
-                        totalCommission: 0
+                        code: myCode,
+                        referralCount: referrals.length,
+                        totalRevenue: totalRevenue,
+                        totalCommission: totalCommission
                     };
                 },
 
                 get myReferrals() {
                     if (!this.currentUser) return [];
-                    return this.customers.filter(c => c.referredBy === this.currentUser.email);
+                    const myEmail = this.currentUser.email.toLowerCase();
+                    const myCode = myEmail.split('@')[0];
+                    return this.customers.filter(c => {
+                        if (!c.referredBy) return false;
+                        const ref = c.referredBy.toLowerCase().trim();
+                        return ref === myEmail || ref === myCode || ref.startsWith(myCode + '@');
+                    });
                 },
 
                 async initApp() {
@@ -509,7 +522,7 @@
                         const affMap = {};
 
                         appData.forEach(r => {
-                            const email = r['Email khách'];
+                            const email = r['Email khách'] || '';
                             const days = parseInt(r['Số ngày còn lại']) || 0;
                             const price = parseInt((r['Doanh thu'] || r['Giá'] || '0').replace(/\D/g, '')) || this.CONFIG.DEFAULT_PRICE;
                             
@@ -532,33 +545,46 @@
                                 reminders: this.remindersStore[email] || { r1: false, r2: false, r3: false }
                             };
                             parsedCustomers.push(cData);
+                        });
 
-                            // Build Affiliate Stats
+                        // Rebuild Affiliates Map safely
+                        parsedCustomers.forEach(c => {
                             // Mọi khách hàng đều tự động thành Affiliate
-                            if (!affMap[email]) {
-                                affMap[email] = {
-                                    email: email,
-                                    code: email.split('@')[0],
+                            if (c.email && !affMap[c.email.toLowerCase()]) {
+                                affMap[c.email.toLowerCase()] = {
+                                    email: c.email.toLowerCase(),
+                                    code: c.email.split('@')[0].toLowerCase(),
                                     referralCount: 0,
                                     totalRevenue: 0,
                                     totalCommission: 0
                                 };
                             }
 
-                            // If this customer was referred by someone, update referrer stats
-                            if (referredBy) {
-                                if (!affMap[referredBy]) {
-                                    affMap[referredBy] = {
-                                        email: referredBy,
-                                        code: referredBy.split('@')[0],
+                            if (c.referredBy) {
+                                const refKey = c.referredBy.toLowerCase().trim();
+                                // Normalize refKey to email if it matches an existing code or starts with the code
+                                let finalReferrerEmail = refKey;
+                                
+                                const match = Object.values(affMap).find(a => a.code === refKey || a.email === refKey);
+                                if (match) {
+                                    finalReferrerEmail = match.email;
+                                } else if (!refKey.includes('@')) {
+                                    finalReferrerEmail = refKey + '@gmail.com'; // fallback assumption if code
+                                }
+
+                                if (!affMap[finalReferrerEmail]) {
+                                    affMap[finalReferrerEmail] = {
+                                        email: finalReferrerEmail,
+                                        code: finalReferrerEmail.split('@')[0],
                                         referralCount: 0,
                                         totalRevenue: 0,
                                         totalCommission: 0
                                     };
                                 }
-                                affMap[referredBy].referralCount++;
-                                affMap[referredBy].totalRevenue += price;
-                                affMap[referredBy].totalCommission += comm;
+
+                                affMap[finalReferrerEmail].referralCount++;
+                                affMap[finalReferrerEmail].totalRevenue += c.revenue;
+                                affMap[finalReferrerEmail].totalCommission += c.commission;
                             }
                         });
 
