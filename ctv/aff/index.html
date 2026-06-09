@@ -254,10 +254,15 @@
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 bg-white">
                                     <template x-for="aff in affiliates" :key="aff.email">
-                                        <tr class="hover:bg-blue-50/30 transition-colors">
+                                        <tr @click="openAffiliateDetails(aff)" class="hover:bg-blue-50/50 transition-colors cursor-pointer group">
                                             <td class="px-6 py-4">
-                                                <p class="text-sm font-bold text-gray-900" x-text="aff.email"></p>
-                                                <p class="text-xs text-gray-500 font-mono mt-1">Mã: <span class="text-primary font-bold" x-text="aff.code"></span></p>
+                                                <div class="flex items-center justify-between">
+                                                    <div>
+                                                        <p class="text-sm font-bold text-gray-900 group-hover:text-primary transition-colors" x-text="aff.email"></p>
+                                                        <p class="text-xs text-gray-500 font-mono mt-1">Mã: <span class="text-primary font-bold" x-text="aff.code"></span></p>
+                                                    </div>
+                                                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-300 group-hover:text-primary opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0"></i>
+                                                </div>
                                             </td>
                                             <td class="px-6 py-4 text-center">
                                                 <span class="inline-flex items-center justify-center bg-blue-100 text-blue-700 font-bold px-3 py-1 rounded-full text-sm" x-text="aff.referralCount"></span>
@@ -377,6 +382,70 @@
         </main>
     </div>
 
+    <!-- Admin Affiliate Details Modal -->
+    <div x-show="showAffiliateModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" x-cloak>
+        <div @click.away="closeAffiliateDetails()" class="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden transform transition-all" x-transition:enter="ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100">
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Chi Tiết Affiliate</h3>
+                    <p class="text-xs text-gray-500 font-mono mt-0.5" x-text="selectedAdminAffiliate?.email"></p>
+                </div>
+                <button @click="closeAffiliateDetails()" class="text-gray-400 hover:text-gray-600 bg-white hover:bg-gray-100 border border-gray-200 p-2 rounded-lg transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <!-- Modal Body (Stats + Table) -->
+            <div class="p-6 overflow-y-auto flex-1 bg-white">
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="bg-blue-50/50 border border-blue-100 rounded-xl p-4">
+                        <p class="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Tổng Khách Giới Thiệu</p>
+                        <p class="text-2xl font-black text-gray-900" x-text="selectedAdminAffiliate?.referralCount"></p>
+                    </div>
+                    <div class="bg-green-50/50 border border-green-100 rounded-xl p-4">
+                        <p class="text-[10px] font-bold text-green-600 uppercase tracking-wider mb-1">Tổng Doanh Thu</p>
+                        <p class="text-2xl font-black text-gray-900" x-text="formatCurrency(selectedAdminAffiliate?.totalRevenue || 0)"></p>
+                    </div>
+                    <div class="bg-orange-50/50 border border-orange-100 rounded-xl p-4">
+                        <p class="text-[10px] font-bold text-orange-600 uppercase tracking-wider mb-1">Hoa Hồng Tạm Tính</p>
+                        <p class="text-2xl font-black text-orange-600" x-text="formatCurrency(selectedAdminAffiliate?.totalCommission || 0)"></p>
+                    </div>
+                </div>
+
+                <h4 class="text-sm font-bold text-gray-900 mb-3 border-b border-gray-100 pb-2">Danh Sách Khách Hàng Được Giới Thiệu</h4>
+                <div class="overflow-x-auto border border-gray-100 rounded-xl">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase">
+                            <tr>
+                                <th class="px-4 py-3">Khách Hàng</th>
+                                <th class="px-4 py-3">Sản Phẩm</th>
+                                <th class="px-4 py-3">Hạn Sử Dụng</th>
+                                <th class="px-4 py-3 text-right">Hoa Hồng</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <template x-for="c in adminAffiliateReferrals" :key="c.email">
+                                <tr class="hover:bg-gray-50 transition-colors">
+                                    <td class="px-4 py-3">
+                                        <p class="font-medium text-gray-900" x-text="c.name || c.email"></p>
+                                        <p class="text-xs text-gray-500" x-text="c.email"></p>
+                                    </td>
+                                    <td class="px-4 py-3"><span class="bg-gray-100 px-2 py-1 rounded text-xs text-gray-700 font-medium" x-text="c.product"></span></td>
+                                    <td class="px-4 py-3 text-gray-600" x-text="c.expiryDate"></td>
+                                    <td class="px-4 py-3 text-right font-bold text-green-600" x-text="formatCurrency(c.commission)"></td>
+                                </tr>
+                            </template>
+                            <template x-if="adminAffiliateReferrals.length === 0">
+                                <tr><td colspan="4" class="px-4 py-8 text-center text-gray-400 text-sm">Không có dữ liệu</td></tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast-container" class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none"></div>
 
@@ -399,6 +468,8 @@
                 affiliates: [],
                 searchQuery: '',
                 remindersStore: {},
+                selectedAdminAffiliate: null,
+                showAffiliateModal: false,
 
                 get filteredCustomers() {
                     if (!this.searchQuery) return this.customers.sort((a, b) => a.daysRemaining - b.daysRemaining);
@@ -441,6 +512,28 @@
                         const ref = c.referredBy.toLowerCase().trim();
                         return ref === myEmail || ref === myCode || ref.startsWith(myCode + '@');
                     });
+                },
+
+                get adminAffiliateReferrals() {
+                    if (!this.selectedAdminAffiliate) return [];
+                    const affEmail = this.selectedAdminAffiliate.email.toLowerCase();
+                    const affCode = this.selectedAdminAffiliate.code.toLowerCase();
+                    return this.customers.filter(c => {
+                        if (!c.referredBy) return false;
+                        const ref = c.referredBy.toLowerCase().trim();
+                        return ref === affEmail || ref === affCode || ref.startsWith(affCode + '@');
+                    });
+                },
+
+                openAffiliateDetails(aff) {
+                    this.selectedAdminAffiliate = aff;
+                    this.showAffiliateModal = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                closeAffiliateDetails() {
+                    this.showAffiliateModal = false;
+                    this.selectedAdminAffiliate = null;
                 },
 
                 async initApp() {
