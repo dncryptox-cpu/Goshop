@@ -99,6 +99,7 @@
                         <button @click="currentTab = 'admin_overview'" :class="currentTab === 'admin_overview' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Tổng Quan</button>
                         <button @click="currentTab = 'admin_customers'" :class="currentTab === 'admin_customers' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Khách Hàng</button>
                         <button @click="currentTab = 'admin_affiliates'" :class="currentTab === 'admin_affiliates' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Danh sách Affiliate</button>
+                        <button @click="currentTab = 'admin_payouts'" :class="currentTab === 'admin_payouts' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Yêu Cầu Rút Tiền</button>
                     </div>
                 </template>
 
@@ -107,6 +108,7 @@
                     <div class="flex gap-6">
                         <button @click="currentTab = 'aff_overview'" :class="currentTab === 'aff_overview' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Tổng Quan</button>
                         <button @click="currentTab = 'aff_referrals'" :class="currentTab === 'aff_referrals' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Khách Được Giới Thiệu</button>
+                        <button @click="currentTab = 'aff_payout'" :class="currentTab === 'aff_payout' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap">Thanh Toán</button>
                     </div>
                 </template>
             </div>
@@ -281,6 +283,70 @@
                     </div>
                 </div>
 
+                <!-- Admin Payout Management -->
+                <div x-show="currentTab === 'admin_payouts'">
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 flex flex-wrap gap-4 justify-between items-center bg-white">
+                            <h2 class="text-lg font-bold text-gray-900">Quản Lý Yêu Cầu Rút Tiền</h2>
+                            <div class="flex items-center gap-3">
+                                <button @click="syncPayouts()" class="text-sm font-semibold text-primary hover:text-primary-dark flex items-center gap-2">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Làm mới
+                                </button>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">Thời Gian</th>
+                                        <th class="px-6 py-4">Affiliate</th>
+                                        <th class="px-6 py-4">Thông Tin Ngân Hàng</th>
+                                        <th class="px-6 py-4 text-right">Số Tiền Rút</th>
+                                        <th class="px-6 py-4 text-center">Trạng Thái</th>
+                                        <th class="px-6 py-4 text-center">Hành Động</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <template x-for="p in adminPayouts" :key="p.id">
+                                        <tr class="hover:bg-blue-50/30 transition-colors">
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm text-gray-600" x-text="p.date"></p>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm font-bold text-gray-900" x-text="p.email"></p>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <div class="text-sm text-gray-800 bg-gray-50 p-2 rounded-lg border border-gray-100 inline-block">
+                                                    <p class="font-bold text-xs" x-text="p.bankInfo.bank"></p>
+                                                    <p class="font-mono text-primary font-bold" x-text="p.bankInfo.account"></p>
+                                                    <p class="text-xs text-gray-500 uppercase" x-text="p.bankInfo.name"></p>
+                                                </div>
+                                            </td>
+                                            <td class="px-6 py-4 text-right">
+                                                <p class="text-sm font-bold text-orange-600" x-text="formatCurrency(p.amount)"></p>
+                                            </td>
+                                            <td class="px-6 py-4 text-center">
+                                                <span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                                                    :class="p.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
+                                                    x-text="p.status === 'paid' ? 'Đã Thanh Toán' : 'Chờ Duyệt'"></span>
+                                            </td>
+                                            <td class="px-6 py-4 text-center">
+                                                <button x-show="p.status === 'pending'" @click="markPayoutPaid(p.id)" class="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md shadow-primary/20">
+                                                    Xác nhận Đã Chuyển
+                                                </button>
+                                                <span x-show="p.status === 'paid'" class="text-green-500"><i data-lucide="check-circle" class="w-5 h-5 mx-auto"></i></span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="adminPayouts.length === 0">
+                                        <tr><td colspan="6" class="px-6 py-12 text-center text-gray-400">Không có yêu cầu rút tiền nào.</td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ==================== AFFILIATE VIEWS ==================== -->
                 <!-- Affiliate Overview -->
                 <div x-show="currentTab === 'aff_overview'">
@@ -322,7 +388,7 @@
                         <div class="glass-card rounded-2xl p-6 relative overflow-hidden">
                             <div class="absolute -right-4 -top-4 w-24 h-24 bg-green-100 rounded-full opacity-50"></div>
                             <h3 class="text-sm font-semibold text-gray-500 mb-2 relative z-10">Đã Thanh Toán</h3>
-                            <p class="text-3xl font-bold text-green-600 relative z-10">0 ₫</p>
+                            <p class="text-3xl font-bold text-green-600 relative z-10" x-text="formatCurrency(myPaidAmount)"></p>
                         </div>
                     </div>
                 </div>
@@ -374,6 +440,84 @@
                                     </template>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Affiliate Payout Request -->
+                <div x-show="currentTab === 'aff_payout'">
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <!-- Request Form -->
+                        <div class="glass-card rounded-2xl p-8">
+                            <div class="flex items-center gap-3 mb-6">
+                                <div class="w-10 h-10 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center"><i data-lucide="banknote" class="w-5 h-5"></i></div>
+                                <div>
+                                    <h2 class="text-lg font-bold text-gray-900">Yêu Cầu Rút Hoa Hồng</h2>
+                                    <p class="text-xs text-gray-500">Tiền hoa hồng có thể rút: <span class="font-bold text-orange-600 text-sm" x-text="formatCurrency((myAffiliateData?.totalCommission || 0) - myPaidAmount - myPendingAmount)"></span></p>
+                                </div>
+                            </div>
+
+                            <form @submit.prevent="submitPayoutRequest()" class="space-y-5">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Số Tiền Muốn Rút</label>
+                                    <input type="number" x-model.number="payoutForm.amount" required min="50000" :max="(myAffiliateData?.totalCommission || 0) - myPaidAmount - myPendingAmount"
+                                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:border-primary transition-all" placeholder="Tối thiểu 50.000đ">
+                                </div>
+                                <div class="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-4">
+                                    <h3 class="text-xs font-bold text-gray-900 uppercase tracking-wider border-b border-gray-200 pb-2">Thông Tin Nhận Tiền</h3>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-gray-500 uppercase mb-1">Ngân Hàng</label>
+                                        <input type="text" x-model="payoutForm.bank" required placeholder="VD: Vietcombank, MB Bank" class="w-full bg-white border border-gray-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-gray-500 uppercase mb-1">Số Tài Khoản</label>
+                                        <input type="text" x-model="payoutForm.account" required placeholder="Nhập số tài khoản" class="w-full bg-white border border-gray-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-semibold text-gray-500 uppercase mb-1">Tên Chủ Tài Khoản</label>
+                                        <input type="text" x-model="payoutForm.name" required placeholder="NGUYEN VAN A" class="w-full bg-white border border-gray-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-primary uppercase">
+                                    </div>
+                                </div>
+                                <button type="submit" :disabled="!canRequestPayout" class="w-full bg-primary hover:bg-primary-dark disabled:bg-gray-300 disabled:cursor-not-allowed text-white py-3.5 rounded-xl font-bold transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
+                                    <span>Gửi Yêu Cầu Rút Tiền</span>
+                                    <i data-lucide="send" class="w-4 h-4"></i>
+                                </button>
+                                <p x-show="!canRequestPayout" class="text-[10px] text-center text-red-500 font-medium">Số dư khả dụng không đủ để tạo yêu cầu rút tiền (Tối thiểu 50.000đ).</p>
+                            </form>
+                        </div>
+
+                        <!-- History -->
+                        <div class="glass-card rounded-2xl overflow-hidden flex flex-col">
+                            <div class="p-5 border-b border-gray-100 bg-white">
+                                <h2 class="text-lg font-bold text-gray-900">Lịch Sử Rút Tiền</h2>
+                            </div>
+                            <div class="overflow-y-auto flex-1 p-0">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-gray-50 border-y border-gray-100 text-[10px] font-semibold text-gray-500 uppercase">
+                                        <tr>
+                                            <th class="px-4 py-3">Ngày</th>
+                                            <th class="px-4 py-3 text-right">Số Tiền</th>
+                                            <th class="px-4 py-3 text-center">Trạng Thái</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100">
+                                        <template x-for="p in myPayoutHistory" :key="p.id">
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-4 py-3 text-gray-600 text-xs" x-text="p.date"></td>
+                                                <td class="px-4 py-3 text-right font-bold text-gray-900" x-text="formatCurrency(p.amount)"></td>
+                                                <td class="px-4 py-3 text-center">
+                                                    <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                                                        :class="p.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
+                                                        x-text="p.status === 'paid' ? 'Đã CK' : 'Chờ'"></span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                        <template x-if="myPayoutHistory.length === 0">
+                                            <tr><td colspan="3" class="px-4 py-12 text-center text-gray-400 text-sm">Chưa có lịch sử rút tiền</td></tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -470,6 +614,15 @@
                 remindersStore: {},
                 selectedAdminAffiliate: null,
                 showAffiliateModal: false,
+                
+                // Payout System State
+                payoutRequests: [],
+                payoutForm: {
+                    amount: 0,
+                    bank: '',
+                    account: '',
+                    name: ''
+                },
 
                 get filteredCustomers() {
                     if (!this.searchQuery) return this.customers.sort((a, b) => a.daysRemaining - b.daysRemaining);
@@ -514,6 +667,30 @@
                     });
                 },
 
+                // Payout Computeds
+                get adminPayouts() {
+                    return this.payoutRequests.sort((a, b) => new Date(b.date) - new Date(a.date));
+                },
+
+                get myPayoutHistory() {
+                    if (!this.currentUser) return [];
+                    return this.payoutRequests.filter(p => p.email === this.currentUser.email).sort((a, b) => new Date(b.date) - new Date(a.date));
+                },
+
+                get myPaidAmount() {
+                    return this.myPayoutHistory.filter(p => p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
+                },
+
+                get myPendingAmount() {
+                    return this.myPayoutHistory.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0);
+                },
+
+                get canRequestPayout() {
+                    if (!this.myAffiliateData) return false;
+                    const available = this.myAffiliateData.totalCommission - this.myPaidAmount - this.myPendingAmount;
+                    return available >= 50000 && this.payoutForm.amount >= 50000 && this.payoutForm.amount <= available;
+                },
+
                 get adminAffiliateReferrals() {
                     if (!this.selectedAdminAffiliate) return [];
                     const affEmail = this.selectedAdminAffiliate.email.toLowerCase();
@@ -542,12 +719,24 @@
                         this.commissionRatePercent = parseFloat(savedRate);
                     }
                     
+                    this.syncPayouts();
+
                     const savedUser = localStorage.getItem('aff_crm_user');
                     if (savedUser) {
                         this.currentUser = JSON.parse(savedUser);
                         this.isLoggedIn = true;
                         this.currentTab = this.currentUser.role === 'admin' ? 'admin_overview' : 'aff_overview';
                         this.remindersStore = JSON.parse(localStorage.getItem('aff_crm_reminders') || '{}');
+                        
+                        // Load saved bank info
+                        const savedBank = localStorage.getItem(`aff_bank_${this.currentUser.email}`);
+                        if (savedBank) {
+                            const b = JSON.parse(savedBank);
+                            this.payoutForm.bank = b.bank;
+                            this.payoutForm.account = b.account;
+                            this.payoutForm.name = b.name;
+                        }
+
                         this.fetchData();
                     }
                     this.$nextTick(() => lucide.createIcons());
@@ -702,6 +891,54 @@
                     localStorage.setItem('aff_crm_commission_rate', this.commissionRatePercent);
                     this.showToast('Đã lưu mức hoa hồng mới');
                     this.fetchData(); // Recalculate
+                },
+
+                // PAYOUT LOGIC
+                syncPayouts() {
+                    const saved = localStorage.getItem('aff_crm_payouts');
+                    if (saved) {
+                        this.payoutRequests = JSON.parse(saved);
+                    }
+                },
+
+                submitPayoutRequest() {
+                    if (!this.canRequestPayout) return;
+                    
+                    // Save bank info default
+                    localStorage.setItem(`aff_bank_${this.currentUser.email}`, JSON.stringify({
+                        bank: this.payoutForm.bank,
+                        account: this.payoutForm.account,
+                        name: this.payoutForm.name
+                    }));
+
+                    const req = {
+                        id: 'PO-' + Date.now(),
+                        email: this.currentUser.email,
+                        date: new Date().toISOString().split('T')[0],
+                        amount: this.payoutForm.amount,
+                        bankInfo: {
+                            bank: this.payoutForm.bank,
+                            account: this.payoutForm.account,
+                            name: this.payoutForm.name
+                        },
+                        status: 'pending'
+                    };
+
+                    this.payoutRequests.push(req);
+                    localStorage.setItem('aff_crm_payouts', JSON.stringify(this.payoutRequests));
+                    
+                    this.showToast('Đã gửi yêu cầu rút tiền thành công!');
+                    this.payoutForm.amount = 0; // reset
+                },
+
+                markPayoutPaid(id) {
+                    if (!confirm('Xác nhận đã chuyển khoản cho Affiliate này?')) return;
+                    const req = this.payoutRequests.find(p => p.id === id);
+                    if (req) {
+                        req.status = 'paid';
+                        localStorage.setItem('aff_crm_payouts', JSON.stringify(this.payoutRequests));
+                        this.showToast('Đã đánh dấu thanh toán thành công!');
+                    }
                 },
 
                 formatCurrency(value) {
