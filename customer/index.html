@@ -16,6 +16,7 @@
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/otpauth/dist/otpauth.umd.min.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -1303,27 +1304,34 @@
                     this.twoFaError = '';
                     this.twoFaCode = '';
                     try {
-                        let cleanKey = this.twoFaKey.replace(/\s+/g, '');
-                        if (cleanKey.includes('otpauth://')) {
-                             const url = new URL(cleanKey);
-                             cleanKey = url.searchParams.get('secret');
-                        } else if (cleanKey.includes('?secret=')) {
-                             cleanKey = cleanKey.split('?secret=').pop().split('&')[0];
+                        let cleanKey = this.twoFaKey.replace(/\s+/g, '').toUpperCase();
+                        if (cleanKey.includes('OTPAUTH://')) {
+                             const url = new URL(this.twoFaKey.replace(/\s+/g, ''));
+                             cleanKey = url.searchParams.get('secret') || '';
+                        } else if (cleanKey.includes('?SECRET=')) {
+                             cleanKey = cleanKey.split('?SECRET=').pop().split('&')[0];
                         }
                         
-                        const res = await fetch(`https://2fa.live/tok/${cleanKey}`);
-                        if (!res.ok) throw new Error('Network error');
-                        const data = await res.json();
-                        if (data && data.token) {
-                            this.twoFaCode = data.token;
-                        } else {
-                            throw new Error('Invalid key');
-                        }
+                        if (!cleanKey) throw new Error('Invalid key');
+
+                        let totp = new OTPAuth.TOTP({
+                            issuer: "Go Shop",
+                            label: "2FA",
+                            algorithm: "SHA1",
+                            digits: 6,
+                            period: 30,
+                            secret: OTPAuth.Secret.fromBase32(cleanKey)
+                        });
+                        
+                        this.twoFaCode = totp.generate();
+                        
                     } catch (e) {
-                        this.twoFaError = 'Không thể lấy mã 2FA. Vui lòng kiểm tra lại Secret Key.';
+                        this.twoFaError = 'Key không hợp lệ. Vui lòng kiểm tra lại Secret Key.';
                     } finally {
-                        this.twoFaLoading = false;
-                        this.$nextTick(() => { lucide.createIcons(); });
+                        setTimeout(() => {
+                            this.twoFaLoading = false;
+                            this.$nextTick(() => { lucide.createIcons(); });
+                        }, 400);
                     }
                 },
 
