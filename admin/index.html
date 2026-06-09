@@ -1212,6 +1212,79 @@
                     </div>
                 </div>
 
+                <!-- Module: Quản Lý 2FA -->
+                <div x-show="activeModule === 'twofa'" x-cloak>
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">Quản Lý 2FA Khách Hàng</h1>
+                            <p class="text-sm text-gray-500 mt-1">Lưu trữ Secret Key, lấy mã nhanh và ghi chú lại thời gian lấy mã cho từng tài khoản.</p>
+                        </div>
+                        <button @click="openAddTwofaModal()" class="self-start sm:self-auto bg-primary hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-lg shadow-primary/20 flex items-center gap-2 transition-all">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Thêm Khách Hàng Mới</span>
+                        </button>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-gray-100 card-shadow p-5 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
+                        <div class="relative w-full sm:max-w-xs">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                            <input type="text" x-model="twofaSearchQuery" placeholder="Tìm ID hoặc Email..." class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary transition-all">
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                    <tr>
+                                        <th class="px-6 py-4">ID Khách Hàng</th>
+                                        <th class="px-6 py-4">Khách Hàng (Email/Tên)</th>
+                                        <th class="px-6 py-4">Lần Lấy Gần Nhất</th>
+                                        <th class="px-6 py-4 text-right">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <template x-for="item in filteredTwofaList" :key="item.id">
+                                        <tr class="hover:bg-gray-50 transition-all group">
+                                            <td class="px-6 py-4">
+                                                <span class="text-xs font-bold font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-md" x-text="item.id"></span>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm font-bold text-gray-900" x-text="item.email"></p>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span class="text-xs font-medium" :class="item.lastUsed === 'Chưa sử dụng' ? 'text-gray-400' : 'text-green-600 font-bold'" x-text="item.lastUsed"></span>
+                                            </td>
+                                            <td class="px-6 py-4 text-right flex items-center justify-end gap-2">
+                                                <button @click="copyTwofaCode(item)" class="text-primary hover:bg-primary-light transition-all p-1.5 rounded flex items-center gap-1 border border-transparent hover:border-primary/20" title="Lấy & Copy Mã 2FA 6 số">
+                                                    <i data-lucide="key" class="w-4 h-4"></i>
+                                                    <span class="text-[10px] font-bold uppercase">Lấy 2FA</span>
+                                                </button>
+                                                <button @click="openEditTwofaModal(item)" class="text-gray-400 hover:text-blue-600 transition-all p-1.5 rounded hover:bg-blue-50">
+                                                    <i data-lucide="edit-2" class="w-4 h-4"></i>
+                                                </button>
+                                                <button @click="deleteTwofa(item.id)" class="text-gray-400 hover:text-red-600 transition-all p-1.5 rounded hover:bg-red-50">
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="filteredTwofaList.length === 0">
+                                        <tr>
+                                            <td colspan="4" class="px-6 py-12 text-center text-gray-400">
+                                                <div class="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                                                    <i data-lucide="key" class="w-6 h-6 text-gray-300"></i>
+                                                </div>
+                                                <p class="text-sm">Chưa có khách hàng nào trong danh sách 2FA.</p>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Module: Promo Codes (Mã giảm giá) -->
                 <div x-show="activeModule === 'promocodes'" x-cloak>
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -2356,6 +2429,58 @@
         </div>
     </div>
 
+    <!-- TwoFA Add/Edit Modal -->
+    <div x-show="showTwofaModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div @click="showTwofaModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
+        <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl relative overflow-hidden" 
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100">
+            
+            <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900" x-text="isEditingTwofa ? 'Chỉnh Sửa Thông Tin 2FA' : 'Thêm 2FA Mới'"></h2>
+                </div>
+                <button @click="showTwofaModal = false" class="text-gray-400 hover:text-gray-600">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+
+            <form @submit.prevent="saveTwofa()" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">ID Khách Hàng</label>
+                    <div class="relative">
+                        <input x-model="twofaForm.id" type="text" disabled class="w-full bg-gray-100 border border-gray-200 rounded-lg py-2.5 px-4 text-sm font-mono text-gray-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Tên/Email Khách Hàng</label>
+                    <div class="relative">
+                        <i data-lucide="user" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                        <input x-model="twofaForm.email" type="text" required placeholder="vidu@gmail.com" class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary transition-all font-medium">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Secret Key 2FA</label>
+                    <div class="relative">
+                        <i data-lucide="key" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                        <input x-model="twofaForm.secret" type="text" required placeholder="JBSWY3DPEHPK3PXP" class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary transition-all font-mono uppercase">
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+                    <button type="button" @click="showTwofaModal = false" class="px-5 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-all">Hủy</button>
+                    <button type="submit" class="bg-primary hover:bg-orange-600 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all shadow-lg shadow-primary/25 flex items-center gap-2">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        <span x-text="isEditingTwofa ? 'Cập Nhật' : 'Tạo Mới'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- AI Parser Modal -->
     <div x-show="showAIParserModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
         <div @click="showAIParserModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
@@ -2576,6 +2701,7 @@
                     { id: 'upsales', name: 'Upsales', icon: 'shopping-bag' }
                 ],
                 managementItems: [
+                    { id: 'twofa', name: 'Quản Lý 2FA', icon: 'key' },
                     { id: 'promocodes', name: 'Mã Giảm Giá', icon: 'ticket' },
                     { id: 'github', name: 'GitHub Integration', icon: 'git-branch' },
                     { id: 'security', name: 'Bảo mật & Admin', icon: 'key-round' }
@@ -2795,6 +2921,98 @@
                     this.securityForm.newPassword = '';
                     
                     this.showToast('Đã đổi thông tin đăng nhập thành công!');
+                },
+
+                // TwoFA State & Methods
+                twofaList: [],
+                twofaSearchQuery: '',
+                twofaForm: { id: '', email: '', secret: '' },
+                showTwofaModal: false,
+                isEditingTwofa: false,
+                
+                loadTwofaData() {
+                    const data = localStorage.getItem('goshop_twofa_accounts');
+                    if (data) {
+                        try {
+                            this.twofaList = JSON.parse(data);
+                        } catch (e) {
+                            this.twofaList = [];
+                        }
+                    } else {
+                        this.twofaList = [];
+                    }
+                },
+                saveTwofaData() {
+                    localStorage.setItem('goshop_twofa_accounts', JSON.stringify(this.twofaList));
+                },
+                get filteredTwofaList() {
+                    if (!this.twofaSearchQuery) return this.twofaList;
+                    const q = this.twofaSearchQuery.toLowerCase();
+                    return this.twofaList.filter(item => 
+                        (item.id && item.id.toLowerCase().includes(q)) || 
+                        (item.email && item.email.toLowerCase().includes(q))
+                    );
+                },
+                openAddTwofaModal() {
+                    this.twofaForm = { id: '2FA-' + Date.now().toString().slice(-6), email: '', secret: '' };
+                    this.isEditingTwofa = false;
+                    this.showTwofaModal = true;
+                },
+                openEditTwofaModal(item) {
+                    this.twofaForm = { ...item };
+                    this.isEditingTwofa = true;
+                    this.showTwofaModal = true;
+                },
+                saveTwofa() {
+                    if (!this.twofaForm.email || !this.twofaForm.secret) return;
+                    
+                    if (this.isEditingTwofa) {
+                        const index = this.twofaList.findIndex(i => i.id === this.twofaForm.id);
+                        if (index !== -1) {
+                            this.twofaList[index] = { ...this.twofaList[index], ...this.twofaForm };
+                        }
+                    } else {
+                        this.twofaList.push({
+                            ...this.twofaForm,
+                            lastUsed: 'Chưa sử dụng'
+                        });
+                    }
+                    this.saveTwofaData();
+                    this.showTwofaModal = false;
+                    this.showToast('Đã lưu thông tin 2FA!');
+                },
+                deleteTwofa(id) {
+                    if(confirm('Bạn có chắc chắn muốn xóa tài khoản 2FA này?')) {
+                        this.twofaList = this.twofaList.filter(i => i.id !== id);
+                        this.saveTwofaData();
+                        this.showToast('Đã xóa tài khoản 2FA!');
+                    }
+                },
+                async copyTwofaCode(item) {
+                    this.showToast('Đang lấy mã 2FA...');
+                    try {
+                        let cleanKey = item.secret.replace(/\s+/g, '');
+                        if (cleanKey.includes('otpauth://')) {
+                             const url = new URL(cleanKey);
+                             cleanKey = url.searchParams.get('secret');
+                        } else if (cleanKey.includes('?secret=')) {
+                             cleanKey = cleanKey.split('?secret=').pop().split('&')[0];
+                        }
+                        
+                        const res = await fetch(`https://2fa.live/tok/${cleanKey}`);
+                        if (!res.ok) throw new Error('Network error');
+                        const data = await res.json();
+                        if (data && data.token) {
+                            navigator.clipboard.writeText(data.token);
+                            item.lastUsed = new Date().toLocaleString('vi-VN');
+                            this.saveTwofaData();
+                            this.showToast('Đã lấy và Copy mã 2FA thành công!');
+                        } else {
+                            throw new Error('Invalid key');
+                        }
+                    } catch (e) {
+                        this.showToast('Không thể lấy mã 2FA. Vui lòng kiểm tra Secret Key.');
+                    }
                 },
 
                 // Promo Code Management State & Methods
@@ -3456,6 +3674,7 @@
                             console.error(e);
                         }
                     }
+                    this.loadTwofaData();
                     this.loadPromoCodes();
                     this.loadOrders();
                     this.loadInventory();
