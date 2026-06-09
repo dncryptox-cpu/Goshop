@@ -516,21 +516,32 @@
                 <!-- Module: Upsales -->
                 <!-- REFUNDS -->
                 <div x-show="activeModule === 'refunds'" x-cloak>
-                    <div class="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
                         <div>
                             <h2 class="text-2xl font-bold text-white mb-1">Hoàn Tiền (Refund)</h2>
                             <p class="text-sm text-gray-400">Tính toán và xử lý hoàn tiền cho khách hàng</p>
                         </div>
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2 bg-gray-800/50 p-1 rounded-lg border border-gray-700/50">
+                            <button @click="refundMode = 'single'" :class="refundMode === 'single' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'" class="px-4 py-2 rounded-md font-medium transition-all text-sm">
+                                Khách Lẻ
+                            </button>
+                            <button @click="refundMode = 'bulk'" :class="refundMode === 'bulk' ? 'bg-indigo-600 text-white shadow' : 'text-gray-400 hover:text-white hover:bg-gray-700/50'" class="px-4 py-2 rounded-md font-medium transition-all text-sm">
+                                Lô / CTV
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- HOÀN TIỀN ĐƠN (KHÁCH LẺ) -->
+                    <div x-show="refundMode === 'single'">
+                        <div class="flex justify-end mb-4">
                             <button @click="showRefundAIModal = true; refundAIText = '';" 
                                     class="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-lg shadow-indigo-500/20">
                                 <i data-lucide="sparkles" class="w-4 h-4"></i>
                                 Nhập liệu bằng AI
                             </button>
                         </div>
-                    </div>
 
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <!-- Form Cấu Hình -->
                         <div class="bg-gray-900 border border-gray-800 rounded-xl shadow-lg p-6">
                             <h3 class="text-lg font-semibold text-white mb-5 flex items-center gap-2">
@@ -607,6 +618,81 @@
                                     <i data-lucide="loader-2" class="w-5 h-5 animate-spin" x-show="isLoading" x-cloak></i>
                                     Lưu & Copy
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- HOÀN TIỀN HÀNG LOẠT (CTV) -->
+                    <div x-show="refundMode === 'bulk'" x-cloak>
+                        <div class="bg-gray-900 border border-gray-800 rounded-xl shadow-lg p-6">
+                            <div class="flex items-center justify-between mb-6">
+                                <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                    <i data-lucide="users" class="w-5 h-5 text-indigo-400"></i>
+                                    Danh Sách Hoàn Tiền CTV
+                                </h3>
+                                <button @click="showBulkAIModal = true; bulkAIText = '';" 
+                                        class="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-all shadow-lg shadow-indigo-500/20">
+                                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                                    Nhập Hàng Loạt (AI)
+                                </button>
+                            </div>
+
+                            <div x-show="bulkRefunds.length === 0" class="text-center py-12 bg-gray-800/30 rounded-xl border border-dashed border-gray-700">
+                                <i data-lucide="file-spreadsheet" class="w-12 h-12 text-gray-600 mx-auto mb-3"></i>
+                                <p class="text-gray-400">Chưa có dữ liệu.</p>
+                                <p class="text-sm text-gray-500 mt-1">Bấm nút "Nhập Hàng Loạt (AI)" để dán danh sách khách hàng.</p>
+                            </div>
+
+                            <div x-show="bulkRefunds.length > 0">
+                                <div class="overflow-x-auto rounded-lg border border-gray-800 mb-6">
+                                    <table class="w-full text-left text-sm text-gray-300">
+                                        <thead class="bg-gray-800 text-xs uppercase font-medium text-gray-400">
+                                            <tr>
+                                                <th class="px-4 py-3">Email</th>
+                                                <th class="px-4 py-3">Sản phẩm</th>
+                                                <th class="px-4 py-3">Ngày mua</th>
+                                                <th class="px-4 py-3 text-center">Gói</th>
+                                                <th class="px-4 py-3 text-right">Đã thu</th>
+                                                <th class="px-4 py-3 text-right">Tiền Hoàn</th>
+                                                <th class="px-4 py-3 text-center">Xóa</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-800">
+                                            <template x-for="(row, index) in bulkRefunds" :key="index">
+                                                <tr class="hover:bg-gray-800/50 transition-colors">
+                                                    <td class="px-4 py-3" x-text="row.email || 'N/A'"></td>
+                                                    <td class="px-4 py-3" x-text="row.product"></td>
+                                                    <td class="px-4 py-3" x-text="row.purchaseDateDisplay"></td>
+                                                    <td class="px-4 py-3 text-center" x-text="row.months + ' th'"></td>
+                                                    <td class="px-4 py-3 text-right" x-text="new Intl.NumberFormat('vi-VN').format(row.amount)"></td>
+                                                    <td class="px-4 py-3 text-right text-emerald-400 font-medium" x-text="new Intl.NumberFormat('vi-VN').format(row.refundAmount)"></td>
+                                                    <td class="px-4 py-3 text-center">
+                                                        <button @click="removeBulkRow(index)" class="text-gray-500 hover:text-red-400 transition-colors">
+                                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="flex flex-col md:flex-row justify-between items-center bg-gray-800/50 rounded-xl p-5 border border-gray-700/50">
+                                    <div class="mb-4 md:mb-0">
+                                        <p class="text-gray-400 mb-1">Tổng cộng: <span class="text-white font-medium" x-text="bulkRefunds.length + ' tài khoản'"></span></p>
+                                        <p class="text-2xl font-bold text-emerald-400" x-text="new Intl.NumberFormat('vi-VN').format(bulkRefundTotal) + ' VNĐ'"></p>
+                                    </div>
+                                    <div class="flex gap-3">
+                                        <button @click="copyBulkRefundInfo()" class="bg-gray-700 hover:bg-gray-600 text-white px-5 py-2.5 rounded-lg font-medium transition-all flex items-center gap-2">
+                                            <i data-lucide="copy" class="w-4 h-4"></i> Copy Bill Lô
+                                        </button>
+                                        <button @click="submitBulkRefund()" :disabled="isLoading" class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 disabled:opacity-50">
+                                            <i data-lucide="save" class="w-4 h-4" x-show="!isLoading"></i>
+                                            <i data-lucide="loader-2" class="w-4 h-4 animate-spin" x-show="isLoading" x-cloak></i>
+                                            Lưu Tất Cả
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -2249,8 +2335,13 @@
                     usedDays: 0,
                     refundAmount: 0
                 },
+                refundMode: 'single',
+                bulkRefunds: [],
+                bulkRefundTotal: 0,
                 showRefundAIModal: false,
                 refundAIText: '',
+                showBulkAIModal: false,
+                bulkAIText: '',
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
                     WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxzXvVjASViAK--nYwzfJ_iTbK8e7Ilfd9xjbDdzS3SdXPTgdPRVSd9M4ORimanRWZN/exec', // PASTE YOUR GOOGLE APPS SCRIPT URL HERE
@@ -3986,6 +4077,168 @@
                     this.copyRefundInfo();
                 },
 
+                parseBulkRefundAI() {
+                    const text = this.bulkAIText.trim();
+                    if(!text) {
+                        this.showToast('Vui lòng dán danh sách vào!');
+                        return;
+                    }
+                    
+                    const lines = text.split('\n').filter(l => l.trim().length > 0);
+                    let parsedCount = 0;
+                    
+                    lines.forEach(line => {
+                        let email = '', product = '', amount = 0, months = 1, purchaseDate = '';
+                        
+                        const emailMatch = line.match(/[\w.-]+@[\w.-]+\.\w+/);
+                        if(emailMatch) email = emailMatch[0];
+                        
+                        const amountMatch = line.match(/(\d+)(k|K|000)/);
+                        if(amountMatch) {
+                            let amt = parseInt(amountMatch[1]);
+                            if(amountMatch[2].toLowerCase() === 'k') amt = amt * 1000;
+                            else if(amountMatch[2] === '000' && amt < 1000) amt = amt * 1000;
+                            amount = amt;
+                        }
+                        
+                        const monthMatch = line.match(/(\d+)\s*(th|Th|TH|tháng|Tháng)/);
+                        if(monthMatch) months = parseInt(monthMatch[1]);
+                        else if(line.toLowerCase().includes('1 năm') || line.toLowerCase().includes('12th')) months = 12;
+                        
+                        let pDate = new Date();
+                        const dateMatch = line.match(/\d{1,2}\/\d{1,2}\/\d{4}/);
+                        if(dateMatch) {
+                            const dParts = dateMatch[0].split('/');
+                            purchaseDate = `${dParts[2]}-${dParts[1].padStart(2, '0')}-${dParts[0].padStart(2, '0')}`;
+                            pDate = new Date(purchaseDate);
+                        } else {
+                            purchaseDate = pDate.toISOString().split('T')[0];
+                        }
+                        
+                        const parts = line.split('|').map(p => p.trim());
+                        if(parts.length >= 3) {
+                            product = parts[0].replace(/[\w.-]+@[\w.-]+\.\w+/, '').trim();
+                            if(!product) product = parts[1];
+                        } else {
+                            const products = ['Youtube', 'Netflix', 'Spotify', 'Canva', 'Capcut'];
+                            for(let p of products) {
+                                if(line.toLowerCase().includes(p.toLowerCase())) {
+                                    product = p;
+                                    break;
+                                }
+                            }
+                            if(!product) product = 'Không rõ';
+                        }
+                        
+                        const rDate = new Date();
+                        const rDateStr = rDate.toISOString().split('T')[0];
+                        
+                        const totalDays = months * 30;
+                        const diffTime = rDate - pDate;
+                        let usedDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        if(usedDays < 0) usedDays = 0;
+                        
+                        let refundAmount = 0;
+                        if(amount > 0) {
+                            if(usedDays >= totalDays) {
+                                refundAmount = 0;
+                            } else if(usedDays <= 0) {
+                                refundAmount = amount;
+                            } else {
+                                const pricePerDay = amount / totalDays;
+                                const remainingDays = totalDays - usedDays;
+                                refundAmount = Math.round(remainingDays * pricePerDay);
+                            }
+                        }
+                        
+                        this.bulkRefunds.push({
+                            email, product, amount, months, 
+                            purchaseDate, purchaseDateDisplay: dateMatch ? dateMatch[0] : 'Hôm nay',
+                            refundDate: rDateStr,
+                            totalDays, usedDays, remainingDays: totalDays - usedDays,
+                            refundAmount
+                        });
+                        parsedCount++;
+                    });
+                    
+                    this.recalculateBulkRefundTotal();
+                    this.showBulkAIModal = false;
+                    this.showToast(`Đã phân tích thành công ${parsedCount} tài khoản!`);
+                },
+                
+                removeBulkRow(index) {
+                    this.bulkRefunds.splice(index, 1);
+                    this.recalculateBulkRefundTotal();
+                },
+                
+                recalculateBulkRefundTotal() {
+                    this.bulkRefundTotal = this.bulkRefunds.reduce((sum, row) => sum + row.refundAmount, 0);
+                },
+                
+                copyBulkRefundInfo() {
+                    if(this.bulkRefunds.length === 0) return;
+                    
+                    const formatter = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
+                    let info = `📋 BILL HOÀN TIỀN LÔ (${this.bulkRefunds.length} TÀI KHOẢN)\n\n`;
+                    
+                    this.bulkRefunds.forEach((row, i) => {
+                        info += `${i + 1}. ${row.email || 'Khách'} - ${row.product} - Mua: ${row.purchaseDateDisplay} (${row.months}th) - Hoàn: ${formatter.format(row.refundAmount)}\n`;
+                    });
+                    
+                    info += `\n💰 TỔNG TIỀN HOÀN: ${formatter.format(this.bulkRefundTotal)}`;
+
+                    navigator.clipboard.writeText(info).then(() => {
+                        this.showToast('Đã copy Bill Lô hoàn tiền!');
+                    });
+                },
+                
+                async submitBulkRefund() {
+                    if(this.bulkRefunds.length === 0) return;
+                    
+                    if(!this.CONFIG.WEBAPP_URL) {
+                        this.showToast('Chưa cấu hình WEBAPP_URL để lưu!');
+                        return;
+                    }
+                    
+                    this.isLoading = true;
+                    let successCount = 0;
+                    
+                    try {
+                        for(let row of this.bulkRefunds) {
+                            const rDateParts = row.refundDate.split('-');
+                            const pDateParts = row.purchaseDate.split('-');
+                            
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'log_refund',
+                                    refundDate: `${rDateParts[2]}/${rDateParts[1]}/${rDateParts[0]}`,
+                                    email: row.email,
+                                    product: row.product,
+                                    purchaseDate: `${pDateParts[2]}/${pDateParts[1]}/${pDateParts[0]}`,
+                                    months: row.months,
+                                    amountPaid: row.amount,
+                                    usedDays: row.usedDays,
+                                    remainingDays: row.remainingDays,
+                                    refundAmount: row.refundAmount
+                                })
+                            });
+                            successCount++;
+                        }
+                        this.showToast(`Đã lưu thành công ${successCount} dữ liệu vào Sheet!`);
+                        this.copyBulkRefundInfo();
+                        this.bulkRefunds = []; // Xóa danh sách sau khi lưu
+                        this.bulkRefundTotal = 0;
+                    } catch(e) {
+                        console.error('Error', e);
+                        this.showToast('Có lỗi xảy ra khi lưu một số dòng. Vui lòng kiểm tra lại mạng!');
+                    }
+                    
+                    this.isLoading = false;
+                },
+
                 async submitUpdateHSD() {
                     // --- BEGIN LOG FINANCIAL ---
                     if (this.CONFIG.FINANCIAL_WEBAPP_URL) {
@@ -4099,6 +4352,52 @@
                 <button @click="parseRefundAI()" class="px-5 py-2.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-md shadow-purple-500/20 transition-all flex items-center gap-2">
                     <i data-lucide="wand-2" class="w-4 h-4"></i>
                     Phân Tích Ngay
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Bulk Refund Parser Modal -->
+    <div x-show="showBulkAIModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div @click="showBulkAIModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
+        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-gray-100 flex flex-col max-h-[90vh]">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 bg-gray-50/50 rounded-t-2xl">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
+                        <i data-lucide="users" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Nhập Hàng Loạt - Hoàn Tiền</h3>
+                        <p class="text-sm text-gray-500">Dán danh sách khách hàng (mỗi người 1 dòng)</p>
+                    </div>
+                </div>
+                <button @click="showBulkAIModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Content -->
+            <div class="p-6 overflow-y-auto">
+                <textarea x-model="bulkAIText" rows="10" class="w-full border-gray-300 rounded-xl shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-3 font-mono text-xs" placeholder="Ví dụ:
+khach1@gmail.com | Youtube | 300k | 10/05/2026 | 6 tháng
+khach2@gmail.com | Netflix | 150k | 12/05/2026 | 3 tháng
+"></textarea>
+                <div class="bg-blue-50 text-blue-800 text-sm p-4 rounded-xl mt-4 border border-blue-100">
+                    <p class="font-semibold mb-1"><i data-lucide="info" class="w-4 h-4 inline mr-1"></i> Lưu ý:</p>
+                    <ul class="list-disc ml-5 space-y-1 text-blue-700">
+                        <li>Hệ thống sẽ tự nhận diện Email, Sản phẩm, Giá tiền, Ngày mua và Số tháng trên mỗi dòng.</li>
+                        <li>Ngày hoàn tiền sẽ được mặc định lấy là <strong>Hôm nay</strong>.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0 bg-gray-50 rounded-b-2xl">
+                <button @click="showBulkAIModal = false" class="px-5 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg transition-all border border-gray-200">Hủy</button>
+                <button @click="parseBulkRefundAI()" class="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md shadow-indigo-500/20 transition-all flex items-center gap-2">
+                    <i data-lucide="scan-line" class="w-4 h-4"></i>
+                    Phân Tích Hàng Loạt
                 </button>
             </div>
         </div>
