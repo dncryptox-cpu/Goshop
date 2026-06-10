@@ -782,10 +782,10 @@
                 async fetchData() {
                     this.isLoading = true;
                     try {
-                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA`;
-                        const [response, payoutResponse] = await Promise.all([
-                            fetch(url),
-                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=AFF_PAYOUTS`).catch(() => null)
+                        const [response, payoutResponse, ordersResponse] = await Promise.all([
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA`),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=AFF_PAYOUTS`).catch(() => null),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DON_HANG_MOI`).catch(() => null)
                         ]);
                         
                         const csvText = await response.text();
@@ -816,6 +816,24 @@
                                 }
                             }
                         }
+
+                        const newOrders = [];
+                        if (ordersResponse && ordersResponse.ok) {
+                            const oCsvText = await ordersResponse.text();
+                            if (!oCsvText.includes('html')) {
+                                const oLines = oCsvText.split('\n');
+                                if (oLines.length >= 2) {
+                                    const oHeaders = oLines[0].split(',').map(h => h.replace(/"/g, '').trim());
+                                    oLines.slice(1).forEach(line => {
+                                        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
+                                        const obj = {};
+                                        oHeaders.forEach((h, i) => obj[h] = values[i] || '');
+                                        newOrders.push(obj);
+                                    });
+                                }
+                            }
+                        }
+
 
                         const lines = csvText.split('\n');
                         if (lines.length < 2) return;
@@ -862,6 +880,39 @@
                                 purchaseDate: r['Ngày mua'] || r['Ngày đk'] || '--',
                                 expiryDate: r['HSD'] || '--',
                                 daysRemaining: days,
+                                referredBy: referredBy,
+                                revenue: price,
+                                commission: comm,
+                                reminders: this.remindersStore[emailLower] || { r1: false, r2: false, r3: false }
+                            };
+                            parsedCustomers.push(cData);
+                        });
+
+                        newOrders.forEach(r => {
+                            let email = (r['Email'] || '').trim();
+                            if (!email) return;
+                            
+                            const emailLower = email.toLowerCase();
+                            if (seenEmails.has(emailLower)) return; // Deduplicate
+                            seenEmails.add(emailLower);
+
+                            const price = parseInt((r['Số tiền'] || '0').replace(/\D/g, '')) || this.CONFIG.DEFAULT_PRICE;
+                            
+                            let referredBy = (r['Người giới thiệu'] || '').toLowerCase().trim();
+
+                            if (referredBy === emailLower || referredBy === emailLower.split('@')[0]) {
+                                referredBy = '';
+                            }
+
+                            const comm = referredBy ? price * (this.commissionRatePercent / 100) : 0;
+
+                            const cData = {
+                                email: email,
+                                name: emailLower.split('@')[0],
+                                product: r['Sản phẩm'] || 'Standard',
+                                purchaseDate: r['Ngày tạo'] || '--',
+                                expiryDate: 'Chờ duyệt',
+                                daysRemaining: 0,
                                 referredBy: referredBy,
                                 revenue: price,
                                 commission: comm,
