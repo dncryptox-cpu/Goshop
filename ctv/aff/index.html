@@ -289,7 +289,7 @@
                         <div class="p-5 border-b border-gray-100 flex flex-wrap gap-4 justify-between items-center bg-white">
                             <h2 class="text-lg font-bold text-gray-900">Quản Lý Yêu Cầu Rút Tiền</h2>
                             <div class="flex items-center gap-3">
-                                <button @click="syncPayouts()" class="text-sm font-semibold text-primary hover:text-primary-dark flex items-center gap-2">
+                                <button @click="fetchData()" class="text-sm font-semibold text-primary hover:text-primary-dark flex items-center gap-2">
                                     <i data-lucide="refresh-cw" class="w-4 h-4"></i> Làm mới
                                 </button>
                             </div>
@@ -598,7 +598,8 @@
             return {
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
-                    DEFAULT_PRICE: 200000 // default price if not found
+                    DEFAULT_PRICE: 200000, // default price if not found
+                    WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxzXvVjASViAK--nYwzfJ_iTbK8e7Ilfd9xjbDdzS3SdXPTgdPRVSd9M4ORimanRWZN/exec'
                 },
                 commissionRatePercent: 20,
                 isLoggedIn: false,
@@ -718,8 +719,6 @@
                     if (savedRate !== null) {
                         this.commissionRatePercent = parseFloat(savedRate);
                     }
-                    
-                    this.syncPayouts();
 
                     const savedUser = localStorage.getItem('aff_crm_user');
                     if (savedUser) {
@@ -784,8 +783,39 @@
                     this.isLoading = true;
                     try {
                         const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA`;
-                        const response = await fetch(url);
+                        const [response, payoutResponse] = await Promise.all([
+                            fetch(url),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=AFF_PAYOUTS`).catch(() => null)
+                        ]);
+                        
                         const csvText = await response.text();
+                        
+                        if (payoutResponse && payoutResponse.ok) {
+                            const pCsvText = await payoutResponse.text();
+                            if (!pCsvText.includes('html')) {
+                                const pLines = pCsvText.split('\n');
+                                if (pLines.length >= 2) {
+                                    const pHeaders = pLines[0].split(',').map(h => h.replace(/"/g, '').trim());
+                                    this.payoutRequests = pLines.slice(1).map(line => {
+                                        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
+                                        const obj = {};
+                                        pHeaders.forEach((header, i) => obj[header] = values[i] || '');
+                                        return {
+                                            id: obj['ID'] || '',
+                                            email: obj['Email'] || '',
+                                            date: obj['Thời Gian'] || '',
+                                            amount: parseInt((obj['Số Tiền'] || '0').replace(/\D/g, '')) || 0,
+                                            bankInfo: {
+                                                bank: obj['Ngân Hàng'] || '',
+                                                account: obj['Số Tài Khoản'] || '',
+                                                name: obj['Chủ Tài Khoản'] || ''
+                                            },
+                                            status: obj['Trạng Thái'] === 'Đã Thanh Toán' ? 'paid' : 'pending'
+                                        };
+                                    }).filter(p => p.id && p.email);
+                                }
+                            }
+                        }
 
                         const lines = csvText.split('\n');
                         if (lines.length < 2) return;
@@ -802,20 +832,32 @@
 
                         const parsedCustomers = [];
                         const affMap = {};
+                        const seenEmails = new Set();
 
                         appData.forEach(r => {
-                            const email = r['Email khách'] || '';
+                            let email = (r['Email khách'] || '').trim();
+                            if (!email) return;
+                            
+                            const emailLower = email.toLowerCase();
+                            if (seenEmails.has(emailLower)) return; // Deduplicate by email
+                            seenEmails.add(emailLower);
+
                             const days = parseInt(r['Số ngày còn lại']) || 0;
                             const price = parseInt((r['Doanh thu'] || r['Giá'] || '0').replace(/\D/g, '')) || this.CONFIG.DEFAULT_PRICE;
                             
-                            // Affiliate tracking via 'Người giới thiệu' or 'Mã Affiliate' or fallback to 'CTV' if it looks like an email
-                            let referredBy = r['Người giới thiệu'] || r['Affiliate'] || '';
+                            // Affiliate tracking via 'Người giới thiệu' or 'Mã Affiliate'
+                            let referredBy = (r['Người giới thiệu'] || r['Affiliate'] || '').toLowerCase().trim();
+
+                            // Prevent self-referral (since Column J currently contains customer's own prefix)
+                            if (referredBy === emailLower || referredBy === emailLower.split('@')[0]) {
+                                referredBy = '';
+                            }
 
                             const comm = referredBy ? price * (this.commissionRatePercent / 100) : 0;
 
                             const cData = {
                                 email: email,
-                                name: r['Tên'] || email.split('@')[0],
+                                name: r['Tên'] || emailLower.split('@')[0],
                                 product: r['Phân loại'] || 'Standard',
                                 purchaseDate: r['Ngày mua'] || r['Ngày đk'] || '--',
                                 expiryDate: r['HSD'] || '--',
@@ -823,7 +865,7 @@
                                 referredBy: referredBy,
                                 revenue: price,
                                 commission: comm,
-                                reminders: this.remindersStore[email] || { r1: false, r2: false, r3: false }
+                                reminders: this.remindersStore[emailLower] || { r1: false, r2: false, r3: false }
                             };
                             parsedCustomers.push(cData);
                         });
@@ -894,50 +936,78 @@
                 },
 
                 // PAYOUT LOGIC
-                syncPayouts() {
-                    const saved = localStorage.getItem('aff_crm_payouts');
-                    if (saved) {
-                        this.payoutRequests = JSON.parse(saved);
-                    }
-                },
-
-                submitPayoutRequest() {
+                async submitPayoutRequest() {
                     if (!this.canRequestPayout) return;
                     
-                    // Save bank info default
+                    // Save bank info default locally for convenience
                     localStorage.setItem(`aff_bank_${this.currentUser.email}`, JSON.stringify({
                         bank: this.payoutForm.bank,
                         account: this.payoutForm.account,
                         name: this.payoutForm.name
                     }));
 
-                    const req = {
-                        id: 'PO-' + Date.now(),
+                    const reqId = 'PO-' + Date.now();
+                    const reqData = {
+                        id: reqId,
                         email: this.currentUser.email,
-                        date: new Date().toISOString().split('T')[0],
+                        date: new Date().toLocaleDateString('en-GB'),
                         amount: this.payoutForm.amount,
-                        bankInfo: {
-                            bank: this.payoutForm.bank,
-                            account: this.payoutForm.account,
-                            name: this.payoutForm.name
-                        },
-                        status: 'pending'
+                        bank: this.payoutForm.bank,
+                        account: this.payoutForm.account,
+                        name: this.payoutForm.name,
+                        status: 'Chờ Duyệt'
                     };
 
-                    this.payoutRequests.push(req);
-                    localStorage.setItem('aff_crm_payouts', JSON.stringify(this.payoutRequests));
-                    
-                    this.showToast('Đã gửi yêu cầu rút tiền thành công!');
-                    this.payoutForm.amount = 0; // reset
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'request_payout',
+                                requestData: reqData
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã gửi yêu cầu rút tiền thành công!');
+                            this.payoutForm.amount = 0; // reset
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi không xác định');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast('Có lỗi xảy ra khi gửi yêu cầu. Vui lòng thử lại!');
+                    } finally {
+                        this.isLoading = false;
+                    }
                 },
 
-                markPayoutPaid(id) {
+                async markPayoutPaid(id) {
                     if (!confirm('Xác nhận đã chuyển khoản cho Affiliate này?')) return;
-                    const req = this.payoutRequests.find(p => p.id === id);
-                    if (req) {
-                        req.status = 'paid';
-                        localStorage.setItem('aff_crm_payouts', JSON.stringify(this.payoutRequests));
-                        this.showToast('Đã đánh dấu thanh toán thành công!');
+                    
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'change_payout_status',
+                                reqId: id,
+                                statusStr: 'Đã Thanh Toán'
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã đánh dấu thanh toán thành công!');
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi không xác định');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast('Có lỗi xảy ra. Vui lòng thử lại!');
+                    } finally {
+                        this.isLoading = false;
                     }
                 },
 
