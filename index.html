@@ -608,9 +608,9 @@
                         <!-- PRODUCT CATALOG GRID -->
                         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
                             <template x-for="prod in products" :key="prod.id">
-                                <div @click="newOrderForm.selectedProductId = prod.id; newOrderForm.duration = prod.defaultDuration; orderQR.show = false;"
-                                    :class="newOrderForm.selectedProductId === prod.id ? 'border-primary ring-2 ring-primary/20 bg-primary/5 shadow-primary/10 shadow-2xl' : 'border-glass-border hover:bg-white/5'"
-                                    class="glass-panel rounded-2xl p-5 border cursor-pointer transition-all flex flex-col justify-between h-full relative overflow-hidden group">
+                                <div @click="if(!prod.outOfStock) { newOrderForm.selectedProductId = prod.id; newOrderForm.duration = prod.defaultDuration; orderQR.show = false; }"
+                                    :class="newOrderForm.selectedProductId === prod.id ? 'border-primary ring-2 ring-primary/20 bg-primary/5 shadow-primary/10 shadow-2xl' : 'border-glass-border hover:bg-white/5 ' + (prod.outOfStock ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer')"
+                                    class="glass-panel rounded-2xl p-5 border transition-all flex flex-col justify-between h-full relative overflow-hidden group">
 
                                     <!-- Top Accent line on active selection -->
                                     <div x-show="newOrderForm.selectedProductId === prod.id"
@@ -681,9 +681,15 @@
                                         </div>
 
                                         <button type="button" 
+                                            x-show="!prod.outOfStock"
                                             @click.stop="newOrderForm.selectedProductId = prod.id; showCheckoutModal = true; orderQR.show = false;"
                                             class="w-full mt-3 bg-white/5 hover:bg-primary hover:text-white text-gray-300 font-bold text-xs py-2.5 rounded-xl transition-all border border-glass-border hover:border-primary flex items-center justify-center gap-2">
                                             <i data-lucide="shopping-cart" class="w-3.5 h-3.5"></i> Mua Ngay
+                                        </button>
+                                        <button type="button" disabled
+                                            x-show="prod.outOfStock"
+                                            class="w-full mt-3 bg-red-500/10 text-red-500 font-bold text-xs py-2.5 rounded-xl border border-red-500/20 flex items-center justify-center gap-2 cursor-not-allowed">
+                                            <i data-lucide="package-x" class="w-3.5 h-3.5"></i> Hết hàng
                                         </button>
                                     </div>
                                 </div>
@@ -1329,14 +1335,33 @@
                                         name: cols[1] ? cols[1].v : '',
                                         icon: cols[2] ? cols[2].v : 'video',
                                         desc: cols[3] ? cols[3].v : '',
-                                        prices: {
-                                            7: cols[4] ? parseInt(cols[4].v) || 0 : 0,
-                                            30: cols[5] ? parseInt(cols[5].v) || 0 : 0,
-                                            90: cols[6] ? parseInt(cols[6].v) || 0 : 0,
-                                            180: cols[7] ? parseInt(cols[7].v) || 0 : 0,
-                                            360: cols[8] ? parseInt(cols[8].v) || 0 : 0
-                                        },
-                                        defaultDuration: cols[9] ? parseInt(cols[9].v) || 30 : 30
+                                    let prices = {
+                                        7: cols[4] ? parseInt(cols[4].v) || 0 : 0,
+                                        30: cols[5] ? parseInt(cols[5].v) || 0 : 0,
+                                        90: cols[6] ? parseInt(cols[6].v) || 0 : 0,
+                                        180: cols[7] ? parseInt(cols[7].v) || 0 : 0,
+                                        360: cols[8] ? parseInt(cols[8].v) || 0 : 0
+                                    };
+                                    
+                                    Object.keys(prices).forEach(k => {
+                                        if (prices[k] <= 0) delete prices[k];
+                                    });
+                                    
+                                    const availableDurations = Object.keys(prices).map(Number);
+                                    let defaultDuration = cols[9] ? parseInt(cols[9].v) || 30 : 30;
+                                    
+                                    if (availableDurations.length > 0 && !availableDurations.includes(defaultDuration)) {
+                                        defaultDuration = availableDurations[0];
+                                    }
+
+                                    newProducts.push({
+                                        id: cols[0].v,
+                                        name: cols[1] ? cols[1].v : '',
+                                        icon: cols[2] ? cols[2].v : 'video',
+                                        desc: cols[3] ? cols[3].v : '',
+                                        prices: prices,
+                                        defaultDuration: defaultDuration,
+                                        outOfStock: availableDurations.length === 0
                                     });
                                 }
                             });
