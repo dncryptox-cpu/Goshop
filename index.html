@@ -1273,17 +1273,48 @@
                     UPSALE: []
                 },
 
-                loadCatalogProducts() {
-                    const saved = localStorage.getItem('goshop_catalog_products');
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        if (parsed.length < this.products.length) {
-                            localStorage.setItem('goshop_catalog_products', JSON.stringify(this.products));
-                        } else {
-                            this.products = parsed;
+                async loadCatalogProducts() {
+                    const sheetId = this.CONFIG.SHEET_ID;
+                    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=CONFIG_PRICING`;
+                    try {
+                        const response = await fetch(url);
+                        const text = await response.text();
+                        const jsonStr = text.substring(text.indexOf('({') + 1, text.lastIndexOf('})') + 1);
+                        const data = JSON.parse(jsonStr);
+                        
+                        if (data.table && data.table.rows && data.table.rows.length > 0) {
+                            const newProducts = [];
+                            data.table.rows.forEach(row => {
+                                const cols = row.c;
+                                if (cols && cols[0] && cols[0].v) {
+                                    newProducts.push({
+                                        id: cols[0].v,
+                                        name: cols[1] ? cols[1].v : '',
+                                        icon: cols[2] ? cols[2].v : 'video',
+                                        desc: cols[3] ? cols[3].v : '',
+                                        prices: {
+                                            7: cols[4] ? parseInt(cols[4].v) || 0 : 0,
+                                            30: cols[5] ? parseInt(cols[5].v) || 0 : 0,
+                                            90: cols[6] ? parseInt(cols[6].v) || 0 : 0,
+                                            180: cols[7] ? parseInt(cols[7].v) || 0 : 0,
+                                            360: cols[8] ? parseInt(cols[8].v) || 0 : 0
+                                        },
+                                        defaultDuration: cols[9] ? parseInt(cols[9].v) || 30 : 30
+                                    });
+                                }
+                            });
+                            if (newProducts.length > 0) {
+                                this.products = newProducts;
+                                localStorage.setItem('goshop_catalog_products', JSON.stringify(this.products));
+                            }
                         }
-                    } else {
-                        localStorage.setItem('goshop_catalog_products', JSON.stringify(this.products));
+                    } catch (error) {
+                        console.error('Lỗi khi tải bảng giá từ Google Sheets:', error);
+                        // Fallback to local storage if available
+                        const saved = localStorage.getItem('goshop_catalog_products');
+                        if (saved) {
+                            this.products = JSON.parse(saved);
+                        }
                     }
                 },
 

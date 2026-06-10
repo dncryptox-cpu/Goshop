@@ -3370,23 +3370,72 @@
                     { id: 'OFFICE_365', name: 'Office 365', icon: 'file-text', desc: 'Bộ ứng dụng văn phòng cao cấp Word, Excel, PowerPoint...', prices: { 365: 250000 }, defaultDuration: 365 }
                 ],
 
-                loadCatalogProducts() {
-                    const saved = localStorage.getItem('goshop_catalog_products');
-                    if (saved) {
-                        const parsed = JSON.parse(saved);
-                        if (parsed.length < this.catalogProducts.length) {
-                            localStorage.setItem('goshop_catalog_products', JSON.stringify(this.catalogProducts));
-                        } else {
-                            this.catalogProducts = parsed;
+                async loadCatalogProducts() {
+                    const sheetId = this.CONFIG.SHEET_ID;
+                    const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json&sheet=CONFIG_PRICING`;
+                    try {
+                        const response = await fetch(url);
+                        const text = await response.text();
+                        const jsonStr = text.substring(text.indexOf('({') + 1, text.lastIndexOf('})') + 1);
+                        const data = JSON.parse(jsonStr);
+                        
+                        if (data.table && data.table.rows && data.table.rows.length > 0) {
+                            const newProducts = [];
+                            data.table.rows.forEach(row => {
+                                const cols = row.c;
+                                if (cols && cols[0] && cols[0].v) {
+                                    newProducts.push({
+                                        id: cols[0].v,
+                                        name: cols[1] ? cols[1].v : '',
+                                        icon: cols[2] ? cols[2].v : 'video',
+                                        desc: cols[3] ? cols[3].v : '',
+                                        prices: {
+                                            7: cols[4] ? parseInt(cols[4].v) || 0 : 0,
+                                            30: cols[5] ? parseInt(cols[5].v) || 0 : 0,
+                                            90: cols[6] ? parseInt(cols[6].v) || 0 : 0,
+                                            180: cols[7] ? parseInt(cols[7].v) || 0 : 0,
+                                            360: cols[8] ? parseInt(cols[8].v) || 0 : 0
+                                        },
+                                        defaultDuration: cols[9] ? parseInt(cols[9].v) || 30 : 30
+                                    });
+                                }
+                            });
+                            if (newProducts.length > 0) {
+                                this.catalogProducts = newProducts;
+                                localStorage.setItem('goshop_catalog_products', JSON.stringify(this.catalogProducts));
+                            }
                         }
-                    } else {
-                        localStorage.setItem('goshop_catalog_products', JSON.stringify(this.catalogProducts));
+                    } catch (error) {
+                        console.error('Lỗi khi tải bảng giá từ Google Sheets:', error);
+                        const saved = localStorage.getItem('goshop_catalog_products');
+                        if (saved) {
+                            this.catalogProducts = JSON.parse(saved);
+                        }
                     }
                 },
 
-                saveCatalogPrices() {
+                async saveCatalogPrices() {
                     localStorage.setItem('goshop_catalog_products', JSON.stringify(this.catalogProducts));
-                    this.showToast('Đã lưu thiết lập giá bán và đồng bộ với Cổng khách hàng!');
+                    
+                    if(!this.CONFIG.FINANCIAL_WEBAPP_URL) {
+                        this.showToast('Đã lưu cục bộ. Cần cấu hình FINANCIAL_WEBAPP_URL để đồng bộ Google Sheets!');
+                        return;
+                    }
+                    this.showToast('Đang đồng bộ bảng giá lên Google Sheets...');
+                    try {
+                        const response = await fetch(this.CONFIG.FINANCIAL_WEBAPP_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({
+                                action: 'save_pricing',
+                                products: this.catalogProducts
+                            })
+                        });
+                        this.showToast('Đã lưu thiết lập giá bán và đồng bộ thành công lên Google Sheets!');
+                    } catch(err) {
+                        this.showToast('Đã lưu cục bộ. Lỗi đồng bộ Google Sheets: ' + err.message);
+                    }
                 },
 
                 calculateHSD(importDateStr, productVal) {
