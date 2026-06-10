@@ -176,6 +176,15 @@
                 </div>
                 
                 <div class="flex items-center gap-4">
+                    <!-- Maintenance Toggle -->
+                    <button @click="toggleMaintenanceMode()" 
+                        :class="isMaintenanceMode ? 'bg-red-500 text-white shadow-red-500/30 ring-2 ring-red-500 ring-offset-2' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center gap-2">
+                        <i data-lucide="power" class="w-4 h-4"></i>
+                        <span x-text="isMaintenanceMode ? 'ĐANG BẢO TRÌ' : 'BẬT BẢO TRÌ'"></span>
+                    </button>
+                    <div class="h-6 w-[1px] bg-gray-200"></div>
+                    
                     <!-- Delivery Mode Switch (Smooth Auto Delivery vs Manual Approval) -->
                     <div class="flex items-center bg-gray-100 border border-gray-200 rounded-xl p-1 gap-1">
                         <button @click="setDeliveryMode('auto')" :class="deliveryMode === 'auto' ? 'bg-green-600 text-white shadow-sm font-extrabold' : 'text-gray-500 hover:bg-gray-200/50 font-bold'" class="px-3 py-1.5 rounded-lg text-[10px] uppercase tracking-wider transition-all flex items-center gap-1.5">
@@ -2648,6 +2657,7 @@
                     staff: '',
                     amount: 0
                 },
+                isMaintenanceMode: false,
                 refundForm: {
                     email: '',
                     product: '',
@@ -3762,6 +3772,7 @@
                     this.loadInventory();
                     this.loadCatalogProducts();
                     this.loadDeliveryMode();
+                    this.fetchSystemConfig();
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
@@ -3776,6 +3787,47 @@
                     await this.fetchSheetData();
                     this.updateExpiryDate();
                     this.ytbRenewalStatuses = JSON.parse(localStorage.getItem('goshop_ytb_renewal_statuses') || '{}');
+                },
+
+                async fetchSystemConfig() {
+                    try {
+                        const response = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:json&sheet=SYSTEM_CONFIG`);
+                        const text = await response.text();
+                        const jsonStr = text.substring(text.indexOf('({') + 1, text.lastIndexOf('})') + 1);
+                        const data = JSON.parse(jsonStr);
+                        
+                        if (data.table && data.table.rows) {
+                            data.table.rows.forEach(row => {
+                                if (row.c && row.c[0] && row.c[1]) {
+                                    if (row.c[0].v === "MAINTENANCE_MODE") {
+                                        this.isMaintenanceMode = (row.c[1].v === "TRUE");
+                                    }
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.error('Error fetching system config', e);
+                    }
+                },
+                
+                async toggleMaintenanceMode() {
+                    this.isMaintenanceMode = !this.isMaintenanceMode;
+                    if(!this.CONFIG.WEBAPP_URL) return;
+                    
+                    try {
+                        await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({
+                                action: 'set_maintenance_mode',
+                                status: this.isMaintenanceMode
+                            })
+                        });
+                        this.showToast(this.isMaintenanceMode ? '⚠️ Đã bật chế độ BẢO TRÌ toàn hệ thống!' : '✅ Đã TẮT chế độ bảo trì, hệ thống hoạt động bình thường!');
+                    } catch (e) {
+                        this.showToast('Lỗi khi đổi chế độ bảo trì: ' + e.message);
+                    }
                 },
 
                 async initGitHub() {
