@@ -856,6 +856,16 @@
                         const parsedCustomers = [];
                         const affMap = {};
                         const seenEmails = new Set();
+                        
+                        // Build a reliable mapping of email -> referrer from DON_HANG_MOI
+                        const realReferrersMap = {};
+                        newOrders.forEach(o => {
+                            const email = (o['Email'] || '').toLowerCase().trim();
+                            const ref = (o['Người giới thiệu'] || '').toLowerCase().trim();
+                            if (email && ref && ref !== email && ref !== email.split('@')[0]) {
+                                realReferrersMap[email] = ref;
+                            }
+                        });
 
                         appData.forEach(r => {
                             let email = (r['Email khách'] || '').trim();
@@ -868,8 +878,8 @@
                             const days = parseInt(r['Số ngày còn lại']) || 0;
                             const price = parseInt((r['Doanh thu'] || r['Giá'] || '0').replace(/\D/g, '')) || this.CONFIG.DEFAULT_PRICE;
                             
-                            // Affiliate tracking via 'Người giới thiệu' or 'Mã Affiliate'
-                            let referredBy = (r['Người giới thiệu'] || r['Affiliate'] || '').toLowerCase().trim();
+                            // Affiliate tracking: Prioritize real referrer from DON_HANG_MOI if it exists, otherwise fallback to sheet data
+                            let referredBy = realReferrersMap[emailLower] || (r['Người giới thiệu'] || r['Affiliate'] || '').toLowerCase().trim();
 
                             // Prevent self-referral (since Column J currently contains customer's own prefix)
                             if (referredBy === emailLower || referredBy === emailLower.split('@')[0]) {
