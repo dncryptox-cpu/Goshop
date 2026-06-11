@@ -446,8 +446,8 @@
                                             </td>
                                             <td class="px-6 py-4">
                                                 <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
-                                                    :class="c.expiryDate === 'Chờ duyệt' ? 'bg-gray-100 text-gray-600' : (c.daysRemaining <= 0 ? 'bg-red-50 text-red-600' : (c.daysRemaining <= 30 ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'))"
-                                                    x-text="c.expiryDate === 'Chờ duyệt' ? 'Chờ duyệt' : (c.daysRemaining <= 0 ? 'Hết hạn' : (c.daysRemaining <= 30 ? 'Sắp hết hạn' : 'Đang sử dụng'))">
+                                                    :class="c.expiryDate === 'Đã hủy' ? 'bg-red-100 text-red-700' : (c.expiryDate === 'Chờ duyệt' ? 'bg-gray-100 text-gray-600' : (c.daysRemaining <= 0 ? 'bg-red-50 text-red-600' : (c.daysRemaining <= 30 ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600')))"
+                                                    x-text="c.expiryDate === 'Đã hủy' ? 'Đã hủy' : (c.expiryDate === 'Chờ duyệt' ? 'Chờ duyệt' : (c.daysRemaining <= 0 ? 'Hết hạn' : (c.daysRemaining <= 30 ? 'Sắp hết hạn' : 'Đang sử dụng')))">
                                                 </span>
                                             </td>
                                             <td class="px-6 py-4 text-right">
@@ -640,8 +640,8 @@
                                     <td class="px-4 py-3"><span class="bg-gray-100 px-2 py-1 rounded text-xs text-gray-700 font-medium" x-text="c.product"></span></td>
                                     <td class="px-4 py-3">
                                         <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
-                                              :class="c.expiryDate === 'Chờ duyệt' ? 'bg-gray-100 text-gray-600' : (c.daysRemaining <= 0 ? 'bg-red-50 text-red-600' : (c.daysRemaining <= 30 ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600'))"
-                                              x-text="c.expiryDate === 'Chờ duyệt' ? 'Chờ duyệt' : (c.daysRemaining <= 0 ? 'Hết hạn' : (c.daysRemaining <= 30 ? 'Sắp hết hạn' : 'Đang sử dụng'))">
+                                              :class="c.expiryDate === 'Đã hủy' ? 'bg-red-100 text-red-700' : (c.expiryDate === 'Chờ duyệt' ? 'bg-gray-100 text-gray-600' : (c.daysRemaining <= 0 ? 'bg-red-50 text-red-600' : (c.daysRemaining <= 30 ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600')))"
+                                              x-text="c.expiryDate === 'Đã hủy' ? 'Đã hủy' : (c.expiryDate === 'Chờ duyệt' ? 'Chờ duyệt' : (c.daysRemaining <= 0 ? 'Hết hạn' : (c.daysRemaining <= 30 ? 'Sắp hết hạn' : 'Đang sử dụng')))">
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-right font-bold text-green-600" x-text="formatCurrency(c.commission)"></td>
@@ -879,9 +879,9 @@
                     this.isLoading = true;
                     try {
                         const [response, payoutResponse, ordersResponse] = await Promise.all([
-                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA`),
-                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=AFF_PAYOUTS`).catch(() => null),
-                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DON_HANG_MOI`).catch(() => null)
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA&t=${Date.now()}`),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=AFF_PAYOUTS&t=${Date.now()}`).catch(() => null),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DON_HANG_MOI&t=${Date.now()}`).catch(() => null)
                         ]);
                         
                         const csvText = await response.text();
@@ -1002,6 +1002,9 @@
                             if (seenEmails.has(emailLower)) return; // Deduplicate
                             seenEmails.add(emailLower);
 
+                            const statusRaw = (r['Trạng thái'] || '').toUpperCase();
+                            const isCanceled = statusRaw.includes('CANCEL');
+
                             const price = parseInt((r['Số tiền'] || '0').replace(/\D/g, '')) || this.CONFIG.DEFAULT_PRICE;
                             
                             let referredBy = (r['Người giới thiệu'] || '').toLowerCase().trim();
@@ -1010,17 +1013,18 @@
                                 referredBy = '';
                             }
 
-                            const comm = referredBy ? price * (this.commissionRatePercent / 100) : 0;
+                            const comm = (referredBy && !isCanceled) ? price * (this.commissionRatePercent / 100) : 0;
+                            const displayStatus = isCanceled ? 'Đã hủy' : 'Chờ duyệt';
 
                             const cData = {
                                 email: email,
                                 name: emailLower.split('@')[0],
                                 product: r['Sản phẩm'] || 'Standard',
                                 purchaseDate: r['Ngày tạo'] || '--',
-                                expiryDate: 'Chờ duyệt',
+                                expiryDate: displayStatus,
                                 daysRemaining: 0,
                                 referredBy: referredBy,
-                                revenue: price,
+                                revenue: isCanceled ? 0 : price,
                                 commission: comm,
                                 reminders: this.remindersStore[emailLower] || { r1: false, r2: false, r3: false }
                             };
