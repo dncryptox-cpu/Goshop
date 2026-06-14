@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Finance OS - Quản Lý Tài Chính & Kinh Doanh</title>
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        darkBg: '#0B1121',
+                        cardBg: 'rgba(30, 41, 59, 0.5)',
+                        primary: '#3b82f6',
+                        accent: '#8b5cf6',
+                        success: '#10b981',
+                        danger: '#ef4444',
+                        warning: '#f59e0b',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Recharts -->
+    <script src="https://unpkg.com/prop-types/prop-types.min.js"></script>
+    <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+    
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        body {
+            background-color: #0B1121;
+            color: #f8fafc;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08), transparent 25%),
+                radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.08), transparent 25%);
+            background-attachment: fixed;
+            margin: 0;
+            overflow: hidden; /* App handles its own scrolling */
+        }
+
+        .glass-card {
+            background: rgba(17, 24, 39, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            border-radius: 16px;
+        }
+
+        .glass-header {
+            background: rgba(11, 17, 33, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+        .stat-value {
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { 
+            LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
+            XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend 
+        } = window.Recharts;
+
+        // Initialize Supabase (Mock configuration for now)
+        const supabaseUrl = 'https://YOUR_SUPABASE_URL.supabase.co';
+        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY';
+        // const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
+
+        // --- Mock Data ---
+        const COLORS = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+        
+        const mockDashboardData = {
+            totalAssets: 1250000000, // 1.25B VND
+            monthlyIncome: 85000000,
+            monthlyExpenses: 32000000,
+            netCashflow: 53000000,
+            cashflowHistory: [
+                { name: 'T1', income: 60, expense: 25 },
+                { name: 'T2', income: 65, expense: 28 },
+                { name: 'T3', income: 80, expense: 30 },
+                { name: 'T4', income: 75, expense: 29 },
+                { name: 'T5', income: 90, expense: 35 },
+                { name: 'T6', income: 85, expense: 32 },
+            ],
+            assetAllocation: [
+                { name: 'Tiền mặt', value: 200000000 },
+                { name: 'Cổ phiếu', value: 450000000 },
+                { name: 'Crypto', value: 150000000 },
+                { name: 'Kinh doanh', value: 450000000 },
+            ]
+        };
+
+        const mockTransactions = [
+            { id: 1, date: '2026-06-14', desc: 'Lương & Thưởng', category: 'Thu nhập', amount: 45000000, type: 'income' },
+            { id: 2, date: '2026-06-13', desc: 'Ăn uống & Sinh hoạt', category: 'Chi phí', amount: -2500000, type: 'expense' },
+            { id: 3, date: '2026-06-10', desc: 'Lợi nhuận Goshop', category: 'Kinh doanh', amount: 15000000, type: 'income' },
+            { id: 4, date: '2026-06-05', desc: 'Tiền thuê nhà', category: 'Chi phí', amount: -8000000, type: 'expense' },
+        ];
+
+        const mockCustomers = [
+            { id: 'KH001', email: 'nguyenvana@gmail.com', plan: 'Youtube Premium 12T', price: 299000, purchaseDate: '2025-06-10', expiryDate: '2026-06-10', status: 'Expired' },
+            { id: 'KH002', email: 'tranb@yahoo.com', plan: 'Canva Pro 6T', price: 150000, purchaseDate: '2026-05-01', expiryDate: '2026-11-01', status: 'Active' },
+            { id: 'KH003', email: 'lethic@gmail.com', plan: 'Capcut Pro 12T', price: 350000, purchaseDate: '2026-06-01', expiryDate: '2027-06-01', status: 'Active' },
+            { id: 'KH004', email: 'hoangd@gmail.com', plan: 'Spotify 6T', price: 120000, purchaseDate: '2025-12-15', expiryDate: '2026-06-15', status: 'Warning' },
+        ];
+
+        const mockAffiliates = [
+            { id: 'CTV1', name: 'Đặng Tuấn', referrals: 45, revenue: 15000000, commission: 3000000 },
+            { id: 'CTV2', name: 'Hoàng Mai', referrals: 22, revenue: 8500000, commission: 1700000 },
+            { id: 'CTV3', name: 'Lê Khoa', referrals: 10, revenue: 3200000, commission: 640000 },
+        ];
+
+        const mockTrades = [
+            { id: 1, date: '2026-06-12', pair: 'BTC/USDT', type: 'Long', entry: 68500, sl: 67000, risk: 1.5, result: 2.5, status: 'Win' },
+            { id: 2, date: '2026-06-10', pair: 'ETH/USDT', type: 'Short', entry: 3800, sl: 3900, risk: 1.0, result: -1.0, status: 'Loss' },
+            { id: 3, date: '2026-06-08', pair: 'SOL/USDT', type: 'Long', entry: 155, sl: 145, risk: 2.0, result: 4.0, status: 'Win' },
+        ];
+
+        const mockGoals = [
+            { id: 1, name: 'Quỹ Dự Phòng (6 tháng)', target: 200000000, current: 150000000, color: 'bg-blue-500' },
+            { id: 2, name: 'Mua Ô tô (Trang bị)', target: 800000000, current: 300000000, color: 'bg-purple-500' },
+            { id: 3, name: 'Du lịch Nhật Bản', target: 50000000, current: 10000000, color: 'bg-emerald-500' },
+        ];
+
+        // --- Utility Functions ---
+        const formatCurrency = (value) => {
+            return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
+        };
+
+        const formatNumber = (value) => {
+            return new Intl.NumberFormat('vi-VN').format(value);
+        };
+
+        // --- Components ---
+
+        const Sidebar = ({ activeTab, setActiveTab, setSession }) => {
+            const menuItems = [
+                { id: 'dashboard', icon: 'fa-chart-pie', label: 'Dashboard' },
+                { id: 'transactions', icon: 'fa-wallet', label: 'Giao Dịch' },
+                { id: 'business', icon: 'fa-briefcase', label: 'Kinh Doanh (Goshop)' },
+                { id: 'affiliate', icon: 'fa-users', label: 'Quản Lý CTV' },
+                { id: 'trading', icon: 'fa-chart-line', label: 'Nhật Ký Trading' },
+                { id: 'goals', icon: 'fa-bullseye', label: 'Mục Tiêu Tài Chính' },
+            ];
+
+            return (
+                <div className="w-64 glass-header h-screen flex flex-col border-r border-white/5 transition-all">
+                    <div className="p-6 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                            <i className="fa-solid fa-infinity text-white"></i>
+                        </div>
+                        <div>
+                            <h1 className="font-bold text-lg tracking-tight">Finance OS</h1>
+                            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider">Hệ thống quản trị</span>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto py-4">
+                        <nav className="space-y-1 px-3">
+                            {menuItems.map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => setActiveTab(item.id)}
+                                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium text-sm ${
+                                        activeTab === item.id 
+                                        ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' 
+                                        : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
+                                    }`}
+                                >
+                                    <i className={`fa-solid ${item.icon} w-5 text-center`}></i>
+                                    {item.label}
+                                </button>
+                            ))}
+                        </nav>
+                    </div>
+
+                    <div className="p-4 border-t border-white/5">
+                        <div className="glass-card p-4 flex flex-col gap-3">
+                            <div className="flex items-center gap-3">
+                                <img src="https://ui-avatars.com/api/?name=Admin&background=random" className="w-8 h-8 rounded-full" alt="avatar" />
+                                <div className="text-left">
+                                    <p className="text-xs font-bold text-white">Admin User</p>
+                                    <p className="text-[10px] text-slate-400">admin@godnc.com</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setSession(null)} className="w-full py-2 text-xs text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-red-500/20">
+                                <i className="fa-solid fa-arrow-right-from-bracket mr-2"></i> Đăng xuất
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Topbar = ({ title }) => (
+            <header className="h-20 glass-header px-8 flex items-center justify-between z-10 sticky top-0">
+                <h2 className="text-xl font-bold text-white tracking-tight">{title}</h2>
+                <div className="flex items-center gap-4">
+                    <button className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-300 transition-colors border border-white/5">
+                        <i className="fa-solid fa-bell"></i>
+                    </button>
+                    <button className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-300 transition-colors border border-white/5">
+                        <i className="fa-solid fa-gear"></i>
+                    </button>
+                </div>
+            </header>
+        );
+
+        const StatCard = ({ title, value, icon, colorClass, trend, trendValue }) => (
+            <div className="glass-card p-6 relative overflow-hidden group">
+                <div className={`absolute top-0 right-0 w-32 h-32 opacity-10 rounded-bl-full ${colorClass.bg} -mr-8 -mt-8 transition-transform group-hover:scale-110`}></div>
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <p className="text-slate-400 text-sm font-medium">{title}</p>
+                        <h3 className="text-2xl font-bold text-white mt-1 stat-value">{value}</h3>
+                    </div>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${colorClass.iconBg} ${colorClass.text} ${colorClass.border}`}>
+                        <i className={`fa-solid ${icon}`}></i>
+                    </div>
+                </div>
+                {trend && (
+                    <div className="flex items-center gap-2 mt-4 text-xs">
+                        <span className={`flex items-center gap-1 font-bold ${trend === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>
+                            <i className={`fa-solid ${trend === 'up' ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down'}`}></i>
+                            {trendValue}
+                        </span>
+                        <span className="text-slate-500">so với tháng trước</span>
+                    </div>
+                )}
+            </div>
+        );
+
+        // --- View Components ---
+
+        const DashboardView = () => (
+            <div className="p-8 space-y-8 animate-[fadeIn_0.3s_ease-out]">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+                    <StatCard title="Tổng Tài Sản" value={formatCurrency(mockDashboardData.totalAssets)} icon="fa-building-columns" 
+                        colorClass={{ bg: 'bg-blue-500', iconBg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' }} trend="up" trendValue="+5.2%" />
+                    <StatCard title="Thu Nhập Tháng" value={formatCurrency(mockDashboardData.monthlyIncome)} icon="fa-arrow-down-up-across-line" 
+                        colorClass={{ bg: 'bg-emerald-500', iconBg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' }} trend="up" trendValue="+12.5%" />
+                    <StatCard title="Chi Phí Tháng" value={formatCurrency(mockDashboardData.monthlyExpenses)} icon="fa-receipt" 
+                        colorClass={{ bg: 'bg-red-500', iconBg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20' }} trend="down" trendValue="-2.1%" />
+                    <StatCard title="Dòng Tiền Thuần" value={formatCurrency(mockDashboardData.netCashflow)} icon="fa-coins" 
+                        colorClass={{ bg: 'bg-purple-500', iconBg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' }} trend="up" trendValue="+8.4%" />
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 glass-card p-6">
+                        <h3 className="text-lg font-bold text-white mb-6">Dòng Tiền Nửa Năm Qua</h3>
+                        <div className="h-72">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={mockDashboardData.cashflowHistory}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                                    <XAxis dataKey="name" stroke="#64748b" axisLine={false} tickLine={false} />
+                                    <YAxis stroke="#64748b" axisLine={false} tickLine={false} tickFormatter={(val) => val + 'M'} />
+                                    <Tooltip cursor={{fill: 'rgba(255,255,255,0.02)'}} contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} />
+                                    <Legend />
+                                    <Bar dataKey="income" name="Thu Nhập" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="expense" name="Chi Phí" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                    
+                    <div className="glass-card p-6 flex flex-col">
+                        <h3 className="text-lg font-bold text-white mb-6">Phân Bổ Tài Sản</h3>
+                        <div className="flex-1 min-h-[250px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={mockDashboardData.assetAllocation} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" stroke="none">
+                                        {mockDashboardData.assetAllocation.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip formatter={(value) => formatCurrency(value)} contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }} />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const TransactionsView = () => (
+            <div className="p-8 animate-[fadeIn_0.3s_ease-out]">
+                <div className="glass-card overflow-hidden">
+                    <div className="p-6 border-b border-white/5 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div className="flex gap-2 w-full sm:w-auto">
+                            <input type="text" placeholder="Tìm kiếm giao dịch..." className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-blue-500 text-white w-full sm:w-64" />
+                            <select className="bg-white/5 border border-white/10 rounded-lg px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+                                <option className="bg-slate-800">Tất cả danh mục</option>
+                                <option className="bg-slate-800">Thu nhập</option>
+                                <option className="bg-slate-800">Chi phí</option>
+                            </select>
+                        </div>
+                        <button className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-2 w-full sm:w-auto justify-center">
+                            <i className="fa-solid fa-plus"></i> Thêm Giao Dịch
+                        </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm text-slate-300">
+                            <thead className="bg-white/5 text-xs uppercase text-slate-400">
+                                <tr>
+                                    <th className="px-6 py-4">Ngày</th>
+                                    <th className="px-6 py-4">Mô tả</th>
+                                    <th className="px-6 py-4">Danh mục</th>
+                                    <th className="px-6 py-4 text-right">Số tiền</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {mockTransactions.map((tx) => (
+                                    <tr key={tx.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                                        <td className="px-6 py-4 font-medium text-slate-300">{tx.date}</td>
+                                        <td className="px-6 py-4 text-white">{tx.desc}</td>
+                                        <td className="px-6 py-4">
+                                            <span className="px-2.5 py-1 bg-white/5 rounded-md text-xs border border-white/10">{tx.category}</span>
+                                        </td>
+                                        <td className={`px-6 py-4 text-right font-bold ${tx.amount > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {tx.amount > 0 ? '+' : ''}{formatCurrency(tx.amount)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const BusinessView = () => (
+            <div className="p-8 animate-[fadeIn_0.3s_ease-out] space-y-6">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-lg font-bold text-white">Quản Lý Khách Hàng Goshop</h3>
+                    <button className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-white/10">
+                        <i className="fa-solid fa-download mr-2"></i> Xuất Báo Cáo
+                    </button>
+                </div>
+                
+                <div className="glass-card overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm text-slate-300">
+                            <thead className="bg-white/5 text-xs uppercase text-slate-400 border-b border-white/5">
+                                <tr>
+                                    <th className="px-6 py-4">Mã KH</th>
+                                    <th className="px-6 py-4">Email</th>
+                                    <th className="px-6 py-4">Gói Dịch Vụ</th>
+                                    <th className="px-6 py-4">Hạn Sử Dụng</th>
+                                    <th className="px-6 py-4 text-right">Trạng Thái</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {mockCustomers.map((c) => (
+                                    <tr key={c.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                                        <td className="px-6 py-4 font-mono text-xs">{c.id}</td>
+                                        <td className="px-6 py-4 font-medium text-white">{c.email}</td>
+                                        <td className="px-6 py-4 text-blue-300">{c.plan}</td>
+                                        <td className="px-6 py-4">{c.expiryDate}</td>
+                                        <td className="px-6 py-4 text-right">
+                                            {c.status === 'Active' && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"><i className="fa-solid fa-check"></i> Hoạt động</span>}
+                                            {c.status === 'Warning' && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold text-orange-400 bg-orange-500/10 border border-orange-500/20"><i className="fa-solid fa-triangle-exclamation"></i> Sắp hết hạn</span>}
+                                            {c.status === 'Expired' && <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20"><i className="fa-solid fa-xmark"></i> Hết hạn</span>}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const AffiliateView = () => (
+            <div className="p-8 animate-[fadeIn_0.3s_ease-out] space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <StatCard title="Tổng Số CTV" value="128" icon="fa-users" colorClass={{ bg: 'bg-blue-500', iconBg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20' }} />
+                    <StatCard title="Tổng Doanh Thu CTV" value={formatCurrency(45000000)} icon="fa-money-bill-wave" colorClass={{ bg: 'bg-emerald-500', iconBg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20' }} />
+                    <StatCard title="Hoa Hồng Phải Trả" value={formatCurrency(9000000)} icon="fa-hand-holding-dollar" colorClass={{ bg: 'bg-purple-500', iconBg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20' }} />
+                </div>
+
+                <div className="glass-card p-6">
+                    <h3 className="text-lg font-bold text-white mb-6">Bảng Xếp Hạng Cộng Tác Viên</h3>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm text-slate-300">
+                            <thead className="bg-white/5 text-xs uppercase text-slate-400">
+                                <tr>
+                                    <th className="px-6 py-4">Mã CTV</th>
+                                    <th className="px-6 py-4">Họ Tên</th>
+                                    <th className="px-6 py-4 text-center">Số Lượt Giới Thiệu</th>
+                                    <th className="px-6 py-4 text-right">Doanh Thu Mang Lại</th>
+                                    <th className="px-6 py-4 text-right">Hoa Hồng (20%)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {mockAffiliates.map((aff) => (
+                                    <tr key={aff.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
+                                        <td className="px-6 py-4 font-mono text-xs text-blue-400">{aff.id}</td>
+                                        <td className="px-6 py-4 font-bold text-white">{aff.name}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className="bg-white/10 px-3 py-1 rounded-full text-xs border border-white/10">{aff.referrals}</span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right text-emerald-400">{formatCurrency(aff.revenue)}</td>
+                                        <td className="px-6 py-4 text-right font-bold text-purple-400">{formatCurrency(aff.commission)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const TradingJournalView = () => {
+            const winRate = (mockTrades.filter(t => t.status === 'Win').length / mockTrades.length) * 100;
+            return (
+                <div className="p-8 animate-[fadeIn_0.3s_ease-out] space-y-6">
+                    <div className="flex gap-6 mb-6">
+                        <div className="glass-card p-6 flex-1 flex items-center justify-between">
+                            <div>
+                                <p className="text-sm text-slate-400">Win Rate</p>
+                                <h3 className="text-3xl font-black text-white mt-1">{winRate.toFixed(1)}%</h3>
+                            </div>
+                            <div className="w-16 h-16 rounded-full border-4 border-emerald-500/30 border-t-emerald-500 flex items-center justify-center rotate-45"></div>
+                        </div>
+                        <div className="glass-card p-6 flex-1">
+                            <p className="text-sm text-slate-400">Tổng R (Lợi nhuận)</p>
+                            <h3 className="text-3xl font-black text-emerald-400 mt-1">+5.5R</h3>
+                        </div>
+                    </div>
+
+                    <div className="glass-card overflow-hidden">
+                        <div className="p-6 border-b border-white/5 flex justify-between items-center">
+                            <h3 className="text-lg font-bold text-white">Nhật Ký Giao Dịch</h3>
+                            <button className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors">
+                                <i className="fa-solid fa-plus mr-2"></i> Thêm Lệnh
+                            </button>
+                        </div>
+                        <table className="w-full text-left text-sm text-slate-300">
+                            <thead className="bg-white/5 text-xs uppercase text-slate-400">
+                                <tr>
+                                    <th className="px-6 py-4">Ngày</th>
+                                    <th className="px-6 py-4">Cặp Giao Dịch</th>
+                                    <th className="px-6 py-4">Vị thế</th>
+                                    <th className="px-6 py-4">Entry</th>
+                                    <th className="px-6 py-4">SL</th>
+                                    <th className="px-6 py-4 text-center">Rủi ro</th>
+                                    <th className="px-6 py-4 text-right">Kết quả</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {mockTrades.map((t) => (
+                                    <tr key={t.id} className="border-b border-white/5 hover:bg-white/[0.02]">
+                                        <td className="px-6 py-4">{t.date}</td>
+                                        <td className="px-6 py-4 font-bold text-white">{t.pair}</td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${t.type === 'Long' ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'}`}>{t.type}</span>
+                                        </td>
+                                        <td className="px-6 py-4 font-mono">{t.entry}</td>
+                                        <td className="px-6 py-4 font-mono">{t.sl}</td>
+                                        <td className="px-6 py-4 text-center">{t.risk}%</td>
+                                        <td className={`px-6 py-4 text-right font-bold ${t.result > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                            {t.result > 0 ? '+' : ''}{t.result}R
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        };
+
+        const GoalsView = () => (
+            <div className="p-8 animate-[fadeIn_0.3s_ease-out] space-y-6">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-white">Mục Tiêu Tài Chính</h2>
+                    <button className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors">
+                        Tạo Mục Tiêu Mới
+                    </button>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {mockGoals.map(goal => {
+                        const progress = (goal.current / goal.target) * 100;
+                        return (
+                            <div key={goal.id} className="glass-card p-6 flex flex-col justify-between h-48 group hover:-translate-y-1 transition-transform">
+                                <div>
+                                    <div className="flex justify-between items-start mb-2">
+                                        <h3 className="text-base font-bold text-white">{goal.name}</h3>
+                                        <span className="text-xs font-bold text-slate-400 bg-white/5 px-2 py-1 rounded-md border border-white/10">{progress.toFixed(0)}%</span>
+                                    </div>
+                                    <p className="text-xs text-slate-400 mt-1">Đã đạt {formatCurrency(goal.current)}</p>
+                                </div>
+                                
+                                <div className="mt-6">
+                                    <div className="flex justify-between text-[10px] text-slate-500 mb-2 uppercase font-bold tracking-wider">
+                                        <span>Tiến độ</span>
+                                        <span>Mục tiêu: {formatCurrency(goal.target)}</span>
+                                    </div>
+                                    <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden border border-white/5">
+                                        <div className={`${goal.color} h-2.5 rounded-full transition-all duration-1000 ease-out`} style={{ width: `${progress}%` }}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            </div>
+        );
+
+        const LoginScreen = ({ onLogin }) => (
+            <div className="min-h-screen flex items-center justify-center p-4">
+                <div className="glass-card p-10 w-full max-w-md text-center border-t border-t-blue-500/30">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/20 mx-auto mb-6">
+                        <i className="fa-solid fa-infinity text-white text-2xl"></i>
+                    </div>
+                    <h1 className="text-3xl font-black text-white mb-2 tracking-tight">Finance OS</h1>
+                    <p className="text-slate-400 text-sm mb-8">Hệ điều hành tài chính cá nhân & kinh doanh</p>
+                    
+                    <button onClick={onLogin} className="w-full bg-white text-slate-900 hover:bg-slate-100 px-6 py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-3 shadow-xl">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" alt="Google" className="w-5 h-5" />
+                        Đăng nhập với Google
+                    </button>
+                    
+                    <p className="text-xs text-slate-500 mt-8">Bảo mật tuyệt đối bởi Supabase Auth</p>
+                </div>
+            </div>
+        );
+
+        // --- Main App Component ---
+        const App = () => {
+            const [session, setSession] = useState(null);
+            const [activeTab, setActiveTab] = useState('dashboard');
+
+            // Simulate login for Demo purposes since no Supabase credentials provided yet
+            const handleLogin = () => {
+                setSession({ user: { email: 'admin@godnc.com' } });
+            };
+
+            if (!session) {
+                return <LoginScreen onLogin={handleLogin} />;
+            }
+
+            const getTitle = () => {
+                switch(activeTab) {
+                    case 'dashboard': return 'Tổng Quan Tài Chính';
+                    case 'transactions': return 'Quản Lý Giao Dịch';
+                    case 'business': return 'Hệ Thống Goshop';
+                    case 'affiliate': return 'Đối Tác & CTV';
+                    case 'trading': return 'Nhật Ký Giao Dịch (Trading Journal)';
+                    case 'goals': return 'Mục Tiêu Tài Chính';
+                    default: return 'Dashboard';
+                }
+            };
+
+            return (
+                <div className="flex h-screen overflow-hidden">
+                    <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} setSession={setSession} />
+                    
+                    <div className="flex-1 flex flex-col h-full relative overflow-y-auto">
+                        <Topbar title={getTitle()} />
+                        
+                        <main className="flex-1 max-w-7xl mx-auto w-full">
+                            {activeTab === 'dashboard' && <DashboardView />}
+                            {activeTab === 'transactions' && <TransactionsView />}
+                            {activeTab === 'business' && <BusinessView />}
+                            {activeTab === 'affiliate' && <AffiliateView />}
+                            {activeTab === 'trading' && <TradingJournalView />}
+                            {activeTab === 'goals' && <GoalsView />}
+                        </main>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</body>
+</html>
