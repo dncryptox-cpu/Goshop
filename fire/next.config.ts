@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "export",
-  basePath: "/fos",
+  basePath: "/fire",
   images: {
     unoptimized: true,
   },
