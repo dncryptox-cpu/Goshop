@@ -24,7 +24,7 @@ export default function AdvisorPage() {
           </div>
 
           <p className="text-2xl md:text-3xl font-medium leading-relaxed text-white mb-8">
-            "You are <span className="text-emerald-400 font-bold">81.7%</span> toward your FIRE goal. However, your portfolio is heavily concentrated in Crypto. Consider increasing cash reserves to reduce drawdown risk before hitting Coast FIRE."
+            &quot;You are <span className="text-emerald-400 font-bold">81.7%</span> toward your FIRE goal. However, your portfolio is heavily concentrated in Crypto. Consider increasing cash reserves to reduce drawdown risk before hitting Coast FIRE.&quot;
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
