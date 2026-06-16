@@ -24,21 +24,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Build FIRE OS (Next.js)
+      - name: Install dependencies (FIRE OS)
+        run: npm install
+        working-directory: ./fire
+
+      - name: Build Next.js (FIRE OS)
+        run: npm run build
+        working-directory: ./fire
+
+      - name: Prepare Deployment Artifact
         run: |
-          cd fire
-          rm -f middleware.ts lib/supabase/server.ts lib/supabase/middleware.ts
-          npm install --legacy-peer-deps
-          npm run build
-          mv out temp_out
-          rm -rf *
-          mv temp_out/* .
-          rm -rf temp_out
+          mkdir _site
+          # Copy everything except fire directory and hidden git files
+          rsync -av --exclude='fire' --exclude='_site' --exclude='.git' --exclude='.github' ./ _site/
+          # Copy the built Next.js export into the fire subpath
+          mkdir -p _site/fire
+          cp -a fire/out/. _site/fire/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -46,7 +52,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
       - name: Deploy to GitHub Pages
         id: deployment
