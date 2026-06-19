@@ -1069,7 +1069,12 @@
                                                 </div>
                                                 <div class="flex items-start gap-2.5 text-blue-600">
                                                     <span class="text-base leading-none">👨‍💻</span>
-                                                    <span>Admin sẽ liên hệ bạn qua Zalo để hoàn thành đơn hàng.</span>
+                                                    <template x-if="getSelectedCatalogProduct().id === 'GPT_SHARE' && thongTinDonHangGPTShare">
+                                                        <span x-html="thongTinDonHangGPTShare.replace(/Mã đơn/gi, orderQR.orderId).replace(/\n/g, '<br>')"></span>
+                                                    </template>
+                                                    <template x-if="getSelectedCatalogProduct().id !== 'GPT_SHARE' || !thongTinDonHangGPTShare">
+                                                        <span>Admin sẽ liên hệ bạn qua Zalo để hoàn thành đơn hàng.</span>
+                                                    </template>
                                                 </div>
                                             </div>
 
@@ -1467,6 +1472,7 @@
                 showQR: false,
                 qrCodeUrl: '',
                 qrMessage: '',
+                thongTinDonHangGPTShare: '',
                 db: {
                     APP_DATA: [],
                     UPSALE: []
@@ -1495,6 +1501,27 @@
                         }
                     } catch (e) {
                         console.error('Error fetching system config', e);
+                    }
+                },
+
+                async fetchThongTinDonHang() {
+                    try {
+                        const response = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:json&sheet=THONGTINDONHANG&t=${Date.now()}`);
+                        const text = await response.text();
+                        const jsonStr = text.substring(text.indexOf('({') + 1, text.lastIndexOf('})') + 1);
+                        const data = JSON.parse(jsonStr);
+
+                        if (data.table && data.table.rows) {
+                            data.table.rows.forEach(row => {
+                                if (row.c && row.c[0] && row.c[1]) {
+                                    if (String(row.c[0].v).includes("Trợ lý AI Plus (Share)")) {
+                                        this.thongTinDonHangGPTShare = row.c[1].v;
+                                    }
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.error('Error fetching THONGTINDONHANG', e);
                     }
                 },
 
@@ -1598,7 +1625,11 @@
                 init() {
                     this.deliveryMode = localStorage.getItem('goshop_delivery_mode') || 'auto';
                     this.fetchSystemConfig();
-                    setInterval(() => this.fetchSystemConfig(), 30000); // Tự động làm mới mỗi 30s
+                    this.fetchThongTinDonHang();
+                    setInterval(() => {
+                        this.fetchSystemConfig();
+                        this.fetchThongTinDonHang();
+                    }, 30000); // Tự động làm mới mỗi 30s
                     this.loadCatalogProducts();
                     this.$nextTick(() => {
                         lucide.createIcons();
@@ -1657,7 +1688,11 @@
                     textToCopy += `📦 Đơn hàng: ${this.orderQR.orderId}\n`;
                     textToCopy += `📱 ${this.getSelectedCatalogProduct().name}\n`;
                     textToCopy += `🎬 ${productDesc}\n`;
-                    textToCopy += `👨‍💻 Admin sẽ liên hệ bạn qua Zalo để hoàn thành đơn hàng.\n`;
+                    if (this.getSelectedCatalogProduct().id === 'GPT_SHARE' && this.thongTinDonHangGPTShare) {
+                        textToCopy += `👨‍💻 ${this.thongTinDonHangGPTShare.replace(/Mã đơn/gi, this.orderQR.orderId)}\n`;
+                    } else {
+                        textToCopy += `👨‍💻 Admin sẽ liên hệ bạn qua Zalo để hoàn thành đơn hàng.\n`;
+                    }
                     textToCopy += `💰 Tổng: ${this.orderQR.finalAmount.toLocaleString('vi-VN')}đ\n`;
 
                     if (this.allocatedAccount) {
