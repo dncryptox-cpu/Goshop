@@ -379,7 +379,7 @@
                 <div class="card">
                     <h2 class="section-title">Weight Tracking</h2>
                     <div class="weight-info">
-                        <div class="current-weight">59<span style="font-size: 1rem; color: var(--text-muted)">kg</span></div>
+                        <div class="current-weight"><span id="current-weight-val">--</span><span style="font-size: 1rem; color: var(--text-muted)">kg</span></div>
                         <div class="target-weight">63<span style="font-size: 0.8rem">kg</span></div>
                     </div>
                     <div class="progress-bar-container">
@@ -461,12 +461,12 @@
         // 2. WEIGHT PROGRESS BAR LOGIC
         // -----------------------------------------
         const startWeight = 57; // Giả sử cân nặng lúc bắt đầu campaign là 57kg
-        const currentWeight = 59; // Lấy từ Google Sheets sau
         const targetWeight = 63;
 
-        function updateWeightProgress() {
+        function updateWeightProgress(currentW) {
+            document.getElementById('current-weight-val').innerText = currentW;
             const totalToGain = targetWeight - startWeight;
-            const gained = currentWeight - startWeight;
+            const gained = currentW - startWeight;
             
             let percentage = (gained / totalToGain) * 100;
             // Đảm bảo % không vượt quá 100 hoặc nhỏ hơn 0
@@ -478,8 +478,6 @@
                 document.getElementById('weight-percent').innerText = Math.round(percentage) + '%';
             }, 500);
         }
-
-        updateWeightProgress();
 
 
         // -----------------------------------------
@@ -606,6 +604,22 @@
 
         async function initDataFetching() {
             // Đợi 1 chút để user cảm nhận đc skeleton loading nếu thích, hoặc fetch ngay
+            const weightTable = await fetchSheetData('CAN_NANG');
+            if (weightTable && weightTable.rows && weightTable.rows.length > 0) {
+                // Lấy dòng cuối cùng có dữ liệu (ưu tiên data mới nhất)
+                let latestWeight = 57;
+                for (let i = weightTable.rows.length - 1; i >= 0; i--) {
+                    const row = weightTable.rows[i];
+                    if (row.c && row.c[1] && row.c[1].v !== null) {
+                        latestWeight = row.c[1].v;
+                        break;
+                    }
+                }
+                updateWeightProgress(latestWeight);
+            } else {
+                updateWeightProgress(57); // Default nếu lỗi
+            }
+
             const trainingTable = await fetchSheetData('TAP_LUYEN');
             if(trainingTable) renderTrainingLog(trainingTable);
             else document.getElementById('training-container').innerHTML = '<p style="color:#ff5722; font-size:0.9rem;">Lỗi kết nối hoặc Sheet chưa Public. Hãy mở quyền "Anyone with the link".</p>';
