@@ -525,6 +525,37 @@
         // -----------------------------------------
         // 3. FETCH GOOGLE SHEETS DATA (Visualization API)
         // -----------------------------------------
+        function getWeekLabel(cell) {
+            if (!cell) return "Tuần không xác định";
+            let d;
+            if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
+                let match = cell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
+                if (match) {
+                    d = new Date(match[1], match[2], match[3]);
+                }
+            } else {
+                let dateStr = cell.f || String(cell.v);
+                const parts = dateStr.split('/');
+                if (parts.length === 3) {
+                    d = new Date(parts[2], parts[1] - 1, parts[0]);
+                } else {
+                    d = new Date(dateStr);
+                }
+            }
+            if (!d || isNaN(d.getTime())) return "Tuần không xác định";
+
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(d);
+            monday.setDate(diff);
+            
+            const sunday = new Date(monday);
+            sunday.setDate(monday.getDate() + 6);
+
+            const format = (date) => `${String(date.getDate()).padStart(2,'0')}/${String(date.getMonth()+1).padStart(2,'0')}`;
+            return `Tuần: ${format(monday)} - ${format(sunday)}`;
+        }
+
         const SHEET_ID = '10F8JjAIK8UjWJGuO3TUxaWMoeQZn5S30V79Q5kIn-mI';
         
         async function fetchSheetData(sheetName) {
@@ -552,19 +583,29 @@
                 return;
             }
 
-            // Gviz tự gộp dòng 1 thành Header column (table.cols), dữ liệu bắt đầu từ dòng 2 nằm trong table.rows
-            table.rows.forEach(row => {
-                const cells = row.c;
-                if (!cells || !cells[0] || cells[0].v === null) return; // Bỏ qua dòng trống
+            // Đảo mảng để từ mới nhất đến cũ nhất
+            const rows = table.rows.slice().reverse();
+            let htmlContent = '';
+            let currentWeek = '';
 
-                // Format: A:Date, B:Km, C:Elevation, D:Time, E:Đánh giá
+            rows.forEach(row => {
+                const cells = row.c;
+                if (!cells || !cells[0] || cells[0].v === null) return;
+
                 let dateStr = cells[0].f || cells[0].v;
+                let weekLabel = getWeekLabel(cells[0]);
+
+                if (weekLabel !== currentWeek) {
+                    htmlContent += `<div style="grid-column: 1 / -1; font-size: 1rem; color: var(--primary-accent); text-transform: uppercase; font-weight: 600; border-bottom: 1px solid rgba(255,87,34,0.3); padding-bottom: 5px; margin-top: 15px; margin-bottom: 5px;">${weekLabel}</div>`;
+                    currentWeek = weekLabel;
+                }
+
                 const km = cells[1] && cells[1].v !== null ? cells[1].v : 0;
                 const elev = cells[2] && cells[2].v !== null ? cells[2].v : 0;
                 const time = cells[3] && cells[3].v !== null ? (cells[3].f || cells[3].v) : '00:00';
                 const evalTraining = cells[4] && cells[4].v ? cells[4].v : '';
 
-                const cardHtml = `
+                htmlContent += `
                     <div class="log-card">
                         <div class="log-date">${dateStr}</div>
                         <div class="training-metrics">
@@ -584,9 +625,8 @@
                         ${evalTraining ? `<div style="margin-top:15px; padding-top:15px; border-top:1px solid rgba(255,255,255,0.05); font-size:0.85rem; color:var(--text-muted); font-style:italic;">"${evalTraining.replace(/\n/g, '<br/>')}"</div>` : ''}
                     </div>
                 `;
-                // Nối thẻ mới lên đầu (để ngày mới nhất hiện lên trước)
-                container.insertAdjacentHTML('afterbegin', cardHtml);
             });
+            container.innerHTML = htmlContent;
         }
 
         function renderNutritionLog(table) {
@@ -598,12 +638,23 @@
                 return;
             }
 
+            const rows = table.rows.slice().reverse();
+            let htmlContent = '';
+            let currentWeek = '';
+
             // Format: A:Date, B:Menu(Hidden), C:Kcal, D:Protein, E:Carb, F:Fat, G:Đánh giá
-            table.rows.forEach(row => {
+            rows.forEach(row => {
                 const cells = row.c;
                 if (!cells || !cells[0] || cells[0].v === null) return;
 
                 let dateStr = cells[0].f || cells[0].v;
+                let weekLabel = getWeekLabel(cells[0]);
+
+                if (weekLabel !== currentWeek) {
+                    htmlContent += `<div style="grid-column: 1 / -1; font-size: 1rem; color: var(--secondary-accent); text-transform: uppercase; font-weight: 600; border-bottom: 1px solid rgba(0,230,118,0.3); padding-bottom: 5px; margin-top: 15px; margin-bottom: 5px;">${weekLabel}</div>`;
+                    currentWeek = weekLabel;
+                }
+
                 const kcal = cells[2] && cells[2].v !== null ? cells[2].v : 0;
                 const protein = cells[3] && cells[3].v !== null ? cells[3].v : 0;
                 const carb = cells[4] && cells[4].v !== null ? cells[4].v : 0;
@@ -613,7 +664,7 @@
                 const targetKcal = 3600;
                 const kcalPercent = Math.min(100, Math.round((kcal / targetKcal) * 100));
 
-                const cardHtml = `
+                htmlContent += `
                     <div class="log-card">
                         <div class="log-date" style="display:flex; justify-content:space-between;">
                             <span>${dateStr}</span>
@@ -640,8 +691,8 @@
                         </div>
                     </div>
                 `;
-                container.insertAdjacentHTML('afterbegin', cardHtml);
             });
+            container.innerHTML = htmlContent;
         }
 
         async function initDataFetching() {
