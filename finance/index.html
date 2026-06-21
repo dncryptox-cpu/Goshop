@@ -235,12 +235,14 @@
         .tx-list {
             display: flex; flex-direction: column; gap: 0.5rem;
             max-height: 500px; overflow-y: auto; padding-right: 0.5rem;
-        }
-        
-        /* Custom Scrollbar */
+/* --- Scrollbars and Overflows --- */
         .tx-list::-webkit-scrollbar { width: 6px; }
         .tx-list::-webkit-scrollbar-track { background: transparent; }
         .tx-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
+
+        /* Bulk Modal */
+        #bulkModal.hidden { display: none !important; }
+        .hidden { display: none !important; }
 
         .tx-item {
             display: flex; justify-content: space-between; align-items: center;
@@ -387,6 +389,38 @@
             <!-- Tab: Dashboard -->
             <div id="dashboard" class="tab-content active">
                 
+                <!-- Bulk Modal -->
+                <div id="bulkModal" class="hidden" style="position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);">
+                    <div class="card" style="width: 95%; max-width: 900px; max-height: 90vh; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border); padding: 1.5rem;">
+                        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: none; margin-bottom: 1rem; padding: 0;">
+                            <span style="font-size: 1.1rem;">XÁC NHẬN GIAO DỊCH HÀNG LOẠT (AI)</span>
+                            <button type="button" onclick="document.getElementById('bulkModal').classList.add('hidden')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i data-lucide="x" class="w-5 h-5"></i></button>
+                        </div>
+                        <div style="overflow-x: auto;">
+                            <table style="width: 100%; text-align: left; border-collapse: collapse; min-width: 700px;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted); font-size: 0.85rem;">
+                                        <th style="padding: 0.5rem; width: 15%">Ngày</th>
+                                        <th style="padding: 0.5rem; width: 15%">Loại</th>
+                                        <th style="padding: 0.5rem; width: 25%">Nội Dung</th>
+                                        <th style="padding: 0.5rem; width: 15%">Số Tiền</th>
+                                        <th style="padding: 0.5rem; width: 25%">Ghi Chú</th>
+                                        <th style="padding: 0.5rem; width: 5%; text-align: center;">Xóa</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bulkTableBody">
+                                    <!-- JS gen -->
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem;">
+                            <button type="button" onclick="document.getElementById('bulkModal').classList.add('hidden')" class="btn-submit" style="background: transparent; border: 1px solid var(--border); width: auto; padding: 0.5rem 1.5rem;">Hủy</button>
+                            <button type="button" id="confirmBulkBtn" class="btn-submit" style="width: auto; padding: 0.5rem 2rem;">Lưu Tất Cả</button>
+                        </div>
+                    </div>
+                </div>
+                <datalist id="bulkCategoryList"></datalist>
+
                 <!-- KPI Row -->
                 <div class="kpi-grid">
                     <div class="card">
@@ -624,6 +658,7 @@
                     allTransactions = result.data;
                     allCategories = result.categories || [];
                     populateDynamicSelects();
+                    updateCategorySuggestions();
                     applyFilter();
                 } else throw new Error(result.message);
             } catch (err) {
@@ -1007,26 +1042,9 @@ Hãy trả về CHỈ MỘT MẢNG JSON hợp lệ theo định dạng sau (KHÔ
                     showToast("AI đã phân tích xong! Vui lòng kiểm tra và bấm Lưu.");
                     document.getElementById('aiPrompt').value = ""; // clear
                 } else {
-                    // Nếu có nhiều giao dịch, bắn API lưu hàng loạt luôn
-                    showToast(`⏳ AI đang phân tích và lưu tự động ${parsed.length} giao dịch...`, "success");
-                    
-                    const payload = {
-                        action: 'add_bulk',
-                        user: CURRENT_USER,
-                        transactions: parsed
-                    };
-                    const bulkRes = await fetch(API_URL, {
-                        method: 'POST',
-                        body: JSON.stringify(payload)
-                    });
-                    const bulkData = await bulkRes.json();
-                    if (bulkData.status === 'success') {
-                        showToast(`✅ Quá đỉnh! Đã tự động ghi có ${parsed.length} giao dịch vào sổ.`);
-                        document.getElementById('aiPrompt').value = ""; // clear
-                        fetchTransactions(); // Làm mới danh sách
-                    } else {
-                        throw new Error(bulkData.message);
-                    }
+                    // Mở bảng Bulk Modal cho user duyệt
+                    renderBulkModal(parsed);
+                    showToast(`AI đã phân tích ${parsed.length} giao dịch. Vui lòng kiểm tra lại!`, "success");
                 }
                 
             } catch (err) {
@@ -1037,6 +1055,95 @@ Hãy trả về CHỈ MỘT MẢNG JSON hợp lệ theo định dạng sau (KHÔ
                 aiSpinner.style.display = 'none';
             }
         }
+
+        // --- Render Bulk Modal ---
+        function renderBulkModal(dataArray) {
+            const tbody = document.getElementById('bulkTableBody');
+            tbody.innerHTML = '';
+            
+            dataArray.forEach((t, index) => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid var(--border)';
+                tr.innerHTML = `
+                    <td style="padding: 0.5rem;"><input type="date" class="form-control" style="margin-bottom:0; padding:0.4rem; font-size:0.85rem; background: rgba(255,255,255,0.05);" value="${t.date || ''}"></td>
+                    <td style="padding: 0.5rem;">
+                        <select class="form-control" style="margin-bottom:0; padding:0.4rem; font-size:0.85rem; background: rgba(255,255,255,0.05);">
+                            <option value="Chi" ${t.type === 'Chi' ? 'selected' : ''}>Chi</option>
+                            <option value="Thu" ${t.type === 'Thu' ? 'selected' : ''}>Thu</option>
+                        </select>
+                    </td>
+                    <td style="padding: 0.5rem;"><input type="text" class="form-control" style="margin-bottom:0; padding:0.4rem; font-size:0.85rem; background: rgba(255,255,255,0.05);" value="${t.category || ''}" list="bulkCategoryList"></td>
+                    <td style="padding: 0.5rem;"><input type="number" class="form-control" style="margin-bottom:0; padding:0.4rem; font-size:0.85rem; background: rgba(255,255,255,0.05);" value="${t.amount || 0}"></td>
+                    <td style="padding: 0.5rem;"><input type="text" class="form-control" style="margin-bottom:0; padding:0.4rem; font-size:0.85rem; background: rgba(255,255,255,0.05);" value="${t.note || ''}"></td>
+                    <td style="padding: 0.5rem; text-align: center;"><button type="button" onclick="this.closest('tr').remove()" style="color: var(--danger); background:none; border:none; cursor:pointer;"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            lucide.createIcons();
+            // Bỏ class hidden thì phải đổi display CSS inline vì dùng tailwind class custom
+            const modal = document.getElementById('bulkModal');
+            modal.style.display = 'flex';
+            modal.classList.remove('hidden');
+        }
+
+        // Hide Modal Helper
+        document.getElementById('bulkModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                e.target.style.display = 'none';
+                e.target.classList.add('hidden');
+            }
+        });
+
+        // Confirm Bulk Save
+        document.getElementById('confirmBulkBtn').addEventListener('click', async () => {
+            const tbody = document.getElementById('bulkTableBody');
+            const rows = tbody.querySelectorAll('tr');
+            const finalData = [];
+            
+            rows.forEach(tr => {
+                const date = tr.querySelector('input[type="date"]').value;
+                const type = tr.querySelector('select').value;
+                const category = tr.querySelectorAll('input[type="text"]')[0].value;
+                const amount = Number(tr.querySelector('input[type="number"]').value);
+                const note = tr.querySelectorAll('input[type="text"]')[1].value;
+                
+                let phanLoai = "Khác";
+                const catMatch = allCategories.find(c => c.name === category);
+                if (catMatch && catMatch.phanLoai) phanLoai = catMatch.phanLoai;
+
+                if (date && category && amount > 0) {
+                    finalData.push({ date, type, category, amount, phanLoai, note });
+                }
+            });
+
+            if (finalData.length === 0) return showToast("Không có giao dịch hợp lệ!", "error");
+
+            const btn = document.getElementById('confirmBulkBtn');
+            btn.disabled = true;
+            btn.textContent = "Đang lưu...";
+
+            try {
+                const payload = { action: 'add_bulk', user: CURRENT_USER, transactions: finalData };
+                const bulkRes = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+                const bulkData = await bulkRes.json();
+                
+                if (bulkData.status === 'success') {
+                    showToast(`✅ Đã lưu thành công ${finalData.length} giao dịch!`);
+                    document.getElementById('bulkModal').style.display = 'none';
+                    document.getElementById('bulkModal').classList.add('hidden');
+                    document.getElementById('aiPrompt').value = ""; // clear
+                    fetchTransactions();
+                } else {
+                    throw new Error(bulkData.message);
+                }
+            } catch (err) {
+                showToast("Lỗi lưu hàng loạt: " + err.message, "error");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Lưu Tất Cả";
+            }
+        });
 
         // Handle Form Submit
         document.getElementById('financeForm').addEventListener('submit', async (e) => {
