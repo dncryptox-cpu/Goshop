@@ -553,20 +553,9 @@
                     <label class="form-label">Tài Khoản</label>
                     <input type="text" name="user" class="form-control" required placeholder="Nhập tên đăng nhập">
                 </div>
-                <div class="form-group" style="text-align: left;">
+                <div class="form-group" style="text-align: left; margin-bottom: 2.5rem;">
                     <label class="form-label">Mật Khẩu</label>
                     <input type="password" name="pass" class="form-control" required placeholder="Nhập mật khẩu">
-                </div>
-                <div class="form-group" style="text-align: left;">
-                    <label class="form-label">API URL (Tùy chọn - Dùng cho Sheet cá nhân)</label>
-                    <input type="text" name="apiUrl" id="loginApiUrl" class="form-control" placeholder="Để trống nếu dùng API mặc định">
-                </div>
-                <div class="form-group" style="text-align: left; margin-bottom: 2rem;">
-                    <label class="form-label">Gemini API Key (Tùy chọn - Bật trợ lý AI)</label>
-                    <input type="password" name="apiKey" id="loginApiKey" class="form-control" placeholder="Bắt buộc để dùng AI ghi chép...">
-                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem; line-height: 1.4;">
-                        * Điền API Key của Google Gemini để kích hoạt tính năng tự động phân tích câu văn.
-                    </div>
                 </div>
                 
                 <button type="submit" class="btn-submit" id="loginBtn">
@@ -584,10 +573,11 @@
         // Init Icons
         lucide.createIcons();
 
-        // API
-        const DEFAULT_API_URL = "https://script.google.com/macros/s/AKfycbwNLNVPwzy5pg7M9-i_fledNhvtMQOGKFLSNmX4tp-0RDJgINEfiZuuVLzETfKVMJcs7A/exec";
-        let API_URL = localStorage.getItem('finance_api_url') || DEFAULT_API_URL;
+        // Cấu hình API Tập trung (Central SaaS)
+        const API_URL = "https://script.google.com/macros/s/AKfycbwNLNVPwzy5pg7M9-i_fledNhvtMQOGKFLSNmX4tp-0RDJgINEfiZuuVLzETfKVMJcs7A/exec";
+        
         let IS_LOGGED_IN = localStorage.getItem('finance_logged_in') === 'true';
+        let CURRENT_USER = localStorage.getItem('finance_user') || "";
 
         let allTransactions = [];
         let allCategories = [];
@@ -623,10 +613,11 @@
 
         // Fetch Data
         async function fetchTransactions() {
+            if (!CURRENT_USER) return;
             const loader = document.getElementById('listLoading');
             if(loader) loader.classList.add('active');
             try {
-                const res = await fetch(API_URL);
+                const res = await fetch(`${API_URL}?user=${encodeURIComponent(CURRENT_USER)}`);
                 if (!res.ok) throw new Error("Lỗi mạng");
                 const result = await res.json();
                 if (result.status === 'success') {
@@ -853,14 +844,11 @@
             document.querySelector('#loginBtn .btn-text').style.display = 'none'; 
             document.getElementById('loginSpinner').style.display = 'block';
             
-            const user = e.target.user.value;
-            const pass = e.target.pass.value;
-            const customApi = e.target.apiUrl.value.trim();
-            const geminiKey = e.target.apiKey.value.trim();
-            const targetApi = customApi || DEFAULT_API_URL;
+            const user = e.target.user.value.trim();
+            const pass = e.target.pass.value.trim();
 
             try {
-                const res = await fetch(targetApi, {
+                const res = await fetch(API_URL, {
                     method: 'POST',
                     body: JSON.stringify({ action: 'login', user, pass }),
                     headers: {'Content-Type': 'text/plain;charset=utf-8'}
@@ -869,14 +857,11 @@
                 
                 if (result.status === 'success') {
                     localStorage.setItem('finance_logged_in', 'true');
-                    
-                    if (customApi) localStorage.setItem('finance_api_url', customApi);
-                    else localStorage.removeItem('finance_api_url');
-
-                    if (geminiKey) localStorage.setItem('gemini_api_key', geminiKey);
+                    localStorage.setItem('finance_user', user);
+                    if (result.geminiKey) localStorage.setItem('gemini_api_key', result.geminiKey);
                     else localStorage.removeItem('gemini_api_key');
                     
-                    API_URL = targetApi;
+                    CURRENT_USER = user;
                     document.getElementById('loginScreen').classList.add('hidden');
                     showToast("Đăng nhập thành công!");
                     fetchTransactions(); 
@@ -895,6 +880,8 @@
         // Logout
         function logout() {
             localStorage.removeItem('finance_logged_in');
+            localStorage.removeItem('finance_user');
+            localStorage.removeItem('gemini_api_key');
             location.reload();
         }
 
@@ -1007,10 +994,9 @@ Hãy trả về CHỈ MỘT chuỗi JSON hợp lệ theo định dạng sau (kh�
 
         // Initialize App
         document.addEventListener('DOMContentLoaded', () => {
-            if (!IS_LOGGED_IN) {
+            if (!IS_LOGGED_IN || !CURRENT_USER) {
                 // Show login screen
-                document.getElementById('loginApiUrl').value = localStorage.getItem('finance_api_url') || "";
-                document.getElementById('loginApiKey').value = localStorage.getItem('gemini_api_key') || "";
+                document.getElementById('loginScreen').classList.remove('hidden');
             } else {
                 // Already logged in
                 document.getElementById('loginScreen').classList.add('hidden');

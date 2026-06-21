@@ -2,46 +2,59 @@ const SHEET_DATA = 'Dữ liệu';
 const SHEET_DS = 'DS';
 const SHEET_USERS = 'NguoiDung';
 
+// Lấy thông tin user từ Sheet tổng của Admin
+function getUserInfo(user) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetUsers = ss.getSheetByName(SHEET_USERS);
+  if (!sheetUsers) return null;
+  const data = sheetUsers.getDataRange().getValues();
+  // Bỏ qua dòng 1 (header), duyệt từ dòng 2
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] == user) {
+      return {
+        pass: data[i][1],
+        sheetUrl: data[i][2],
+        geminiKey: data[i][3]
+      };
+    }
+  }
+  return null;
+}
+
+// Mở Spreadsheet đích của user (nếu có URL) hoặc dùng Spreadsheet mặc định
+function getTargetSpreadsheet(user) {
+  if (!user) return SpreadsheetApp.getActiveSpreadsheet();
+  const uInfo = getUserInfo(user);
+  if (!uInfo || !uInfo.sheetUrl) return SpreadsheetApp.getActiveSpreadsheet();
+  try {
+    return SpreadsheetApp.openByUrl(uInfo.sheetUrl);
+  } catch(e) {
+    throw new Error("Không thể truy cập Google Sheet của bạn. Vui lòng cấp quyền (Share) Sheet cho tài khoản của Admin.");
+  }
+}
+
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
-  let sheet = ss.getSheetByName(SHEET_DATA);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_DATA);
-    sheet.appendRow(['Ngày tháng năm', 'Nội dung', 'Thu/ chi', 'Phân loại', 'chi tiết']);
-    sheet.getRange('A1:E1').setFontWeight('bold');
-  }
-
   let sheetUsers = ss.getSheetByName(SHEET_USERS);
   if (!sheetUsers) {
     sheetUsers = ss.insertSheet(SHEET_USERS);
-    sheetUsers.appendRow(['user', 'pass']);
-    sheetUsers.appendRow(['dnc', 'dnc1m@']);
-    sheetUsers.getRange('A1:B1').setFontWeight('bold');
+    sheetUsers.appendRow(['user', 'pass', 'Sheet', 'API']);
+    sheetUsers.getRange('A1:D1').setFontWeight('bold');
   }
 }
 
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-
+    
     // 1. Xử lý Đăng nhập
     if (data.action === 'login') {
-      let sheetUsers = ss.getSheetByName(SHEET_USERS);
-      if (!sheetUsers) throw new Error("Chưa cài đặt Sheet NguoiDung");
-      
-      const usersData = sheetUsers.getDataRange().getValues();
-      let isValid = false;
-      for (let i = 1; i < usersData.length; i++) {
-        if (usersData[i][0] == data.user && usersData[i][1] == data.pass) {
-          isValid = true;
-          break;
-        }
-      }
-      
-      if (isValid) {
-        return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+      const uInfo = getUserInfo(data.user);
+      if (uInfo && uInfo.pass == data.pass) {
+        return ContentService.createTextOutput(JSON.stringify({ 
+          status: "success",
+          geminiKey: uInfo.geminiKey || ""
+        })).setMimeType(ContentService.MimeType.JSON);
       } else {
         return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Sai tài khoản hoặc mật khẩu" })).setMimeType(ContentService.MimeType.JSON);
       }
@@ -54,8 +67,10 @@ function doPost(e) {
     const amount = Number(data.amount);
     const phanLoai = data.phanLoai || "Cá nhân"; 
     const note = data.note || ""; 
+    const user = data.user;
 
-    let sheet = ss.getSheetByName(SHEET_DATA) || ss.getSheets()[0];
+    const targetSS = getTargetSpreadsheet(user);
+    let sheet = targetSS.getSheetByName(SHEET_DATA) || targetSS.getSheets()[0];
     
     if (!date || !type || !amount) {
       throw new Error("Thiếu trường dữ liệu bắt buộc");
@@ -89,9 +104,11 @@ function doPost(e) {
 
 function doGet(e) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const user = e.parameter.user;
+    const targetSS = getTargetSpreadsheet(user);
     
-    let sheetData = ss.getSheetByName(SHEET_DATA) || ss.getSheets()[0];
+    // Fetch Dữ liệu
+    let sheetData = targetSS.getSheetByName(SHEET_DATA) || targetSS.getSheets()[0];
     const columnA = sheetData.getRange('A:A').getValues();
     let lastRow = 0;
     for (let i = 0; i < columnA.length; i++) {
@@ -115,8 +132,9 @@ function doGet(e) {
       transactions.reverse();
     }
 
+    // Fetch Danh sách DS
     let dsCategories = [];
-    let sheetDS = ss.getSheetByName(SHEET_DS);
+    let sheetDS = targetSS.getSheetByName(SHEET_DS);
     if (sheetDS) {
       const dsData = sheetDS.getDataRange().getValues();
       for (let i = 1; i < dsData.length; i++) {
