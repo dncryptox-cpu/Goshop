@@ -60,7 +60,42 @@ function doPost(e) {
       }
     }
 
-    // 2. Xử lý Thêm Giao dịch
+    // 2. Xử lý Thêm Nhiều Giao Dịch (Bulk)
+    if (data.action === 'add_bulk') {
+      const user = data.user;
+      const targetSS = getTargetSpreadsheet(user);
+      let sheet = targetSS.getSheetByName(SHEET_DATA) || targetSS.getSheets()[0];
+      
+      const columnA = sheet.getRange('A:A').getValues();
+      let emptyRow = 1;
+      for (let i = 0; i < columnA.length; i++) {
+        if (!columnA[i][0]) {
+          emptyRow = i + 1;
+          break;
+        }
+      }
+
+      const rowsToInsert = data.transactions.map(t => {
+        // AI format: YYYY-MM-DD
+        const [yyyy, mm, dd] = t.date.split('-');
+        const formattedDate = `${dd}/${mm}/${yyyy}`; // Chuyển về format hiển thị DD/MM/YYYY cho Sheet
+        
+        const amt = Number(t.amount) || 0;
+        const signedAmount = (t.type === "Chi") ? -amt : amt;
+        return [formattedDate, t.category, signedAmount, t.phanLoai || "Khác", t.note || ""];
+      });
+
+      if (rowsToInsert.length > 0) {
+        sheet.getRange(emptyRow, 1, rowsToInsert.length, 5).setValues(rowsToInsert);
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        message: `Lưu ${rowsToInsert.length} giao dịch thành công!`
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 3. Xử lý Thêm Giao dịch Đơn (Single)
     const date = data.date;
     const type = data.type; 
     const category = data.category; 
@@ -76,6 +111,9 @@ function doPost(e) {
       throw new Error("Thiếu trường dữ liệu bắt buộc");
     }
 
+    const [yyyy, mm, dd] = date.split('-');
+    const formattedDate = `${dd}/${mm}/${yyyy}`; 
+
     const signedAmount = (type === "Chi") ? -amount : amount;
 
     const columnA = sheet.getRange('A:A').getValues();
@@ -87,7 +125,7 @@ function doPost(e) {
       }
     }
 
-    sheet.getRange(emptyRow, 1, 1, 5).setValues([[date, category, signedAmount, phanLoai, note]]);
+    sheet.getRange(emptyRow, 1, 1, 5).setValues([[formattedDate, category, signedAmount, phanLoai, note]]);
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
