@@ -408,7 +408,17 @@
                     
                     <!-- Left Col: Form -->
                     <div class="card" style="height: fit-content;">
-                        <div class="card-header">GHI NHẬN GIAO DỊCH</div>
+                        <div class="card-header" style="margin-bottom: 1rem; border-bottom: none; padding-bottom: 0;">GHI NHẬN GIAO DỊCH</div>
+                        
+                        <!-- AI Input -->
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem;">
+                            <input type="text" id="aiPrompt" class="form-control" placeholder="✨ Nhập tự nhiên (VD: Đổ xăng 50k)..." style="border-color: var(--primary); background: rgba(56, 189, 248, 0.05); color: var(--primary);" onkeypress="if(event.key === 'Enter') processAI()">
+                            <button type="button" class="btn-submit" id="aiBtn" style="width: auto; margin: 0; background: var(--bg-hover); color: var(--primary); border: 1px solid var(--primary); padding: 0.5rem 1rem;" onclick="processAI()">
+                                <i data-lucide="sparkles" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                        <div id="aiSpinner" style="display:none; text-align: center; margin-bottom: 1rem; color: var(--primary); font-size: 0.85rem;"><div class="spinner" style="display:inline-block; border-top-color: var(--primary); width: 14px; height: 14px; margin-right: 5px; vertical-align: middle;"></div>Đang phân tích...</div>
+
                         <form id="financeForm">
                             <div class="form-group">
                                 <label class="form-label">Loại Giao Dịch</label>
@@ -547,11 +557,15 @@
                     <label class="form-label">Mật Khẩu</label>
                     <input type="password" name="pass" class="form-control" required placeholder="Nhập mật khẩu">
                 </div>
-                <div class="form-group" style="text-align: left; margin-bottom: 2rem;">
+                <div class="form-group" style="text-align: left;">
                     <label class="form-label">API URL (Tùy chọn - Dùng cho Sheet cá nhân)</label>
                     <input type="text" name="apiUrl" id="loginApiUrl" class="form-control" placeholder="Để trống nếu dùng API mặc định">
+                </div>
+                <div class="form-group" style="text-align: left; margin-bottom: 2rem;">
+                    <label class="form-label">Gemini API Key (Tùy chọn - Bật trợ lý AI)</label>
+                    <input type="password" name="apiKey" id="loginApiKey" class="form-control" placeholder="Bắt buộc để dùng AI ghi chép...">
                     <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.5rem; line-height: 1.4;">
-                        * Nếu bạn copy source cho người khác dùng, hãy dán Apps Script API URL của họ vào ô này.
+                        * Điền API Key của Google Gemini để kích hoạt tính năng tự động phân tích câu văn.
                     </div>
                 </div>
                 
@@ -842,6 +856,7 @@
             const user = e.target.user.value;
             const pass = e.target.pass.value;
             const customApi = e.target.apiUrl.value.trim();
+            const geminiKey = e.target.apiKey.value.trim();
             const targetApi = customApi || DEFAULT_API_URL;
 
             try {
@@ -854,13 +869,17 @@
                 
                 if (result.status === 'success') {
                     localStorage.setItem('finance_logged_in', 'true');
+                    
                     if (customApi) localStorage.setItem('finance_api_url', customApi);
                     else localStorage.removeItem('finance_api_url');
+
+                    if (geminiKey) localStorage.setItem('gemini_api_key', geminiKey);
+                    else localStorage.removeItem('gemini_api_key');
                     
                     API_URL = targetApi;
                     document.getElementById('loginScreen').classList.add('hidden');
                     showToast("Đăng nhập thành công!");
-                    fetchTransactions(); // Load data after login
+                    fetchTransactions(); 
                 } else {
                     throw new Error(result.message);
                 }
@@ -877,6 +896,90 @@
         function logout() {
             localStorage.removeItem('finance_logged_in');
             location.reload();
+        }
+
+        // --- AI Processing ---
+        async function processAI() {
+            const text = document.getElementById('aiPrompt').value.trim();
+            if (!text) return showToast("Vui lòng nhập nội dung!", "error");
+            
+            const apiKey = localStorage.getItem('gemini_api_key');
+            if (!apiKey) {
+                return showToast("Bạn chưa cấu hình Gemini API Key lúc đăng nhập!", "error");
+            }
+
+            const aiBtn = document.getElementById('aiBtn');
+            const aiSpinner = document.getElementById('aiSpinner');
+            aiBtn.disabled = true;
+            aiSpinner.style.display = 'block';
+
+            const categoryNames = allCategories.map(c => c.name).join(", ");
+            const phanLoaiNames = [...new Set(allCategories.map(c => c.phanLoai).filter(Boolean))].join(", ");
+
+            const prompt = `Bạn là trợ lý tài chính thông minh.
+Nhiệm vụ: Trích xuất thông tin giao dịch từ câu nói của người dùng và khớp chính xác với danh mục có sẵn.
+
+Danh sách "Nội Dung" hợp lệ: ${categoryNames}
+Danh sách "Phân Loại" hợp lệ: ${phanLoaiNames}
+
+QUY TẮC:
+1. Số tiền phải là số nguyên dương (VD: "50k" -> 50000, "1 củ" -> 1000000).
+2. "type" chỉ được là "Thu" hoặc "Chi".
+3. Cố gắng chọn "Nội Dung" (category) và "Phân Loại" (phanLoai) từ danh sách hợp lệ bên trên sao cho logic nhất. Nếu không có cái nào phù hợp, điền "Khác".
+4. Giữ lại chi tiết cụ thể vào trường "note".
+
+Câu của người dùng: "${text}"
+
+Hãy trả về CHỈ MỘT chuỗi JSON hợp lệ theo định dạng sau (không chứa markdown, không chứa \`\`\`json):
+{
+  "type": "Chi",
+  "category": "Ăn uống",
+  "amount": 50000,
+  "phanLoai": "Cá nhân",
+  "note": "Uống cafe"
+}`;
+
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }],
+                        generationConfig: { response_mime_type: "application/json" }
+                    })
+                });
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error.message);
+                
+                const rawJson = data.candidates[0].content.parts[0].text;
+                const parsed = JSON.parse(rawJson);
+
+                if (parsed.type === 'Thu') document.querySelector('input[name="type"][value="Thu"]').checked = true;
+                else document.querySelector('input[name="type"][value="Chi"]').checked = true;
+                
+                document.getElementById('categoryInput').value = parsed.category || "";
+                document.querySelector('input[name="amount"]').value = parsed.amount || "";
+                
+                const plSelect = document.getElementById('phanLoaiSelect');
+                if (parsed.phanLoai) {
+                    let exists = Array.from(plSelect.options).some(o => o.value === parsed.phanLoai);
+                    if (!exists) plSelect.add(new Option(parsed.phanLoai, parsed.phanLoai));
+                    plSelect.value = parsed.phanLoai;
+                }
+                
+                document.querySelector('input[name="note"]').value = parsed.note || "";
+                
+                showToast("AI đã phân tích xong!");
+                document.getElementById('aiPrompt').value = ""; // clear
+                
+            } catch (err) {
+                showToast("Lỗi phân tích AI: " + err.message, "error");
+                console.error(err);
+            } finally {
+                aiBtn.disabled = false;
+                aiSpinner.style.display = 'none';
+            }
         }
 
         // Handle Form Submit
@@ -907,6 +1010,7 @@
             if (!IS_LOGGED_IN) {
                 // Show login screen
                 document.getElementById('loginApiUrl').value = localStorage.getItem('finance_api_url') || "";
+                document.getElementById('loginApiKey').value = localStorage.getItem('gemini_api_key') || "";
             } else {
                 // Already logged in
                 document.getElementById('loginScreen').classList.add('hidden');
