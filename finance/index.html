@@ -408,8 +408,9 @@
                                 <input type="date" id="date" name="date" class="form-control" required>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Nội Dung (Ví dụ: Đồ ăn/ Thiết yếu, Lương...)</label>
-                                <input type="text" name="category" class="form-control" placeholder="Nhập nội dung giao dịch..." required>
+                                <label class="form-label">Nội Dung (Từ danh mục DS)</label>
+                                <input type="text" name="category" id="categoryInput" list="categoryList" class="form-control" placeholder="Chọn hoặc gõ nội dung..." required onchange="handleCategoryChange()">
+                                <datalist id="categoryList"></datalist>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Số Tiền (VNĐ)</label>
@@ -417,12 +418,8 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Phân Loại</label>
-                                <select name="phanLoai" class="form-control" required>
-                                    <option value="Cá nhân">Cá nhân</option>
-                                    <option value="Premium shop">Premium shop</option>
-                                    <option value="1m">1m</option>
-                                    <option value="Ades">Ades</option>
-                                    <option value="Khác">Khác</option>
+                                <select name="phanLoai" id="phanLoaiSelect" class="form-control" required>
+                                    <option value="" disabled selected>Đang tải dữ liệu...</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -520,6 +517,7 @@
         const API_URL = "https://script.google.com/macros/s/AKfycbwNLNVPwzy5pg7M9-i_fledNhvtMQOGKFLSNmX4tp-0RDJgINEfiZuuVLzETfKVMJcs7A/exec";
 
         let allTransactions = [];
+        let allCategories = [];
         let charts = {};
 
         // Utils
@@ -560,12 +558,50 @@
                 const result = await res.json();
                 if (result.status === 'success') {
                     allTransactions = result.data;
+                    allCategories = result.categories || [];
+                    populateDynamicSelects();
                     applyFilter();
                 } else throw new Error(result.message);
             } catch (err) {
                 showToast(err.message, "error");
             } finally {
                 if(loader) loader.classList.remove('active');
+            }
+        }
+
+        // Logic tự động điền dựa trên Sheet DS
+        function populateDynamicSelects() {
+            const catList = document.getElementById('categoryList');
+            const plSelect = document.getElementById('phanLoaiSelect');
+            
+            // Populate Datalist Categories
+            let catHtml = '';
+            allCategories.forEach(c => catHtml += `<option value="${c.name}">`);
+            catList.innerHTML = catHtml;
+
+            // Populate Phân Loại
+            const uniquePL = [...new Set(allCategories.map(c => c.phanLoai).filter(Boolean))];
+            let plHtml = '<option value="" disabled selected>-- Chọn Phân Loại --</option>';
+            uniquePL.forEach(pl => plHtml += `<option value="${pl}">${pl}</option>`);
+            plHtml += '<option value="Khác">Khác</option>';
+            plSelect.innerHTML = plHtml;
+        }
+
+        function handleCategoryChange() {
+            const selectedName = document.getElementById('categoryInput').value;
+            const cat = allCategories.find(c => c.name === selectedName);
+            if (cat) {
+                // Tự động nhảy Thu/Chi
+                if (cat.type === 'Thu') document.querySelector('input[name="type"][value="Thu"]').checked = true;
+                else document.querySelector('input[name="type"][value="Chi"]').checked = true;
+                
+                // Tự động nhảy Phân loại
+                const plSelect = document.getElementById('phanLoaiSelect');
+                if (cat.phanLoai) {
+                    let exists = Array.from(plSelect.options).some(o => o.value === cat.phanLoai);
+                    if (!exists) plSelect.add(new Option(cat.phanLoai, cat.phanLoai));
+                    plSelect.value = cat.phanLoai;
+                }
             }
         }
 

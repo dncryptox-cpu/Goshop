@@ -1,13 +1,11 @@
-const SHEET_NAME = 'Sheet1';
+const SHEET_DATA = 'Dữ liệu';
+const SHEET_DS = 'DS';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_NAME);
+  let sheet = ss.getSheetByName(SHEET_DATA);
   if (!sheet) {
-    sheet = ss.getSheets()[0];
-  }
-  // Setup headers if empty
-  if (sheet.getLastRow() === 0) {
+    sheet = ss.insertSheet(SHEET_DATA);
     sheet.appendRow(['Ngày tháng năm', 'Nội dung', 'Thu/ chi', 'Phân loại', 'chi tiết']);
     sheet.getRange('A1:E1').setFontWeight('bold');
   }
@@ -24,16 +22,15 @@ function doPost(e) {
     const note = data.note || ""; // Chi tiết (Cột E)
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
+    let sheet = ss.getSheetByName(SHEET_DATA) || ss.getSheets()[0];
     
     if (!date || !type || !amount) {
       throw new Error("Thiếu trường dữ liệu bắt buộc");
     }
 
-    // Nếu là "Chi", số tiền mang dấu âm. Nếu "Thu", số tiền mang dấu dương.
     const signedAmount = (type === "Chi") ? -amount : amount;
 
-    // Tìm hàng trống đầu tiên ở cột A (để không bị nhảy xuống dưới cùng nếu có format/công thức dư thừa)
+    // Tìm hàng trống đầu tiên ở cột A
     const columnA = sheet.getRange('A:A').getValues();
     let emptyRow = 1;
     for (let i = 0; i < columnA.length; i++) {
@@ -43,7 +40,6 @@ function doPost(e) {
       }
     }
 
-    // Ghi dữ liệu theo thứ tự: Ngày, Nội dung, Thu/chi, Phân loại, Chi tiết
     sheet.getRange(emptyRow, 1, 1, 5).setValues([[date, category, signedAmount, phanLoai, note]]);
 
     return ContentService.createTextOutput(JSON.stringify({
@@ -62,42 +58,53 @@ function doPost(e) {
 function doGet(e) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    let sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
     
-    // Tìm hàng trống cuối cùng ở cột A để chỉ lấy data có thật
-    const columnA = sheet.getRange('A:A').getValues();
+    // 1. Fetch Transactions
+    let sheetData = ss.getSheetByName(SHEET_DATA) || ss.getSheets()[0];
+    const columnA = sheetData.getRange('A:A').getValues();
     let lastRow = 0;
     for (let i = 0; i < columnA.length; i++) {
       if (columnA[i][0]) lastRow = i + 1;
     }
 
-    if (lastRow <= 1) {
-       return ContentService.createTextOutput(JSON.stringify({
-        status: "success",
-        data: []
-      })).setMimeType(ContentService.MimeType.JSON);
+    let transactions = [];
+    if (lastRow > 1) {
+      const data = sheetData.getRange(2, 1, lastRow - 1, 5).getValues();
+      transactions = data.map(row => {
+        const amt = Number(row[2]) || 0; 
+        return {
+          date: row[0],             
+          category: row[1],         
+          amount: Math.abs(amt),    
+          type: amt >= 0 ? "Thu" : "Chi", 
+          phanLoai: row[3],         
+          note: row[4]              
+        };
+      });
+      transactions.reverse();
     }
 
-    const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
-    
-    const transactions = data.map(row => {
-      const amt = Number(row[2]) || 0; // Cột C: Thu/chi
-      return {
-        date: row[0],             // Cột A
-        category: row[1],         // Cột B (Nội dung)
-        amount: Math.abs(amt),    // Số tiền tuyệt đối
-        type: amt >= 0 ? "Thu" : "Chi", // Dấu để biết thu hay chi
-        phanLoai: row[3],         // Cột D (Phân loại)
-        note: row[4]              // Cột E (Chi tiết)
-      };
-    });
-
-    // Mới nhất lên đầu
-    transactions.reverse();
+    // 2. Fetch Categories from DS sheet
+    let dsCategories = [];
+    let sheetDS = ss.getSheetByName(SHEET_DS);
+    if (sheetDS) {
+      const dsData = sheetDS.getDataRange().getValues();
+      // Skip header row 1, start from index 1
+      for (let i = 1; i < dsData.length; i++) {
+        if (dsData[i][0]) { 
+          dsCategories.push({
+            name: dsData[i][0].toString().trim(),      // Nội dung
+            type: dsData[i][1] ? dsData[i][1].toString().trim() : "Chi", // Thu/Chi
+            phanLoai: dsData[i][2] ? dsData[i][2].toString().trim() : "Khác" // Phân loại
+          });
+        }
+      }
+    }
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
-      data: transactions
+      data: transactions,
+      categories: dsCategories
     })).setMimeType(ContentService.MimeType.JSON);
     
   } catch (error) {
