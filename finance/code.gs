@@ -1,27 +1,60 @@
 const SHEET_DATA = 'Dữ liệu';
 const SHEET_DS = 'DS';
+const SHEET_USERS = 'NguoiDung';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
   let sheet = ss.getSheetByName(SHEET_DATA);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_DATA);
     sheet.appendRow(['Ngày tháng năm', 'Nội dung', 'Thu/ chi', 'Phân loại', 'chi tiết']);
     sheet.getRange('A1:E1').setFontWeight('bold');
   }
+
+  let sheetUsers = ss.getSheetByName(SHEET_USERS);
+  if (!sheetUsers) {
+    sheetUsers = ss.insertSheet(SHEET_USERS);
+    sheetUsers.appendRow(['user', 'pass']);
+    sheetUsers.appendRow(['dnc', 'dnc1m@']);
+    sheetUsers.getRange('A1:B1').setFontWeight('bold');
+  }
 }
 
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    const date = data.date;
-    const type = data.type; // "Thu" hoặc "Chi"
-    const category = data.category; // Nội dung (Cột B)
-    const amount = Number(data.amount);
-    const phanLoai = data.phanLoai || "Cá nhân"; // Phân loại (Cột D)
-    const note = data.note || ""; // Chi tiết (Cột E)
-
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // 1. Xử lý Đăng nhập
+    if (data.action === 'login') {
+      let sheetUsers = ss.getSheetByName(SHEET_USERS);
+      if (!sheetUsers) throw new Error("Chưa cài đặt Sheet NguoiDung");
+      
+      const usersData = sheetUsers.getDataRange().getValues();
+      let isValid = false;
+      for (let i = 1; i < usersData.length; i++) {
+        if (usersData[i][0] == data.user && usersData[i][1] == data.pass) {
+          isValid = true;
+          break;
+        }
+      }
+      
+      if (isValid) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "success" })).setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Sai tài khoản hoặc mật khẩu" })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+    // 2. Xử lý Thêm Giao dịch
+    const date = data.date;
+    const type = data.type; 
+    const category = data.category; 
+    const amount = Number(data.amount);
+    const phanLoai = data.phanLoai || "Cá nhân"; 
+    const note = data.note || ""; 
+
     let sheet = ss.getSheetByName(SHEET_DATA) || ss.getSheets()[0];
     
     if (!date || !type || !amount) {
@@ -30,7 +63,6 @@ function doPost(e) {
 
     const signedAmount = (type === "Chi") ? -amount : amount;
 
-    // Tìm hàng trống đầu tiên ở cột A
     const columnA = sheet.getRange('A:A').getValues();
     let emptyRow = 1;
     for (let i = 0; i < columnA.length; i++) {
@@ -59,7 +91,6 @@ function doGet(e) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     
-    // 1. Fetch Transactions
     let sheetData = ss.getSheetByName(SHEET_DATA) || ss.getSheets()[0];
     const columnA = sheetData.getRange('A:A').getValues();
     let lastRow = 0;
@@ -84,18 +115,16 @@ function doGet(e) {
       transactions.reverse();
     }
 
-    // 2. Fetch Categories from DS sheet
     let dsCategories = [];
     let sheetDS = ss.getSheetByName(SHEET_DS);
     if (sheetDS) {
       const dsData = sheetDS.getDataRange().getValues();
-      // Skip header row 1, start from index 1
       for (let i = 1; i < dsData.length; i++) {
         if (dsData[i][0]) { 
           dsCategories.push({
-            name: dsData[i][0].toString().trim(),      // Nội dung
-            type: dsData[i][1] ? dsData[i][1].toString().trim() : "Chi", // Thu/Chi
-            phanLoai: dsData[i][2] ? dsData[i][2].toString().trim() : "Khác" // Phân loại
+            name: dsData[i][0].toString().trim(),      
+            type: dsData[i][1] ? dsData[i][1].toString().trim() : "Chi", 
+            phanLoai: dsData[i][2] ? dsData[i][2].toString().trim() : "Khác" 
           });
         }
       }
