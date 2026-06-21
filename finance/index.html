@@ -11,8 +11,9 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Oswald:wght@500;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
-    <!-- Icons -->
+    <!-- Icons & Charts -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
         /* CSS Variables - Zen Theme */
@@ -795,6 +796,57 @@
             </section>
 
         </div>
+
+        <!-- Reports Section -->
+        <div class="reports-container" style="margin-top: 3rem;">
+            <div class="list-header" style="margin-bottom: 1.5rem; background: var(--surface-color); padding: 1rem 1.5rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); backdrop-filter: blur(24px); position: relative; z-index: 1;">
+                <h2 class="form-title" style="margin:0;"><i data-lucide="pie-chart" class="text-accent"></i> Báo Cáo Thống Kê</h2>
+                <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                    <input type="date" id="filterStartDate" class="form-control" style="width: auto; padding: 0.5rem;">
+                    <span style="color: var(--text-muted)">-</span>
+                    <input type="date" id="filterEndDate" class="form-control" style="width: auto; padding: 0.5rem;">
+                    <button class="btn-refresh" onclick="applyFilter()" style="background: var(--accent-gradient); color: #000; border: none; font-weight: bold; padding: 0.5rem 1rem;">
+                        <i data-lucide="filter" class="w-4 h-4"></i> Lọc
+                    </button>
+                </div>
+            </div>
+
+            <!-- Charts Grid -->
+            <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); margin-bottom: 1.5rem;">
+                <div class="card">
+                    <div class="card-header">Theo Dõi Thu Chi</div>
+                    <div style="position: relative; height: 250px; z-index: 1;"><canvas id="overviewChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">Cơ Cấu Chi Phí</div>
+                    <div style="position: relative; height: 250px; z-index: 1;"><canvas id="expenseChart"></canvas></div>
+                </div>
+            </div>
+
+            <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); margin-bottom: 1.5rem;">
+                <div class="card">
+                    <div class="card-header">Cơ Cấu Thu Nhập</div>
+                    <div style="position: relative; height: 250px; z-index: 1;"><canvas id="incomeChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <div class="card-header">Tỷ Trọng Chi / Dư</div>
+                    <div style="position: relative; height: 250px; display: flex; justify-content: center; z-index: 1;"><canvas id="ratioChart"></canvas></div>
+                </div>
+            </div>
+            
+            <!-- Breakdown Tables -->
+            <div class="dashboard-grid" style="grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));">
+                <div class="card">
+                    <div class="card-header" style="color: var(--success)">Bảng Kê Tổng Thu</div>
+                    <div class="transaction-list" id="incomeTable" style="max-height: 300px; position: relative; z-index: 1;"></div>
+                </div>
+                <div class="card">
+                    <div class="card-header" style="color: var(--danger)">Bảng Kê Tổng Chi</div>
+                    <div class="transaction-list" id="expenseTable" style="max-height: 300px; position: relative; z-index: 1;"></div>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Toast Container -->
@@ -854,6 +906,8 @@
         }
 
         // Lấy danh sách giao dịch
+        let allTransactions = [];
+
         async function fetchTransactions() {
             if (API_URL.includes("PLACEHOLDER")) {
                 document.getElementById('transactionList').innerHTML = `
@@ -875,7 +929,8 @@
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    renderDashboard(result.data);
+                    allTransactions = result.data;
+                    applyFilter(); // Filter & Render
                 } else {
                     throw new Error(result.message);
                 }
@@ -885,6 +940,27 @@
             } finally {
                 loader.classList.remove('active');
             }
+        }
+
+        // Áp dụng bộ lọc Date
+        function applyFilter() {
+            const startStr = document.getElementById('filterStartDate').value;
+            const endStr = document.getElementById('filterEndDate').value;
+            
+            let filtered = allTransactions;
+            
+            if (startStr) {
+                const start = new Date(startStr).getTime();
+                filtered = filtered.filter(tx => new Date(tx.date).getTime() >= start);
+            }
+            if (endStr) {
+                // Add 1 day (86400000ms) to include the entire end date
+                const end = new Date(endStr).getTime() + 86400000; 
+                filtered = filtered.filter(tx => new Date(tx.date).getTime() < end);
+            }
+
+            renderDashboard(filtered);
+            renderChartsAndTables(filtered);
         }
 
         // Render dữ liệu ra giao diện
@@ -952,6 +1028,110 @@
             else balanceEl.style.color = 'var(--text-primary)';
 
             lucide.createIcons();
+        }
+
+        let charts = {};
+        function renderChartsAndTables(transactions) {
+            let totalThu = 0;
+            let totalChi = 0;
+            const thuMap = {};
+            const chiMap = {};
+
+            transactions.forEach(tx => {
+                const amt = Number(tx.amount) || 0;
+                const cat = tx.category || 'Khác';
+                if (tx.type === 'Thu') {
+                    totalThu += amt;
+                    thuMap[cat] = (thuMap[cat] || 0) + amt;
+                } else {
+                    totalChi += amt;
+                    chiMap[cat] = (chiMap[cat] || 0) + amt;
+                }
+            });
+
+            // Destroy old charts
+            ['overviewChart', 'expenseChart', 'incomeChart', 'ratioChart'].forEach(id => {
+                if (charts[id]) charts[id].destroy();
+            });
+
+            Chart.defaults.color = '#888888';
+            Chart.defaults.font.family = 'Inter';
+
+            // 1. Overview Chart
+            charts['overviewChart'] = new Chart(document.getElementById('overviewChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Thu', 'Chi', 'Tiết Kiệm'],
+                    datasets: [{
+                        data: [totalThu, totalChi, totalThu - totalChi],
+                        backgroundColor: ['rgba(0, 168, 107, 0.6)', 'rgba(244, 63, 94, 0.6)', 'rgba(0, 240, 255, 0.6)'],
+                        borderColor: ['#00A86B', '#f43f5e', '#00F0FF'],
+                        borderWidth: 1
+                    }]
+                },
+                options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // 2. Expense Chart
+            charts['expenseChart'] = new Chart(document.getElementById('expenseChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(chiMap),
+                    datasets: [{
+                        data: Object.values(chiMap),
+                        backgroundColor: 'rgba(244, 63, 94, 0.6)',
+                        borderColor: '#f43f5e',
+                        borderWidth: 1
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // 3. Income Chart
+            charts['incomeChart'] = new Chart(document.getElementById('incomeChart'), {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(thuMap),
+                    datasets: [{
+                        data: Object.values(thuMap),
+                        backgroundColor: 'rgba(0, 168, 107, 0.6)',
+                        borderColor: '#00A86B',
+                        borderWidth: 1
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+
+            // 4. Ratio Doughnut
+            charts['ratioChart'] = new Chart(document.getElementById('ratioChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Chi Phí', 'Dư (Tiết Kiệm)'],
+                    datasets: [{
+                        data: [totalChi, Math.max(0, totalThu - totalChi)],
+                        backgroundColor: ['rgba(244, 63, 94, 0.8)', 'rgba(0, 240, 255, 0.8)'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '75%' }
+            });
+
+            // Render Breakdown Tables
+            const incTable = document.getElementById('incomeTable');
+            const expTable = document.getElementById('expenseTable');
+            let incHtml = '';
+            let expHtml = '';
+
+            Object.entries(thuMap).sort((a, b) => b[1] - a[1]).forEach(([cat, amt]) => {
+                incHtml += `<div class="transaction-item" style="padding: 0.75rem 1rem;"><div class="tx-left"><div class="tx-details"><h4>${cat}</h4></div></div><div class="tx-amount income">+${formatCurrency(amt)}</div></div>`;
+            });
+
+            Object.entries(chiMap).sort((a, b) => b[1] - a[1]).forEach(([cat, amt]) => {
+                expHtml += `<div class="transaction-item" style="padding: 0.75rem 1rem;"><div class="tx-left"><div class="tx-details"><h4>${cat}</h4></div></div><div class="tx-amount expense">-${formatCurrency(amt)}</div></div>`;
+            });
+
+            incTable.innerHTML = incHtml || '<p style="color: var(--text-muted); text-align: center;">Chưa có dữ liệu thu.</p>';
+            expTable.innerHTML = expHtml || '<p style="color: var(--text-muted); text-align: center;">Chưa có dữ liệu chi.</p>';
         }
 
         // Xử lý Submit Form
