@@ -1,4 +1,4 @@
-const SHEET_NAME = 'Sheet1'; // Bạn có thể đổi tên Sheet nếu cần
+const SHEET_NAME = 'Sheet1';
 
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -8,30 +8,43 @@ function setup() {
   }
   // Setup headers if empty
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['Ngày', 'Loại', 'Hạng mục', 'Số tiền', 'Ghi chú']);
+    sheet.appendRow(['Ngày tháng năm', 'Nội dung', 'Thu/ chi', 'Phân loại', 'chi tiết']);
     sheet.getRange('A1:E1').setFontWeight('bold');
   }
 }
 
-// Xử lý yêu cầu POST (Thêm giao dịch mới)
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     const date = data.date;
     const type = data.type; // "Thu" hoặc "Chi"
-    const category = data.category;
+    const category = data.category; // Nội dung (Cột B)
     const amount = Number(data.amount);
-    const note = data.note || "";
+    const phanLoai = data.phanLoai || "Cá nhân"; // Phân loại (Cột D)
+    const note = data.note || ""; // Chi tiết (Cột E)
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
     
-    // Validate required fields
     if (!date || !type || !amount) {
       throw new Error("Thiếu trường dữ liệu bắt buộc");
     }
 
-    sheet.appendRow([date, type, category, amount, note]);
+    // Nếu là "Chi", số tiền mang dấu âm. Nếu "Thu", số tiền mang dấu dương.
+    const signedAmount = (type === "Chi") ? -amount : amount;
+
+    // Tìm hàng trống đầu tiên ở cột A (để không bị nhảy xuống dưới cùng nếu có format/công thức dư thừa)
+    const columnA = sheet.getRange('A:A').getValues();
+    let emptyRow = 1;
+    for (let i = 0; i < columnA.length; i++) {
+      if (!columnA[i][0]) {
+        emptyRow = i + 1;
+        break;
+      }
+    }
+
+    // Ghi dữ liệu theo thứ tự: Ngày, Nội dung, Thu/chi, Phân loại, Chi tiết
+    sheet.getRange(emptyRow, 1, 1, 5).setValues([[date, category, signedAmount, phanLoai, note]]);
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
@@ -46,30 +59,40 @@ function doPost(e) {
   }
 }
 
-// Xử lý yêu cầu GET (Lấy danh sách giao dịch)
 function doGet(e) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     let sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
     
-    const data = sheet.getDataRange().getValues();
-    
-    // Remove headers
-    if (data.length > 0) {
-      data.shift();
+    // Tìm hàng trống cuối cùng ở cột A để chỉ lấy data có thật
+    const columnA = sheet.getRange('A:A').getValues();
+    let lastRow = 0;
+    for (let i = 0; i < columnA.length; i++) {
+      if (columnA[i][0]) lastRow = i + 1;
     }
+
+    if (lastRow <= 1) {
+       return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        data: []
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    const data = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
     
     const transactions = data.map(row => {
+      const amt = Number(row[2]) || 0; // Cột C: Thu/chi
       return {
-        date: row[0], // Định dạng ngày có thể cần format lại ở frontend
-        type: row[1],
-        category: row[2],
-        amount: row[3],
-        note: row[4]
+        date: row[0],             // Cột A
+        category: row[1],         // Cột B (Nội dung)
+        amount: Math.abs(amt),    // Số tiền tuyệt đối
+        type: amt >= 0 ? "Thu" : "Chi", // Dấu để biết thu hay chi
+        phanLoai: row[3],         // Cột D (Phân loại)
+        note: row[4]              // Cột E (Chi tiết)
       };
     });
 
-    // Sắp xếp mới nhất lên đầu
+    // Mới nhất lên đầu
     transactions.reverse();
 
     return ContentService.createTextOutput(JSON.stringify({
@@ -85,8 +108,6 @@ function doGet(e) {
   }
 }
 
-// Xử lý preflight CORS (OPTIONS)
 function doOptions(e) {
-  return ContentService.createTextOutput("")
-    .setMimeType(ContentService.MimeType.TEXT);
+  return ContentService.createTextOutput("").setMimeType(ContentService.MimeType.TEXT);
 }
