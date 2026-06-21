@@ -455,12 +455,15 @@
             <div id="reports" class="tab-content">
                 
                 <div class="filter-bar">
-                    <div style="font-family: 'Oswald'; font-size: 1.1rem;">BỘ LỌC THỜI GIAN</div>
+                    <div style="font-family: 'Oswald'; font-size: 1.1rem; color: var(--primary);">BỘ LỌC BÁO CÁO</div>
                     <div class="filter-group">
+                        <select id="filterPhanLoai" class="form-control" style="width: auto; min-width: 160px;" onchange="applyFilter()">
+                            <option value="all">Tất cả phân loại</option>
+                        </select>
                         <input type="date" id="filterStartDate" class="form-control">
                         <span style="color: var(--text-muted)">đến</span>
                         <input type="date" id="filterEndDate" class="form-control">
-                        <button class="btn-icon" onclick="applyFilter()" style="background: var(--bg-hover); color: white;">
+                        <button class="btn-submit" onclick="applyFilter()" style="margin-top: 0; width: auto; padding: 0.5rem 1.5rem;">
                             <i data-lucide="filter" class="w-4 h-4"></i> Lọc
                         </button>
                     </div>
@@ -491,13 +494,13 @@
 
                 <!-- Data Tables -->
                 <div class="chart-grid">
-                    <div class="card">
-                        <div class="card-header" style="color: var(--success); border-bottom-color: rgba(16, 185, 129, 0.2);">BẢNG KÊ TỔNG THU</div>
-                        <div class="tx-list" id="incomeTable" style="max-height: 300px;"></div>
+                    <div class="card" style="padding: 0;">
+                        <div class="card-header" style="color: var(--success); border-bottom-color: rgba(16, 185, 129, 0.2); padding: 1.5rem 1.5rem 1rem 1.5rem; margin-bottom: 0;">BẢNG KÊ THU</div>
+                        <div class="tx-list" id="incomeTable" style="max-height: 400px; padding: 0;"></div>
                     </div>
-                    <div class="card">
-                        <div class="card-header" style="color: var(--danger); border-bottom-color: rgba(244, 63, 94, 0.2);">BẢNG KÊ TỔNG CHI</div>
-                        <div class="tx-list" id="expenseTable" style="max-height: 300px;"></div>
+                    <div class="card" style="padding: 0;">
+                        <div class="card-header" style="color: var(--danger); border-bottom-color: rgba(244, 63, 94, 0.2); padding: 1.5rem 1.5rem 1rem 1.5rem; margin-bottom: 0;">BẢNG KÊ CHI</div>
+                        <div class="tx-list" id="expenseTable" style="max-height: 400px; padding: 0;"></div>
                     </div>
                 </div>
 
@@ -582,9 +585,17 @@
             // Populate Phân Loại
             const uniquePL = [...new Set(allCategories.map(c => c.phanLoai).filter(Boolean))];
             let plHtml = '<option value="" disabled selected>-- Chọn Phân Loại --</option>';
-            uniquePL.forEach(pl => plHtml += `<option value="${pl}">${pl}</option>`);
+            let filterHtml = '<option value="all">Tất cả phân loại</option>';
+            
+            uniquePL.forEach(pl => {
+                plHtml += `<option value="${pl}">${pl}</option>`;
+                filterHtml += `<option value="${pl}">${pl}</option>`;
+            });
             plHtml += '<option value="Khác">Khác</option>';
+            
             plSelect.innerHTML = plHtml;
+            const filterPL = document.getElementById('filterPhanLoai');
+            if (filterPL) filterPL.innerHTML = filterHtml;
         }
 
         function handleCategoryChange() {
@@ -609,6 +620,9 @@
         function applyFilter() {
             const startStr = document.getElementById('filterStartDate').value;
             const endStr = document.getElementById('filterEndDate').value;
+            const plFilterNode = document.getElementById('filterPhanLoai');
+            const phanLoaiFilter = plFilterNode ? plFilterNode.value : 'all';
+            
             let filtered = allTransactions;
             
             if (startStr) {
@@ -620,8 +634,15 @@
                 filtered = filtered.filter(tx => new Date(tx.date).getTime() < e);
             }
 
+            // Dashboard shows all date-filtered
             renderDashboard(filtered);
-            renderReports(filtered);
+
+            // Reports shows date-filtered AND category-filtered
+            let reportFiltered = filtered;
+            if (phanLoaiFilter !== 'all') {
+                reportFiltered = filtered.filter(tx => tx.phanLoai === phanLoaiFilter);
+            }
+            renderReports(reportFiltered);
         }
 
         // Render Dashboard Lists & KPIs
@@ -675,8 +696,17 @@
             txs.forEach(tx => {
                 const amt = Number(tx.amount) || 0;
                 const cat = tx.category || 'Khác';
-                if (tx.type === 'Thu') { tInc += amt; iMap[cat] = (iMap[cat]||0) + amt; } 
-                else { tExp += amt; eMap[cat] = (eMap[cat]||0) + amt; }
+                const pl = tx.phanLoai || '';
+                
+                if (tx.type === 'Thu') { 
+                    tInc += amt; 
+                    if(!iMap[cat]) iMap[cat] = { amount: 0, phanLoai: pl };
+                    iMap[cat].amount += amt;
+                } else { 
+                    tExp += amt; 
+                    if(!eMap[cat]) eMap[cat] = { amount: 0, phanLoai: pl };
+                    eMap[cat].amount += amt;
+                }
             });
 
             // Destroy existing charts
@@ -693,15 +723,19 @@
                 options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
 
+            const expLabels = Object.keys(eMap);
+            const expData = expLabels.map(k => eMap[k].amount);
             charts['expenseChart'] = new Chart(document.getElementById('expenseChart'), {
                 type: 'bar',
-                data: { labels: Object.keys(eMap), datasets: [{ data: Object.values(eMap), backgroundColor: '#f43f5e', borderRadius: 4 }] },
+                data: { labels: expLabels, datasets: [{ data: expData, backgroundColor: '#f43f5e', borderRadius: 4 }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
 
+            const incLabels = Object.keys(iMap);
+            const incData = incLabels.map(k => iMap[k].amount);
             charts['incomeChart'] = new Chart(document.getElementById('incomeChart'), {
                 type: 'bar',
-                data: { labels: Object.keys(iMap), datasets: [{ data: Object.values(iMap), backgroundColor: '#10b981', borderRadius: 4 }] },
+                data: { labels: incLabels, datasets: [{ data: incData, backgroundColor: '#10b981', borderRadius: 4 }] },
                 options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
             });
 
@@ -711,19 +745,34 @@
                 options: { responsive: true, maintainAspectRatio: false, cutout: '75%' }
             });
 
-            // Tables
-            const renderTbl = (map, id, isInc) => {
-                let html = '';
-                Object.entries(map).sort((a,b)=>b[1]-a[1]).forEach(([c, a]) => {
-                    html += `<div class="tx-item" style="padding:0.75rem 1rem; border: none; border-bottom: 1px solid var(--border); border-radius: 0;">
-                                <div style="font-weight:600;">${c}</div>
-                                <div class="tx-amt ${isInc?'income':'expense'}">${isInc?'+':'-'}${formatCurrency(a)}</div>
-                             </div>`;
-                });
-                document.getElementById(id).innerHTML = html || '<p style="color:var(--text-muted); padding: 1rem;">Không có dữ liệu</p>';
+            // Tables with 3 Columns matching Google Sheet
+            const renderTbl = (map, id, isInc, total) => {
+                let html = `
+                    <div class="tx-item" style="padding: 1rem 1.5rem; border: none; border-bottom: 2px solid var(--border); border-radius: 0; display: grid; grid-template-columns: 2fr 1.5fr 1fr; gap: 1rem; align-items: center; background: rgba(255,255,255,0.02);">
+                        <div style="font-weight: 700; color: var(--${isInc ? 'success' : 'danger'}); font-size: 1.1rem;">Tổng</div>
+                        <div class="tx-amt ${isInc?'income':'expense'}" style="text-align: center; font-size: 1.15rem;">${formatCurrency(total)}</div>
+                        <div style="text-align: right; color: var(--text-main); font-weight: 600;">Phân loại</div>
+                    </div>`;
+                    
+                const sorted = Object.entries(map).sort((a,b) => b[1].amount - a[1].amount);
+                
+                if (sorted.length === 0) {
+                    html += '<p style="color:var(--text-muted); padding: 1.5rem; text-align: center;">Không có dữ liệu</p>';
+                } else {
+                    sorted.forEach(([c, data]) => {
+                        html += `
+                            <div class="tx-item" style="padding: 0.85rem 1.5rem; border: none; border-bottom: 1px solid var(--border); border-radius: 0; display: grid; grid-template-columns: 2fr 1.5fr 1fr; gap: 1rem; align-items: center;">
+                                <div style="font-weight: 500;">${c}</div>
+                                <div class="tx-amt" style="text-align: center; font-size: 1rem;">${formatCurrency(data.amount)}</div>
+                                <div style="text-align: right; color: var(--text-muted); font-size: 0.9rem;">${data.phanLoai}</div>
+                            </div>`;
+                    });
+                }
+                document.getElementById(id).innerHTML = html;
             };
-            renderTbl(iMap, 'incomeTable', true);
-            renderTbl(eMap, 'expenseTable', false);
+            
+            renderTbl(iMap, 'incomeTable', true, tInc);
+            renderTbl(eMap, 'expenseTable', false, tExp);
         }
 
         // Handle Form Submit
