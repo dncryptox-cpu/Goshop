@@ -78,12 +78,9 @@ function doPost(e) {
 
       const rowsToInsert = data.transactions.map(t => {
         // AI format: YYYY-MM-DD
-        const [yyyy, mm, dd] = t.date.split('-');
-        const formattedDate = `${dd}/${mm}/${yyyy}`; // Chuyển về format hiển thị DD/MM/YYYY cho Sheet
-        
         const amt = Number(t.amount) || 0;
         const signedAmount = (t.type === "Chi") ? -amt : amt;
-        return [formattedDate, t.category, signedAmount, t.phanLoai || "Khác", t.note || "", t.sourceAccount || "", t.destAccount || ""];
+        return [t.date, t.category, signedAmount, t.phanLoai || "Khác", t.note || "", t.sourceAccount || "", t.destAccount || ""];
       });
 
       if (rowsToInsert.length > 0) {
@@ -112,9 +109,6 @@ function doPost(e) {
       throw new Error("Thiếu trường dữ liệu bắt buộc");
     }
 
-    const [yyyy, mm, dd] = date.split('-');
-    const formattedDate = `${dd}/${mm}/${yyyy}`; 
-
     const signedAmount = (type === "Chi") ? -amount : amount;
 
     const columnA = sheet.getRange('A:A').getValues();
@@ -126,7 +120,7 @@ function doPost(e) {
       }
     }
 
-    sheet.getRange(emptyRow, 1, 1, 7).setValues([[formattedDate, category, signedAmount, phanLoai, note, data.sourceAccount || "", data.destAccount || ""]]);
+    sheet.getRange(emptyRow, 1, 1, 7).setValues([[date, category, signedAmount, phanLoai, note, data.sourceAccount || "", data.destAccount || ""]]);
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
