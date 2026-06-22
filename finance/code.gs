@@ -1,6 +1,7 @@
 const SHEET_DATA = 'Dữ liệu';
 const SHEET_DS = 'DS';
 const SHEET_USERS = 'NguoiDung';
+const SHEET_ACCOUNTS = 'Tài Khoản';
 
 // Lấy thông tin user từ Sheet tổng của Admin
 function getUserInfo(user) {
@@ -82,11 +83,11 @@ function doPost(e) {
         
         const amt = Number(t.amount) || 0;
         const signedAmount = (t.type === "Chi") ? -amt : amt;
-        return [formattedDate, t.category, signedAmount, t.phanLoai || "Khác", t.note || ""];
+        return [formattedDate, t.category, signedAmount, t.phanLoai || "Khác", t.note || "", t.sourceAccount || "", t.destAccount || ""];
       });
 
       if (rowsToInsert.length > 0) {
-        sheet.getRange(emptyRow, 1, rowsToInsert.length, 5).setValues(rowsToInsert);
+        sheet.getRange(emptyRow, 1, rowsToInsert.length, 7).setValues(rowsToInsert);
       }
 
       return ContentService.createTextOutput(JSON.stringify({
@@ -125,7 +126,7 @@ function doPost(e) {
       }
     }
 
-    sheet.getRange(emptyRow, 1, 1, 5).setValues([[formattedDate, category, signedAmount, phanLoai, note]]);
+    sheet.getRange(emptyRow, 1, 1, 7).setValues([[formattedDate, category, signedAmount, phanLoai, note, data.sourceAccount || "", data.destAccount || ""]]);
 
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
@@ -155,7 +156,7 @@ function doGet(e) {
 
     let transactions = [];
     if (lastRow > 1) {
-      const data = sheetData.getRange(2, 1, lastRow - 1, 5).getValues();
+      const data = sheetData.getRange(2, 1, lastRow - 1, 7).getValues();
       transactions = data.map(row => {
         const amt = Number(row[2]) || 0; 
         return {
@@ -164,7 +165,9 @@ function doGet(e) {
           amount: Math.abs(amt),    
           type: amt >= 0 ? "Thu" : "Chi", 
           phanLoai: row[3],         
-          note: row[4]              
+          note: row[4],
+          sourceAccount: row[5] || "",
+          destAccount: row[6] || ""
         };
       });
       transactions.reverse();
@@ -186,10 +189,28 @@ function doGet(e) {
       }
     }
 
+    // Fetch Tài khoản
+    let accountsList = [];
+    let sheetAccounts = targetSS.getSheetByName(SHEET_ACCOUNTS);
+    if (sheetAccounts) {
+      const accData = sheetAccounts.getDataRange().getValues();
+      for (let i = 1; i < accData.length; i++) {
+        if (accData[i][0]) { 
+          accountsList.push({
+            id: accData[i][0].toString().trim(),      
+            name: accData[i][1] ? accData[i][1].toString().trim() : "", 
+            type: accData[i][2] ? accData[i][2].toString().trim() : "Ngân hàng",
+            initialBalance: Number(accData[i][3]) || 0
+          });
+        }
+      }
+    }
+
     return ContentService.createTextOutput(JSON.stringify({
       status: "success",
       data: transactions,
-      categories: dsCategories
+      categories: dsCategories,
+      accounts: accountsList
     })).setMimeType(ContentService.MimeType.JSON);
     
   } catch (error) {
