@@ -218,7 +218,8 @@
                 <span style="color: #ef4444;">❤️</span> LOVELY MONEY
             </div>
             <div id="loginError" class="login-error">Sai tên đăng nhập hoặc mật khẩu!</div>
-            <form onsubmit="handleLogin(event)">
+            <!-- Form Đăng Nhập -->
+            <form id="formLogin" onsubmit="handleLogin(event)">
                 <input type="text" id="username" class="form-input" placeholder="Tên đăng nhập" required>
                 <div style="position: relative;">
                     <input type="password" id="password" class="form-input" placeholder="Mật khẩu" required>
@@ -226,7 +227,18 @@
                         <i data-lucide="eye" class="w-5 h-5"></i>
                     </button>
                 </div>
-                <button type="submit" class="btn-primary" id="loginBtn">Đăng nhập</button>
+                <button type="submit" class="btn-primary" id="loginBtn" style="width: 100%; justify-content: center;">Đăng nhập</button>
+                <button type="button" class="btn btn-outline" style="width: 100%; justify-content: center; margin-top: 0.5rem;" onclick="toggleAuthMode()">Tạo tài khoản mới</button>
+            </form>
+
+            <!-- Form Đăng Ký (Mặc định ẩn) -->
+            <form id="formRegister" onsubmit="handleRegister(event)" style="display: none;">
+                <input type="text" id="regUser" class="form-input" placeholder="Tên đăng nhập mới" required>
+                <input type="password" id="regPass" class="form-input" placeholder="Mật khẩu" required>
+                <input type="url" id="regSheet" class="form-input" placeholder="Link Google Sheet của bạn" required>
+                <input type="text" id="regApi" class="form-input" placeholder="Gemini API Key (Tùy chọn)">
+                <button type="submit" class="btn-primary" id="registerBtn" style="width: 100%; justify-content: center; background: var(--success);">Đăng ký</button>
+                <button type="button" class="btn btn-outline" style="width: 100%; justify-content: center; margin-top: 0.5rem;" onclick="toggleAuthMode()">Quay lại Đăng nhập</button>
             </form>
         </div>
     </div>
@@ -604,9 +616,57 @@
                     document.getElementById('loginScreen').classList.add('hidden');
                     fetchData();
                 } else {
+                    document.getElementById('loginError').innerText = "Sai tên đăng nhập hoặc mật khẩu!";
                     document.getElementById('loginError').style.display = 'block';
                 }
             }).catch(e => alert('Lỗi kết nối')).finally(() => btn.innerText = "Đăng nhập");
+        }
+
+        // Add User Registration
+        function toggleAuthMode() {
+            const fLogin = document.getElementById('formLogin');
+            const fReg = document.getElementById('formRegister');
+            document.getElementById('loginError').style.display = 'none';
+            if (fLogin.style.display === 'none') {
+                fLogin.style.display = 'block';
+                fReg.style.display = 'none';
+            } else {
+                fLogin.style.display = 'none';
+                fReg.style.display = 'block';
+            }
+        }
+
+        function handleRegister(e) {
+            e.preventDefault();
+            const btn = document.getElementById('registerBtn');
+            btn.innerText = "Đang xử lý...";
+            btn.disabled = true;
+
+            const payload = {
+                action: 'add_user',
+                newUser: document.getElementById('regUser').value,
+                newPass: document.getElementById('regPass').value,
+                newSheetUrl: document.getElementById('regSheet').value,
+                newApiKey: document.getElementById('regApi').value
+            };
+
+            fetch(API_URL, {
+                method: 'POST',
+                body: JSON.stringify(payload)
+            }).then(r => r.json()).then(res => {
+                if (res.status === 'success') {
+                    alert('Đăng ký thành công! Vui lòng đăng nhập.');
+                    document.getElementById('username').value = payload.newUser;
+                    document.getElementById('password').value = payload.newPass;
+                    toggleAuthMode();
+                } else {
+                    document.getElementById('loginError').innerText = res.message || "Lỗi đăng ký!";
+                    document.getElementById('loginError').style.display = 'block';
+                }
+            }).catch(e => alert('Lỗi kết nối')).finally(() => {
+                btn.innerText = "Đăng ký";
+                btn.disabled = false;
+            });
         }
 
         function logout() {

@@ -61,7 +61,31 @@ function doPost(e) {
       }
     }
 
-    // 2. Xử lý Thêm Nhiều Giao Dịch (Bulk)
+    // 2. Xử lý Thêm Người dùng (Register)
+    if (data.action === 'add_user') {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      let sheetUsers = ss.getSheetByName(SHEET_USERS);
+      if (!sheetUsers) {
+        sheetUsers = ss.insertSheet(SHEET_USERS);
+        sheetUsers.appendRow(['user', 'pass', 'Sheet', 'API']);
+      }
+      
+      const usersData = sheetUsers.getDataRange().getValues();
+      for (let i = 1; i < usersData.length; i++) {
+        if (usersData[i][0] == data.newUser) {
+          throw new Error("Tên đăng nhập đã tồn tại!");
+        }
+      }
+      
+      sheetUsers.appendRow([data.newUser, data.newPass, data.newSheetUrl, data.newApiKey || ""]);
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        message: "Tạo tài khoản thành công!"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 3. Xử lý Thêm Nhiều Giao Dịch (Bulk)
     if (data.action === 'add_bulk') {
       const user = data.user;
       const targetSS = getTargetSpreadsheet(user);
