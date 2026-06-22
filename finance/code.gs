@@ -85,6 +85,30 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 2.5. Xử lý Cập nhật thông tin Người Dùng (Update User)
+    if (data.action === 'update_user') {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sheetUsers = ss.getSheetByName(SHEET_USERS);
+      if (!sheetUsers) throw new Error("Không tìm thấy sheet NguoiDung");
+      
+      const usersData = sheetUsers.getDataRange().getValues();
+      let updated = false;
+      for (let i = 1; i < usersData.length; i++) {
+        if (usersData[i][0] == data.user) {
+          if (data.newSheetUrl) sheetUsers.getRange(i + 1, 3).setValue(data.newSheetUrl);
+          if (data.newApiKey) sheetUsers.getRange(i + 1, 4).setValue(data.newApiKey);
+          updated = true;
+          break;
+        }
+      }
+      if (!updated) throw new Error("Không tìm thấy tài khoản để cập nhật!");
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "success",
+        message: "Cập nhật thông tin thành công!"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 3. Xử lý Thêm Nhiều Giao Dịch (Bulk)
     if (data.action === 'add_bulk') {
       const user = data.user;
