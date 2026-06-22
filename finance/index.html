@@ -341,7 +341,7 @@
                         <select class="form-input" style="width: auto; min-width: 150px; margin: 0; padding: 0.5rem;"><option>Tất cả loại</option><option>Thu</option><option>Chi</option></select>
                         <select class="form-input" style="width: auto; min-width: 200px; margin: 0; padding: 0.5rem;" id="filterCategory"><option>Tất cả danh mục</option></select>
                     </div>
-                    <button class="btn btn-primary-sm"><i data-lucide="plus" class="w-4 h-4"></i> Thêm giao dịch</button>
+                    <button class="btn btn-primary-sm" onclick="openAddTxModal()"><i data-lucide="plus" class="w-4 h-4"></i> Thêm giao dịch</button>
                 </div>
                 <div class="card" style="overflow-x: auto;">
                     <table style="min-width: 700px;">
@@ -453,6 +453,55 @@
                             <div style="width: 32px; height: 32px; border-radius: 50%; background: #10b981; cursor: pointer;"></div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Add Transaction Modal -->
+            <div id="addTxModal" class="login-overlay hidden" style="z-index: 100;">
+                <div class="login-card" style="max-width: 500px; width: 90%;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 style="font-size: 1.25rem; font-weight: 600;">Thêm giao dịch mới</h3>
+                        <button class="btn-icon" type="button" onclick="closeAddTxModal()"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    </div>
+                    <form onsubmit="submitAddTx(event)">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                            <div>
+                                <label style="display:block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">Ngày *</label>
+                                <input type="date" id="txDate" class="form-input" required>
+                            </div>
+                            <div>
+                                <label style="display:block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">Loại *</label>
+                                <select id="txType" class="form-input" required onchange="toggleTxTypeFields()">
+                                    <option value="Chi">Chi</option>
+                                    <option value="Thu">Thu</option>
+                                    <option value="Chuyển khoản">Chuyển khoản</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 1rem;">
+                            <label style="display:block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">Số tiền *</label>
+                            <input type="number" id="txAmount" class="form-input" placeholder="VD: 50000" required>
+                        </div>
+                        <div style="margin-bottom: 1rem;" id="txCatGroup">
+                            <label style="display:block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">Danh mục *</label>
+                            <select id="txCat" class="form-input" required></select>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                            <div>
+                                <label style="display:block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);" id="txSourceLabel">Tài khoản nguồn</label>
+                                <select id="txSource" class="form-input"><option value="">-- Chọn --</option></select>
+                            </div>
+                            <div id="txDestGroup" style="display: none;">
+                                <label style="display:block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">Tài khoản đích</label>
+                                <select id="txDest" class="form-input"><option value="">-- Chọn --</option></select>
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 1.5rem;">
+                            <label style="display:block; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">Ghi chú</label>
+                            <input type="text" id="txNote" class="form-input" placeholder="Chi tiết giao dịch">
+                        </div>
+                        <button type="submit" class="btn btn-primary-sm" style="width: 100%; justify-content: center;" id="btnSubmitTx">Ghi nhận</button>
+                    </form>
                 </div>
             </div>
 
@@ -763,6 +812,87 @@
                 });
             }
         }
+        // --- Add Transaction Logic ---
+        function openAddTxModal() {
+            let accOpts = '<option value="">-- Chọn --</option>';
+            allAccounts.forEach(a => {
+                accOpts += `<option value="${a.name}">${a.name}</option>`;
+            });
+            document.getElementById('txSource').innerHTML = accOpts;
+            document.getElementById('txDest').innerHTML = accOpts;
+
+            document.getElementById('txDate').value = new Date().toISOString().split('T')[0];
+            toggleTxTypeFields(); // Populate categories
+            document.getElementById('addTxModal').classList.remove('hidden');
+        }
+        
+        function closeAddTxModal() {
+            document.getElementById('addTxModal').classList.add('hidden');
+        }
+        
+        function toggleTxTypeFields() {
+            const type = document.getElementById('txType').value;
+            if(type === 'Chuyển khoản') {
+                document.getElementById('txDestGroup').style.display = 'block';
+                document.getElementById('txCatGroup').style.display = 'none';
+                document.getElementById('txSourceLabel').innerText = 'Tài khoản chuyển';
+                document.getElementById('txCat').required = false;
+            } else {
+                document.getElementById('txDestGroup').style.display = 'none';
+                document.getElementById('txCatGroup').style.display = 'block';
+                document.getElementById('txSourceLabel').innerText = 'Tài khoản nguồn';
+                document.getElementById('txCat').required = true;
+                
+                let catOpts = '';
+                allCategories.filter(c => c.type === type).forEach(c => {
+                    catOpts += `<option value="${c.name}">${c.name}</option>`;
+                });
+                document.getElementById('txCat').innerHTML = catOpts;
+            }
+        }
+
+        async function submitAddTx(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btnSubmitTx');
+            btn.innerText = 'Đang lưu...';
+            btn.disabled = true;
+
+            const type = document.getElementById('txType').value;
+            const payload = {
+                user: currentUser,
+                date: document.getElementById('txDate').value,
+                type: type,
+                amount: document.getElementById('txAmount').value,
+                category: type === 'Chuyển khoản' ? 'Chuyển khoản' : document.getElementById('txCat').value,
+                note: document.getElementById('txNote').value,
+                sourceAccount: document.getElementById('txSource').value,
+                destAccount: type === 'Chuyển khoản' ? document.getElementById('txDest').value : ''
+            };
+
+            try {
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                const result = await res.json();
+                if(result.status === 'success') {
+                    // Update frontend state immediately for snappy UI
+                    alert('Ghi nhận thành công!');
+                    closeAddTxModal();
+                    document.getElementById('txAmount').value = '';
+                    document.getElementById('txNote').value = '';
+                    fetchData(); // Reload data
+                } else {
+                    alert('Lỗi: ' + result.message);
+                }
+            } catch(e) {
+                alert('Lỗi kết nối');
+            } finally {
+                btn.innerText = 'Ghi nhận';
+                btn.disabled = false;
+            }
+        }
+
     </script>
 </body>
 </html>
