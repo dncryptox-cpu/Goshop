@@ -467,10 +467,25 @@
         let currentUser = localStorage.getItem('finance_user');
         let allTransactions = [];
         let allCategories = [];
+        let allAccounts = [];
         
         // UI State
         const formatMoney = (val) => new Intl.NumberFormat('vi-VN').format(val) + ' VND';
-        const formatDate = (ds) => { try { return new Date(ds).toLocaleDateString('vi-VN'); } catch(e){ return ds; } };
+        
+        const parseDate = (ds) => {
+            if(!ds) return new Date();
+            const d = new Date(ds);
+            if(!isNaN(d.getTime())) return d;
+            if(typeof ds === 'string' && ds.includes('/')) {
+                const p = ds.split('/');
+                if(p.length >= 3) return new Date(p[2], p[1] - 1, p[0]);
+            }
+            return new Date();
+        };
+        const formatDate = (ds) => {
+            if(typeof ds === 'string' && ds.includes('/')) return ds; // Already DD/MM/YYYY
+            try { return parseDate(ds).toLocaleDateString('vi-VN'); } catch(e){ return ds; }
+        };
         
         // Navigation
         function switchNav(viewId) {
@@ -553,6 +568,7 @@
                 if(data.status === 'success') {
                     allTransactions = data.data || [];
                     allCategories = data.categories || [];
+                    allAccounts = data.accounts || [];
                     renderDashboard();
                     renderTransactions();
                     renderCategories();
@@ -577,16 +593,22 @@
         }
 
         function renderDashboard() {
-            let inc = 0, exp = 0;
+            let inc = 0, exp = 0, totalAssets = 0;
             allTransactions.forEach(tx => {
                 if(tx.type === 'Thu') inc += tx.amount;
                 else exp += tx.amount;
             });
             
+            allAccounts.forEach(acc => {
+                totalAssets += Number(acc.initialBalance) || 0;
+            });
+            // Total Assets should roughly be Initial + Income - Expense
+            totalAssets = totalAssets + inc - exp;
+            
             document.getElementById('kpi-income').innerText = formatMoney(inc);
             document.getElementById('kpi-expense').innerText = formatMoney(exp);
             document.getElementById('kpi-savings').innerText = formatMoney(inc - exp);
-            document.getElementById('kpi-assets').innerText = formatMoney(5403031002); // Mock asset value based on user screenshot
+            document.getElementById('kpi-assets').innerText = formatMoney(totalAssets);
 
             // Recent Tx Table
             const recent = allTransactions.slice(0, 5);
@@ -685,7 +707,7 @@
             
             allTransactions.forEach(tx => {
                 // Bar Chart Data (Month aggregated)
-                const d = new Date(tx.date);
+                const d = parseDate(tx.date);
                 const m = `Tháng ${d.getMonth() + 1}`;
                 if(!monthsMap[m]) monthsMap[m] = { inc: 0, exp: 0 };
                 if(tx.type === 'Thu') monthsMap[m].inc += tx.amount;
