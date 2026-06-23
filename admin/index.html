@@ -2949,31 +2949,7 @@
                 refundAIText: '',
                 showBulkAIModal: false,
                 bulkAIText: '',
-                productCatalog: JSON.parse(localStorage.getItem('goshop_product_catalog')) || [
-                    { product: 'Youtube', duration: 12, price: 375000, cost: 92796, key: 'Youtube-12' },
-                    { product: 'Youtube', duration: 6, price: 200000, cost: 46398, key: 'Youtube-6' },
-                    { product: 'Youtube', duration: 3, price: 110000, cost: 23199, key: 'Youtube-3' },
-                    { product: 'Youtube', duration: 1, price: 55000, cost: 7733, key: 'Youtube-1' },
-                    { product: 'YoutubePlus', duration: 12, price: 445000, cost: 124800, key: 'YoutubePlus-12' },
-                    { product: 'YoutubePlus', duration: 6, price: 250000, cost: 62400, key: 'YoutubePlus-6' },
-                    { product: '2tb', duration: 12, price: 350000, cost: 80000, key: '2tb-12' },
-                    { product: 'GPTshare', duration: 1, price: 100000, cost: 50000, key: 'GPTshare-1' },
-                    { product: 'GPTshare', duration: 3, price: 270000, cost: 150000, key: 'GPTshare-3' },
-                    { product: 'Canva', duration: 12, price: 150000, cost: 0, key: 'Canva-12' },
-                    { product: 'Capcut', duration: 1, price: 55000, cost: 10000, key: 'Capcut-1' },
-                    { product: 'Capcut', duration: 3, price: 150000, cost: 45000, key: 'Capcut-3' },
-                    { product: 'Capcut', duration: 6, price: 275000, cost: 130000, key: 'Capcut-6' },
-                    { product: 'Capcut', duration: 12, price: 495000, cost: 200000, key: 'Capcut-12' },
-                    { product: 'office365', duration: 12, price: 250000, cost: 80000, key: 'office365-12' },
-                    { product: '500gb', duration: 12, price: 150000, cost: 16000, key: '500gb-12' },
-                    { product: 'GPTgh', duration: 1, price: 280000, cost: 80000, key: 'GPTgh-1' },
-                    { product: 'Capcutshare1', duration: 12, price: 250000, cost: 0, key: 'Capcutshare1-12' },
-                    { product: 'GPTGo', duration: 12, price: 495000, cost: 200000, key: 'GPTGo-12' },
-                    { product: 'Spotify', duration: 12, price: 450000, cost: 90000, key: 'Spotify-12' },
-                    { product: 'Spotify', duration: 6, price: 250000, cost: 45000, key: 'Spotify-6' },
-                    { product: 'Adobe', duration: 12, price: 550000, cost: 300000, key: 'Adobe-12' },
-                    { product: 'Adobe', duration: 1, price: 55000, cost: 0, key: 'Adobe-1' }
-                ],
+                productCatalog: [],
                 newProduct: {
                     product: '',
                     duration: 1,
@@ -3085,10 +3061,26 @@
                         if (duration <= 0) duration = 1;
 
                         const plan = r['Phân loại'] || 'Youtube';
-                        let matchingProduct = this.productCatalog.find(p => p.product.toLowerCase() === plan.toLowerCase() && p.duration === duration);
+                        const normalizedPlan = plan.toLowerCase()
+                            .replace('youtube', 'ytb')
+                            .replace('ytb plus', 'ytb nk plus')
+                            .replace('youtube plus', 'ytb nk plus');
+
+                        // Tìm trong bảng giá: ưu tiên khớp Tên Gói có chứa chữ "Lẻ" (vì APP_DATA toàn là đơn bán lẻ từng khách)
+                        let matchingProduct = this.productCatalog.find(p => 
+                            p.product.toLowerCase().includes(normalizedPlan) && 
+                            p.duration === duration &&
+                            p.product.toLowerCase().includes('lẻ')
+                        );
                         if (!matchingProduct) {
-                            // Find any with same plan as fallback
-                            matchingProduct = this.productCatalog.find(p => p.product.toLowerCase() === plan.toLowerCase());
+                            // Rộng hơn: chỉ cần khớp tên và tháng
+                            matchingProduct = this.productCatalog.find(p => 
+                                p.product.toLowerCase().includes(normalizedPlan) && p.duration === duration
+                            );
+                        }
+                        if (!matchingProduct) {
+                            // Rộng hơn nữa: Bỏ qua số tháng, lấy đại 1 cái để có giá vốn tượng trưng
+                            matchingProduct = this.productCatalog.find(p => p.product.toLowerCase().includes(normalizedPlan));
                         }
 
                         if (matchingProduct) {
@@ -4661,16 +4653,41 @@
                     const appData = this.db.APP_DATA || [];
                     const upsaleData = this.db.UPSALE || [];
 
-                    // Auto-parse Global Metrics for PNL Simulator from PNL sheet (columns 6 and 7)
+                    // Auto-parse Product Catalog & Global Metrics from PNL sheet
                     if (this.db.PNL && this.db.PNL.length > 0) {
                         const keys = Object.keys(this.db.PNL[0]);
-                        if (keys.length >= 7) {
-                            this.db.PNL.forEach(row => {
+                        const newCatalog = [];
+                        
+                        this.db.PNL.forEach(row => {
+                            // Parse Product Catalog (Cols A to E)
+                            const productName = row[keys[0]] || '';
+                            if (productName.toString().trim() !== '') {
+                                const duration = parseInt(row[keys[1]]) || 1;
+                                const price = parseFloat(String(row[keys[2]]).replace(/[^0-9.-]+/g,"")) || 0;
+                                const cost = parseFloat(String(row[keys[3]]).replace(/[^0-9.-]+/g,"")) || 0;
+                                const commission = parseFloat(String(row[keys[4]]).replace(/[^0-9.-]+/g,"")) || 0;
+                                
+                                newCatalog.push({
+                                    product: productName.toString().trim(),
+                                    duration: duration,
+                                    price: price,
+                                    cost: cost,
+                                    defaultCommission: commission,
+                                    key: productName.toString().trim() + '-' + duration
+                                });
+                            }
+
+                            // Parse Global Metrics (Cols F to G)
+                            if (keys.length >= 7) {
                                 const name = (row[keys[5]] || '').toLowerCase(); // Cột F: Thông số
                                 const val = parseFloat(String(row[keys[6]]).replace(/[^0-9.-]+/g,"")) || 0; // Cột G: Giá trị
-                                if (name.includes('nhân viên') || name.includes('staff')) this.globalStaffCost = val;
-                                if (name.includes('phát sinh') || name.includes('misc')) this.globalMiscCost = val;
-                            });
+                                if (name.includes('nhân viên') || name.includes('staff') || name.includes('lương')) this.globalStaffCost += val;
+                                if (name.includes('phát sinh') || name.includes('misc') || name.includes('khác')) this.globalMiscCost += val;
+                            }
+                        });
+
+                        if (newCatalog.length > 0) {
+                            this.productCatalog = newCatalog;
                         }
                     }
                     // Calculate Global Profit on init
