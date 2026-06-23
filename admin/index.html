@@ -3145,10 +3145,25 @@
                         }
 
                         // Parse các cột
-                        const price = parseFloat(String(keys.length > 11 ? row[keys[11]] : '0').replace(/[^0-9.-]+/g,"")) || 0;
-                        const cost = parseFloat(String(keys.length > 9 ? row[keys[9]] : '0').replace(/[^0-9.-]+/g,"")) || 0;
-                        const comm = parseFloat(String(keys.length > 8 ? row[keys[8]] : '0').replace(/[^0-9.-]+/g,"")) || 0;
-                        const misc = parseFloat(String(keys.length > 10 ? row[keys[10]] : '0').replace(/[^0-9.-]+/g,"")) || 0;
+                        const cleanNum = (val) => {
+                            let s = String(val).toLowerCase().replace(/\s/g, '');
+                            if (!s) return 0;
+                            let multiplier = 1;
+                            if (s.endsWith('k')) {
+                                multiplier = 1000;
+                                s = s.slice(0, -1);
+                            } else if (s.endsWith('m') || s.endsWith('tr')) {
+                                multiplier = 1000000;
+                                s = s.replace(/m|tr/g, '');
+                            }
+                            s = s.replace(/[.,]/g, '').replace(/[^0-9-]/g, '');
+                            return (parseFloat(s) || 0) * multiplier;
+                        };
+
+                        const price = cleanNum(keys.length > 11 ? row[keys[11]] : '0');
+                        const cost = cleanNum(keys.length > 9 ? row[keys[9]] : '0');
+                        const comm = cleanNum(keys.length > 8 ? row[keys[8]] : '0');
+                        const misc = cleanNum(keys.length > 10 ? row[keys[10]] : '0');
                         
                         const productName = keys.length > 4 ? (row[keys[4]] || 'Khác') : 'Khác';
 
@@ -4710,25 +4725,33 @@
 
                 parseCSV(csv) {
                     if (!csv || csv.includes('html')) return [];
-                    const lines = csv.split('\n');
+                    const lines = csv.split('\n').filter(line => line.trim() !== '');
                     if(lines.length < 2) return [];
                     
-                    // Xử lý các cột trống không có tiêu đề để tránh đè key trong object
-                    const headers = lines[0].split(',').map((h, i) => {
-                        const cleanH = h.replace(/"/g, '').trim();
-                        return cleanH === '' ? `Col_${i}` : cleanH;
+                    const parsedLines = lines.map(line => {
+                        return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
+                    });
+
+                    let maxCols = 0;
+                    parsedLines.forEach(vals => {
+                        if (vals.length > maxCols) maxCols = vals.length;
                     });
                     
-                    return lines.slice(1).map(line => {
-                        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
+                    const headerVals = parsedLines[0];
+                    const headers = [];
+                    for(let i = 0; i < maxCols; i++) {
+                        let h = headerVals[i] || '';
+                        h = h === '' ? `Col_${i}` : h;
+                        if (headers.includes(h)) {
+                            h = `${h}_${i}`;
+                        }
+                        headers.push(h);
+                    }
+                    
+                    return parsedLines.slice(1).map(values => {
                         const obj = {};
                         headers.forEach((header, i) => {
-                            // Nếu tên cột trùng nhau, thêm index để tránh bị đè dữ liệu
-                            let finalHeader = header;
-                            if (obj.hasOwnProperty(header)) {
-                                finalHeader = `${header}_${i}`;
-                            }
-                            obj[finalHeader] = values[i] || '';
+                            obj[header] = values[i] || '';
                         });
                         return obj;
                     }).filter(row => Object.values(row).some(v => v !== '' && !v.startsWith('Col_')));
