@@ -4712,16 +4712,26 @@
                     if (!csv || csv.includes('html')) return [];
                     const lines = csv.split('\n');
                     if(lines.length < 2) return [];
-                    const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+                    
+                    // Xử lý các cột trống không có tiêu đề để tránh đè key trong object
+                    const headers = lines[0].split(',').map((h, i) => {
+                        const cleanH = h.replace(/"/g, '').trim();
+                        return cleanH === '' ? `Col_${i}` : cleanH;
+                    });
                     
                     return lines.slice(1).map(line => {
                         const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
                         const obj = {};
                         headers.forEach((header, i) => {
-                            obj[header] = values[i] || '';
+                            // Nếu tên cột trùng nhau, thêm index để tránh bị đè dữ liệu
+                            let finalHeader = header;
+                            if (obj.hasOwnProperty(header)) {
+                                finalHeader = `${header}_${i}`;
+                            }
+                            obj[finalHeader] = values[i] || '';
                         });
                         return obj;
-                    }).filter(row => Object.values(row).some(v => v !== ''));
+                    }).filter(row => Object.values(row).some(v => v !== '' && !v.startsWith('Col_')));
                 },
 
                 mapData() {
