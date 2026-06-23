@@ -917,15 +917,46 @@
                                             <th class="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Lãi Gộp (Gross)</th>
                                         </tr>
                                     </thead>
-                                    <tbody class="divide-y divide-gray-100 text-sm font-medium">
-                                        <template x-for="item in globalProfitReport.breakdown">
-                                            <tr class="hover:bg-white transition-colors">
-                                                <td class="px-4 py-2" x-text="item.name"></td>
+                                    <template x-for="item in globalProfitReport.breakdown">
+                                        <tbody x-data="{ expanded: false }" class="divide-y divide-gray-100 text-sm font-medium border-b border-gray-100">
+                                            <tr @click="expanded = !expanded" class="hover:bg-gray-50 transition-colors cursor-pointer group">
+                                                <td class="px-4 py-2 flex items-center gap-2">
+                                                    <i data-lucide="chevron-right" class="w-4 h-4 text-gray-400 transition-transform" :class="expanded ? 'rotate-90' : ''"></i>
+                                                    <span x-text="item.name"></span>
+                                                </td>
                                                 <td class="px-4 py-2 text-center text-gray-500" x-text="item.count"></td>
                                                 <td class="px-4 py-2 text-right text-emerald-600 font-bold" x-text="new Intl.NumberFormat('vi-VN').format(item.net) + ' đ'"></td>
                                             </tr>
-                                        </template>
-                                    </tbody>
+                                            <tr x-show="expanded" x-cloak class="bg-gray-50/80">
+                                                <td colspan="3" class="p-0">
+                                                    <div class="px-8 py-4 inner-shadow border-y border-gray-200">
+                                                        <table class="w-full text-left text-xs">
+                                                            <thead class="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200">
+                                                                <tr>
+                                                                    <th class="py-2">Ngày</th>
+                                                                    <th class="py-2">Email / Khách Hàng</th>
+                                                                    <th class="py-2 text-right">Giá Bán</th>
+                                                                    <th class="py-2 text-right text-red-400">Hoa Hồng</th>
+                                                                    <th class="py-2 text-right text-emerald-500">Lãi (Net)</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody class="divide-y divide-gray-100">
+                                                                <template x-for="t in item.transactions">
+                                                                    <tr class="hover:bg-white transition-colors">
+                                                                        <td class="py-2 text-gray-500 font-medium" x-text="t.date"></td>
+                                                                        <td class="py-2 font-bold text-gray-700" x-text="t.email"></td>
+                                                                        <td class="py-2 text-right text-gray-600 font-medium" x-text="new Intl.NumberFormat('vi-VN').format(t.price)"></td>
+                                                                        <td class="py-2 text-right text-red-500 font-medium" x-text="new Intl.NumberFormat('vi-VN').format(t.comm)"></td>
+                                                                        <td class="py-2 text-right text-emerald-600 font-bold" x-text="new Intl.NumberFormat('vi-VN').format(t.net)"></td>
+                                                                    </tr>
+                                                                </template>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </template>
                                 </table>
                             </div>
 
@@ -3176,10 +3207,19 @@
                         const net = price - cost - comm - misc;
 
                         if (!productsMap[productName]) {
-                            productsMap[productName] = { count: 0, net: 0 };
+                            productsMap[productName] = { count: 0, net: 0, transactions: [] };
                         }
                         productsMap[productName].count++;
                         productsMap[productName].net += net;
+                        productsMap[productName].transactions.push({
+                            date: dateStr,
+                            email: keys.length > 3 ? (row[keys[3]] || '') : '',
+                            price: price,
+                            cost: cost,
+                            comm: comm,
+                            misc: misc,
+                            net: net
+                        });
                     });
 
                     this.globalProfitReport.month = this.globalProfitFilter.type === 'month' ? this.globalProfitFilter.month : 'Tùy chọn';
@@ -3196,7 +3236,8 @@
                     this.globalProfitReport.breakdown = Object.keys(productsMap).map(k => ({
                         name: k,
                         count: productsMap[k].count,
-                        net: productsMap[k].net
+                        net: productsMap[k].net,
+                        transactions: productsMap[k].transactions
                     })).sort((a, b) => b.net - a.net);
                 },
 
