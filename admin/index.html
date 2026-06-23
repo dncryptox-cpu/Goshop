@@ -861,6 +861,28 @@
                         </div>
 
                         <div class="border-t border-gray-100 pt-6">
+                            <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Phân tích Lãi Gộp theo Sản Phẩm</h3>
+                            <div class="bg-gray-50 rounded-xl border border-gray-100 max-h-48 overflow-y-auto mb-6 scrollbar-hide">
+                                <table class="w-full text-left">
+                                    <thead class="sticky top-0 bg-gray-100/90 backdrop-blur-sm">
+                                        <tr>
+                                            <th class="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Sản phẩm đang chạy</th>
+                                            <th class="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center">Số Lượng KH</th>
+                                            <th class="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Lãi Gộp (Gross)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 text-sm font-medium">
+                                        <template x-for="item in globalProfitReport.breakdown">
+                                            <tr class="hover:bg-white transition-colors">
+                                                <td class="px-4 py-2" x-text="item.name"></td>
+                                                <td class="px-4 py-2 text-center text-gray-500" x-text="item.count"></td>
+                                                <td class="px-4 py-2 text-right text-emerald-600 font-bold" x-text="new Intl.NumberFormat('vi-VN').format(item.gross) + ' đ'"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+
                             <div class="flex justify-between items-end mb-2">
                                 <p class="text-sm font-bold text-gray-600">Tổng Lãi Gộp (Từ <span x-text="globalProfitReport.totalCustomers"></span> khách đang dùng)</p>
                                 <p class="text-xl font-bold text-gray-900"><span x-text="new Intl.NumberFormat('vi-VN').format(globalProfitReport.totalGrossProfit)"></span> đ</p>
@@ -3034,12 +3056,14 @@
                 globalProfitReport: {
                     totalCustomers: 0,
                     totalGrossProfit: 0,
-                    netProfit: 0
+                    netProfit: 0,
+                    breakdown: []
                 },
                 calculateGlobalProfit() {
                     const appData = this.db.APP_DATA || [];
                     let totalGrossProfit = 0;
                     let activeCustomers = 0;
+                    const breakdownMap = {};
 
                     appData.forEach(r => {
                         const status = this.getStatus(r);
@@ -3076,13 +3100,33 @@
                             if (ctv.includes('tuan') || ctv.includes('tuấn') || ctv.includes('vuong') || ctv.includes('vương')) {
                                 comm = 50000; // Default commission deduction for staff
                             }
-                            totalGrossProfit += (price - cost - comm);
+                            const gross = price - cost - comm;
+                            totalGrossProfit += gross;
+
+                            const key = matchingProduct.product + ' (' + matchingProduct.duration + ' Tháng)';
+                            if (!breakdownMap[key]) {
+                                breakdownMap[key] = { count: 0, gross: 0 };
+                            }
+                            breakdownMap[key].count += 1;
+                            breakdownMap[key].gross += gross;
+                        } else {
+                            const key = plan + ' (Chưa có giá)';
+                            if (!breakdownMap[key]) {
+                                breakdownMap[key] = { count: 0, gross: 0 };
+                            }
+                            breakdownMap[key].count += 1;
                         }
                     });
 
                     this.globalProfitReport.totalCustomers = activeCustomers;
                     this.globalProfitReport.totalGrossProfit = totalGrossProfit;
                     this.globalProfitReport.netProfit = totalGrossProfit - (parseFloat(this.globalStaffCost) || 0) - (parseFloat(this.globalMiscCost) || 0);
+                    
+                    this.globalProfitReport.breakdown = Object.keys(breakdownMap).map(k => ({
+                        name: k,
+                        count: breakdownMap[k].count,
+                        gross: breakdownMap[k].gross
+                    })).sort((a, b) => b.gross - a.gross);
                 },
 
                 // Daily Tasks State & Methods
