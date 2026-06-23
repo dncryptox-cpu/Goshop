@@ -822,6 +822,29 @@
                                 </div>
                                 
                                 <div class="pt-4 border-t border-gray-100">
+                                    <h3 class="text-xs font-bold text-primary uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                                        <i data-lucide="building" class="w-4 h-4"></i> Khấu Hao Định Phí / Tháng
+                                    </h3>
+                                    <div class="grid grid-cols-3 gap-4">
+                                        <div>
+                                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Lương Nhân Viên</label>
+                                            <input type="number" x-model.number="pnlForm.globalStaffCost" class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-primary">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Phát Sinh Khác</label>
+                                            <input type="number" x-model.number="pnlForm.globalMiscCost" class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-primary">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tổng Khách HT</label>
+                                            <input type="number" x-model.number="pnlForm.globalTotalCustomers" min="1" class="w-full border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-primary text-primary font-bold">
+                                        </div>
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 mt-2">=> Trung bình 1 tài khoản này phải gánh: <span class="font-bold text-red-500" x-text="new Intl.NumberFormat('vi-VN').format(pnlMetrics.overheadPerCustomer * pnlForm.maxSlots)"></span> đ chi phí vận hành.</p>
+                                </div>
+
+
+                                
+                                <div class="pt-4 border-t border-gray-100">
                                     <label class="block text-xs font-bold text-primary uppercase tracking-widest mb-2">Mô Phỏng: Số Khách Hiện Tại</label>
                                     <div class="flex items-center gap-3">
                                         <input type="range" x-model.number="pnlForm.currentCustomers" min="0" :max="pnlForm.maxSlots" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
@@ -3000,7 +3023,10 @@
                     maxSlots: 5,
                     price: 0,
                     commission: 0,
-                    currentCustomers: 5
+                    currentCustomers: 5,
+                    globalStaffCost: 0,
+                    globalMiscCost: 0,
+                    globalTotalCustomers: 950
                 },
                 onPnlTypeChange() {
                     if (!this.db.PNL || this.db.PNL.length === 0 || !this.pnlForm.selectedType) return;
@@ -3027,16 +3053,22 @@
                     const commission = parseFloat(this.pnlForm.commission) || 0;
                     const customers = parseFloat(this.pnlForm.currentCustomers) || 0;
 
-                    const maxRevenue = price * maxSlots;
-                    const maxProfit = maxRevenue - cost - (commission * maxSlots);
+                    const staffCost = parseFloat(this.pnlForm.globalStaffCost) || 0;
+                    const miscCost = parseFloat(this.pnlForm.globalMiscCost) || 0;
+                    const totalGlobalCustomers = Math.max(1, parseFloat(this.pnlForm.globalTotalCustomers) || 1);
                     
-                    const profitPerCustomer = price - commission;
+                    const overheadPerCustomer = (staffCost + miscCost) / totalGlobalCustomers;
+
+                    const maxRevenue = price * maxSlots;
+                    const maxProfit = maxRevenue - cost - (commission * maxSlots) - (overheadPerCustomer * maxSlots);
+                    
+                    const profitPerCustomer = price - commission - overheadPerCustomer;
                     const breakEven = profitPerCustomer > 0 ? Math.ceil(cost / profitPerCustomer) : 0;
                     
                     const actualRevenue = price * customers;
-                    const actualProfit = actualRevenue - cost - (commission * customers);
+                    const actualProfit = actualRevenue - cost - (commission * customers) - (overheadPerCustomer * customers);
 
-                    return { maxRevenue, maxProfit, breakEven, actualRevenue, actualProfit };
+                    return { maxRevenue, maxProfit, breakEven, actualRevenue, actualProfit, overheadPerCustomer };
                 },
 
                 // Daily Tasks State & Methods
