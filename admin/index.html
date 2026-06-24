@@ -3211,6 +3211,9 @@
                         const comm = cleanNum(keys.length > 8 ? row[keys[8]] : '0');
                         const misc = cleanNum(keys.length > 10 ? row[keys[10]] : '0');
                         
+                        const explicitNetStr = keys.length > 12 ? String(row[keys[12]] || '').trim() : '';
+                        const explicitNet = explicitNetStr !== '' ? cleanNum(explicitNetStr) : null;
+                        
                         const productName = keys.length > 4 ? (row[keys[4]] || 'Khác') : 'Khác';
                         const tType = keys.length > 2 ? String(row[keys[2]] || '').trim().toLowerCase() : '';
 
@@ -3226,7 +3229,7 @@
                         totalCommission += comm;
                         totalMisc += misc;
 
-                        const net = price - cost - comm - misc;
+                        const net = explicitNet !== null ? explicitNet : (price - cost - comm - misc);
 
                         if (!productsMap[productName]) {
                             productsMap[productName] = { count: 0, net: 0, transactions: [] };
@@ -3304,25 +3307,38 @@
                         const cost = cleanNum(keys.length > 9 ? row[keys[9]] : '0');
                         const comm = cleanNum(keys.length > 8 ? row[keys[8]] : '0');
                         const misc = cleanNum(keys.length > 10 ? row[keys[10]] : '0');
-                        const net = price - cost - comm - misc;
+                        
+                        const explicitNetStr = keys.length > 12 ? String(row[keys[12]] || '').trim() : '';
+                        const explicitNet = explicitNetStr !== '' ? cleanNum(explicitNetStr) : null;
+                        const net = explicitNet !== null ? explicitNet : (price - cost - comm - misc);
+                        
+                        const explicitMrrStr = keys.length > 13 ? String(row[keys[13]] || '').trim() : '';
+                        const mrr = explicitMrrStr !== '' ? cleanNum(explicitMrrStr) : null;
                         
                         if (!monthlyData[monthKey]) {
                             monthlyData[monthKey] = {
                                 label: monthKey,
                                 sortKey: `${parts[2]}${parts[1]}`, 
                                 revenue: 0,
+                                mrr: 0,
+                                hasMrrData: false,
                                 net: 0
                             };
                         }
                         
                         monthlyData[monthKey].revenue += price;
+                        if (mrr !== null) {
+                            monthlyData[monthKey].mrr += mrr;
+                            monthlyData[monthKey].hasMrrData = true;
+                        }
                         monthlyData[monthKey].net += net;
                     });
                     
                     const sortedMonths = Object.values(monthlyData).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
                     
                     const labels = sortedMonths.map(m => m.label);
-                    const revenueData = sortedMonths.map(m => m.revenue);
+                    const hasAnyMrr = sortedMonths.some(m => m.hasMrrData && m.mrr > 0);
+                    const lineData = sortedMonths.map(m => hasAnyMrr ? m.mrr : m.revenue);
                     const netData = sortedMonths.map(m => m.net);
                     
                     const ctx = document.getElementById('profitChartCanvas');
@@ -3339,8 +3355,8 @@
                             datasets: [
                                 {
                                     type: 'line',
-                                    label: 'Tổng Doanh Thu',
-                                    data: revenueData,
+                                    label: hasAnyMrr ? 'MRR' : 'Tổng Doanh Thu',
+                                    data: lineData,
                                     borderColor: '#ef4444',
                                     backgroundColor: '#ef4444',
                                     borderWidth: 2,
