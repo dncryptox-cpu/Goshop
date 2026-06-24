@@ -13,6 +13,7 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/otpauth/dist/otpauth.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f4f7fe; color: #262626; }
         .glass { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.3); }
@@ -907,6 +908,14 @@
                             <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
                                 <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Trừ Thêm Định Phí: Phát Sinh Khác</p>
                                 <input type="number" x-model.number="globalMiscCost" @input="calculateGlobalProfit()" class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary font-bold text-gray-900">
+                            </div>
+                        </div>
+
+                        <!-- Lợi Nhuận Chart -->
+                        <div class="bg-white rounded-xl border border-gray-100 p-4 mb-6 shadow-sm">
+                            <h3 class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Biểu Đồ Lợi Nhuận & Doanh Thu (Theo Tháng)</h3>
+                            <div class="h-72 w-full relative">
+                                <canvas id="profitChartCanvas"></canvas>
                             </div>
                         </div>
 
@@ -3254,6 +3263,139 @@
                     })).sort((a, b) => b.net - a.net);
                 },
 
+                profitChartInstance: null,
+                renderProfitChart() {
+                    const data = this.db.DATA_YTB || [];
+                    if (data.length === 0) return;
+                    
+                    const keys = Object.keys(data[0] || {});
+                    const monthlyData = {};
+                    
+                    data.forEach(row => {
+                        const dateStr = row[keys[0]] || '';
+                        if (!dateStr || dateStr.toString().trim() === '') return;
+                        const parts = dateStr.toString().split('/');
+                        if (parts.length < 3) return;
+                        
+                        const monthKey = `${parts[1]}/${parts[2]}`;
+                        
+                        const cleanNum = (val) => {
+                            let s = String(val).toLowerCase().replace(/\s/g, '');
+                            if (!s) return 0;
+                            let multiplier = 1;
+                            if (s.endsWith('k')) {
+                                multiplier = 1000;
+                                s = s.slice(0, -1);
+                            } else if (s.endsWith('m') || s.endsWith('tr')) {
+                                multiplier = 1000000;
+                                s = s.replace(/m|tr/g, '');
+                            }
+                            s = s.replace(/[.,]/g, '').replace(/[^0-9-]/g, '');
+                            return (parseFloat(s) || 0) * multiplier;
+                        };
+                        
+                        const price = cleanNum(keys.length > 11 ? row[keys[11]] : '0');
+                        const cost = cleanNum(keys.length > 9 ? row[keys[9]] : '0');
+                        const comm = cleanNum(keys.length > 8 ? row[keys[8]] : '0');
+                        const misc = cleanNum(keys.length > 10 ? row[keys[10]] : '0');
+                        const net = price - cost - comm - misc;
+                        
+                        if (!monthlyData[monthKey]) {
+                            monthlyData[monthKey] = {
+                                label: monthKey,
+                                sortKey: `${parts[2]}${parts[1]}`, 
+                                revenue: 0,
+                                net: 0
+                            };
+                        }
+                        
+                        monthlyData[monthKey].revenue += price;
+                        monthlyData[monthKey].net += net;
+                    });
+                    
+                    const sortedMonths = Object.values(monthlyData).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+                    
+                    const labels = sortedMonths.map(m => m.label);
+                    const revenueData = sortedMonths.map(m => m.revenue);
+                    const netData = sortedMonths.map(m => m.net);
+                    
+                    const ctx = document.getElementById('profitChartCanvas');
+                    if (!ctx) return;
+                    
+                    if (this.profitChartInstance) {
+                        this.profitChartInstance.destroy();
+                    }
+                    
+                    this.profitChartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    type: 'line',
+                                    label: 'Tổng Doanh Thu',
+                                    data: revenueData,
+                                    borderColor: '#ef4444',
+                                    backgroundColor: '#ef4444',
+                                    borderWidth: 2,
+                                    tension: 0.3,
+                                    yAxisID: 'y'
+                                },
+                                {
+                                    type: 'bar',
+                                    label: 'Lợi Nhuận Tháng',
+                                    data: netData,
+                                    backgroundColor: '#3b82f6',
+                                    borderRadius: 4,
+                                    yAxisID: 'y'
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false,
+                            },
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            let label = context.dataset.label || '';
+                                            if (label) {
+                                                label += ': ';
+                                            }
+                                            if (context.parsed.y !== null) {
+                                                label += new Intl.NumberFormat('vi-VN').format(context.parsed.y) + ' đ';
+                                            }
+                                            return label;
+                                        }
+                                    }
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'left',
+                                    ticks: {
+                                        callback: function(value) {
+                                            if (value >= 1000000) {
+                                                return (value / 1000000) + 'Tr';
+                                            }
+                                            if (value >= 1000) {
+                                                return (value / 1000) + 'K';
+                                            }
+                                            return value;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+                },
+
                 // Daily Tasks State & Methods
                 dailyTaskFilterDay: 'all',
                 dailyTaskFilterType: 'all',
@@ -4854,6 +4996,9 @@
                     }
                     // Calculate Global Profit on init
                     this.calculateGlobalProfit();
+                    setTimeout(() => {
+                        this.renderProfitChart();
+                    }, 100);
 
                     // 1. Map APP_DATA to Customers
                     const customerMap = {};
