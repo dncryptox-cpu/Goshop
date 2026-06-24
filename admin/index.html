@@ -3145,10 +3145,12 @@
                     data.forEach(row => {
                         const dateStr = row[keys[0]] || '';
                         if (!dateStr || dateStr.toString().trim() === '') return;
+                        
+                        // Strict date validation: DD/MM/YYYY
                         const parts = dateStr.toString().split('/');
-                        if (parts.length >= 3) {
-                            monthsSet.add(`${parts[1]}/${parts[2]}`);
-                        }
+                        if (parts.length !== 3 || parts[1].length > 2 || parts[2].length !== 4) return;
+                        
+                        monthsSet.add(`${parts[1]}/${parts[2]}`);
                     });
                     
                     this.availableMonths = Array.from(monthsSet).sort((a, b) => {
@@ -3274,8 +3276,10 @@
                     data.forEach(row => {
                         const dateStr = row[keys[0]] || '';
                         if (!dateStr || dateStr.toString().trim() === '') return;
+                        
+                        // Strict date validation
                         const parts = dateStr.toString().split('/');
-                        if (parts.length < 3) return;
+                        if (parts.length !== 3 || parts[1].length > 2 || parts[2].length !== 4) return;
                         
                         const monthKey = `${parts[1]}/${parts[2]}`;
                         
@@ -4902,20 +4906,12 @@
 
                         // Fetch Transaction Log for Cash-flow PNL
                         try {
-                            const [ytbRes, gccRes] = await Promise.all([
-                                fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`),
-                                fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(GCC)`)
-                            ]);
-                            
-                            const ytbText = await ytbRes.text();
-                            const gccText = await gccRes.text();
-                            
-                            const ytbData = this.parseCSV(ytbText);
-                            const gccData = this.parseCSV(gccText);
-                            
-                            this.db.DATA_YTB = [...ytbData, ...gccData];
+                            const transUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`;
+                            const response = await fetch(transUrl);
+                            const csvText = await response.text();
+                            this.db.DATA_YTB = this.parseCSV(csvText);
                         } catch(e) {
-                            console.error('Error fetching Transaction Data:', e);
+                            console.error('Error fetching DATA(YTB):', e);
                             this.db.DATA_YTB = [];
                         }
                         this.mapData();
