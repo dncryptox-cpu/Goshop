@@ -4902,12 +4902,20 @@
 
                         // Fetch Transaction Log for Cash-flow PNL
                         try {
-                            const transUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`;
-                            const response = await fetch(transUrl);
-                            const csvText = await response.text();
-                            this.db.DATA_YTB = this.parseCSV(csvText);
+                            const [ytbRes, gccRes] = await Promise.all([
+                                fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`),
+                                fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(GCC)`)
+                            ]);
+                            
+                            const ytbText = await ytbRes.text();
+                            const gccText = await gccRes.text();
+                            
+                            const ytbData = this.parseCSV(ytbText);
+                            const gccData = this.parseCSV(gccText);
+                            
+                            this.db.DATA_YTB = [...ytbData, ...gccData];
                         } catch(e) {
-                            console.error('Error fetching DATA(YTB):', e);
+                            console.error('Error fetching Transaction Data:', e);
                             this.db.DATA_YTB = [];
                         }
                         this.mapData();
