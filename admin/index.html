@@ -5087,6 +5087,40 @@
                     }
                     // Calculate Global Profit on init
                     this.calculateGlobalProfit();
+                    
+                    // Sync Notifications with today's real data from DATA_YTB
+                    if (this.db.DATA_YTB && this.db.DATA_YTB.length > 0) {
+                        const d = new Date();
+                        const todayFormatted1 = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}`;
+                        const todayFormatted2 = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
+                        
+                        const keys = Object.keys(this.db.DATA_YTB[0] || {});
+                        const todaysLogs = this.db.DATA_YTB.filter(row => {
+                            const dateStr = String(row[keys[0]] || '').trim();
+                            return dateStr === todayFormatted1 || dateStr === todayFormatted2;
+                        });
+                        
+                        if (todaysLogs.length > 0) {
+                            const realNotifs = todaysLogs.reverse().map(row => {
+                                const tType = String(row[keys[2]] || '').trim();
+                                const email = String(row[keys[3]] || '').trim();
+                                const product = String(row[keys[4]] || 'Sản phẩm').trim();
+                                const months = String(row[keys[5]] || '?').trim();
+                                const staff = String(row[keys[6]] || '?').trim();
+                                
+                                const typeText = tType.toLowerCase().includes('new') || tType.toLowerCase() === 'mới' ? 'Mới' : (tType.toLowerCase().includes('gia') ? 'Gia hạn' : tType);
+                                
+                                return {
+                                    message: `Đơn <b>${typeText}</b> (<b>${months} tháng</b> / CTV: <b>${staff}</b>) của KH <b>${email}</b> đã được note lên sheet tài chính.`,
+                                    time: `Đồng bộ từ Sheet`
+                                };
+                            }).slice(0, 50);
+                            
+                            this.notifications = realNotifs;
+                            localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
+                        }
+                    }
+
                     setTimeout(() => {
                         this.renderProfitChart();
                     }, 100);
