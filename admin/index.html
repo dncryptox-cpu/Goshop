@@ -242,11 +242,32 @@
                         <i data-lucide="refresh-cw" class="w-4 h-4 sm:w-5 sm:h-5"></i>
                     </button>
                     
-                    <button @click="alert('Đơn gia hạn, đơn mới đã được cập nhật lên sheet!')" title="Thông báo" class="relative p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-all">
-                        <i data-lucide="bell" class="w-4 h-4 sm:w-5 sm:h-5"></i>
-                        <span
-                            class="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></span>
-                    </button>
+                    <div class="relative" @click.outside="showNotifications = false">
+                        <button @click="showNotifications = !showNotifications" title="Thông báo" class="relative p-2 text-gray-400 hover:bg-gray-50 rounded-lg transition-all">
+                            <i data-lucide="bell" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                            <span x-show="notifications.length > 0" x-cloak
+                                class="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></span>
+                        </button>
+                        
+                        <!-- Notification Dropdown -->
+                        <div x-show="showNotifications" x-cloak class="absolute top-full right-0 mt-2 w-72 sm:w-80 bg-white rounded-xl shadow-2xl border border-gray-100 z-50 max-h-96 flex flex-col">
+                            <div class="p-3 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10 flex-shrink-0 rounded-t-xl">
+                                <h3 class="text-xs font-bold text-gray-900 uppercase tracking-widest">Thông báo</h3>
+                                <button @click="notifications = []" x-show="notifications.length > 0" class="text-[10px] text-gray-500 hover:text-red-500 transition-colors">Xóa tất cả</button>
+                            </div>
+                            <div class="p-2 overflow-y-auto flex-1">
+                                <template x-if="notifications.length === 0">
+                                    <div class="text-center py-6 text-gray-400 text-xs">Chưa có thông báo nào</div>
+                                </template>
+                                <template x-for="(notif, idx) in notifications" :key="idx">
+                                    <div class="p-3 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-50 last:border-0 text-left">
+                                        <p class="text-xs text-gray-700 leading-relaxed" x-html="notif.message"></p>
+                                        <p class="text-[10px] text-gray-400 mt-1" x-text="notif.time"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
                     <div class="h-6 w-[1px] bg-gray-200 hidden sm:block mx-1"></div>
                     <div class="flex items-center gap-2 sm:gap-3 cursor-pointer group">
                         <div class="text-right hidden sm:block">
@@ -3045,6 +3066,8 @@
                 activeModule: 'dashboard',
                 isLoading: false,
                 showModal: false,
+                showNotifications: false,
+                notifications: [],
                 searchQuery: '',
                 showSearchResults: false,
                 filterStatus: 'all',
@@ -4891,6 +4914,11 @@
                         
                         this.showToast('Order Sync Request Sent! Refreshing data...');
                         this.showModal = false;
+                        
+                        const notifMsg = `Đơn <b>${this.orderForm.type === 'Renewal' ? 'Gia hạn' : 'Mới'}</b> (<b>${this.orderForm.months} tháng</b> / CTV: <b>${this.orderForm.staff || 'N/A'}</b>) của KH <b>${this.orderForm.email}</b> đã được note lên sheet tài chính.`;
+                        this.notifications.unshift({ message: notifMsg, time: new Date().toLocaleTimeString('vi-VN') });
+                        if (this.notifications.length > 50) this.notifications.pop();
+                        
                         
                         this.orderForm = {
                             type: 'New', email: '', plan: '', months: 1,
