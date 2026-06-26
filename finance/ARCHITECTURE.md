@@ -34,3 +34,16 @@ Bất cứ ai khi mở phiên làm việc mới với Antigravity đều phải 
 
 ---
 *Ghi chú: File này đóng vai trò là "Bộ não dự án". Khi cần thiết kế thêm Module mới, hãy yêu cầu Antigravity dựa trên triết lý tách bạch Frontend/Backend trong file này để thực hiện.*
+
+## 5. BÀI HỌC XƯƠNG MÁU & QUY CHUẨN KỸ THUẬT CỐT LÕI
+Tất cả các tính năng mới và các phiên làm việc sau này của AI/Dev phải tuân thủ nghiêm ngặt các quy tắc đã đúc kết từ dự án DNC Operator:
+
+### 5.1. Google Apps Script (Backend) - Chống Lỗi Hệ Thống
+*   **Không tin tưởng nút Ctrl+Z (Undo) và `e.oldValue`:** Khi người dùng bấm Undo, `e.oldValue` bị trả về `undefined`. Tuyệt đối không dùng nó để tính toán cộng dồn. Bắt buộc dùng `PropertiesService` kết hợp `CacheService` với "Key" độc nhất (VD: ID Khách + Email) để làm bộ nhớ ngầm vĩnh cửu.
+*   **Tránh xa ảo ảnh `getLastRow()`:** Hàm này sẽ đếm cả các ô trống bị dính định dạng ở tận đáy bảng (dòng 1000). Luôn tự viết hàm quét từ dưới lên dựa vào một Cột mỏ neo (VD: Cột Email) để tìm chính xác "Dòng cuối cùng chứa Data".
+*   **Tránh lỗi Múi Giờ (Timezone Date):** Khi làm "Radar Chống Trùng Lặp", tuyệt đối không dùng hàm check Ngày (Date) vì múi giờ của Google Sheets và JS thường xuyên bị lệch. Thay vào đó, chỉ cần quét đối chiếu **Email + Sản Phẩm** trong phạm vi 20-50 dòng cuối cùng là đủ an toàn.
+*   **Chống đâm xe dữ liệu (Race Condition):** Bắt buộc bọc toàn bộ code xử lý trigger `onEdit` bằng `LockService.getDocumentLock().waitLock(5000)` và nhả khóa ở `finally`. Không có Lock, user gõ quá nhanh sẽ sinh ra trùng lặp đơn hàng.
+
+### 5.2. Frontend (Giao Diện & UI/UX)
+*   **Thẩm mỹ (Aesthetics):** Bắt buộc duy trì phong cách Flat Design, Minimalist, Glassmorphism. Màu sắc hài hòa, sang trọng (không dùng các màu cơ bản xanh đỏ tím vàng chói mắt). Các nút bấm, dropdown, table phải có hiệu ứng micro-animations mượt mà để mang lại trải nghiệm "Premium".
+*   **Module hóa & Format Data:** Giao diện có thể dùng HTML/Alpine.js hoặc React/Tailwind nhưng code phải chia nhỏ. Hàm xử lý tiền tệ (Currency) phải đọc được cả chữ "k", "tr". Bảng dữ liệu luôn phải có tính năng "Drill-down" (bấm để xổ ra chi tiết) và Click-to-copy cho email khách hàng.
