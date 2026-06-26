@@ -5460,7 +5460,6 @@
                             return new Date(9999, 11, 31).getTime();
                         };
                         
-                        // Treat "today" as start of day for accurate expiration calculation
                         const today = new Date();
                         today.setHours(0,0,0,0);
                         const now = today.getTime();
@@ -5470,11 +5469,13 @@
                             const famRow = this.db.Spot[i];
                             if (!famRow) break;
                             
-                            // Top row of the block contains Family Metadata (Columns B, C, D, E)
-                            const dateGh = String(famRow[sKeys[1]] || '').trim();
-                            const status = String(famRow[sKeys[2]] || '').trim();
-                            const chuFam = String(famRow[sKeys[3]] || '').trim();
-                            const isRenewed = String(famRow[sKeys[4]] || '').toUpperCase() === 'TRUE';
+                            // Top row of the block contains Family Metadata
+                            const dateGh = String(famRow['Date gh'] || famRow['Date gia hạn'] || '').trim();
+                            const status = String(famRow['Trạng thái'] || '').trim();
+                            const chuFam = String(famRow['Chủ fam'] || '').trim();
+                            
+                            // Checkbox is usually unnamed (Col_4). We fallback to sKeys[4] if needed.
+                            const isRenewed = String(famRow['Col_4'] || famRow[sKeys[4]] || '').toUpperCase() === 'TRUE';
                             
                             let currentFam = {
                                 dateGh,
@@ -5485,17 +5486,17 @@
                                 minDate: new Date(9999, 11, 31).getTime()
                             };
                             
-                            // All 6 rows of the block contain Member Data (Columns F to K)
+                            // All 6 rows of the block contain Member Data
                             for (let j = 0; j < 6; j++) {
                                 const memberRow = this.db.Spot[i + j];
                                 if (!memberRow) continue;
                                 
-                                const email = String(memberRow[sKeys[5]] || '').trim();
-                                const purchaseDate = String(memberRow[sKeys[6]] || '').trim();
-                                const duration = String(memberRow[sKeys[7]] || '').trim();
-                                const hsd = String(memberRow[sKeys[8]] || '').trim(); // Column I
-                                const note = String(memberRow[sKeys[9]] || '').trim();
-                                const ctv = String(memberRow[sKeys[10]] || '').trim();
+                                const email = String(memberRow['Thành viên'] || '').trim();
+                                const purchaseDate = String(memberRow['Ngày mua'] || '').trim();
+                                const duration = String(memberRow['Số tháng /gia hạn'] || memberRow['Số tháng / gia hạn'] || '').trim();
+                                const hsd = String(memberRow['HSD'] || '').trim(); // Explicitly get HSD
+                                const note = String(memberRow['Note'] || '').trim();
+                                const ctv = String(memberRow['CTV'] || '').trim();
                                 
                                 // Only push if there's actually some member data
                                 if (email || purchaseDate || hsd || duration || note || ctv) {
@@ -5521,10 +5522,8 @@
                         
                         // Sort so expired/earliest dates come to the top
                         parsedFams.sort((a, b) => {
-                            // If one is expired and the other is not, expired comes first
                             if (a.isExpired && !b.isExpired) return -1;
                             if (!a.isExpired && b.isExpired) return 1;
-                            // Otherwise sort by chronological date
                             return a.minDate - b.minDate;
                         });
                         
