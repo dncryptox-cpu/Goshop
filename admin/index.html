@@ -1080,12 +1080,21 @@
 
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Email Khách Hàng</label>
-                                <input type="text" x-model="manualOrderForm.email" required placeholder="vidu@email.com" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-all text-gray-900 font-medium">
+                                <input type="text" x-model="manualOrderForm.email" @input="checkDuplicateOrder()" required placeholder="vidu@email.com" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-all text-gray-900 font-medium">
+                                <template x-if="duplicateWarning">
+                                    <div class="mt-2 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2">
+                                        <i data-lucide="alert-triangle" class="w-4 h-4 text-red-500 mt-0.5 shrink-0"></i>
+                                        <div>
+                                            <p class="text-xs font-bold text-red-700">CẢNH BÁO TRÙNG LẶP!</p>
+                                            <p class="text-xs text-red-600 mt-0.5" x-text="duplicateWarning"></p>
+                                        </div>
+                                    </div>
+                                </template>
                             </div>
 
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Sản Phẩm & Gói</label>
-                                <select x-model="manualOrderForm.productKey" @change="onManualProductSelect()" required class="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-all text-gray-900 font-medium">
+                                <select x-model="manualOrderForm.productKey" @change="onManualProductSelect(); checkDuplicateOrder()" required class="w-full bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-primary transition-all text-gray-900 font-medium">
                                     <option value="" disabled selected>-- Chọn Sản Phẩm --</option>
                                     <template x-for="p in productCatalog" :key="p.key">
                                         <option :value="p.key" x-text="p.product + ' (' + p.duration + ' tháng)'"></option>
@@ -3199,6 +3208,7 @@
                     cost: 0,
                     ctv: 'Admin'
                 },
+                duplicateWarning: '',
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
                     TRANSACTION_SHEET_ID: '1-EgeNWztGQsY2rmLYp00yKDjgHR5WYoqzzhAkSnvJjc',
@@ -6077,6 +6087,35 @@
                     this.showToast('Đã lưu bảng giá thành công!');
                 },
 
+                checkDuplicateOrder() {
+                    this.duplicateWarning = '';
+                    if (!this.manualOrderForm.email || !this.manualOrderForm.productKey || !this.db.DATA_YTB) return;
+                    
+                    const inputEmail = this.manualOrderForm.email.toLowerCase().trim();
+                    const inputProduct = this.manualOrderForm.productKey.toLowerCase().trim();
+                    if (!inputEmail || this.db.DATA_YTB.length === 0) return;
+                    
+                    const keys = Object.keys(this.db.DATA_YTB[0] || {});
+                    if (keys.length < 5) return;
+                    
+                    // Scan the last 200 rows to find duplicates
+                    const recentLogs = this.db.DATA_YTB.slice(-200).reverse();
+                    for (let row of recentLogs) {
+                        const rowEmail = String(row[keys[3]] || '').toLowerCase().trim();
+                        const rowProduct = String(row[keys[4]] || '').toLowerCase().trim();
+                        const rowDate = String(row[keys[0]] || '').trim();
+                        
+                        if (rowEmail === inputEmail) {
+                            // Check if the product contains each other (e.g., Youtube-6 vs Youtube)
+                            if (rowProduct.includes(inputProduct) || inputProduct.includes(rowProduct)) {
+                                this.duplicateWarning = `Đã nhập gói ${rowProduct.toUpperCase()} vào ngày ${rowDate}. Hãy cẩn thận bị double đơn!`;
+                                // Also trigger lucide re-render safely
+                                setTimeout(() => { if(window.lucide) window.lucide.createIcons(); }, 10);
+                                return;
+                            }
+                        }
+                    }
+                },
                 async submitManualOrder() {
                     if(!this.CONFIG.FINANCIAL_WEBAPP_URL) {
                         this.showToast('Lỗi: Chưa cấu hình FINANCIAL_WEBAPP_URL');
