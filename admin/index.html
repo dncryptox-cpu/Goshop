@@ -5445,41 +5445,53 @@
                     if (this.db.Spot && this.db.Spot.length > 0) {
                         const sKeys = Object.keys(this.db.Spot[0] || {});
                         let parsedFams = [];
-                        let currentFam = null;
                         
-                        this.db.Spot.forEach(row => {
-                            const dateGh = String(row[sKeys[1]] || '').trim();
-                            const status = String(row[sKeys[2]] || '').trim();
-                            const chuFam = String(row[sKeys[3]] || '').trim();
-                            const isRenewed = String(row[sKeys[4]] || '').toUpperCase() === 'TRUE';
+                        // Each family is exactly a 6-row block in the sheet.
+                        // Fam 1: Rows 2-7 (index 0-5)
+                        // Fam 2: Rows 8-13 (index 6-11), etc.
+                        for (let i = 0; i < this.db.Spot.length; i += 6) {
+                            const famRow = this.db.Spot[i];
+                            if (!famRow) break;
                             
-                            if (chuFam || dateGh || status) {
-                                if (currentFam) parsedFams.push(currentFam);
-                                currentFam = {
-                                    dateGh,
-                                    status,
-                                    chuFam,
-                                    isRenewed,
-                                    members: []
-                                };
-                            }
+                            // Top row of the block contains Family Metadata (Columns B, C, D, E)
+                            const dateGh = String(famRow[sKeys[1]] || '').trim();
+                            const status = String(famRow[sKeys[2]] || '').trim();
+                            const chuFam = String(famRow[sKeys[3]] || '').trim();
+                            const isRenewed = String(famRow[sKeys[4]] || '').toUpperCase() === 'TRUE';
                             
-                            if (currentFam) {
-                                const email = String(row[sKeys[5]] || '').trim();
-                                const purchaseDate = String(row[sKeys[6]] || '').trim();
-                                const duration = String(row[sKeys[7]] || '').trim();
-                                const hsd = String(row[sKeys[8]] || '').trim();
-                                const note = String(row[sKeys[9]] || '').trim();
-                                const ctv = String(row[sKeys[10]] || '').trim();
+                            let currentFam = {
+                                dateGh,
+                                status,
+                                chuFam,
+                                isRenewed,
+                                members: []
+                            };
+                            
+                            // All 6 rows of the block contain Member Data (Columns F to K)
+                            for (let j = 0; j < 6; j++) {
+                                const memberRow = this.db.Spot[i + j];
+                                if (!memberRow) continue;
                                 
-                                if (email || purchaseDate || hsd) {
+                                const email = String(memberRow[sKeys[5]] || '').trim();
+                                const purchaseDate = String(memberRow[sKeys[6]] || '').trim();
+                                const duration = String(memberRow[sKeys[7]] || '').trim();
+                                const hsd = String(memberRow[sKeys[8]] || '').trim();
+                                const note = String(memberRow[sKeys[9]] || '').trim();
+                                const ctv = String(memberRow[sKeys[10]] || '').trim();
+                                
+                                // Only push if there's actually some member data
+                                if (email || purchaseDate || hsd || duration || note || ctv) {
                                     currentFam.members.push({
                                         email, purchaseDate, duration, hsd, note, ctv
                                     });
                                 }
                             }
-                        });
-                        if (currentFam) parsedFams.push(currentFam);
+                            
+                            // Only add if it's a real block
+                            if (currentFam.chuFam || currentFam.members.length > 0) {
+                                parsedFams.push(currentFam);
+                            }
+                        }
                         this.familiesSpot = parsedFams;
                     }
 
