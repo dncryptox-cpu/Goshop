@@ -1140,21 +1140,22 @@
 
                     <div class="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-6">
                         <template x-for="(fam, index) in familiesSpot" :key="index">
-                            <div class="bg-white rounded-xl border border-gray-100 card-shadow flex flex-col overflow-hidden hover:shadow-lg transition-all border-t-4" :class="fam.status.toLowerCase().includes('còn') ? 'border-t-emerald-500' : 'border-t-orange-500'">
+                            <div class="bg-white rounded-xl border border-gray-100 card-shadow flex flex-col overflow-hidden hover:shadow-lg transition-all border-t-4" :class="fam.isExpired ? 'border-t-red-600 bg-red-50/10' : (fam.status.toLowerCase().includes('còn') ? 'border-t-emerald-500' : 'border-t-orange-500')">
                                 <!-- Fam Header -->
-                                <div class="p-4 border-b border-gray-100 flex justify-between items-start">
+                                <div class="p-4 border-b border-gray-100 flex justify-between items-start" :class="fam.isExpired ? 'bg-red-50/40' : ''">
                                     <div class="overflow-hidden">
                                         <div class="flex items-center gap-2 mb-1">
-                                            <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
-                                                <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
+                                            <div :class="fam.isExpired ? 'bg-red-100 text-red-600' : 'bg-indigo-100 text-indigo-600'" class="w-8 h-8 rounded-full flex items-center justify-center shrink-0">
+                                                <i data-lucide="users" class="w-4 h-4"></i>
                                             </div>
                                             <h3 @click.stop="copyToClipboard(fam.chuFam, 'Chủ Fam')" class="font-bold text-gray-900 text-lg truncate cursor-pointer hover:text-indigo-600 transition-colors" x-text="fam.chuFam || '(Trống Chủ Fam)'" title="Bấm để copy"></h3>
                                         </div>
                                         <div class="flex items-center gap-3 mt-2 pl-10">
-                                            <span :class="fam.status.toLowerCase().includes('còn') ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-orange-100 text-orange-700 border-orange-200'" class="px-2 py-0.5 rounded border text-[10px] uppercase font-bold tracking-wider" x-text="fam.status || 'Chưa rõ'"></span>
+                                            <span x-show="fam.isExpired" class="px-2 py-0.5 rounded border border-red-200 bg-red-100 text-red-700 text-[10px] uppercase font-bold tracking-wider animate-pulse shadow-sm">QUÁ HẠN</span>
+                                            <span x-show="!fam.isExpired" :class="fam.status.toLowerCase().includes('còn') ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-orange-100 text-orange-700 border-orange-200'" class="px-2 py-0.5 rounded border text-[10px] uppercase font-bold tracking-wider" x-text="fam.status || 'Chưa rõ'"></span>
                                             <div class="text-xs text-gray-500 flex items-center gap-1.5 font-medium">
                                                 <i data-lucide="calendar" class="w-3.5 h-3.5 text-gray-400"></i>
-                                                <span>Ngày GH: <b class="text-gray-800" x-text="fam.dateGh || '-'"></b></span>
+                                                <span>Ngày GH: <b :class="fam.isFamExpired ? 'text-red-600' : 'text-gray-800'" x-text="fam.dateGh || '-'"></b></span>
                                             </div>
                                         </div>
                                     </div>
@@ -1187,7 +1188,7 @@
                                                     </div>
                                                 </div>
                                                 <div class="text-right shrink-0 pl-2">
-                                                    <div class="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 inline-block shadow-sm" :class="member.note ? 'mb-0.5' : ''" x-show="member.hsd">HSD: <span x-text="member.hsd"></span></div>
+                                                    <div class="text-[11px] font-bold px-2 py-0.5 rounded border inline-block shadow-sm" :class="[member.note ? 'mb-0.5' : '', member.isExpired ? 'bg-red-50 text-red-700 border-red-200 animate-pulse' : 'bg-emerald-50 text-emerald-700 border-emerald-200']" x-show="member.hsd">HSD: <span x-text="member.hsd"></span></div>
                                                     <p class="text-[10px] text-orange-500 font-medium truncate max-w-[80px]" x-show="member.note" x-text="member.note" :title="member.note"></p>
                                                 </div>
                                             </div>
@@ -5448,9 +5449,23 @@
                         const sKeys = Object.keys(this.db.Spot[0] || {});
                         let parsedFams = [];
                         
+                        const parseVietnameseDate = (dateStr) => {
+                            if (!dateStr || dateStr.trim() === '' || dateStr === '-') return new Date(9999, 11, 31).getTime();
+                            const parts = dateStr.trim().split('/');
+                            if (parts.length >= 3) {
+                                let y = parseInt(parts[2]);
+                                if (y < 100) y += 2000;
+                                return new Date(y, parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
+                            }
+                            return new Date(9999, 11, 31).getTime();
+                        };
+                        
+                        // Treat "today" as start of day for accurate expiration calculation
+                        const today = new Date();
+                        today.setHours(0,0,0,0);
+                        const now = today.getTime();
+
                         // Each family is exactly a 6-row block in the sheet.
-                        // Fam 1: Rows 2-7 (index 0-5)
-                        // Fam 2: Rows 8-13 (index 6-11), etc.
                         for (let i = 0; i < this.db.Spot.length; i += 6) {
                             const famRow = this.db.Spot[i];
                             if (!famRow) break;
@@ -5466,7 +5481,9 @@
                                 status,
                                 chuFam,
                                 isRenewed,
-                                members: []
+                                members: [],
+                                minDate: parseVietnameseDate(dateGh),
+                                isFamExpired: parseVietnameseDate(dateGh) < now && dateGh.trim() !== ''
                             };
                             
                             // All 6 rows of the block contain Member Data (Columns F to K)
@@ -5483,17 +5500,35 @@
                                 
                                 // Only push if there's actually some member data
                                 if (email || purchaseDate || hsd || duration || note || ctv) {
+                                    const hsdTime = parseVietnameseDate(hsd);
+                                    if (hsdTime < currentFam.minDate && hsdTime !== new Date(9999, 11, 31).getTime()) {
+                                        currentFam.minDate = hsdTime;
+                                    }
+                                    
                                     currentFam.members.push({
-                                        email, purchaseDate, duration, hsd, note, ctv
+                                        email, purchaseDate, duration, hsd, note, ctv,
+                                        isExpired: hsdTime < now && hsd.trim() !== ''
                                     });
                                 }
                             }
+                            
+                            currentFam.isExpired = currentFam.isFamExpired || currentFam.members.some(m => m.isExpired);
                             
                             // Only add if it's a real block
                             if (currentFam.chuFam || currentFam.members.length > 0) {
                                 parsedFams.push(currentFam);
                             }
                         }
+                        
+                        // Sort so expired/earliest dates come to the top
+                        parsedFams.sort((a, b) => {
+                            // If one is expired and the other is not, expired comes first
+                            if (a.isExpired && !b.isExpired) return -1;
+                            if (!a.isExpired && b.isExpired) return 1;
+                            // Otherwise sort by chronological date
+                            return a.minDate - b.minDate;
+                        });
+                        
                         this.familiesSpot = parsedFams;
                     }
 
