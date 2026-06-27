@@ -262,7 +262,7 @@
                                 <template x-for="(notif, idx) in notifications" :key="idx">
                                     <div class="p-3 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-50 last:border-0 text-left">
                                         <p class="text-xs text-gray-700 leading-relaxed" x-html="notif.message"></p>
-                                        <p class="text-[10px] text-gray-400 mt-1" x-text="notif.time"></p>
+                                        <p class="text-[10px] text-gray-400 mt-1" x-text="getNotifTimeDisplay(notif)"></p>
                                     </div>
                                 </template>
                             </div>
@@ -3615,6 +3615,37 @@
                     return this.syncedNotes.includes(note);
                 },
 
+                getNotifTimeDisplay(notif) {
+                    if (!notif.timestamp) return notif.time || 'N/A';
+                    if (String(notif.time).includes('Từ Sheet')) return notif.time;
+                    
+                    const notifDate = new Date(notif.timestamp);
+                    const today = new Date();
+                    const isToday = notifDate.getDate() === today.getDate() && 
+                                    notifDate.getMonth() === today.getMonth() && 
+                                    notifDate.getFullYear() === today.getFullYear();
+                    
+                    const yesterday = new Date();
+                    yesterday.setDate(today.getDate() - 1);
+                    const isYesterday = notifDate.getDate() === yesterday.getDate() && 
+                                        notifDate.getMonth() === yesterday.getMonth() && 
+                                        notifDate.getFullYear() === yesterday.getFullYear();
+                                        
+                    const timeStr = String(notifDate.getHours()).padStart(2, '0') + ':' + String(notifDate.getMinutes()).padStart(2, '0');
+                    if (isToday) return timeStr;
+                    if (isYesterday) return `Hôm qua ${timeStr}`;
+                    return `${String(notifDate.getDate()).padStart(2, '0')}/${String(notifDate.getMonth()+1).padStart(2, '0')} ${timeStr}`;
+                },
+
+                isSameDay(ts1, ts2) {
+                    if (!ts1 || !ts2) return false;
+                    const d1 = new Date(ts1);
+                    const d2 = new Date(ts2);
+                    return d1.getDate() === d2.getDate() &&
+                           d1.getMonth() === d2.getMonth() &&
+                           d1.getFullYear() === d2.getFullYear();
+                },
+
                 async syncSpecificCashflow(type, amount, category, note, event) {
                     if(amount === 0) {
                         this.showToast('Số tiền bằng 0, không cần đồng bộ!');
@@ -5327,9 +5358,15 @@
                         this.showToast('Order Sync Request Sent! Refreshing data...');
                         this.showModal = false;
                         
-                        const notifMsg = `<b>${this.orderForm.type === 'Renewal' ? 'Gia hạn' : 'Mới'}</b> - <b>${this.orderForm.email}</b> - CTV <b>${this.orderForm.staff || 'N/A'}</b> - <b>${this.orderForm.months} tháng</b> đã được note lên sheet tài chính.`;
-                        this.notifications.unshift({ message: notifMsg, time: new Date().toLocaleTimeString('vi-VN') });
-                        if (this.notifications.length > 50) this.notifications.pop();
+                        const notifMsg = `CTV <b class="text-indigo-600">${this.orderForm.staff || 'Dnc'}</b> vừa ghi nhận đơn <b class="text-emerald-600">${this.orderForm.type === 'Renewal' ? 'Gia hạn' : 'Mới'}</b> - <b>${this.orderForm.email}</b> (${this.orderForm.months} tháng)`;
+                        const now = new Date();
+                        const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+                        this.notifications.unshift({ 
+                            message: notifMsg, 
+                            time: timeStr,
+                            timestamp: now.getTime()
+                        });
+                        if (this.notifications.length > 100) this.notifications.pop();
                         localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
                         
                         
@@ -5504,58 +5541,111 @@
                     // Calculate Global Profit on init
                     this.calculateGlobalProfit();
                     
-                    // Sync Notifications with today's real data from DATA_YTB
+                    // Sync Notifications with real data from DATA_YTB
                     if (this.db.DATA_YTB && this.db.DATA_YTB.length > 0) {
                         const d = new Date();
                         const todayFormatted1 = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth()+1).padStart(2, '0')}/${d.getFullYear()}`;
                         const todayFormatted2 = `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`;
                         
                         const keys = Object.keys(this.db.DATA_YTB[0] || {});
-                        const todaysLogs = this.db.DATA_YTB.filter(row => {
-                            const dateStr = String(row[keys[0]] || '').trim();
-                            return dateStr === todayFormatted1 || dateStr === todayFormatted2;
-                        });
                         
-                        if (todaysLogs.length > 0) {
-                            const realNotifs = todaysLogs.reverse().map(row => {
-                                const tType = String(row[keys[2]] || '').trim();
-                                const email = String(row[keys[3]] || '').trim();
-                                const product = String(row[keys[4]] || '').trim();
-                                
-                                let nStaffKey = keys.find(k => {
-                                    let kl = k.toLowerCase();
-                                    return kl === 'ctv' || kl.includes('người bán') || kl.includes('nhân sự') || kl === 'staff';
-                                });
-                                if (!nStaffKey) {
-                                    for (let k of keys) {
-                                        let v = String(row[k] || '').toLowerCase().trim();
-                                        if (['dnc', 'tuan', 'vuong', 'loc', 'admin'].includes(v)) {
-                                            nStaffKey = k;
-                                            break;
-                                        }
+                        // Parse sheet date DD/MM/YYYY to a timestamp (at 00:00:00 local time)
+                        const parseSheetDate = (dateStr) => {
+                            if (!dateStr) return 0;
+                            const parts = String(dateStr).trim().split('/');
+                            if (parts.length >= 3) {
+                                let y = parseInt(parts[2]);
+                                if (y < 100) y += 2000;
+                                return new Date(y, parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
+                            }
+                            return 0;
+                        };
+
+                        const getRelativeDateStr = (dateStr) => {
+                            const ds = String(dateStr).trim();
+                            if (ds === todayFormatted1 || ds === todayFormatted2) {
+                                return 'Hôm nay (Từ Sheet)';
+                            }
+                            const parts = ds.split('/');
+                            if (parts.length >= 2) {
+                                return `${parts[0]}/${parts[1]} (Từ Sheet)`;
+                            }
+                            return `${ds} (Từ Sheet)`;
+                        };
+
+                        // Process the last 100 transactions from sheet (newest first)
+                        const recentLogs = this.db.DATA_YTB.slice(-100).reverse();
+                        
+                        recentLogs.forEach(row => {
+                            const dateStr = String(row[keys[0]] || '').trim();
+                            if (!dateStr) return;
+                            
+                            const tType = String(row[keys[2]] || '').trim();
+                            const email = String(row[keys[3]] || '').trim();
+                            const product = String(row[keys[4]] || '').trim();
+                            
+                            let nStaffKey = keys.find(k => {
+                                let kl = k.toLowerCase();
+                                return kl === 'ctv' || kl.includes('người bán') || kl.includes('nhân sự') || kl === 'staff';
+                            });
+                            if (!nStaffKey) {
+                                for (let k of keys) {
+                                    let v = String(row[k] || '').toLowerCase().trim();
+                                    if (['dnc', 'tuan', 'vuong', 'loc', 'admin'].includes(v)) {
+                                        nStaffKey = k;
+                                        break;
                                     }
                                 }
-                                
-                                const staff = nStaffKey ? String(row[nStaffKey] || '?').trim() : '?';
-                                
-                                let months = '?';
-                                if (product.includes('-')) {
-                                    months = product.split('-').pop().trim();
-                                } else {
-                                    months = product;
-                                }
-                                
-                                const typeText = tType.toLowerCase().includes('new') || tType.toLowerCase() === 'mới' ? 'Mới' : (tType.toLowerCase().includes('gia') ? 'Gia hạn' : tType);
-                                
-                                return {
-                                    message: `CTV <b class="text-indigo-600">${staff}</b> đã ghi nhận đơn <b class="text-emerald-600">${typeText}</b> - <b>${email}</b> (${months} tháng)`,
-                                    time: `Hôm nay (Từ Sheet)`
-                                };
-                            }).slice(0, 50);
+                            }
                             
-                            this.notifications = realNotifs;
-                            localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
+                            const staff = nStaffKey ? String(row[nStaffKey] || '?').trim() : '?';
+                            
+                            let months = '?';
+                            if (product.includes('-')) {
+                                months = product.split('-').pop().trim();
+                            } else {
+                                months = product;
+                            }
+                            
+                            const typeText = tType.toLowerCase().includes('new') || tType.toLowerCase() === 'mới' ? 'Mới' : (tType.toLowerCase().includes('gia') ? 'Gia hạn' : tType);
+                            
+                            // Standardized message content using "vừa ghi nhận đơn" for consistency
+                            const msgContent = `CTV <b class="text-indigo-600">${staff}</b> vừa ghi nhận đơn <b class="text-emerald-600">${typeText}</b> - <b>${email}</b> (${months} tháng)`;
+                            
+                            // Check for duplicates in existing notifications list
+                            const isDuplicate = this.notifications.some(n => {
+                                const cleanExisting = n.message.replace(/vừa ghi nhận đơn/g, '').replace(/đã ghi nhận đơn/g, '').replace(/\s/g, '');
+                                const cleanNew = msgContent.replace(/vừa ghi nhận đơn/g, '').replace(/đã ghi nhận đơn/g, '').replace(/\s/g, '');
+                                if (cleanExisting !== cleanNew) return false;
+                                
+                                // Check if same calendar day
+                                const ts = parseSheetDate(dateStr);
+                                if (n.timestamp && ts) {
+                                    return this.isSameDay(n.timestamp, ts);
+                                }
+                                return true;
+                            });
+                            
+                            if (!isDuplicate) {
+                                const timeLabel = getRelativeDateStr(dateStr);
+                                const ts = parseSheetDate(dateStr);
+                                this.notifications.push({
+                                    message: msgContent,
+                                    time: timeLabel,
+                                    timestamp: ts
+                                });
+                            }
+                        });
+                        
+                        // Sort descending by timestamp (newest first)
+                        this.notifications.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+                        
+                        // Keep max 100 notifications
+                        if (this.notifications.length > 100) {
+                            this.notifications = this.notifications.slice(0, 100);
                         }
+                        
+                        localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
                     }
 
                     // Parse Fam Spot
@@ -6310,9 +6400,11 @@
                             const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
                             this.notifications.unshift({
                                 message: `CTV <b class="text-indigo-600">${staff}</b> vừa ghi nhận đơn <b class="text-emerald-600">Gia hạn</b> - <b>${this.updateHSDForm.email}</b> (${this.updateHSDForm.months || 1} tháng)`,
-                                time: timeStr
+                                time: timeStr,
+                                timestamp: now.getTime()
                             });
-                            if (this.notifications.length > 50) this.notifications.pop();
+                            if (this.notifications.length > 100) this.notifications.pop();
+                            localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
                             
                         } catch (e) {
                             console.error('Financial log error:', e);
@@ -6459,9 +6551,11 @@
                         const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
                         this.notifications.unshift({
                             message: `CTV <b class="text-indigo-600">${this.manualOrderForm.ctv}</b> vừa ghi nhận đơn <b class="text-emerald-600">Mới</b> - <b>${this.manualOrderForm.email}</b> (${months} tháng)`,
-                            time: timeStr
+                            time: timeStr,
+                            timestamp: now.getTime()
                         });
-                        if (this.notifications.length > 50) this.notifications.pop();
+                        if (this.notifications.length > 100) this.notifications.pop();
+                        localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
                         
                         this.showToast('Đã thêm đơn hàng thành công!');
                         // Reset form partially
