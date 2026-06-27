@@ -260,9 +260,19 @@
                                     <div class="text-center py-6 text-gray-400 text-xs">Chưa có thông báo nào</div>
                                 </template>
                                 <template x-for="(notif, idx) in notifications" :key="idx">
-                                    <div class="p-3 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-50 last:border-0 text-left">
+                                    <div @click="const mail = getNotifEmail(notif); if (mail) copyText(mail);"
+                                         class="p-3 hover:bg-gray-50 rounded-lg transition-all border-b border-gray-50 last:border-0 text-left cursor-pointer group relative">
                                         <p class="text-xs text-gray-700 leading-relaxed" x-html="notif.message"></p>
-                                        <p class="text-[10px] text-gray-400 mt-1" x-text="getNotifTimeDisplay(notif)"></p>
+                                        <div class="flex items-center justify-between mt-1.5">
+                                            <p class="text-[10px] text-gray-400" x-text="getNotifTimeDisplay(notif)"></p>
+                                            <span x-show="getNotifEmail(notif)" class="text-[9px] text-gray-400 group-hover:text-primary transition-all flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                                                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                                                </svg>
+                                                Click to copy mail
+                                            </span>
+                                        </div>
                                     </div>
                                 </template>
                             </div>
@@ -3617,24 +3627,25 @@
 
                 getNotifTimeDisplay(notif) {
                     if (!notif.timestamp) return notif.time || 'N/A';
-                    if (String(notif.time).includes('Từ Sheet')) return notif.time;
                     
                     const notifDate = new Date(notif.timestamp);
-                    const today = new Date();
-                    const isToday = notifDate.getDate() === today.getDate() && 
-                                    notifDate.getMonth() === today.getMonth() && 
-                                    notifDate.getFullYear() === today.getFullYear();
+                    const dd = String(notifDate.getDate()).padStart(2, '0');
+                    const mm = String(notifDate.getMonth() + 1).padStart(2, '0');
+                    const yyyy = notifDate.getFullYear();
+                    const datePart = `${dd}/${mm}/${yyyy}`;
                     
-                    const yesterday = new Date();
-                    yesterday.setDate(today.getDate() - 1);
-                    const isYesterday = notifDate.getDate() === yesterday.getDate() && 
-                                        notifDate.getMonth() === yesterday.getMonth() && 
-                                        notifDate.getFullYear() === yesterday.getFullYear();
-                                        
-                    const timeStr = String(notifDate.getHours()).padStart(2, '0') + ':' + String(notifDate.getMinutes()).padStart(2, '0');
-                    if (isToday) return timeStr;
-                    if (isYesterday) return `Hôm qua ${timeStr}`;
-                    return `${String(notifDate.getDate()).padStart(2, '0')}/${String(notifDate.getMonth()+1).padStart(2, '0')} ${timeStr}`;
+                    if (String(notif.time).includes('Từ Sheet')) {
+                        return `${datePart} (Từ Sheet)`;
+                    }
+                    
+                    const timePart = String(notifDate.getHours()).padStart(2, '0') + ':' + String(notifDate.getMinutes()).padStart(2, '0');
+                    return `${timePart} - ${datePart}`;
+                },
+
+                getNotifEmail(notif) {
+                    if (notif.email) return notif.email;
+                    const match = String(notif.message).match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+                    return match ? match[0] : null;
                 },
 
                 isSameDay(ts1, ts2) {
@@ -5358,13 +5369,16 @@
                         this.showToast('Order Sync Request Sent! Refreshing data...');
                         this.showModal = false;
                         
-                        const notifMsg = `CTV <b class="text-indigo-600">${this.orderForm.staff || 'Dnc'}</b> vừa ghi nhận đơn <b class="text-emerald-600">${this.orderForm.type === 'Renewal' ? 'Gia hạn' : 'Mới'}</b> - <b>${this.orderForm.email}</b> (${this.orderForm.months} tháng)`;
+                        const productVal = this.orderForm.plan || 'Youtube';
+                        const pName = productVal.includes('-') ? productVal.split('-')[0].trim() : productVal;
+                        const notifMsg = `CTV <b class="text-indigo-600">${this.orderForm.staff || 'Dnc'}</b> vừa ghi nhận đơn <b class="text-emerald-600">${this.orderForm.type === 'Renewal' ? 'Gia hạn' : 'Mới'}</b> - <span class="text-orange-600 font-bold">${pName}</span> - <b>${this.orderForm.email}</b> (${this.orderForm.months} tháng)`;
                         const now = new Date();
                         const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
                         this.notifications.unshift({ 
                             message: notifMsg, 
                             time: timeStr,
-                            timestamp: now.getTime()
+                            timestamp: now.getTime(),
+                            email: this.orderForm.email
                         });
                         if (this.notifications.length > 100) this.notifications.pop();
                         localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
@@ -5601,16 +5615,17 @@
                             const staff = nStaffKey ? String(row[nStaffKey] || '?').trim() : '?';
                             
                             let months = '?';
+                            let pName = product;
                             if (product.includes('-')) {
-                                months = product.split('-').pop().trim();
-                            } else {
-                                months = product;
+                                const parts = product.split('-');
+                                months = parts.pop().trim();
+                                pName = parts.join('-').trim();
                             }
                             
                             const typeText = tType.toLowerCase().includes('new') || tType.toLowerCase() === 'mới' ? 'Mới' : (tType.toLowerCase().includes('gia') ? 'Gia hạn' : tType);
                             
-                            // Standardized message content using "vừa ghi nhận đơn" for consistency
-                            const msgContent = `CTV <b class="text-indigo-600">${staff}</b> vừa ghi nhận đơn <b class="text-emerald-600">${typeText}</b> - <b>${email}</b> (${months} tháng)`;
+                            // Standardized message content with product name and styled span
+                            const msgContent = `CTV <b class="text-indigo-600">${staff}</b> vừa ghi nhận đơn <b class="text-emerald-600">${typeText}</b> - <span class="text-orange-600 font-bold">${pName}</span> - <b>${email}</b> (${months} tháng)`;
                             
                             // Check for duplicates in existing notifications list
                             const isDuplicate = this.notifications.some(n => {
@@ -5632,7 +5647,8 @@
                                 this.notifications.push({
                                     message: msgContent,
                                     time: timeLabel,
-                                    timestamp: ts
+                                    timestamp: ts,
+                                    email: email
                                 });
                             }
                         });
@@ -6399,9 +6415,10 @@
                             const now = new Date();
                             const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
                             this.notifications.unshift({
-                                message: `CTV <b class="text-indigo-600">${staff}</b> vừa ghi nhận đơn <b class="text-emerald-600">Gia hạn</b> - <b>${this.updateHSDForm.email}</b> (${this.updateHSDForm.months || 1} tháng)`,
+                                message: `CTV <b class="text-indigo-600">${staff}</b> vừa ghi nhận đơn <b class="text-emerald-600">Gia hạn</b> - <span class="text-orange-600 font-bold">${basePlan}</span> - <b>${this.updateHSDForm.email}</b> (${this.updateHSDForm.months || 1} tháng)`,
                                 time: timeStr,
-                                timestamp: now.getTime()
+                                timestamp: now.getTime(),
+                                email: this.updateHSDForm.email
                             });
                             if (this.notifications.length > 100) this.notifications.pop();
                             localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
@@ -6542,17 +6559,19 @@
                         
                         // Realtime Notification Update
                         let months = '?';
+                        let pName = this.manualOrderForm.productKey;
                         if (this.manualOrderForm.productKey.includes('-')) {
-                            months = this.manualOrderForm.productKey.split('-').pop().trim();
-                        } else {
-                            months = this.manualOrderForm.productKey;
+                            const parts = this.manualOrderForm.productKey.split('-');
+                            months = parts.pop().trim();
+                            pName = parts.join('-').trim();
                         }
                         const now = new Date();
                         const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
                         this.notifications.unshift({
-                            message: `CTV <b class="text-indigo-600">${this.manualOrderForm.ctv}</b> vừa ghi nhận đơn <b class="text-emerald-600">Mới</b> - <b>${this.manualOrderForm.email}</b> (${months} tháng)`,
+                            message: `CTV <b class="text-indigo-600">${this.manualOrderForm.ctv}</b> vừa ghi nhận đơn <b class="text-emerald-600">Mới</b> - <span class="text-orange-600 font-bold">${pName}</span> - <b>${this.manualOrderForm.email}</b> (${months} tháng)`,
                             time: timeStr,
-                            timestamp: now.getTime()
+                            timestamp: now.getTime(),
+                            email: this.manualOrderForm.email
                         });
                         if (this.notifications.length > 100) this.notifications.pop();
                         localStorage.setItem('goshop_notifications', JSON.stringify(this.notifications));
