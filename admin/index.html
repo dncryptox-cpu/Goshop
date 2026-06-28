@@ -1246,14 +1246,28 @@
                             <h1 class="text-2xl font-bold text-gray-900">Gia Hạn Family (FamRenew)</h1>
                             <p class="text-sm text-gray-500 mt-1">Dữ liệu gia hạn Family được đồng bộ trực tiếp từ Google Sheet FamRenew.</p>
                         </div>
-                        <div class="flex gap-3">
+                        <div class="flex flex-wrap gap-3">
+                            <!-- Metric: Tổng cộng -->
                             <div class="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 flex items-center gap-3">
-                                <i data-lucide="refresh-cw" class="w-5 h-5 text-indigo-500"></i>
+                                <i data-lucide="database" class="w-5 h-5 text-indigo-500"></i>
                                 <div>
-                                    <p class="text-xs font-bold text-indigo-400 uppercase">Tổng Tài Khoản</p>
+                                    <p class="text-xs font-bold text-indigo-400 uppercase">Tổng Acc</p>
                                     <p class="text-lg font-bold text-indigo-700" x-text="famRenewList.length"></p>
                                 </div>
                             </div>
+                            <!-- Metric: Cần test gấp -->
+                            <div class="bg-red-50 border border-red-100 rounded-lg px-4 py-2 flex items-center gap-3">
+                                <i data-lucide="alert-triangle" class="w-5 h-5 text-red-500 animate-bounce"></i>
+                                <div>
+                                    <p class="text-xs font-bold text-red-400 uppercase">Cần Test Gấp</p>
+                                    <p class="text-lg font-bold text-red-700" x-text="famRenewList.filter(i => getWarrantyStatus(i).isUrgent).length"></p>
+                                </div>
+                            </div>
+                            <!-- Action: Báo cáo bảo hành -->
+                            <button @click="copyWarrantyReport()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shrink-0">
+                                <i data-lucide="file-output" class="w-3.5 h-3.5"></i> Copy List Lỗi BH
+                            </button>
+                            <!-- Action: Đồng bộ -->
                             <button @click="fetchSheetData()" class="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-2 border border-emerald-200 shrink-0">
                                 <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Đồng Bộ
                             </button>
@@ -1300,13 +1314,22 @@
                                         <tr class="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
                                             <!-- Status -->
                                             <td class="px-6 py-4">
-                                                <span class="px-2.5 py-1 text-[10px] font-bold rounded-md uppercase border"
-                                                    :class="item.status.toLowerCase().includes('đã trial') || item.status.toLowerCase().includes('đã dùng') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                                                            item.status.toLowerCase().includes('banned') || item.status.toLowerCase().includes('lỗi') ? 'bg-red-50 border-red-200 text-red-700' :
-                                                            item.status.toLowerCase().includes('chưa dùng') || item.status.toLowerCase().includes('trial') ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                                                            'bg-gray-50 border-gray-200 text-gray-700'"
-                                                    x-text="item.status || 'Chưa có'">
-                                                </span>
+                                                <div class="flex flex-col gap-1.5">
+                                                    <span class="px-2.5 py-1 text-[10px] font-bold rounded-md uppercase border inline-block w-fit"
+                                                        :class="item.status.toLowerCase().includes('đã trial') || item.status.toLowerCase().includes('đã dùng') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                                                                item.status.toLowerCase().includes('banned') || item.status.toLowerCase().includes('lỗi') ? 'bg-red-50 border-red-200 text-red-700' :
+                                                                item.status.toLowerCase().includes('chưa dùng') || item.status.toLowerCase().includes('trial') ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                                                                'bg-gray-50 border-gray-200 text-gray-700'"
+                                                        x-text="item.status || 'Chưa có'">
+                                                    </span>
+                                                    <!-- Dynamic Warranty Alert -->
+                                                    <template x-if="getWarrantyStatus(item).text">
+                                                        <span class="px-2 py-0.5 text-[9px] rounded border w-fit" 
+                                                              :class="getWarrantyStatus(item).alertClass"
+                                                              x-text="getWarrantyStatus(item).text">
+                                                        </span>
+                                                    </template>
+                                                </div>
                                             </td>
                                             <!-- Mail -->
                                             <td class="px-6 py-4">
@@ -1345,9 +1368,32 @@
                                             </td>
                                             <!-- Actions -->
                                             <td class="px-6 py-4 text-right">
-                                                <button @click="copyToClipboard(`${item.email}|${item.pass}|${item.recoveryEmail}|${item.twofa}`, 'Thông tin tài khoản')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 transition-all" title="Copy dạng: mail|pass|mailkp|2fa">
-                                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Full
-                                                </button>
+                                                <div class="flex items-center justify-end gap-1.5 flex-wrap">
+                                                    <!-- Quick Actions -->
+                                                    <button @click="changeFamRenewStatus(item, 'Đã Trial / Đã dùng')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1.5 rounded transition-all border border-emerald-200/50" title="Đánh dấu đã nâng gói thành công">
+                                                        Đã Nâng
+                                                    </button>
+                                                    <button @click="changeFamRenewStatus(item, 'Quét ver')" class="bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1.5 rounded transition-all border border-amber-200/50" title="Báo quét xác minh lần 1">
+                                                        Báo Ver 1
+                                                    </button>
+                                                    <button @click="changeFamRenewStatus(item, 'Banned')" class="bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1.5 rounded transition-all border border-red-200/50" title="Bị quét xác minh lần 2 / Blocked / Bỏ">
+                                                        Hủy (Ver 2)
+                                                    </button>
+                                                    
+                                                    <!-- Dropdown Status -->
+                                                    <select @change="changeFamRenewStatus(item, $event.target.value)" class="bg-gray-50 border border-gray-200 text-gray-700 text-[10px] rounded px-1.5 py-1.5 focus:outline-none focus:border-primary">
+                                                        <option value="" disabled selected>Khác</option>
+                                                        <option value="ko có trial">Không có trial</option>
+                                                        <option value="lỗi pay">Lỗi Pay</option>
+                                                        <option value="Xác minh sdt">Xác minh sđt</option>
+                                                        <option value="Ver / chưa dùng">Chưa dùng</option>
+                                                    </select>
+                                                    
+                                                    <!-- Copy Button -->
+                                                    <button @click="copyToClipboard(`${item.email}|${item.pass}|${item.recoveryEmail}|${item.twofa}`, 'Thông tin tài khoản')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 transition-all" title="Copy dạng: mail|pass|mailkp|2fa">
+                                                        <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Full
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     </template>
@@ -3835,6 +3881,76 @@
                         if (i.status) statuses.add(i.status);
                     });
                     return Array.from(statuses);
+                },
+
+                async changeFamRenewStatus(item, newStatus) {
+                    this.showToast(`Đang cập nhật trạng thái cho ${item.email}...`);
+                    try {
+                        await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'update_fam_renew_status',
+                                email: item.email,
+                                status: newStatus
+                            })
+                        });
+                        item.status = newStatus;
+                        this.showToast(`Đã đổi trạng thái thành: ${newStatus}`);
+                    } catch (e) {
+                        console.error('Error changing FamRenew status:', e);
+                        this.showToast('Không thể cập nhật trạng thái.');
+                    }
+                },
+
+                getWarrantyStatus(item) {
+                    if (!item.date) return { text: '', alertClass: '', isUrgent: false };
+                    const parts = item.date.split('/');
+                    if (parts.length < 2) return { text: '', alertClass: '', isUrgent: false };
+                    
+                    const d = parseInt(parts[0]);
+                    const m = parseInt(parts[1]) - 1;
+                    const y = parts[2] ? parseInt(parts[2]) : new Date().getFullYear();
+                    const importDate = new Date(y, m, d);
+                    
+                    const now = new Date();
+                    importDate.setHours(0, 0, 0, 0);
+                    now.setHours(0, 0, 0, 0);
+                    
+                    const diffTime = now.getTime() - importDate.getTime();
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    const sLower = item.status.toLowerCase();
+                    const isNew = sLower === '' || sLower.includes('chưa dùng') || sLower.includes('ver') || sLower.includes('trial') || sLower.includes('chờ');
+                    
+                    if (isNew) {
+                        if (diffDays >= 0 && diffDays <= 3) {
+                            const daysLeft = 3 - diffDays;
+                            if (daysLeft === 0) {
+                                return { text: '⚠️ Hết BH Hôm Nay', alertClass: 'bg-orange-50 border-orange-200 text-orange-700 font-bold', isUrgent: true };
+                            } else if (daysLeft > 0) {
+                                return { text: `🔴 Cần Test Gấp (Còn ${daysLeft} ngày BH)`, alertClass: 'bg-red-50 border-red-200 text-red-700 font-bold animate-pulse', isUrgent: true };
+                            }
+                        } else if (diffDays > 3) {
+                            return { text: '⚠️ Hết Hạn Bảo Hành', alertClass: 'bg-gray-100 border-gray-300 text-gray-500', isUrgent: false };
+                        }
+                    }
+                    return { text: '', alertClass: '', isUrgent: false };
+                },
+
+                copyWarrantyReport() {
+                    const errorItems = this.famRenewList.filter(i => {
+                        const s = i.status.toLowerCase();
+                        return s.includes('lỗi') || s.includes('ko có trial') || s.includes('bảo hành') || s.includes('banned');
+                    });
+                    if (errorItems.length === 0) {
+                        this.showToast('Không có tài khoản lỗi nào cần bảo hành!');
+                        return;
+                    }
+                    const text = errorItems.map(i => `${i.email}|${i.pass}`).join('\n');
+                    navigator.clipboard.writeText(text);
+                    this.showToast(`Đã copy ${errorItems.length} tài khoản lỗi vào bộ nhớ tạm!`);
                 },
 
                 getNotifTimeDisplay(notif) {

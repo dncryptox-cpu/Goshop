@@ -175,6 +175,26 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 9. Xử lý Cập Nhật Trạng Thái FamRenew
+    if (action === 'update_fam_renew_status') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var frSheet = frSs.getSheetByName("FamRenew");
+      if (frSheet) {
+        var email = data.email;
+        var newStatus = data.status;
+        var dataRange = frSheet.getDataRange();
+        var values = dataRange.getValues();
+        
+        for (var i = 1; i < values.length; i++) {
+          if (values[i][3] && values[i][3].toString().trim().toLowerCase() === email.toLowerCase()) {
+            frSheet.getRange(i + 1, 2).setValue(newStatus);
+            break;
+          }
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()})).setMimeType(ContentService.MimeType.JSON);
   }
