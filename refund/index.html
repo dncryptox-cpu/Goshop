@@ -392,6 +392,27 @@
                     return d;
                 },
 
+                formatDateToDDMMYYYY(dateStr) {
+                    if (!dateStr) return '';
+                    const s = String(dateStr).trim();
+                    if (s.includes('/')) {
+                        const parts = s.split('/');
+                        if (parts.length >= 3) {
+                            return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+                        }
+                    } else if (s.includes('-')) {
+                        const parts = s.split('-');
+                        if (parts.length >= 3) {
+                            if (parts[0].length === 4) {
+                                return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+                            } else {
+                                return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+                            }
+                        }
+                    }
+                    return s;
+                },
+
                 calculate() {
                     const months = parseInt(this.form.months) || 1;
                     const amount = parseFloat(this.form.amount) || 0;
@@ -434,14 +455,16 @@
                     this.isLoading = true;
                     
                     // Format dates for Google Sheet
-                    const pDateParts = this.form.purchaseDate.split('-');
-                    const pDateStr = `${pDateParts[2]}/${pDateParts[1]}/${pDateParts[0]}`;
+                    const pDateStr = this.formatDateToDDMMYYYY(this.form.purchaseDate);
                     
                     const rDate = new Date();
                     const rDateStr = `${rDate.getDate().toString().padStart(2, '0')}/${(rDate.getMonth() + 1).toString().padStart(2, '0')}/${rDate.getFullYear()}`;
                     
                     const productName = this.form.productSelect === 'Khác' ? this.form.productCustom : this.form.productSelect;
                     
+                    const isCapcut = (this.form.productSelect === 'Capcut') || (this.form.productSelect === 'Khác' && this.form.productCustom.toLowerCase().includes('capcut'));
+                    const clientNote = isCapcut ? 'Hiện tại Capcut đang bị lỗi toàn sever nên không còn làm được gói Team nữa.\n- Bên mình sẽ refund số tiền còn lại\n- Hoặc muốn chuyển đổi qua gói Capcut Pro cá nhân bên mình sẽ hỗ trợ giá ưu đãi.\nBạn có thể inbox admin để trao đổi chi tiết hơn !' : '';
+
                     try {
                         await fetch(this.WEBAPP_URL, {
                             method: 'POST',
@@ -459,7 +482,8 @@
                                 remainingDays: this.results.remainingDays,
                                 refundAmount: this.results.refundAmount,
                                 customerName: this.form.customerName,
-                                customerPhone: this.form.customerPhone
+                                customerPhone: this.form.customerPhone,
+                                clientNote: clientNote
                             })
                         });
                         

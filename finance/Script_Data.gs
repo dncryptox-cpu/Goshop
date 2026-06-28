@@ -79,7 +79,10 @@ function doPost(e) {
         data.refundAmount,
         data.note || "",
         data.customerName || "Admin",
-        data.customerPhone || ""
+        data.customerPhone || "",
+        "", // Cột M: Đã trả khác
+        "", // Cột N: Nguồn Ref
+        data.clientNote || "" // Cột O: Note gửi khách
       ]);
       return ContentService.createTextOutput(JSON.stringify({ status: 'success' })).setMimeType(ContentService.MimeType.JSON);
     }
