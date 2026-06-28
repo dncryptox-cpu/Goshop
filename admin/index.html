@@ -117,7 +117,7 @@
                         class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-2" x-cloak>
                         Navigation</p>
                     <template x-for="item in menuItems">
-                        <a href="#" @click="activeModule = item.id; if (window.innerWidth < 768) sidebarOpen = false;"
+                        <a href="#" x-show="currentUserRole === 'admin' || item.id !== 'pnl_calculator'" @click="activeModule = item.id; if (window.innerWidth < 768) sidebarOpen = false;"
                             :class="activeModule === item.id ? 'sidebar-item-active' : 'text-gray-500 hover:bg-gray-50'"
                             class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group mb-1">
                             <i :data-lucide="item.icon" class="w-5 h-5"></i>
@@ -131,7 +131,7 @@
                         class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-2" x-cloak>
                         Management</p>
                     <template x-for="item in managementItems">
-                        <a href="#" @click="activeModule = item.id; if (window.innerWidth < 768) sidebarOpen = false;"
+                        <a href="#" x-show="currentUserRole === 'admin' || item.id !== 'security'" @click="activeModule = item.id; if (window.innerWidth < 768) sidebarOpen = false;"
                             :class="activeModule === item.id ? 'sidebar-item-active' : 'text-gray-500 hover:bg-gray-50'"
                             class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group mb-1">
                             <i :data-lucide="item.icon" class="w-5 h-5"></i>
@@ -857,7 +857,7 @@
                 </div>
 
                 <!-- Module: Báo Cáo Lợi Nhuận & Báo Giá (PNL) -->
-                <div x-show="activeModule === 'pnl_calculator'" x-cloak>
+                <div x-show="activeModule === 'pnl_calculator' && currentUserRole === 'admin'" x-cloak>
                     <div class="mb-8">
                         <h1 class="text-2xl font-bold text-gray-900">Tính Lợi Nhuận & Báo Giá</h1>
                         <p class="text-sm text-gray-500 mt-1">Dành riêng cho Quản trị viên: Công cụ báo giá theo danh mục và tổng hợp lợi nhuận thực tế.</p>
@@ -1574,7 +1574,7 @@
                 </div>
 
                 <!-- Module: Security (Đổi mật khẩu) -->
-                <div x-show="activeModule === 'security'" x-cloak>
+                <div x-show="activeModule === 'security' && currentUserRole === 'admin'" x-cloak>
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                         <div>
                             <h1 class="text-2xl font-bold text-gray-900">Cấu Hình Bảo Mật</h1>
@@ -3284,6 +3284,7 @@
                     username: 'admin',
                     password: 'admin'
                 },
+                currentUserRole: 'admin',
                 securityForm: {
                     newUsername: 'admin',
                     oldPassword: '',
@@ -4042,11 +4043,29 @@
                 },
 
                 login() {
-                    if (this.loginForm.username === this.adminCreds.username && this.loginForm.password === this.adminCreds.password) {
+                    const enteredUser = this.loginForm.username.trim();
+                    const enteredPass = this.loginForm.password;
+                    
+                    if (enteredUser === this.adminCreds.username && enteredPass === this.adminCreds.password) {
                         this.isLoggedIn = true;
                         this.loginError = '';
+                        this.currentUserRole = 'admin';
                         localStorage.setItem('goshop_admin_logged_in', 'true');
+                        localStorage.setItem('goshop_admin_user_role', 'admin');
                         this.showToast('Đăng nhập thành công!');
+                        this.$nextTick(() => lucide.createIcons());
+                    } else if (enteredUser === 'goshop1' && enteredPass === 'goshop1@') {
+                        this.isLoggedIn = true;
+                        this.loginError = '';
+                        this.currentUserRole = 'staff';
+                        localStorage.setItem('goshop_admin_logged_in', 'true');
+                        localStorage.setItem('goshop_admin_user_role', 'staff');
+                        
+                        if (this.activeModule === 'pnl_calculator' || this.activeModule === 'security') {
+                            this.activeModule = 'dashboard';
+                        }
+                        
+                        this.showToast('Đăng nhập thành công (Tài khoản Nhân viên)!');
                         this.$nextTick(() => lucide.createIcons());
                     } else {
                         this.loginError = 'Sai tên đăng nhập hoặc mật khẩu.';
@@ -4058,6 +4077,8 @@
                     this.loginForm.username = '';
                     this.loginForm.password = '';
                     localStorage.removeItem('goshop_admin_logged_in');
+                    localStorage.removeItem('goshop_admin_user_role');
+                    this.currentUserRole = 'admin';
                     this.showToast('Đã đăng xuất tài khoản.');
                     this.$nextTick(() => lucide.createIcons());
                 },
@@ -5032,6 +5053,7 @@
 
                 async initApp() {
                     this.isLoggedIn = localStorage.getItem('goshop_admin_logged_in') === 'true';
+                    this.currentUserRole = localStorage.getItem('goshop_admin_user_role') || 'admin';
                     const savedCreds = localStorage.getItem('goshop_admin_creds');
                     if (savedCreds) {
                         try {
@@ -5039,6 +5061,11 @@
                             this.securityForm.newUsername = this.adminCreds.username;
                         } catch (e) {
                             console.error(e);
+                        }
+                    }
+                    if (this.isLoggedIn && this.currentUserRole === 'staff') {
+                        if (this.activeModule === 'pnl_calculator' || this.activeModule === 'security') {
+                            this.activeModule = 'dashboard';
                         }
                     }
                     this.loadTwofaData();
