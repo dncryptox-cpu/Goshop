@@ -178,16 +178,26 @@ function doPost(e) {
     // 9. Xử lý Cập Nhật Trạng Thái FamRenew
     if (action === 'update_fam_renew_status') {
       var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
-      var frSheet = frSs.getSheetByName("FamRenew");
+      var frSheet = frSs.getSheetByName("FAMRENEW");
       if (frSheet) {
         var email = data.email;
         var newStatus = data.status;
+        var activationDate = data.activationDate || '';
+        var expiryDate = data.expiryDate || '';
+
         var dataRange = frSheet.getDataRange();
         var values = dataRange.getValues();
         
+        // Email ở cột E (index 4)
         for (var i = 1; i < values.length; i++) {
-          if (values[i][3] && values[i][3].toString().trim().toLowerCase() === email.toLowerCase()) {
-            frSheet.getRange(i + 1, 2).setValue(newStatus);
+          if (values[i][4] && values[i][4].toString().trim().toLowerCase() === email.toLowerCase()) {
+            frSheet.getRange(i + 1, 2).setValue(newStatus);          // Cột B: Trạng thái
+            if (activationDate) {
+              frSheet.getRange(i + 1, 4).setValue(activationDate);   // Cột D: Ngày kích hoạt gói
+            }
+            if (expiryDate) {
+              frSheet.getRange(i + 1, 9).setValue(expiryDate);       // Cột I: Ngày hết hạn
+            }
             break;
           }
         }

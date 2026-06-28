@@ -1240,169 +1240,220 @@
 
                 <!-- Module: FamRenew -->
                 <div x-show="activeModule === 'fam_renew' && isModuleAllowed('fam_renew')" x-cloak>
-                    <!-- Header -->
-                    <div class="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
+                    <!-- Confirm Modal (Double-check) -->
+                    <div x-show="famRenewConfirm.show" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" @click.self="famRenewConfirm.show = false">
+                        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                            <h3 class="text-base font-bold text-gray-900 mb-1">Xác nhận thao tác</h3>
+                            <p class="text-xs text-gray-500 mb-4">Kiểm tra lại thông tin trước khi xác nhận</p>
+                            <div class="bg-gray-50 rounded-xl p-4 mb-4 text-xs space-y-1.5">
+                                <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Tài khoản:</span><span class="font-bold text-gray-800" x-text="famRenewConfirm.item?.email"></span></div>
+                                <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Trạng thái cũ:</span><span class="text-gray-600" x-text="famRenewConfirm.item?.status || 'Trống'"></span></div>
+                                <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Trạng thái mới:</span><span class="font-bold" :class="famRenewConfirm.newStatus?.includes('Đang dùng') ? 'text-emerald-600' : famRenewConfirm.newStatus?.includes('Lỗi') ? 'text-red-600' : 'text-amber-600'" x-text="famRenewConfirm.newStatus"></span></div>
+                                <template x-if="famRenewConfirm.activationDate">
+                                    <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Ngày kích hoạt:</span><span class="font-bold text-indigo-600" x-text="famRenewConfirm.activationDate"></span></div>
+                                </template>
+                                <template x-if="famRenewConfirm.expiryDate">
+                                    <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Ngày hết hạn:</span><span class="font-bold text-indigo-600" x-text="famRenewConfirm.expiryDate"></span></div>
+                                </template>
+                            </div>
+                            <div class="flex gap-3">
+                                <button @click="famRenewConfirm.show = false" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl text-sm transition-all">Hủy</button>
+                                <button @click="confirmFamRenewStatus()" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-sm transition-all">✓ Xác Nhận Đúng</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Header + Metrics -->
+                    <div class="mb-6 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                         <div>
                             <h1 class="text-2xl font-bold text-gray-900">Gia Hạn Family (FamRenew)</h1>
-                            <p class="text-sm text-gray-500 mt-1">Dữ liệu gia hạn Family được đồng bộ trực tiếp từ Google Sheet FamRenew.</p>
+                            <p class="text-sm text-gray-500 mt-1">Quản lý vòng đời tài khoản Family. Dữ liệu từ Google Sheet FAMRENEW.</p>
                         </div>
-                        <div class="flex flex-wrap gap-3">
-                            <!-- Metric: Tổng cộng -->
-                            <div class="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 flex items-center gap-3">
-                                <i data-lucide="database" class="w-5 h-5 text-indigo-500"></i>
-                                <div>
-                                    <p class="text-xs font-bold text-indigo-400 uppercase">Tổng Acc</p>
-                                    <p class="text-lg font-bold text-indigo-700" x-text="famRenewList.length"></p>
-                                </div>
+                        <div class="flex flex-wrap gap-2 shrink-0">
+                            <!-- Tổng -->
+                            <div class="bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <i data-lucide="database" class="w-4 h-4 text-indigo-500"></i>
+                                <div><p class="text-[10px] font-bold text-indigo-400 uppercase">Tổng</p><p class="text-base font-bold text-indigo-700" x-text="famRenewList.length"></p></div>
                             </div>
-                            <!-- Metric: Cần test gấp -->
-                            <div class="bg-red-50 border border-red-100 rounded-lg px-4 py-2 flex items-center gap-3">
-                                <i data-lucide="alert-triangle" class="w-5 h-5 text-red-500 animate-bounce"></i>
-                                <div>
-                                    <p class="text-xs font-bold text-red-400 uppercase">Cần Test Gấp</p>
-                                    <p class="text-lg font-bold text-red-700" x-text="famRenewList.filter(i => getWarrantyStatus(i).isUrgent).length"></p>
-                                </div>
+                            <!-- Cần test BH -->
+                            <div class="bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <i data-lucide="alert-triangle" class="w-4 h-4 text-red-500"></i>
+                                <div><p class="text-[10px] font-bold text-red-400 uppercase">Test BH gấp</p><p class="text-base font-bold text-red-700" x-text="famRenewList.filter(i => getFamRenewAlert(i).isWarrantyUrgent).length"></p></div>
                             </div>
-                            <!-- Action: Báo cáo bảo hành -->
-                            <button @click="copyWarrantyReport()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shrink-0">
-                                <i data-lucide="file-output" class="w-3.5 h-3.5"></i> Copy List Lỗi BH
+                            <!-- Sắp hết hạn gói -->
+                            <div class="bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <i data-lucide="clock" class="w-4 h-4 text-orange-500"></i>
+                                <div><p class="text-[10px] font-bold text-orange-400 uppercase">Sắp hết hạn</p><p class="text-base font-bold text-orange-700" x-text="famRenewList.filter(i => getFamRenewAlert(i).isExpiryUrgent).length"></p></div>
+                            </div>
+                            <!-- Đang dùng -->
+                            <div class="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-500"></i>
+                                <div><p class="text-[10px] font-bold text-emerald-400 uppercase">Đang dùng</p><p class="text-base font-bold text-emerald-700" x-text="famRenewList.filter(i => i.status === 'Đang dùng').length"></p></div>
+                            </div>
+                            <button @click="copyWarrantyReport()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5">
+                                <i data-lucide="file-output" class="w-3.5 h-3.5"></i> Copy Lỗi BH
                             </button>
-                            <!-- Action: Đồng bộ -->
-                            <button @click="fetchSheetData()" class="bg-emerald-50 text-emerald-600 px-4 py-2 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-2 border border-emerald-200 shrink-0">
+                            <button @click="fetchSheetData()" class="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-1.5 border border-emerald-200">
                                 <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Đồng Bộ
                             </button>
                         </div>
                     </div>
 
                     <!-- Filter Bar -->
-                    <div class="bg-white p-4 rounded-xl border border-gray-100 card-shadow flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-                        <div class="flex flex-wrap items-center gap-3 w-full">
-                            <!-- Search -->
-                            <div class="relative w-full md:w-80">
-                                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
-                                <input type="text" x-model="famRenewSearchQuery" placeholder="Tìm theo email, mật khẩu, loại, nguồn..." class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 pl-9 pr-4 text-xs focus:outline-none focus:border-primary text-gray-700">
-                            </div>
-                            <!-- Status Filter -->
-                            <select x-model="famRenewFilterStatus" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium">
-                                <option value="all">Tất cả trạng thái</option>
-                                <template x-for="st in getFamRenewStatuses()" :key="st">
-                                    <option :value="st" x-text="st"></option>
-                                </template>
-                            </select>
+                    <div class="bg-white p-3 rounded-xl border border-gray-100 card-shadow flex flex-wrap items-center gap-3 mb-5">
+                        <div class="relative flex-1 min-w-[200px]">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                            <input type="text" x-model="famRenewSearchQuery" placeholder="Tìm email, pass, loại, source..." class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 pl-9 pr-4 text-xs focus:outline-none focus:border-primary text-gray-700">
                         </div>
+                        <select x-model="famRenewFilterStatus" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium">
+                            <option value="all">Tất cả trạng thái</option>
+                            <option value="Mới">Mới (chưa test)</option>
+                            <option value="Đang dùng">Đang dùng</option>
+                            <option value="Quét ver 1">Quét ver 1</option>
+                            <option value="Lỗi BH">Lỗi BH</option>
+                            <option value="Hết hạn - đã thay">Hết hạn - đã thay</option>
+                            <option value="Hủy (ver 2)">Hủy (ver 2)</option>
+                            <template x-for="st in getFamRenewStatuses()" :key="st">
+                                <option :value="st" x-text="st"></option>
+                            </template>
+                        </select>
+                        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <input type="checkbox" x-model="famRenewShowUrgentOnly" class="rounded">
+                            <span>Chỉ xem cần xử lý</span>
+                        </label>
                     </div>
 
-                    <!-- FamRenew Table -->
+                    <!-- Table -->
                     <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
                         <div class="overflow-x-auto">
-                            <table class="w-full text-left border-collapse">
+                            <table class="w-full text-left border-collapse text-xs">
                                 <thead>
                                     <tr class="bg-gray-50 border-b border-gray-100">
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Trạng thái</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Mail</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Pass</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Mail Khôi Phục</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">2FA</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Date</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Loại</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Source</th>
-                                        <th class="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest text-right">Hành động</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-8">#</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Trạng thái / Cảnh báo</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mail</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pass</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">2FA</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mail KP</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ngày mua</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Hết hạn</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <template x-for="item in getFilteredFamRenew()" :key="item.id">
-                                        <tr class="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
-                                            <!-- Status -->
-                                            <td class="px-6 py-4">
-                                                <div class="flex flex-col gap-1.5">
-                                                    <span class="px-2.5 py-1 text-[10px] font-bold rounded-md uppercase border inline-block w-fit"
-                                                        :class="item.status.toLowerCase().includes('đã trial') || item.status.toLowerCase().includes('đã dùng') ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
-                                                                item.status.toLowerCase().includes('banned') || item.status.toLowerCase().includes('lỗi') ? 'bg-red-50 border-red-200 text-red-700' :
-                                                                item.status.toLowerCase().includes('chưa dùng') || item.status.toLowerCase().includes('trial') ? 'bg-blue-50 border-blue-200 text-blue-700' :
-                                                                'bg-gray-50 border-gray-200 text-gray-700'"
+                                        <tr class="border-b border-gray-100 transition-colors"
+                                            :class="getFamRenewAlert(item).isWarrantyUrgent ? 'bg-red-50/40' : getFamRenewAlert(item).isExpiryUrgent ? 'bg-orange-50/40' : 'hover:bg-gray-50/50'">
+
+                                            <!-- STT -->
+                                            <td class="px-4 py-3 text-gray-400" x-text="item.stt || item.rowIndex"></td>
+
+                                            <!-- Status + Alert -->
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-col gap-1">
+                                                    <span class="px-2 py-0.5 text-[10px] font-bold rounded uppercase border inline-block w-fit"
+                                                        :class="item.status === 'Đang dùng' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                                                                item.status === 'Mới' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                                                                item.status === 'Quét ver 1' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                                item.status === 'Lỗi BH' ? 'bg-red-50 border-red-200 text-red-700' :
+                                                                item.status === 'Hủy (ver 2)' ? 'bg-gray-100 border-gray-300 text-gray-500' :
+                                                                item.status === 'Hết hạn - đã thay' ? 'bg-purple-50 border-purple-200 text-purple-600' :
+                                                                'bg-gray-50 border-gray-200 text-gray-600'"
                                                         x-text="item.status || 'Chưa có'">
                                                     </span>
-                                                    <!-- Dynamic Warranty Alert -->
-                                                    <template x-if="getWarrantyStatus(item).text">
-                                                        <span class="px-2 py-0.5 text-[9px] rounded border w-fit" 
-                                                              :class="getWarrantyStatus(item).alertClass"
-                                                              x-text="getWarrantyStatus(item).text">
+                                                    <!-- Alert badge -->
+                                                    <template x-if="getFamRenewAlert(item).text">
+                                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border w-fit animate-pulse"
+                                                              :class="getFamRenewAlert(item).alertClass"
+                                                              x-text="getFamRenewAlert(item).text">
                                                         </span>
                                                     </template>
                                                 </div>
                                             </td>
+
                                             <!-- Mail -->
-                                            <td class="px-6 py-4">
-                                                <span class="text-xs text-gray-900 font-bold select-all cursor-pointer hover:text-primary transition-colors" @click="copyToClipboard(item.email, 'Email')" x-text="item.email || 'N/A'"></span>
+                                            <td class="px-4 py-3">
+                                                <span class="font-bold text-gray-800 cursor-pointer hover:text-primary select-all" @click="copyToClipboard(item.email, 'Email')" x-text="item.email"></span>
                                             </td>
+
                                             <!-- Pass -->
-                                            <td class="px-6 py-4">
-                                                <span class="text-xs text-gray-500 font-mono select-all cursor-pointer hover:text-primary transition-colors" @click="copyToClipboard(item.pass, 'Mật khẩu')" x-text="item.pass || 'N/A'"></span>
+                                            <td class="px-4 py-3">
+                                                <span class="font-mono text-gray-500 cursor-pointer hover:text-primary select-all" @click="copyToClipboard(item.pass, 'Mật khẩu')" x-text="item.pass || '-'"></span>
                                             </td>
-                                            <!-- Recovery Email -->
-                                            <td class="px-6 py-4">
-                                                <span class="text-xs text-gray-500 font-mono select-all cursor-pointer hover:text-primary transition-colors" @click="copyToClipboard(item.recoveryEmail, 'Mail khôi phục')" x-text="item.recoveryEmail || 'N/A'"></span>
-                                            </td>
+
                                             <!-- 2FA -->
-                                            <td class="px-6 py-4">
-                                                <div class="flex items-center gap-2">
-                                                    <span class="text-xs text-gray-500 font-mono max-w-[120px] truncate select-all cursor-pointer hover:text-primary transition-colors" @click="copyToClipboard(item.twofa, 'Secret key 2FA')" x-text="item.twofa || '-'"></span>
+                                            <td class="px-4 py-3">
+                                                <div class="flex items-center gap-1.5">
+                                                    <span class="font-mono text-gray-400 max-w-[80px] truncate cursor-pointer hover:text-primary" @click="copyToClipboard(item.twofa, '2FA Key')" x-text="item.twofa || '-'"></span>
                                                     <template x-if="item.twofa && item.twofa.trim()">
-                                                        <button @click="copyFamRenewTwofaCode(item)" class="bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-1 rounded transition-all flex items-center gap-1 shrink-0">
-                                                            <i data-lucide="key" class="w-3 h-3"></i> Lấy 2FA
+                                                        <button @click="copyFamRenewTwofaCode(item)" class="bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 text-[9px] font-bold px-1.5 py-1 rounded transition-all shrink-0 flex items-center gap-0.5">
+                                                            <i data-lucide="key" class="w-2.5 h-2.5"></i> OTP
                                                         </button>
                                                     </template>
                                                 </div>
                                             </td>
-                                            <!-- Date -->
-                                            <td class="px-6 py-4">
-                                                <span class="text-xs text-gray-600" x-text="item.date || '-'"></span>
+
+                                            <!-- Recovery -->
+                                            <td class="px-4 py-3">
+                                                <span class="font-mono text-gray-400 cursor-pointer hover:text-primary select-all max-w-[100px] truncate block" @click="copyToClipboard(item.recoveryEmail, 'Mail khôi phục')" x-text="item.recoveryEmail || '-'"></span>
                                             </td>
-                                            <!-- Loại -->
-                                            <td class="px-6 py-4">
-                                                <span class="text-xs text-gray-600" x-text="item.type || '-'"></span>
+
+                                            <!-- Ngày mua -->
+                                            <td class="px-4 py-3 text-gray-500" x-text="item.buyDate || '-'"></td>
+
+                                            <!-- Ngày hết hạn -->
+                                            <td class="px-4 py-3">
+                                                <span class="font-bold"
+                                                    :class="getFamRenewAlert(item).isExpiryUrgent ? 'text-orange-600' : 'text-gray-600'"
+                                                    x-text="item.expiryDate || '-'">
+                                                </span>
                                             </td>
-                                            <!-- Source -->
-                                            <td class="px-6 py-4">
-                                                <span class="text-xs text-gray-600" x-text="item.source || '-'"></span>
-                                            </td>
+
                                             <!-- Actions -->
-                                            <td class="px-6 py-4 text-right">
-                                                <div class="flex items-center justify-end gap-1.5 flex-wrap">
-                                                    <!-- Quick Actions -->
-                                                    <button @click="changeFamRenewStatus(item, 'Đã Trial / Đã dùng')" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-[10px] font-bold px-2 py-1.5 rounded transition-all border border-emerald-200/50" title="Đánh dấu đã nâng gói thành công">
-                                                        Đã Nâng
+                                            <td class="px-4 py-3 text-right">
+                                                <div class="flex items-center justify-end gap-1 flex-wrap">
+                                                    <!-- Nâng gói thành công -->
+                                                    <button @click="openFamRenewConfirm(item, 'Đang dùng')" 
+                                                            class="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold px-2 py-1.5 rounded transition-all"
+                                                            x-show="item.status === 'Mới' || item.status === 'Quét ver 1' || !item.status">
+                                                        ✓ Đã Nâng
                                                     </button>
-                                                    <button @click="changeFamRenewStatus(item, 'Quét ver')" class="bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1.5 rounded transition-all border border-amber-200/50" title="Báo quét xác minh lần 1">
-                                                        Báo Ver 1
+                                                    <!-- Lỗi BH -->
+                                                    <button @click="openFamRenewConfirm(item, 'Lỗi BH')"
+                                                            class="bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1.5 rounded border border-red-200 transition-all"
+                                                            x-show="item.status === 'Mới' || !item.status">
+                                                        Lỗi BH
                                                     </button>
-                                                    <button @click="changeFamRenewStatus(item, 'Banned')" class="bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1.5 rounded transition-all border border-red-200/50" title="Bị quét xác minh lần 2 / Blocked / Bỏ">
-                                                        Hủy (Ver 2)
+                                                    <!-- Báo quét ver -->
+                                                    <button @click="openFamRenewConfirm(item, 'Quét ver 1')"
+                                                            class="bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1.5 rounded border border-amber-200 transition-all"
+                                                            x-show="item.status === 'Đang dùng'">
+                                                        Báo Ver
                                                     </button>
-                                                    
-                                                    <!-- Dropdown Status -->
-                                                    <select @change="changeFamRenewStatus(item, $event.target.value)" class="bg-gray-50 border border-gray-200 text-gray-700 text-[10px] rounded px-1.5 py-1.5 focus:outline-none focus:border-primary">
-                                                        <option value="" disabled selected>Khác</option>
-                                                        <option value="ko có trial">Không có trial</option>
-                                                        <option value="lỗi pay">Lỗi Pay</option>
-                                                        <option value="Xác minh sdt">Xác minh sđt</option>
-                                                        <option value="Ver / chưa dùng">Chưa dùng</option>
-                                                    </select>
-                                                    
-                                                    <!-- Copy Button -->
-                                                    <button @click="copyToClipboard(`${item.email}|${item.pass}|${item.recoveryEmail}|${item.twofa}`, 'Thông tin tài khoản')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold px-3 py-1.5 rounded-lg inline-flex items-center gap-1 transition-all" title="Copy dạng: mail|pass|mailkp|2fa">
-                                                        <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy Full
+                                                    <!-- Đã thay / hết hạn -->
+                                                    <button @click="openFamRenewConfirm(item, 'Hết hạn - đã thay')"
+                                                            class="bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-1.5 rounded border border-purple-200 transition-all"
+                                                            x-show="item.status === 'Đang dùng' || item.status === 'Quét ver 1'">
+                                                        Đã Thay
+                                                    </button>
+                                                    <!-- Hủy ver 2 -->
+                                                    <button @click="openFamRenewConfirm(item, 'Hủy (ver 2)')"
+                                                            class="bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-1.5 rounded border border-gray-200 transition-all"
+                                                            x-show="item.status === 'Quét ver 1'">
+                                                        Hủy Ver 2
+                                                    </button>
+                                                    <!-- Copy full -->
+                                                    <button @click="copyToClipboard(`${item.email}|${item.pass}|${item.recoveryEmail}|${item.twofa}`, 'Thông tin tài khoản')"
+                                                            class="bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-1.5 rounded border border-gray-200 transition-all flex items-center gap-0.5">
+                                                        <i data-lucide="copy" class="w-3 h-3"></i>
                                                     </button>
                                                 </div>
                                             </td>
                                         </tr>
                                     </template>
                                     <template x-if="getFilteredFamRenew().length === 0">
-                                        <tr>
-                                            <td colspan="9" class="px-6 py-8 text-center text-sm text-gray-500">
-                                                Không tìm thấy tài khoản FamRenew nào phù hợp.
-                                            </td>
-                                        </tr>
+                                        <tr><td colspan="9" class="px-6 py-10 text-center text-sm text-gray-400">Không có tài khoản nào phù hợp.</td></tr>
                                     </template>
                                 </tbody>
                             </table>
@@ -3529,6 +3580,8 @@
                 famRenewList: [],
                 famRenewSearchQuery: '',
                 famRenewFilterStatus: 'all',
+                famRenewShowUrgentOnly: false,
+                famRenewConfirm: { show: false, item: null, newStatus: '', activationDate: '', expiryDate: '' },
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
                     FAM_RENEW_SHEET_ID: '1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc',
@@ -3859,32 +3912,116 @@
                 getFilteredFamRenew() {
                     let res = this.famRenewList;
                     if (this.famRenewFilterStatus !== 'all') {
-                        res = res.filter(i => i.status.toLowerCase() === this.famRenewFilterStatus.toLowerCase());
+                        res = res.filter(i => i.status === this.famRenewFilterStatus);
+                    }
+                    if (this.famRenewShowUrgentOnly) {
+                        res = res.filter(i => {
+                            const a = this.getFamRenewAlert(i);
+                            return a.isWarrantyUrgent || a.isExpiryUrgent || i.status === 'Quét ver 1';
+                        });
                     }
                     if (this.famRenewSearchQuery) {
                         const q = this.famRenewSearchQuery.toLowerCase();
                         res = res.filter(i =>
                             i.email.toLowerCase().includes(q) ||
-                            i.pass.toLowerCase().includes(q) ||
-                            i.recoveryEmail.toLowerCase().includes(q) ||
-                            i.status.toLowerCase().includes(q) ||
-                            i.type.toLowerCase().includes(q) ||
-                            i.source.toLowerCase().includes(q)
+                            (i.pass || '').toLowerCase().includes(q) ||
+                            (i.recoveryEmail || '').toLowerCase().includes(q) ||
+                            (i.status || '').toLowerCase().includes(q) ||
+                            (i.type || '').toLowerCase().includes(q) ||
+                            (i.source || '').toLowerCase().includes(q)
                         );
                     }
                     return res;
                 },
-                
+
                 getFamRenewStatuses() {
-                    const statuses = new Set();
-                    this.famRenewList.forEach(i => {
-                        if (i.status) statuses.add(i.status);
-                    });
-                    return Array.from(statuses);
+                    const fixed = ['Mới', 'Đang dùng', 'Quét ver 1', 'Lỗi BH', 'Hết hạn - đã thay', 'Hủy (ver 2)'];
+                    const fromData = new Set(this.famRenewList.map(i => i.status).filter(Boolean));
+                    fixed.forEach(s => fromData.delete(s));
+                    return [...Array.from(fromData)];
                 },
 
-                async changeFamRenewStatus(item, newStatus) {
-                    this.showToast(`Đang cập nhật trạng thái cho ${item.email}...`);
+                parseDateDMY(str) {
+                    if (!str) return null;
+                    // Handle Google Sheets date format: M/D/YYYY or D/M/YYYY
+                    const parts = String(str).trim().split('/');
+                    if (parts.length < 2) return null;
+                    // Sheet shows C col as "9/6/2026" → M/D/YYYY (US format from GViz)
+                    const m = parseInt(parts[0]) - 1;
+                    const d = parseInt(parts[1]);
+                    const y = parts[2] ? parseInt(parts[2]) : new Date().getFullYear();
+                    const date = new Date(y, m, d);
+                    date.setHours(0, 0, 0, 0);
+                    return date;
+                },
+
+                getFamRenewAlert(item) {
+                    const now = new Date(); now.setHours(0,0,0,0);
+                    let isWarrantyUrgent = false, isExpiryUrgent = false, text = '', alertClass = '';
+
+                    // Kiểm tra BH 3 ngày từ Ngày mua (chỉ với acc Mới / chưa kích hoạt)
+                    const isNew = !item.status || item.status === 'Mới' || item.status === '';
+                    if (isNew && item.buyDate) {
+                        const buyDate = this.parseDateDMY(item.buyDate);
+                        if (buyDate) {
+                            const daysSinceBuy = Math.floor((now - buyDate) / 86400000);
+                            const daysLeft = 3 - daysSinceBuy;
+                            if (daysLeft > 0) {
+                                isWarrantyUrgent = true;
+                                text = daysLeft === 1 ? `⚠️ Hết BH Ngày Mai` : `🔴 Còn ${daysLeft} ngày BH`;
+                                alertClass = daysLeft <= 1 ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-red-50 border-red-200 text-red-700';
+                            } else if (daysLeft <= 0) {
+                                text = '⚠️ Hết Hạn BH'; alertClass = 'bg-gray-100 border-gray-300 text-gray-500';
+                            }
+                        }
+                    }
+
+                    // Kiểm tra hết hạn gói 30 ngày từ Ngày hết hạn (chỉ với acc Đang dùng)
+                    if (item.status === 'Đang dùng' && item.expiryDate) {
+                        const expiry = this.parseDateDMY(item.expiryDate);
+                        if (expiry) {
+                            const daysLeft = Math.floor((expiry - now) / 86400000);
+                            if (daysLeft <= 1 && daysLeft >= 0) {
+                                isExpiryUrgent = true;
+                                text = daysLeft === 0 ? '🔴 Hết hạn HÔM NAY!' : '🟠 Hết hạn ngày mai!';
+                                alertClass = 'bg-orange-50 border-orange-200 text-orange-700';
+                            } else if (daysLeft < 0) {
+                                isExpiryUrgent = true;
+                                text = `❌ Quá hạn ${Math.abs(daysLeft)} ngày`;
+                                alertClass = 'bg-red-50 border-red-200 text-red-600';
+                            } else if (daysLeft <= 5) {
+                                text = `⏳ Còn ${daysLeft} ngày`;
+                                alertClass = 'bg-yellow-50 border-yellow-200 text-yellow-700';
+                            }
+                        }
+                    }
+
+                    return { text, alertClass, isWarrantyUrgent, isExpiryUrgent };
+                },
+
+                openFamRenewConfirm(item, newStatus) {
+                    let activationDate = '', expiryDate = '';
+                    // Nếu chuyển sang "Đang dùng", tính ngày kích hoạt và hết hạn tự động
+                    if (newStatus === 'Đang dùng') {
+                        const today = new Date();
+                        const dd = String(today.getDate()).padStart(2,'0');
+                        const mm = String(today.getMonth()+1).padStart(2,'0');
+                        const yyyy = today.getFullYear();
+                        activationDate = `${dd}/${mm}/${yyyy}`;
+                        const expiry = new Date(today);
+                        expiry.setDate(expiry.getDate() + 30);
+                        const ed = String(expiry.getDate()).padStart(2,'0');
+                        const em = String(expiry.getMonth()+1).padStart(2,'0');
+                        const ey = expiry.getFullYear();
+                        expiryDate = `${ed}/${em}/${ey}`;
+                    }
+                    this.famRenewConfirm = { show: true, item, newStatus, activationDate, expiryDate };
+                },
+
+                async confirmFamRenewStatus() {
+                    const { item, newStatus, activationDate, expiryDate } = this.famRenewConfirm;
+                    this.famRenewConfirm.show = false;
+                    this.showToast(`Đang cập nhật ${item.email}...`);
                     try {
                         await fetch(this.CONFIG.WEBAPP_URL, {
                             method: 'POST',
@@ -3893,65 +4030,33 @@
                             body: JSON.stringify({
                                 action: 'update_fam_renew_status',
                                 email: item.email,
-                                status: newStatus
+                                status: newStatus,
+                                activationDate,
+                                expiryDate
                             })
                         });
+                        // Cập nhật local ngay lập tức
                         item.status = newStatus;
-                        this.showToast(`Đã đổi trạng thái thành: ${newStatus}`);
+                        if (activationDate) item.activationDate = activationDate;
+                        if (expiryDate) item.expiryDate = expiryDate;
+                        this.showToast(`✅ Đã cập nhật: ${newStatus}` + (expiryDate ? ` → HH: ${expiryDate}` : ''));
                     } catch (e) {
-                        console.error('Error changing FamRenew status:', e);
-                        this.showToast('Không thể cập nhật trạng thái.');
+                        this.showToast('Lỗi khi cập nhật trạng thái.');
                     }
-                },
-
-                getWarrantyStatus(item) {
-                    if (!item.date) return { text: '', alertClass: '', isUrgent: false };
-                    const parts = item.date.split('/');
-                    if (parts.length < 2) return { text: '', alertClass: '', isUrgent: false };
-                    
-                    const d = parseInt(parts[0]);
-                    const m = parseInt(parts[1]) - 1;
-                    const y = parts[2] ? parseInt(parts[2]) : new Date().getFullYear();
-                    const importDate = new Date(y, m, d);
-                    
-                    const now = new Date();
-                    importDate.setHours(0, 0, 0, 0);
-                    now.setHours(0, 0, 0, 0);
-                    
-                    const diffTime = now.getTime() - importDate.getTime();
-                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                    
-                    const sLower = item.status.toLowerCase();
-                    const isNew = sLower === '' || sLower.includes('chưa dùng') || sLower.includes('ver') || sLower.includes('trial') || sLower.includes('chờ');
-                    
-                    if (isNew) {
-                        if (diffDays >= 0 && diffDays <= 3) {
-                            const daysLeft = 3 - diffDays;
-                            if (daysLeft === 0) {
-                                return { text: '⚠️ Hết BH Hôm Nay', alertClass: 'bg-orange-50 border-orange-200 text-orange-700 font-bold', isUrgent: true };
-                            } else if (daysLeft > 0) {
-                                return { text: `🔴 Cần Test Gấp (Còn ${daysLeft} ngày BH)`, alertClass: 'bg-red-50 border-red-200 text-red-700 font-bold animate-pulse', isUrgent: true };
-                            }
-                        } else if (diffDays > 3) {
-                            return { text: '⚠️ Hết Hạn Bảo Hành', alertClass: 'bg-gray-100 border-gray-300 text-gray-500', isUrgent: false };
-                        }
-                    }
-                    return { text: '', alertClass: '', isUrgent: false };
                 },
 
                 copyWarrantyReport() {
-                    const errorItems = this.famRenewList.filter(i => {
-                        const s = i.status.toLowerCase();
-                        return s.includes('lỗi') || s.includes('ko có trial') || s.includes('bảo hành') || s.includes('banned');
-                    });
+                    const errorItems = this.famRenewList.filter(i => i.status === 'Lỗi BH');
                     if (errorItems.length === 0) {
-                        this.showToast('Không có tài khoản lỗi nào cần bảo hành!');
+                        this.showToast('Không có tài khoản Lỗi BH nào!');
                         return;
                     }
                     const text = errorItems.map(i => `${i.email}|${i.pass}`).join('\n');
                     navigator.clipboard.writeText(text);
-                    this.showToast(`Đã copy ${errorItems.length} tài khoản lỗi vào bộ nhớ tạm!`);
+                    this.showToast(`Đã copy ${errorItems.length} tài khoản lỗi BH!`);
                 },
+
+
 
                 getNotifTimeDisplay(notif) {
                     if (!notif.timestamp) return notif.time || 'N/A';
@@ -5868,32 +5973,43 @@
                             this.db.DATA_YTB = [];
                         }
 
-                        // Fetch FamRenew Sheet
+                        // Fetch FamRenew Sheet (FAMRENEW tab)
                         try {
-                            const famRenewUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=FamRenew&t=${Date.now()}`;
+                            const famRenewUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=FAMRENEW&t=${Date.now()}`;
                             const frRes = await fetch(famRenewUrl);
                             const frText = await frRes.text();
                             const frData = this.parseCSV(frText);
                             
                             this.famRenewList = frData.map((row, idx) => {
+                                // Column mapping theo đúng thứ tự sheet:
+                                // A=STT, B=Trạng thái, C=Ngày mua, D=Ngày kích hoạt gói,
+                                // E=Mail, F=Pass, G=Mail khôi phục, H=2FA,
+                                // I=Ngày hết hạn, J=Loại, K=Source
                                 const keys = Object.keys(row);
-                                const kStatus = keys.find(k => k.toLowerCase().includes('trạng thái')) || keys[1] || '';
-                                const kMail = keys.find(k => k.toLowerCase() === 'mail' || k.toLowerCase().includes('email')) || keys[3] || '';
-                                const kPass = keys.find(k => k.toLowerCase() === 'pass' || k.toLowerCase().includes('mật khẩu')) || keys[4] || '';
-                                const kRecovery = keys.find(k => k.toLowerCase().includes('khôi phục')) || keys[5] || '';
-                                const k2fa = keys.find(k => k.toLowerCase() === '2fa') || keys[6] || '';
-                                const kDate = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('ngày')) || keys[7] || '';
-                                const kType = keys.find(k => k.toLowerCase().includes('loại')) || keys[8] || '';
-                                const kSource = keys.find(k => k.toLowerCase().includes('source')) || keys[9] || '';
+                                const kStt      = keys.find(k => k.toLowerCase() === 'stt') || keys[0] || '';
+                                const kStatus   = keys.find(k => k.toLowerCase().includes('trạng thái')) || keys[1] || '';
+                                const kBuyDate  = keys.find(k => k.toLowerCase().includes('ngày mua')) || keys[2] || '';
+                                const kActDate  = keys.find(k => k.toLowerCase().includes('kích hoạt')) || keys[3] || '';
+                                const kMail     = keys.find(k => k.toLowerCase() === 'mail' || k.toLowerCase() === 'email') || keys[4] || '';
+                                const kPass     = keys.find(k => k.toLowerCase() === 'pass') || keys[5] || '';
+                                const kRecovery = keys.find(k => k.toLowerCase().includes('khôi phục')) || keys[6] || '';
+                                const k2fa      = keys.find(k => k.toLowerCase() === '2fa') || keys[7] || '';
+                                const kExpiry   = keys.find(k => k.toLowerCase().includes('hết hạn')) || keys[8] || '';
+                                const kType     = keys.find(k => k.toLowerCase().includes('loại')) || keys[9] || '';
+                                const kSource   = keys.find(k => k.toLowerCase().includes('source')) || keys[10] || '';
                                 
                                 return {
+                                    rowIndex: idx + 2, // +2 vì row 1 là header, idx bắt đầu từ 0
                                     id: 'fr_' + idx + '_' + Math.random().toString(36).substr(2, 5),
+                                    stt: String(row[kStt] || '').trim(),
                                     status: String(row[kStatus] || '').trim(),
+                                    buyDate: String(row[kBuyDate] || '').trim(),
+                                    activationDate: String(row[kActDate] || '').trim(),
                                     email: String(row[kMail] || '').trim(),
                                     pass: String(row[kPass] || '').trim(),
                                     recoveryEmail: String(row[kRecovery] || '').trim(),
                                     twofa: String(row[k2fa] || '').trim(),
-                                    date: String(row[kDate] || '').trim(),
+                                    expiryDate: String(row[kExpiry] || '').trim(),
                                     type: String(row[kType] || '').trim(),
                                     source: String(row[kSource] || '').trim()
                                 };
