@@ -76,7 +76,10 @@ function doPost(e) {
         data.amountPaid,
         data.usedDays,
         data.remainingDays,
-        data.refundAmount
+        data.refundAmount,
+        data.note || "",
+        data.customerName || "Admin",
+        data.customerPhone || ""
       ]);
       return ContentService.createTextOutput(JSON.stringify({ status: 'success' })).setMimeType(ContentService.MimeType.JSON);
     }

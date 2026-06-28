@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yêu Cầu Hoàn Tiền Tự Động - Go DNC</title>
+    <meta name="description" content="Hệ thống tự động tính toán và gửi yêu cầu hoàn tiền cho đơn hàng của khách hàng tại Go DNC.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f3f4f6;
+        }
+        [x-cloak] { display: none !important; }
+        
+        /* Hide arrows on input number */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1',
+                        secondary: '#4f46e5',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body x-data="refundApp()" x-init="init()" class="antialiased min-h-screen flex flex-col justify-between relative overflow-x-hidden"
+      style="background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.12), transparent 50%), radial-gradient(circle at bottom left, rgba(168, 85, 247, 0.08), transparent 50%), #070a13;">
+
+    <!-- Decorative Top Bar -->
+    <div class="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+
+    <!-- Header Section -->
+    <header class="py-6 px-4 max-w-7xl mx-auto w-full flex items-center justify-between z-10">
+        <a href="/" class="flex items-center gap-2">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                <span class="font-extrabold text-white text-lg tracking-wider">DNC</span>
+            </div>
+            <span class="font-bold text-white text-lg tracking-tight hidden sm:inline-block">Go DNC Support</span>
+        </a>
+        <a href="https://zalo.me/0912345678" target="_blank" rel="noopener noreferrer" class="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium">
+            <i data-lucide="help-circle" class="w-4 h-4"></i>
+            Hỗ trợ Zalo
+        </a>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow flex items-center justify-center px-4 py-8 md:py-12 z-10">
+        <div class="w-full max-w-2xl bg-gray-900/60 border border-white/5 backdrop-blur-xl rounded-2xl shadow-2xl relative p-6 md:p-8" x-show="!isSubmitted">
+            
+            <div class="text-center mb-8">
+                <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Yêu Cầu Hoàn Tiền Tự Động</h1>
+                <p class="text-sm text-gray-400 mt-2">Nhập thông tin mua hàng để hệ thống tự động tính toán số tiền hoàn lại.</p>
+            </div>
+
+            <!-- Form -->
+            <form @submit.prevent="submitRequest()" id="refund-form" class="space-y-6">
+                <!-- Customer Details Group -->
+                <div class="bg-gray-800/20 border border-gray-800 rounded-xl p-4 md:p-5 space-y-4">
+                    <h2 class="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <i data-lucide="user" class="w-4 h-4"></i> Thông tin liên hệ
+                    </h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Zalo Name -->
+                        <div>
+                            <label for="zalo-name" class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Tên Zalo của bạn *</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                                    <i data-lucide="signature" class="w-4 h-4"></i>
+                                </div>
+                                <input type="text" id="zalo-name" x-model="form.customerName" required placeholder="Ví dụ: Nguyễn Văn A"
+                                       class="w-full bg-gray-800/40 border border-gray-700/60 rounded-xl pl-10 pr-4 py-3 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm placeholder-gray-500">
+                            </div>
+                        </div>
+
+                        <!-- Zalo Phone -->
+                        <div>
+                            <label for="zalo-phone" class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Số điện thoại Zalo *</label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                                    <i data-lucide="phone" class="w-4 h-4"></i>
+                                </div>
+                                <input type="tel" id="zalo-phone" x-model="form.customerPhone" required placeholder="Ví dụ: 0912345678"
+                                       class="w-full bg-gray-800/40 border border-gray-700/60 rounded-xl pl-10 pr-4 py-3 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm placeholder-gray-500">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Email -->
+                    <div>
+                        <label for="email" class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Email tài khoản dịch vụ *</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                                <i data-lucide="mail" class="w-4 h-4"></i>
+                            </div>
+                            <input type="email" id="email" x-model="form.email" required placeholder="Ví dụ: customer@gmail.com"
+                                   class="w-full bg-gray-800/40 border border-gray-700/60 rounded-xl pl-10 pr-4 py-3 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm placeholder-gray-500">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Purchase Details Group -->
+                <div class="bg-gray-800/20 border border-gray-800 rounded-xl p-4 md:p-5 space-y-4">
+                    <h2 class="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <i data-lucide="shopping-bag" class="w-4 h-4"></i> Thông tin đơn hàng
+                    </h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- Product Selection -->
+                        <div>
+                            <label for="product-select" class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Sản phẩm hoàn tiền *</label>
+                            <select id="product-select" x-model="form.productSelect" @change="onProductSelectChange()"
+                                    class="w-full bg-gray-800/40 border border-gray-700/60 rounded-xl px-3 py-3 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm cursor-pointer">
+                                <option value="Youtube">Youtube Premium</option>
+                                <option value="Netflix">Netflix</option>
+                                <option value="Spotify">Spotify</option>
+                                <option value="Canva">Canva Pro</option>
+                                <option value="Capcut">Capcut Pro</option>
+                                <option value="ChatGPT">ChatGPT Plus</option>
+                                <option value="Autodesk">Autodesk</option>
+                                <option value="Khác">Sản phẩm khác (Tự điền)...</option>
+                            </select>
+                        </div>
+
+                        <!-- Custom Product input (visible when 'Khác' selected) -->
+                        <div>
+                            <label for="product-custom" class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Tên sản phẩm cụ thể *</label>
+                            <input type="text" id="product-custom" x-model="form.productCustom" :required="form.productSelect === 'Khác'" :disabled="form.productSelect !== 'Khác'"
+                                   placeholder="Nhập tên sản phẩm..."
+                                   class="w-full bg-gray-800/40 border border-gray-700/60 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm placeholder-gray-500 disabled:opacity-40 disabled:cursor-not-allowed">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <!-- Amount Paid -->
+                        <div class="md:col-span-1">
+                            <label for="amount-paid" class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Số tiền đã trả (VNĐ) *</label>
+                            <input type="number" id="amount-paid" x-model.number="form.amount" @input="calculate()" required min="1" placeholder="Ví dụ: 150000"
+                                   class="w-full bg-gray-800/40 border border-gray-700/60 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm placeholder-gray-500">
+                        </div>
+
+                        <!-- Purchase Date -->
+                        <div class="md:col-span-1">
+                            <label for="purchase-date" class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Ngày mua đơn hàng *</label>
+                            <input type="date" id="purchase-date" x-model="form.purchaseDate" @change="calculate()" required
+                                   class="w-full bg-gray-800/40 border border-gray-700/60 rounded-xl px-3 py-2.5 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm cursor-pointer">
+                        </div>
+
+                        <!-- Duration (Months) -->
+                        <div class="md:col-span-1">
+                            <label for="duration" class="block text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Thời gian gói (Tháng) *</label>
+                            <select id="duration" x-model.number="form.months" @change="calculate()"
+                                    class="w-full bg-gray-800/40 border border-gray-700/60 rounded-xl px-3 py-3 text-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all text-sm cursor-pointer">
+                                <option value="1">1 Tháng</option>
+                                <option value="3">3 Tháng</option>
+                                <option value="6">6 Tháng</option>
+                                <option value="12">12 Tháng (1 Năm)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Calculation Result -->
+                <div class="bg-indigo-950/20 border border-indigo-900/35 rounded-xl p-5 md:p-6 space-y-4">
+                    <h3 class="text-xs font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
+                        <i data-lucide="calculator" class="w-4 h-4"></i> Bảng tính hoàn tiền dự kiến
+                    </h3>
+                    
+                    <div class="grid grid-cols-3 gap-2 text-center border-b border-indigo-950 pb-4">
+                        <div>
+                            <p class="text-[10px] text-gray-400 uppercase font-medium">Tổng thời gian</p>
+                            <p class="text-sm font-semibold text-white mt-1" x-text="results.totalDays + ' ngày'"></p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-gray-400 uppercase font-medium">Đã sử dụng</p>
+                            <p class="text-sm font-semibold text-white mt-1" x-text="results.usedDays + ' ngày'"></p>
+                        </div>
+                        <div>
+                            <p class="text-[10px] text-gray-400 uppercase font-medium">Số ngày còn lại</p>
+                            <p class="text-sm font-semibold text-white mt-1 text-indigo-300" x-text="results.remainingDays + ' ngày'"></p>
+                        </div>
+                    </div>
+
+                    <div class="bg-emerald-950/20 border border-emerald-900/30 rounded-xl p-4 flex flex-col items-center justify-center">
+                        <p class="text-xs font-medium text-emerald-500 uppercase tracking-wider">Số tiền hoàn trả dự kiến</p>
+                        <p class="text-2xl md:text-3xl font-extrabold text-emerald-400 mt-2" x-text="formatCurrency(results.refundAmount)"></p>
+                        <p class="text-[10px] text-gray-500 mt-1.5 text-center">Tiền hoàn = (Số ngày còn lại / Tổng thời gian) * Số tiền đã trả</p>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" :disabled="isLoading || results.refundAmount <= 0"
+                        class="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold py-3.5 px-6 rounded-xl transition-all shadow-lg shadow-indigo-500/20 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    <span x-show="!isLoading">Gửi Yêu Cầu Hoàn Tiền</span>
+                    <span x-show="isLoading" class="flex items-center gap-2">
+                        <i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Đang gửi dữ liệu...
+                    </span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Success Screen -->
+        <div class="w-full max-w-lg bg-gray-900/60 border border-white/5 backdrop-blur-xl rounded-2xl shadow-2xl relative p-8 text-center"
+             x-show="isSubmitted" x-cloak x-transition>
+            
+            <div class="w-16 h-16 bg-emerald-950/40 border border-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-400 shadow-lg shadow-emerald-500/5">
+                <i data-lucide="check-circle-2" class="w-8 h-8"></i>
+            </div>
+            
+            <h1 class="text-2xl font-extrabold text-white tracking-tight">Gửi Yêu Cầu Thành Công!</h1>
+            <p class="text-sm text-gray-400 mt-3 leading-relaxed">
+                Yêu cầu hoàn tiền dịch vụ <span class="text-white font-semibold" x-text="form.productSelect === 'Khác' ? form.productCustom : form.productSelect"></span> của bạn đã được ghi nhận trên hệ thống Google Sheets.
+            </p>
+
+            <div class="bg-gray-800/30 border border-gray-800 rounded-xl p-5 my-6 text-left space-y-2">
+                <p class="text-xs text-gray-400"><span class="font-semibold text-gray-300">Tên Zalo:</span> <span x-text="form.customerName"></span></p>
+                <p class="text-xs text-gray-400"><span class="font-semibold text-gray-300">Sđt liên hệ:</span> <span x-text="form.customerPhone"></span></p>
+                <p class="text-xs text-gray-400"><span class="font-semibold text-gray-300">Số tiền hoàn dự kiến:</span> <span class="text-emerald-400 font-semibold" x-text="formatCurrency(results.refundAmount)"></span></p>
+            </div>
+
+            <p class="text-xs text-gray-500 leading-relaxed mb-8">
+                Chúng tôi sẽ liên hệ trực tiếp với bạn qua Zalo trong vòng tối đa 24 giờ làm việc để xác nhận thông tin chuyển khoản và tiến hành hoàn tiền.
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <a href="https://zalo.me/0912345678" target="_blank" rel="noopener noreferrer"
+                   class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-xl transition-all shadow-md shadow-indigo-500/10 text-sm flex items-center justify-center gap-1.5">
+                    <i data-lucide="message-square" class="w-4 h-4"></i> Nhắn tin Zalo ngay
+                </a>
+                <button @click="resetForm()"
+                        class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700/50 font-semibold py-3 px-4 rounded-xl transition-all text-sm">
+                    Tạo yêu cầu khác
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 px-4 text-center text-xs text-gray-600 border-t border-gray-900 z-10">
+        <p>&copy; 2026 Go DNC. Tất cả quyền được bảo lưu.</p>
+        <p class="mt-1 text-gray-700">Hệ thống xử lý hoàn tiền minh bạch & tự động.</p>
+    </footer>
+
+    <script>
+        function refundApp() {
+            return {
+                WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxzXvVjASViAK--nYwzfJ_iTbK8e7Ilfd9xjbDdzS3SdXPTgdPRVSd9M4ORimanRWZN/exec',
+                form: {
+                    customerName: '',
+                    customerPhone: '',
+                    email: '',
+                    productSelect: 'Youtube',
+                    productCustom: '',
+                    amount: 0,
+                    purchaseDate: new Date().toISOString().split('T')[0],
+                    months: 1
+                },
+                results: {
+                    totalDays: 30,
+                    usedDays: 0,
+                    remainingDays: 30,
+                    refundAmount: 0
+                },
+                isLoading: false,
+                isSubmitted: false,
+
+                init() {
+                    this.calculate();
+                    this.$nextTick(() => {
+                        if (window.lucide) window.lucide.createIcons();
+                    });
+                },
+
+                onProductSelectChange() {
+                    if (this.form.productSelect !== 'Khác') {
+                        this.form.productCustom = '';
+                    }
+                    this.$nextTick(() => {
+                        if (window.lucide) window.lucide.createIcons();
+                    });
+                },
+
+                parseDateLocal(dateStr) {
+                    if (!dateStr) return new Date();
+                    const s = String(dateStr).trim();
+                    if (s.includes('-')) {
+                        const parts = s.split('-');
+                        if (parts.length >= 3) {
+                            const year = parseInt(parts[0], 10) || 2026;
+                            const month = (parseInt(parts[1], 10) || 1) - 1;
+                            const day = parseInt(parts[2], 10) || 1;
+                            return new Date(year, month, day, 0, 0, 0, 0);
+                        }
+                    }
+                    const d = new Date();
+                    d.setHours(0,0,0,0);
+                    return d;
+                },
+
+                calculate() {
+                    const months = parseInt(this.form.months) || 1;
+                    const amount = parseFloat(this.form.amount) || 0;
+                    
+                    const pDate = this.parseDateLocal(this.form.purchaseDate);
+                    const rDate = new Date(); // Refund date is today
+                    
+                    pDate.setHours(0, 0, 0, 0);
+                    rDate.setHours(0, 0, 0, 0);
+                    
+                    const totalDays = months * 30;
+                    const diffTime = rDate - pDate;
+                    let usedDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    if (usedDays < 0) usedDays = 0;
+                    
+                    this.results.totalDays = totalDays;
+                    this.results.usedDays = usedDays;
+                    this.results.remainingDays = totalDays - usedDays;
+                    
+                    if (usedDays >= totalDays) {
+                        this.results.refundAmount = 0;
+                    } else if (usedDays <= 0) {
+                        this.results.refundAmount = amount;
+                    } else {
+                        const pricePerDay = amount / totalDays;
+                        this.results.refundAmount = Math.round(this.results.remainingDays * pricePerDay);
+                    }
+                },
+
+                formatCurrency(value) {
+                    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value);
+                },
+
+                async submitRequest() {
+                    if (this.results.refundAmount <= 0) {
+                        alert('Dịch vụ đã hết hạn hoặc số tiền hoàn bằng 0. Không thể gửi yêu cầu.');
+                        return;
+                    }
+
+                    this.isLoading = true;
+                    
+                    // Format dates for Google Sheet
+                    const pDateParts = this.form.purchaseDate.split('-');
+                    const pDateStr = `${pDateParts[2]}/${pDateParts[1]}/${pDateParts[0]}`;
+                    
+                    const rDate = new Date();
+                    const rDateStr = `${rDate.getDate().toString().padStart(2, '0')}/${(rDate.getMonth() + 1).toString().padStart(2, '0')}/${rDate.getFullYear()}`;
+                    
+                    const productName = this.form.productSelect === 'Khác' ? this.form.productCustom : this.form.productSelect;
+                    
+                    try {
+                        await fetch(this.WEBAPP_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'log_refund',
+                                refundDate: rDateStr,
+                                email: this.form.email,
+                                product: productName,
+                                purchaseDate: pDateStr,
+                                months: this.form.months,
+                                amountPaid: this.form.amount,
+                                usedDays: this.results.usedDays,
+                                remainingDays: this.results.remainingDays,
+                                refundAmount: this.results.refundAmount,
+                                customerName: this.form.customerName,
+                                customerPhone: this.form.customerPhone
+                            })
+                        });
+                        
+                        this.isSubmitted = true;
+                        this.$nextTick(() => {
+                            if (window.lucide) window.lucide.createIcons();
+                        });
+                    } catch (error) {
+                        console.error('Error submitting refund:', error);
+                        alert('Đã xảy ra lỗi khi gửi yêu cầu. Vui lòng kiểm tra lại kết nối mạng của bạn.');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                resetForm() {
+                    this.form.email = '';
+                    this.form.amount = 0;
+                    this.form.purchaseDate = new Date().toISOString().split('T')[0];
+                    this.form.months = 1;
+                    this.form.productSelect = 'Youtube';
+                    this.form.productCustom = '';
+                    this.isSubmitted = false;
+                    this.calculate();
+                    this.$nextTick(() => {
+                        if (window.lucide) window.lucide.createIcons();
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
