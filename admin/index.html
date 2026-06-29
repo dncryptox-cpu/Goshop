@@ -6118,12 +6118,29 @@
                         return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
                     });
 
+                    // Tự động phát hiện dòng chứa header thực sự bằng cách chấm điểm từ khóa
+                    let headerIndex = 0;
+                    if (parsedLines.length > 1) {
+                        const keywords = ['slot', 'stt', 'trạng thái', 'status', 'mail', 'email', 'pass', '2fa', 'hạn', 'date', 'renew'];
+                        const getHeaderScore = (rowVals) => {
+                            return rowVals.filter(v => {
+                                const valLower = String(v).toLowerCase();
+                                return keywords.some(k => valLower.includes(k));
+                            }).length;
+                        };
+                        const score0 = getHeaderScore(parsedLines[0]);
+                        const score1 = getHeaderScore(parsedLines[1]);
+                        if (score1 > score0) {
+                            headerIndex = 1;
+                        }
+                    }
+
                     let maxCols = 0;
                     parsedLines.forEach(vals => {
                         if (vals.length > maxCols) maxCols = vals.length;
                     });
                     
-                    const headerVals = parsedLines[0];
+                    const headerVals = parsedLines[headerIndex];
                     const headers = [];
                     for(let i = 0; i < maxCols; i++) {
                         let h = headerVals[i] || '';
@@ -6134,7 +6151,7 @@
                         headers.push(h);
                     }
                     
-                    return parsedLines.slice(1).map(values => {
+                    return parsedLines.slice(headerIndex + 1).map(values => {
                         const obj = {};
                         headers.forEach((header, i) => {
                             obj[header] = values[i] || '';
@@ -6142,7 +6159,6 @@
                         return obj;
                     }).filter(row => Object.values(row).some(v => v !== '' && !v.startsWith('Col_')));
                 },
-
                 mapData() {
                     // Reset global costs to prevent accumulation bug (from KI)
                     this.globalStaffCost = 0;
