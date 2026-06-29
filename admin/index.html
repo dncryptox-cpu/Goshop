@@ -1855,15 +1855,20 @@
 
                 <!-- Module: Quản Lý 2FA -->
                 <div x-show="activeModule === 'twofa' && isModuleAllowed('twofa')" x-cloak>
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
                         <div>
                             <h1 class="text-2xl font-bold text-gray-900">Quản Lý 2FA Tài Khoản Gốc</h1>
-                            <p class="text-sm text-gray-500 mt-1">Lưu trữ Secret Key của các tài khoản dùng chung để dễ dàng lấy mã 2FA nhanh chóng.</p>
+                            <p class="text-sm text-gray-500 mt-1">Đồng bộ từ sheet <span class="font-bold text-indigo-600">2FA</span> (Mail | 2fa) — bấm OTP để lấy mã 6 số ngay lập tức.</p>
                         </div>
-                        <button @click="openAddTwofaModal()" class="self-start sm:self-auto bg-primary hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-lg shadow-primary/20 flex items-center gap-2 transition-all">
-                            <i data-lucide="plus" class="w-4 h-4"></i>
-                            <span>Thêm Tài Khoản Mới</span>
-                        </button>
+                        <div class="flex gap-2">
+                            <button @click="fetchSheetData()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all">
+                                <i data-lucide="rotate-cw" class="w-4 h-4"></i> Đồng Bộ Sheet
+                            </button>
+                            <button @click="openAddTwofaModal()" class="self-start sm:self-auto bg-primary hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-lg shadow-primary/20 flex items-center gap-2 transition-all">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                <span>Thêm Thủ Công</span>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="bg-white rounded-xl border border-gray-100 card-shadow p-5 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
@@ -1878,35 +1883,45 @@
                             <table class="w-full text-left">
                                 <thead class="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                                     <tr>
-                                        <th class="px-6 py-4">ID Tài Khoản</th>
-                                        <th class="px-6 py-4">Tên Tài Khoản Gốc (Email)</th>
-                                        <th class="px-6 py-4">Lần Lấy Gần Nhất</th>
+                                        <th class="px-6 py-4">#</th>
+                                        <th class="px-6 py-4">Mail</th>
+                                        <th class="px-6 py-4">Nguồn</th>
+                                        <th class="px-6 py-4">Lần lấy gần nhất</th>
                                         <th class="px-6 py-4 text-right">Thao tác</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
-                                    <template x-for="item in filteredTwofaList" :key="item.id">
+                                    <template x-for="(item, idx) in filteredTwofaList" :key="item.id">
                                         <tr class="hover:bg-gray-50 transition-all group">
+                                            <td class="px-6 py-4 text-xs text-gray-400" x-text="idx + 1"></td>
                                             <td class="px-6 py-4">
-                                                <span class="text-xs font-bold font-mono text-gray-600 bg-gray-100 px-2 py-1 rounded-md" x-text="item.id"></span>
+                                                <p class="text-sm font-bold text-gray-900 select-all cursor-pointer hover:text-primary" @click="copyToClipboard(item.email, 'Email')" x-text="item.email"></p>
                                             </td>
                                             <td class="px-6 py-4">
-                                                <p class="text-sm font-bold text-gray-900" x-text="item.email"></p>
+                                                <span class="text-[10px] font-bold px-2 py-0.5 rounded border"
+                                                    :class="item.fromSheet ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-gray-100 border-gray-200 text-gray-500'"
+                                                    x-text="item.fromSheet ? 'Sheet' : 'Thủ công'"></span>
                                             </td>
                                             <td class="px-6 py-4">
-                                                <span class="text-xs font-medium" :class="item.lastUsed === 'Chưa sử dụng' ? 'text-gray-400' : 'text-green-600 font-bold'" x-text="item.lastUsed"></span>
+                                                <span class="text-xs" :class="item.lastUsed === 'Chưa sử dụng' ? 'text-gray-400' : 'text-green-600 font-bold'" x-text="item.lastUsed"></span>
                                             </td>
-                                            <td class="px-6 py-4 text-right flex items-center justify-end gap-2">
-                                                <button @click="copyTwofaCode(item)" class="text-primary hover:bg-primary-light transition-all p-1.5 rounded flex items-center gap-1 border border-transparent hover:border-primary/20" title="Lấy & Copy Mã 2FA 6 số">
-                                                    <i data-lucide="key" class="w-4 h-4"></i>
-                                                    <span class="text-[10px] font-bold uppercase">Lấy 2FA</span>
-                                                </button>
-                                                <button @click="openEditTwofaModal(item)" class="text-gray-400 hover:text-blue-600 transition-all p-1.5 rounded hover:bg-blue-50">
-                                                    <i data-lucide="edit-2" class="w-4 h-4"></i>
-                                                </button>
-                                                <button @click="deleteTwofa(item.id)" class="text-gray-400 hover:text-red-600 transition-all p-1.5 rounded hover:bg-red-50">
-                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                                                </button>
+                                            <td class="px-6 py-4 text-right">
+                                                <div class="flex items-center justify-end gap-2">
+                                                    <button @click="copyTwofaCode(item)" class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-indigo-200" title="Lấy & Copy Mã OTP 6 số">
+                                                        <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                                                        <span>Lấy OTP</span>
+                                                    </button>
+                                                    <template x-if="!item.fromSheet">
+                                                        <button @click="openEditTwofaModal(item)" class="text-gray-400 hover:text-blue-600 transition-all p-1.5 rounded hover:bg-blue-50">
+                                                            <i data-lucide="edit-2" class="w-4 h-4"></i>
+                                                        </button>
+                                                    </template>
+                                                    <template x-if="!item.fromSheet">
+                                                        <button @click="deleteTwofa(item.id)" class="text-gray-400 hover:text-red-600 transition-all p-1.5 rounded hover:bg-red-50">
+                                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                        </button>
+                                                    </template>
+                                                </div>
                                             </td>
                                         </tr>
                                     </template>
@@ -4547,10 +4562,13 @@
                 isEditingTwofa: false,
                 
                 loadTwofaData() {
+                    // Load local-only items (not from sheet) from localStorage
                     const data = localStorage.getItem('goshop_twofa_accounts');
                     if (data) {
                         try {
-                            this.twofaList = JSON.parse(data);
+                            const parsed = JSON.parse(data);
+                            // Only keep items manually added (not fromSheet), sheet items will be fetched
+                            this.twofaList = parsed.filter(i => !i.fromSheet);
                         } catch (e) {
                             this.twofaList = [];
                         }
@@ -4559,7 +4577,9 @@
                     }
                 },
                 saveTwofaData() {
-                    localStorage.setItem('goshop_twofa_accounts', JSON.stringify(this.twofaList));
+                    // Only save locally-added items to localStorage
+                    const localOnly = this.twofaList.filter(i => !i.fromSheet);
+                    localStorage.setItem('goshop_twofa_accounts', JSON.stringify(localOnly));
                 },
                 get filteredTwofaList() {
                     if (!this.twofaSearchQuery) return this.twofaList;
@@ -6017,6 +6037,37 @@
                         } catch (e) {
                             console.error('Error fetching FamRenew Sheet:', e);
                             this.famRenewList = [];
+                        }
+
+                        // Fetch sheet 2FA (Mail | 2fa)
+                        try {
+                            const twofaSheetUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=2FA&t=${Date.now()}`;
+                            const tfRes = await fetch(twofaSheetUrl);
+                            const tfText = await tfRes.text();
+                            const tfData = this.parseCSV(tfText);
+                            if (tfData && tfData.length > 0) {
+                                const sheetItems = tfData.map((row, idx) => {
+                                    const keys = Object.keys(row);
+                                    const kMail   = keys.find(k => k.toLowerCase() === 'mail' || k.toLowerCase() === 'email') || keys[0] || '';
+                                    const kSecret = keys.find(k => k.toLowerCase() === '2fa' || k.toLowerCase().includes('secret')) || keys[1] || '';
+                                    const email  = String(row[kMail] || '').trim();
+                                    const secret = String(row[kSecret] || '').trim();
+                                    if (!email || !secret) return null;
+                                    return {
+                                        id: '2FA-SHEET-' + (idx + 1),
+                                        email,
+                                        secret,
+                                        lastUsed: 'Chưa sử dụng',
+                                        fromSheet: true
+                                    };
+                                }).filter(Boolean);
+                                // Merge: sheet items first, then any local-only items not in sheet
+                                const sheetEmails = new Set(sheetItems.map(i => i.email.toLowerCase()));
+                                const localOnly = this.twofaList.filter(i => !i.fromSheet && !sheetEmails.has(i.email.toLowerCase()));
+                                this.twofaList = [...sheetItems, ...localOnly];
+                            }
+                        } catch (e) {
+                            console.error('Error fetching 2FA Sheet:', e);
                         }
 
                         this.mapData();
