@@ -120,14 +120,15 @@ function doPost(e) {
     if (action === 'update_hsd') {
       var email = data.email;
       var newExpiry = data.newExpiry;
-      var sheet = ss.getSheetByName("FAMRENEW");
+      var sheet = null;
+      try {
+        var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+        sheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
+      } catch (err) {
+        Logger.log("Không thể mở Spreadsheet phụ: " + err.message);
+      }
       if (!sheet) {
-        try {
-          var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
-          sheet = frSs.getSheetByName("FAMRENEW");
-        } catch (err) {
-          Logger.log("Không thể mở Sheet FamRenew phụ: " + err.message);
-        }
+        sheet = ss.getSheetByName("RENEW") || ss.getSheetByName("FAMRENEW");
       }
       if (sheet) {
         var dataRange = sheet.getDataRange();
@@ -270,7 +271,7 @@ function doPost(e) {
     // 9. Xử lý Cập Nhật Trạng Thái FamRenew
     if (action === 'update_fam_renew_status') {
       var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
-      var frSheet = frSs.getSheetByName("FAMRENEW");
+      var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
       if (frSheet) {
         var email = data.email;
         var newStatus = data.status;
