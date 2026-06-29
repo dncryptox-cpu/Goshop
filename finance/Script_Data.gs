@@ -133,7 +133,7 @@ function doPost(e) {
       if (sheet) {
         var sheetName = sheet.getName();
         var emailColIndex = (sheetName === 'RENEW') ? 3 : 4;  // Cột D (index 3) vs Cột E (index 4)
-        var expiryColNum  = (sheetName === 'RENEW') ? 5 : 9;  // Cột E (col 5) vs Cột I (col 9)
+        var expiryColNum  = (sheetName === 'RENEW') ? 8 : 9;  // Cột H (col 8) vs Cột I (col 9)
 
         var dataRange = sheet.getDataRange();
         var values = dataRange.getValues();
@@ -284,8 +284,8 @@ function doPost(e) {
 
         var sheetName = frSheet.getName();
         var emailColIndex    = (sheetName === 'RENEW') ? 3 : 4;  // Cột D (index 3) vs Cột E (index 4)
-        var statusColNum     = (sheetName === 'RENEW') ? 1 : 2;  // Cột A (col 1) vs Cột B (col 2)
-        var expiryColNum     = (sheetName === 'RENEW') ? 5 : 9;  // Cột E (col 5) vs Cột I (col 9)
+        var statusColNum     = (sheetName === 'RENEW') ? 3 : 2;  // Cột C (col 3) vs Cột B (col 2)
+        var expiryColNum     = (sheetName === 'RENEW') ? 8 : 9;  // Cột H (col 8) vs Cột I (col 9)
         var activationColNum = (sheetName === 'RENEW') ? 0 : 4;  // Cột D (col 4) ở sheet cũ, sheet mới không có
 
         var dataRange = frSheet.getDataRange();
