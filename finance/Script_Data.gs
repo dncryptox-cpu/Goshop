@@ -4,6 +4,67 @@ function doPost(e) {
     var action = data.action;
     var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
 
+    // 0. Lấy mã OTP theo Customer Key (cho khách hàng)
+    if (action === 'get_customer_otp') {
+      var customerKey = String(data.customerKey || '').trim().toUpperCase();
+      if (!customerKey) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'not_found' })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      // Tìm trong sheet 2FA - cột A: Mail, B: 2fa secret, C+: Khách 1, 2, 3...
+      var twofaSheet = ss.getSheetByName('2FA');
+      if (!twofaSheet) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'not_found', message: 'Sheet 2FA không tồn tại.' })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var sheetData = twofaSheet.getDataRange().getValues();
+      var foundSecret = null;
+      var foundKeyLabel = null;
+
+      // Tìm từ row 2 (index 1) trở đi, cột từ C (index 2) trở đi
+      for (var r = 1; r < sheetData.length; r++) {
+        var row = sheetData[r];
+        var secret2fa = String(row[1] || '').trim(); // Cột B: Secret 2FA
+        if (!secret2fa) continue;
+
+        for (var c = 2; c < row.length; c++) {
+          var cellKey = String(row[c] || '').trim().toUpperCase();
+          if (cellKey && cellKey === customerKey) {
+            foundSecret = secret2fa;
+            foundKeyLabel = 'R' + (r+1) + 'C' + (c+1); // Định danh duy nhất cho key này
+            break;
+          }
+        }
+        if (foundSecret) break;
+      }
+
+      if (!foundSecret) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'not_found' })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      // Kiểm tra số lần đã dùng bằng PropertiesService
+      var props = PropertiesService.getScriptProperties();
+      var usagePropKey = 'OTP_USAGE_' + customerKey;
+      var currentUsage = parseInt(props.getProperty(usagePropKey) || '0', 10);
+
+      if (currentUsage >= 2) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'exceeded', usedCount: currentUsage })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      // Tăng đếm số lần dùng
+      var newUsage = currentUsage + 1;
+      props.setProperty(usagePropKey, String(newUsage));
+
+      // Tính mã TOTP server-side
+      var otpCode = generateTOTP(foundSecret);
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        otp: otpCode,
+        usedCount: newUsage
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 1. Xử lý Gửi Yêu cầu gia hạn từ CTV
     if (action === 'request_update_hsd') {
       var sheet = ss.getSheetByName("YEU_CAU");
@@ -269,4 +330,64 @@ function syncDonHangMoiToTaiChinh(e) {
       lock.releaseLock();
     }
   }
+}
+
+// ============================================================
+// TOTP Helper - RFC 6238 (chuẩn Google Authenticator)
+// ============================================================
+
+function generateTOTP(secret) {
+  try {
+    var cleanSecret = secret.replace(/\s+/g, '').toUpperCase();
+    var keyBytes = base32Decode(cleanSecret);
+
+    var epoch = Math.floor(Date.now() / 1000);
+    var timeStep = Math.floor(epoch / 30);
+
+    // 8-byte big-endian counter
+    var timeBytes = [];
+    for (var i = 7; i >= 0; i--) {
+      timeBytes[i] = timeStep & 0xff;
+      timeStep = timeStep >>> 8;
+    }
+
+    // HMAC-SHA1 via Apps Script
+    var hmacBytes = Utilities.computeHmacSignature(
+      Utilities.MacAlgorithm.HMAC_SHA_1,
+      timeBytes,
+      keyBytes
+    );
+
+    // Dynamic truncation
+    var offset = hmacBytes[19] & 0xf;
+    var binCode = ((hmacBytes[offset]     & 0x7f) << 24) |
+                  ((hmacBytes[offset + 1] & 0xff) << 16) |
+                  ((hmacBytes[offset + 2] & 0xff) << 8)  |
+                   (hmacBytes[offset + 3] & 0xff);
+
+    var otp = binCode % 1000000;
+    return String(otp).padStart(6, '0');
+  } catch (e) {
+    Logger.log('generateTOTP error: ' + e.message);
+    return '000000';
+  }
+}
+
+function base32Decode(base32) {
+  var alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  var bits = 0;
+  var value = 0;
+  var output = [];
+  var input = base32.replace(/=+$/, '');
+  for (var i = 0; i < input.length; i++) {
+    var idx = alphabet.indexOf(input[i]);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      output.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return output;
 }
