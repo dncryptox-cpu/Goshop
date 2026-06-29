@@ -3953,15 +3953,34 @@
                             (i.source || '').toLowerCase().includes(q)
                         );
                     }
-                    // Sắp xếp các tài khoản "Còn Slot" lên đầu danh sách
+                    // Sắp xếp ưu tiên:
+                    // 1. Trạng thái còn Slot lên đầu.
+                    // 2. Kế tiếp là NK Plus còn Slot (Số slot ở cột A < 5).
                     return [...res].sort((a, b) => {
-                        const statusA = (a.status || '').trim().toLowerCase();
-                        const statusB = (b.status || '').trim().toLowerCase();
-                        const isSlotA = statusA.includes('slot');
-                        const isSlotB = statusB.includes('slot');
-                        if (isSlotA && !isSlotB) return -1;
-                        if (!isSlotA && isSlotB) return 1;
-                        return 0;
+                        const getScore = (item) => {
+                            const status = (item.status || '').trim().toLowerCase();
+                            const slots = parseInt(item.slots) || 0;
+                            
+                            // Trạng thái còn Slot -> Ưu tiên cao nhất
+                            if (status.includes('slot')) {
+                                return 3;
+                            }
+                            
+                            // NK Plus còn Slot (chứa 'plus' hoặc 'nk' và slot < 5) -> Ưu tiên thứ hai
+                            const isPlus = status.includes('plus') || status.includes('nk');
+                            if (isPlus && slots < 5 && slots > 0) {
+                                return 2;
+                            }
+                            
+                            // Trường hợp khác còn slot (slots < 5) -> Ưu tiên thứ ba
+                            if (slots > 0 && slots < 5) {
+                                return 1;
+                            }
+                            
+                            return 0;
+                        };
+                        
+                        return getScore(b) - getScore(a);
                     });
                 },
 
