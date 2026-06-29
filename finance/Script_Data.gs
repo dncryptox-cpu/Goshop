@@ -118,6 +118,27 @@ function doPost(e) {
     }
 
     if (action === 'update_hsd') {
+      var email = data.email;
+      var newExpiry = data.newExpiry;
+      var sheet = ss.getSheetByName("FAMRENEW");
+      if (!sheet) {
+        try {
+          var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+          sheet = frSs.getSheetByName("FAMRENEW");
+        } catch (err) {
+          Logger.log("Không thể mở Sheet FamRenew phụ: " + err.message);
+        }
+      }
+      if (sheet) {
+        var dataRange = sheet.getDataRange();
+        var values = dataRange.getValues();
+        for (var i = 1; i < values.length; i++) {
+          if (values[i][4] && values[i][4].toString().trim().toLowerCase() === email.toLowerCase()) {
+            sheet.getRange(i + 1, 9).setValue(newExpiry);
+            break;
+          }
+        }
+      }
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
