@@ -124,7 +124,6 @@ function doPost(e) {
         pricingSheet = ss.insertSheet("CONFIG_PRICING");
       }
       pricingSheet.clear();
-      // Thêm Header
       pricingSheet.appendRow(["ID", "Tên Sản Phẩm", "Icon", "Mô tả", "Giá 7 Ngày", "Giá 30 Ngày", "Giá 90 Ngày", "Giá 180 Ngày", "Giá 360 Ngày", "Mặc định (Ngày)"]);
       
       var products = data.products;
@@ -132,16 +131,9 @@ function doPost(e) {
         for (var i = 0; i < products.length; i++) {
           var p = products[i];
           pricingSheet.appendRow([
-            p.id,
-            p.name,
-            p.icon,
-            p.desc,
-            p.prices[7] || 0,
-            p.prices[30] || 0,
-            p.prices[90] || 0,
-            p.prices[180] || 0,
-            p.prices[360] || 0,
-            p.defaultDuration
+            p.id, p.name, p.icon, p.desc,
+            p.prices[7] || 0, p.prices[30] || 0, p.prices[90] || 0,
+            p.prices[180] || 0, p.prices[360] || 0, p.defaultDuration
           ]);
         }
       }
@@ -231,38 +223,30 @@ function syncDonHangMoiToTaiChinh(e) {
     try {
       var orderId = sheet.getRange(row, 1).getValue(); 
       var email = sheet.getRange(row, 2).getValue();   
-      var productRaw = sheet.getRange(row, 4).getValue(); // Cột Sản phẩm
-      var durationDays = parseInt(sheet.getRange(row, 5).getValue()) || 0; // Cột Thời hạn
+      var productRaw = sheet.getRange(row, 4).getValue();
+      var durationDays = parseInt(sheet.getRange(row, 5).getValue()) || 0;
       var dateStr = sheet.getRange(row, 8).getValue(); 
       
-      // AUTO GẮN CTV LÀ "Dnc" NẾU BỊ TRỐNG
       var rawUser = sheet.getRange(row, 9).getValue();    
       var user = rawUser ? String(rawUser).trim() : "";
-      if (user === "") {
-          user = "Dnc";
-      }
+      if (user === "") { user = "Dnc"; }
       
-      // 1. ĐỔI NGÀY RA THÁNG
       var durationSuffix = '0';
       if (durationDays >= 360) durationSuffix = '12';
       else if (durationDays >= 180) durationSuffix = '6';
       else if (durationDays >= 90) durationSuffix = '3';
       else if (durationDays >= 30) durationSuffix = '1';
 
-      // 2. ÉP TẤT CẢ PHẢI DÍNH LIỀN VÀO NHAU (KHÔNG DẤU CÁCH) ĐỂ NHẢY GIÁ TIỀN
       var basePlan = String(productRaw).trim();
       var product = basePlan;
       var baseLower = basePlan.toLowerCase();
       
-      if (['còn slot', 'full', 'nk plus', 'n plus', 'youtube'].some(p => baseLower.includes(p))) { 
+      if (['còn slot', 'full', 'nk plus', 'n plus', 'youtube'].some(function(p) { return baseLower.includes(p); })) { 
           product = 'Youtube-' + durationSuffix; 
       } else {
-          // ÉP DÍNH LIỀN MỌI THỂ LOẠI (VD: Autodesk 2 App-12, Lưu trữ đám mây 2TB-12)
           product = basePlan + '-' + durationSuffix; 
       }
 
-      // 3. ĐẨY DATA SANG TÀI CHÍNH
-      // Lấy Mã ĐH từ cột A (orderId) kết hợp với CTV để đẩy vào Cột B (NTT/MDH) của sheet Tài chính
       var targetData = [dateStr, user + " - " + orderId, "New", email, product];
       
       var targetSpreadsheetId = "1-EgeNWztGQsY2rmLYp00yKDjgHR5WYoqzzhAkSnvJjc";
@@ -275,13 +259,8 @@ function syncDonHangMoiToTaiChinh(e) {
         for (var i = colA.length - 1; i >= 0; i--) {
           if (colA[i][0] !== "") { emptyRow = i + 2; break; }
         }
-        
-        // Bắn 5 cột đầu (A đến E)
         targetSheet.getRange(emptyRow, 1, 1, 5).setValues([targetData]);
-        
-        // Bắn tên CTV nhảy cóc vào Cột H (Cột số 8) để không mất công thức ở cột F, G
         targetSheet.getRange(emptyRow, 8).setValue(user);
-
         SpreadsheetApp.getActiveSpreadsheet().toast('✅ Đã bắn đơn: ' + product + ' (CTV: ' + user + ')', 'DON HANG MOI', 4);
       }
     } catch (error) {
