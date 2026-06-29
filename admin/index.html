@@ -1335,8 +1335,8 @@
                                         <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mail</th>
                                         <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pass</th>
                                         <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">2FA</th>
-                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mail KP</th>
-                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ngày mua</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ghi chú / Thay thế</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Số Slot</th>
                                         <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Hết hạn</th>
                                         <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Thao tác</th>
                                     </tr>
@@ -1397,11 +1397,11 @@
 
                                             <!-- Recovery -->
                                             <td class="px-4 py-3">
-                                                <span class="font-mono text-gray-400 cursor-pointer hover:text-primary select-all max-w-[100px] truncate block" @click="copyToClipboard(item.recoveryEmail, 'Mail khôi phục')" x-text="item.recoveryEmail || '-'"></span>
+                                                <span class="text-gray-500 cursor-pointer hover:text-primary select-all max-w-[120px] truncate block" @click="copyToClipboard(item.recoveryEmail, 'Ghi chú')" x-text="item.recoveryEmail || '-'"></span>
                                             </td>
 
                                             <!-- Ngày mua -->
-                                            <td class="px-4 py-3 text-gray-500" x-text="item.buyDate || '-'"></td>
+                                            <td class="px-4 py-3 text-gray-500 font-bold" x-text="item.slots || '-'"></td>
 
                                             <!-- Ngày hết hạn -->
                                             <td class="px-4 py-3">
@@ -6011,39 +6011,49 @@
                             const frData = this.parseCSV(frText);
                             
                             this.famRenewList = frData.map((row, idx) => {
-                                // Column mapping theo đúng thứ tự sheet:
-                                // A=STT, B=Trạng thái, C=Ngày mua, D=Ngày kích hoạt gói,
-                                // E=Mail, F=Pass, G=Mail khôi phục, H=2FA,
-                                // I=Ngày hết hạn, J=Loại, K=Source
                                 const keys = Object.keys(row);
-                                const kStt      = keys.find(k => k.toLowerCase() === 'stt') || keys[0] || '';
-                                const kStatus   = keys.find(k => k.toLowerCase().includes('trạng thái')) || keys[1] || '';
-                                const kBuyDate  = keys.find(k => k.toLowerCase().includes('ngày mua')) || keys[2] || '';
-                                const kActDate  = keys.find(k => k.toLowerCase().includes('kích hoạt')) || keys[3] || '';
-                                const kMail     = keys.find(k => k.toLowerCase() === 'mail' || k.toLowerCase() === 'email') || keys[4] || '';
-                                const kPass     = keys.find(k => k.toLowerCase() === 'pass') || keys[5] || '';
-                                const kRecovery = keys.find(k => k.toLowerCase().includes('khôi phục')) || keys[6] || '';
-                                const k2fa      = keys.find(k => k.toLowerCase() === '2fa') || keys[7] || '';
-                                const kExpiry   = keys.find(k => k.toLowerCase().includes('hết hạn')) || keys[8] || '';
-                                const kType     = keys.find(k => k.toLowerCase().includes('loại')) || keys[9] || '';
-                                const kSource   = keys.find(k => k.toLowerCase().includes('source')) || keys[10] || '';
                                 
+                                // Áp dụng mapping cố định theo cấu trúc sheet RENEW mới:
+                                // Index 0: Trạng thái (status)
+                                // Index 1: Slot (slots)
+                                // Index 2: Pass (pass)
+                                // Index 3: Mail (email)
+                                // Index 4: Hết hạn (expiryDate)
+                                // Index 5: 2FA (twofa)
+                                // Index 6: STT (stt)
+                                // Index 7: Fam thay thế (notes)
+                                
+                                const statusVal = String(row[keys[0]] || '').trim();
+                                const slotsVal  = String(row[keys[1]] || '').trim();
+                                const passVal   = String(row[keys[2]] || '').trim();
+                                const emailVal  = String(row[keys[3]] || '').trim();
+                                const expiryVal = String(row[keys[4]] || '').trim();
+                                const twofaVal  = String(row[keys[5]] || '').trim();
+                                const sttVal    = String(row[keys[6]] || '').trim();
+                                const notesVal  = String(row[keys[7]] || '').trim();
+
+                                // Loại bỏ hàng tiêu đề bị lọt lưới
+                                if (statusVal === 'Trạng thái' || emailVal.toLowerCase() === 'mkp') {
+                                    return null;
+                                }
+
                                 return {
                                     rowIndex: idx + 2, // +2 vì row 1 là header, idx bắt đầu từ 0
                                     id: 'fr_' + idx + '_' + Math.random().toString(36).substr(2, 5),
-                                    stt: String(row[kStt] || '').trim(),
-                                    status: String(row[kStatus] || '').trim(),
-                                    buyDate: String(row[kBuyDate] || '').trim(),
-                                    activationDate: String(row[kActDate] || '').trim(),
-                                    email: String(row[kMail] || '').trim(),
-                                    pass: String(row[kPass] || '').trim(),
-                                    recoveryEmail: String(row[kRecovery] || '').trim(),
-                                    twofa: String(row[k2fa] || '').trim(),
-                                    expiryDate: String(row[kExpiry] || '').trim(),
-                                    type: String(row[kType] || '').trim(),
-                                    source: String(row[kSource] || '').trim()
+                                    stt: sttVal,
+                                    status: statusVal,
+                                    slots: slotsVal,
+                                    buyDate: '', 
+                                    activationDate: '', 
+                                    email: emailVal,
+                                    pass: passVal,
+                                    recoveryEmail: notesVal, // Hiện notes/thay thế ở cột Ghi chú
+                                    twofa: twofaVal,
+                                    expiryDate: expiryVal,
+                                    type: slotsVal ? `Slot: ${slotsVal}` : '',
+                                    source: notesVal
                                 };
-                            }).filter(item => item.email);
+                            }).filter(item => item && item.email);
                         } catch (e) {
                             console.error('Error fetching FamRenew Sheet:', e);
                             this.famRenewList = [];

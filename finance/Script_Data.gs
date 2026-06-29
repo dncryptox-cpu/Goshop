@@ -131,11 +131,15 @@ function doPost(e) {
         sheet = ss.getSheetByName("RENEW") || ss.getSheetByName("FAMRENEW");
       }
       if (sheet) {
+        var sheetName = sheet.getName();
+        var emailColIndex = (sheetName === 'RENEW') ? 3 : 4;  // Cột D (index 3) vs Cột E (index 4)
+        var expiryColNum  = (sheetName === 'RENEW') ? 5 : 9;  // Cột E (col 5) vs Cột I (col 9)
+
         var dataRange = sheet.getDataRange();
         var values = dataRange.getValues();
         for (var i = 1; i < values.length; i++) {
-          if (values[i][4] && values[i][4].toString().trim().toLowerCase() === email.toLowerCase()) {
-            sheet.getRange(i + 1, 9).setValue(newExpiry);
+          if (values[i][emailColIndex] && values[i][emailColIndex].toString().trim().toLowerCase() === email.toLowerCase()) {
+            sheet.getRange(i + 1, expiryColNum).setValue(newExpiry);
             break;
           }
         }
@@ -278,18 +282,23 @@ function doPost(e) {
         var activationDate = data.activationDate || '';
         var expiryDate = data.expiryDate || '';
 
+        var sheetName = frSheet.getName();
+        var emailColIndex    = (sheetName === 'RENEW') ? 3 : 4;  // Cột D (index 3) vs Cột E (index 4)
+        var statusColNum     = (sheetName === 'RENEW') ? 1 : 2;  // Cột A (col 1) vs Cột B (col 2)
+        var expiryColNum     = (sheetName === 'RENEW') ? 5 : 9;  // Cột E (col 5) vs Cột I (col 9)
+        var activationColNum = (sheetName === 'RENEW') ? 0 : 4;  // Cột D (col 4) ở sheet cũ, sheet mới không có
+
         var dataRange = frSheet.getDataRange();
         var values = dataRange.getValues();
         
-        // Email ở cột E (index 4)
         for (var i = 1; i < values.length; i++) {
-          if (values[i][4] && values[i][4].toString().trim().toLowerCase() === email.toLowerCase()) {
-            frSheet.getRange(i + 1, 2).setValue(newStatus);          // Cột B: Trạng thái
-            if (activationDate) {
-              frSheet.getRange(i + 1, 4).setValue(activationDate);   // Cột D: Ngày kích hoạt gói
+          if (values[i][emailColIndex] && values[i][emailColIndex].toString().trim().toLowerCase() === email.toLowerCase()) {
+            frSheet.getRange(i + 1, statusColNum).setValue(newStatus);
+            if (activationDate && activationColNum > 0) {
+              frSheet.getRange(i + 1, activationColNum).setValue(activationDate);
             }
             if (expiryDate) {
-              frSheet.getRange(i + 1, 9).setValue(expiryDate);       // Cột I: Ngày hết hạn
+              frSheet.getRange(i + 1, expiryColNum).setValue(expiryDate);
             }
             break;
           }
