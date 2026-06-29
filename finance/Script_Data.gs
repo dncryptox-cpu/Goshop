@@ -11,7 +11,6 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify({ status: 'not_found' })).setMimeType(ContentService.MimeType.JSON);
       }
 
-      // Tìm trong sheet 2FA - cột A: Mail, B: 2fa secret, C+: Khách 1, 2, 3...
       var twofaSheet = ss.getSheetByName('2FA');
       if (!twofaSheet) {
         return ContentService.createTextOutput(JSON.stringify({ status: 'not_found', message: 'Sheet 2FA không tồn tại.' })).setMimeType(ContentService.MimeType.JSON);
@@ -19,19 +18,24 @@ function doPost(e) {
 
       var sheetData = twofaSheet.getDataRange().getValues();
       var foundSecret = null;
-      var foundKeyLabel = null;
+      var productType = 'YTB'; // mặc định
 
-      // Tìm từ row 2 (index 1) trở đi, cột từ C (index 2) trở đi
+      // Cột A: Mail (index 0)
+      // Cột B: Secret 2FA (index 1)
+      // Cột C: Sản phẩm (index 2)
+      // Cột D trở đi: các Customer Key (index 3 trở đi)
       for (var r = 1; r < sheetData.length; r++) {
         var row = sheetData[r];
-        var secret2fa = String(row[1] || '').trim(); // Cột B: Secret 2FA
+        var secret2fa = String(row[1] || '').trim();
         if (!secret2fa) continue;
 
-        for (var c = 2; c < row.length; c++) {
+        var prodVal = String(row[2] || '').trim().toUpperCase();
+
+        for (var c = 3; c < row.length; c++) {
           var cellKey = String(row[c] || '').trim().toUpperCase();
           if (cellKey && cellKey === customerKey) {
             foundSecret = secret2fa;
-            foundKeyLabel = 'R' + (r+1) + 'C' + (c+1); // Định danh duy nhất cho key này
+            productType = prodVal || 'YTB';
             break;
           }
         }
@@ -42,26 +46,36 @@ function doPost(e) {
         return ContentService.createTextOutput(JSON.stringify({ status: 'not_found' })).setMimeType(ContentService.MimeType.JSON);
       }
 
-      // Kiểm tra số lần đã dùng bằng PropertiesService
+      // Định nghĩa số lần giới hạn theo sản phẩm
+      var limit = 2; // Default
+      if (productType.indexOf('GPT') > -1) {
+        limit = 3;
+      } else if (productType.indexOf('YTB') > -1) {
+        limit = -1; // Vô hạn
+      }
+
       var props = PropertiesService.getScriptProperties();
       var usagePropKey = 'OTP_USAGE_' + customerKey;
       var currentUsage = parseInt(props.getProperty(usagePropKey) || '0', 10);
 
-      if (currentUsage >= 2) {
-        return ContentService.createTextOutput(JSON.stringify({ status: 'exceeded', usedCount: currentUsage })).setMimeType(ContentService.MimeType.JSON);
+      // Nếu có giới hạn (limit != -1) và đã đạt tới/quá giới hạn
+      if (limit !== -1 && currentUsage >= limit) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'exceeded', usedCount: currentUsage, limit: limit })).setMimeType(ContentService.MimeType.JSON);
       }
 
       // Tăng đếm số lần dùng
       var newUsage = currentUsage + 1;
       props.setProperty(usagePropKey, String(newUsage));
 
-      // Tính mã TOTP server-side
+      // Tính mã TOTP
       var otpCode = generateTOTP(foundSecret);
 
       return ContentService.createTextOutput(JSON.stringify({
         status: 'success',
         otp: otpCode,
-        usedCount: newUsage
+        usedCount: newUsage,
+        limit: limit,
+        product: productType
       })).setMimeType(ContentService.MimeType.JSON);
     }
 

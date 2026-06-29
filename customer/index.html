@@ -825,12 +825,20 @@
                     <!-- Usage counter -->
                     <template x-if="customerKeyUsed > 0 && !twoFaError">
                         <div class="mb-5 flex items-center justify-between bg-indigo-500/10 border border-indigo-500/20 rounded-xl px-4 py-2.5">
-                            <span class="text-xs font-bold text-indigo-300">Lượt đã dùng</span>
+                            <span class="text-xs font-bold text-indigo-300" x-text="customerKeyLimit === -1 ? 'Số lượt đã dùng' : 'Lượt đã dùng'"></span>
                             <div class="flex gap-1">
-                                <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black"
-                                    :class="customerKeyUsed >= 1 ? 'bg-indigo-500 text-white' : 'bg-gray-700 text-gray-500'">1</span>
-                                <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black"
-                                    :class="customerKeyUsed >= 2 ? 'bg-indigo-500 text-white' : 'bg-gray-700 text-gray-500'">2</span>
+                                <template x-if="customerKeyLimit !== -1">
+                                    <div class="flex gap-1">
+                                        <template x-for="i in Array.from({length: customerKeyLimit}, (_, idx) => idx + 1)">
+                                            <span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black"
+                                                :class="customerKeyUsed >= i ? 'bg-indigo-500 text-white' : 'bg-gray-700 text-gray-500'"
+                                                x-text="i"></span>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="customerKeyLimit === -1">
+                                    <span class="px-2 py-0.5 rounded-full bg-indigo-500 text-white text-[10px] font-black" x-text="customerKeyUsed + ' (Vô hạn)'"></span>
+                                </template>
                             </div>
                         </div>
                     </template>
@@ -844,10 +852,10 @@
                                 <i data-lucide="key" class="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400"></i>
                                 <input x-model="twoFaKey" type="text" required
                                     placeholder="Nhập key admin cấp cho bạn..."
-                                    @input="twoFaCode = ''; twoFaError = ''; customerKeyUsed = 0;"
+                                    @input="twoFaCode = ''; twoFaError = ''; customerKeyUsed = 0; customerKeyLimit = 2;"
                                     class="w-full bg-gray-950/60 border border-glass-border rounded-xl py-3.5 pl-12 pr-4 text-sm focus:outline-none focus:border-indigo-500 text-white placeholder-gray-600 transition-all font-mono tracking-wider uppercase">
                             </div>
-                            <p class="text-[10px] text-gray-500 mt-2">⚠️ Mỗi Customer Key chỉ được dùng <strong class="text-white">2 lần</strong> để đảm bảo đăng nhập đúng số thiết bị.</p>
+                            <p class="text-[10px] text-gray-500 mt-2">⚠️ Giới hạn lượt lấy mã tuỳ theo gói (GPT: 3 lần, YTB: Vô hạn, Khác: 2 lần).</p>
                         </div>
 
                         <button type="submit" :disabled="twoFaLoading || !twoFaKey.trim()"
@@ -903,15 +911,15 @@
                                 </div>
 
                                 <!-- Usage remaining -->
-                                <div class="text-xs text-center" :class="customerKeyUsed >= 2 ? 'text-red-400' : 'text-gray-500'">
-                                    <span x-text="customerKeyUsed >= 2 ? '⚠️ Key này đã dùng hết 2 lần. Liên hệ admin để được cấp key mới.' : ('Còn lại: ' + (2 - customerKeyUsed) + ' lần dùng')"></span>
+                                <div class="text-xs text-center" :class="customerKeyLimit !== -1 && customerKeyUsed >= customerKeyLimit ? 'text-red-400' : 'text-gray-500'">
+                                    <span x-text="customerKeyLimit === -1 ? 'Còn lại: Vô hạn' : (customerKeyUsed >= customerKeyLimit ? '⚠️ Key này đã dùng hết lượt. Liên hệ admin để được cấp key mới.' : ('Còn lại: ' + (customerKeyLimit - customerKeyUsed) + ' lần dùng'))"></span>
                                 </div>
 
                                 <!-- Refresh button (if key still has uses) -->
-                                <button x-show="customerKeyUsed < 2" @click="get2FACode()"
+                                <button x-show="customerKeyLimit === -1 || customerKeyUsed < customerKeyLimit" @click="get2FACode()"
                                     class="w-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-300 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2">
                                     <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
-                                    Lấy Mã Mới (Dùng 1 lần nữa)
+                                    Lấy Mã Mới
                                 </button>
                             </div>
                         </template>
@@ -944,6 +952,7 @@
                 twoFaLoading: false,
                 twoFaError: '',
                 customerKeyUsed: 0,
+                customerKeyLimit: 2,
                 otpCountdown: 30,
                 otpCountdownTimer: null,
                 CONFIG: {
@@ -1453,11 +1462,13 @@
 
                         if (json.status === 'exceeded') {
                             this.twoFaError = 'Đã quá lần lấy code — vui lòng liên hệ admin DNC';
-                            this.customerKeyUsed = 2;
+                            this.customerKeyLimit = json.limit !== undefined ? json.limit : 2;
+                            this.customerKeyUsed = this.customerKeyLimit;
                         } else if (json.status === 'not_found') {
                             this.twoFaError = 'Customer Key không hợp lệ. Vui lòng kiểm tra lại.';
                         } else if (json.status === 'success' && json.otp) {
                             this.twoFaCode = json.otp;
+                            this.customerKeyLimit = json.limit !== undefined ? json.limit : 2;
                             this.customerKeyUsed = json.usedCount || 1;
 
                             // 30s countdown timer
