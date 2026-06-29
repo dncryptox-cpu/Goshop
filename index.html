@@ -1290,9 +1290,20 @@
                                 </div>
                             </template>
 
-                            <form @submit.prevent="get2FACode" class="space-y-5">
+                             <form @submit.prevent="get2FACode" class="space-y-4">
                                 <div>
-                                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-3">Customer Key (Admin cấp)</label>
+                                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-2">Email Đăng Ký</label>
+                                    <div class="relative">
+                                        <i data-lucide="mail" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                                        <input x-model="twoFaEmail" type="email" required
+                                            placeholder="Nhập email của bạn..."
+                                            @input="twoFaCode = ''; twoFaError = ''; customerKeyUsed = 0; customerKeyLimit = 2;"
+                                            class="w-full bg-slate-50 border border-slate-200 rounded-xl py-3.5 pl-12 pr-4 text-sm focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 text-slate-900 placeholder-slate-400 transition-all">
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-widest mb-2">Customer Key (Admin cấp)</label>
                                     <div class="relative">
                                         <i data-lucide="key" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
                                         <input x-model="twoFaKey" type="text" required
@@ -1303,7 +1314,7 @@
                                     <p class="text-[10px] text-slate-400 mt-2">⚠️ Giới hạn lượt lấy mã tuỳ theo gói (GPT: 3 lần, YTB: Vô hạn, Khác: 2 lần).</p>
                                 </div>
 
-                                <button type="submit" :disabled="twoFaLoading || !twoFaKey.trim()"
+                                <button type="submit" :disabled="twoFaLoading || !twoFaKey.trim() || !twoFaEmail.trim()"
                                     class="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:from-slate-200 disabled:to-slate-200 disabled:text-slate-400 text-white py-3.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-3 shadow-lg shadow-indigo-500/20">
                                     <template x-if="twoFaLoading">
                                         <svg class="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
@@ -1314,7 +1325,7 @@
                                     <i x-show="!twoFaLoading" data-lucide="shield-check" class="w-4 h-4"></i>
                                     <span x-text="twoFaLoading ? 'Đang xác thực...' : 'Lấy Mã OTP'"></span>
                                 </button>
-                            </form>
+                             </form>
 
                             <!-- Result -->
                             <div x-show="twoFaCode || twoFaError" class="mt-6 pt-6 border-t border-slate-100">
@@ -2185,7 +2196,7 @@
                 },
 
                 async get2FACode() {
-                    if (!this.twoFaKey.trim()) return;
+                    if (!this.twoFaKey.trim() || !this.twoFaEmail.trim()) return;
                     this.twoFaLoading = true;
                     this.twoFaError = '';
                     this.twoFaCode = '';
@@ -2194,7 +2205,11 @@
                     try {
                         const resp = await fetch(this.CONFIG.APPS_SCRIPT_URL, {
                             method: 'POST',
-                            body: JSON.stringify({ action: 'get_customer_otp', customerKey: this.twoFaKey.trim() })
+                            body: JSON.stringify({
+                                action: 'get_customer_otp',
+                                email: this.twoFaEmail.trim(),
+                                customerKey: this.twoFaKey.trim()
+                            })
                         });
                         const json = await resp.json();
 
@@ -2203,7 +2218,7 @@
                             this.customerKeyLimit = json.limit !== undefined ? json.limit : 2;
                             this.customerKeyUsed = this.customerKeyLimit;
                         } else if (json.status === 'not_found') {
-                            this.twoFaError = 'Customer Key không hợp lệ. Vui lòng kiểm tra lại.';
+                            this.twoFaError = json.message || 'Email hoặc Customer Key không hợp lệ.';
                         } else if (json.status === 'success' && json.otp) {
                             this.twoFaCode = json.otp;
                             this.customerKeyLimit = json.limit !== undefined ? json.limit : 2;

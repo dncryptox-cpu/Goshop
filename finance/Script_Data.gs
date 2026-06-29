@@ -7,8 +7,9 @@ function doPost(e) {
     // 0. Lấy mã OTP theo Customer Key (cho khách hàng)
     if (action === 'get_customer_otp') {
       var customerKey = String(data.customerKey || '').trim().toUpperCase();
-      if (!customerKey) {
-        return ContentService.createTextOutput(JSON.stringify({ status: 'not_found' })).setMimeType(ContentService.MimeType.JSON);
+      var email = String(data.email || '').trim().toLowerCase();
+      if (!customerKey || !email) {
+        return ContentService.createTextOutput(JSON.stringify({ status: 'not_found', message: 'Vui lòng nhập đầy đủ Email và Key.' })).setMimeType(ContentService.MimeType.JSON);
       }
 
       var twofaSheet = ss.getSheetByName('2FA');
@@ -26,6 +27,9 @@ function doPost(e) {
       // Cột D trở đi: các Customer Key (index 3 trở đi)
       for (var r = 1; r < sheetData.length; r++) {
         var row = sheetData[r];
+        var rowEmail = String(row[0] || '').trim().toLowerCase();
+        if (rowEmail !== email) continue; // Khớp email chính xác mới duyệt tiếp
+
         var secret2fa = String(row[1] || '').trim();
         if (!secret2fa) continue;
 
@@ -43,7 +47,7 @@ function doPost(e) {
       }
 
       if (!foundSecret) {
-        return ContentService.createTextOutput(JSON.stringify({ status: 'not_found' })).setMimeType(ContentService.MimeType.JSON);
+        return ContentService.createTextOutput(JSON.stringify({ status: 'not_found', message: 'Email hoặc Customer Key không hợp lệ.' })).setMimeType(ContentService.MimeType.JSON);
       }
 
       // Định nghĩa số lần giới hạn theo sản phẩm
@@ -55,7 +59,7 @@ function doPost(e) {
       }
 
       var props = PropertiesService.getScriptProperties();
-      var usagePropKey = 'OTP_USAGE_' + customerKey;
+      var usagePropKey = 'OTP_USAGE_' + email + '_' + customerKey;
       var currentUsage = parseInt(props.getProperty(usagePropKey) || '0', 10);
 
       // Nếu có giới hạn (limit != -1) và đã đạt tới/quá giới hạn
