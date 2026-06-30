@@ -1480,8 +1480,8 @@
                                                     <!-- Ngày Renew (Sửa được) -->
                                                     <td class="p-3 text-gray-500">
                                                         <template x-if="editingKhoEmail === c.email">
-                                                            <input type="text" x-model="editingKhoRenewDate" placeholder="dd/mm/yyyy" 
-                                                                class="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-medium">
+                                                            <input type="date" x-model="editingKhoRenewDate" 
+                                                                class="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-medium text-gray-700">
                                                         </template>
                                                         <template x-if="editingKhoEmail !== c.email">
                                                             <span class="cursor-pointer hover:text-primary" @click="copyToClipboard(c.renewDate, 'Ngày Renew')" x-text="c.renewDate || '-'"></span>
@@ -4705,7 +4705,28 @@
                 startEditKho(c) {
                     this.editingKhoEmail = c.email;
                     this.editingKhoTwofa = c.twofa || '';
-                    this.editingKhoRenewDate = c.renewDate || '';
+                    
+                    // Parse date from sheet format to browser date input format yyyy-mm-dd
+                    let rawDate = c.renewDate || '';
+                    let inputDate = '';
+                    if (rawDate) {
+                        const ddmmyyyy = String(rawDate).trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+                        if (ddmmyyyy) {
+                            const d = ddmmyyyy[1].padStart(2, '0');
+                            const m = ddmmyyyy[2].padStart(2, '0');
+                            const y = ddmmyyyy[3];
+                            inputDate = `${y}-${m}-${d}`;
+                        } else if (String(rawDate).trim().match(/^\d{4}-\d{2}-\d{2}$/)) {
+                            inputDate = String(rawDate).trim();
+                        } else if (String(rawDate).trim().match(/^\d{1,2}$/)) {
+                            const now = new Date();
+                            const d = String(rawDate).trim().padStart(2, '0');
+                            const m = String(now.getMonth() + 1).padStart(2, '0');
+                            const y = now.getFullYear();
+                            inputDate = `${y}-${m}-${d}`;
+                        }
+                    }
+                    this.editingKhoRenewDate = inputDate;
                     this.editingKhoStatus = c.status || 'Sẵn sàng';
                 },
 
@@ -4719,6 +4740,16 @@
                 async saveKhoItem(c) {
                     if (this.isSavingKhoItem) return;
                     this.isSavingKhoItem = true;
+                    
+                    // Convert yyyy-mm-dd back to dd/mm/yyyy for Google Sheets
+                    let sheetDate = this.editingKhoRenewDate || '';
+                    if (sheetDate) {
+                        const parts = sheetDate.split('-');
+                        if (parts.length === 3) {
+                            sheetDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        }
+                    }
+                    
                     this.showToast(`Đang cập nhật tài khoản ${c.email}...`);
                     try {
                         await fetch(this.CONFIG.WEBAPP_URL, {
@@ -4729,14 +4760,14 @@
                                 action: 'update_kho_renew_item',
                                 email: c.email,
                                 twofa: this.editingKhoTwofa,
-                                renewDate: this.editingKhoRenewDate,
+                                renewDate: sheetDate,
                                 status: this.editingKhoStatus
                             })
                         });
                         
                         // Update local object
                         c.twofa = this.editingKhoTwofa;
-                        c.renewDate = this.editingKhoRenewDate;
+                        c.renewDate = sheetDate;
                         c.status = this.editingKhoStatus;
                         
                         this.showToast(`✅ Đã cập nhật thành công!`);
