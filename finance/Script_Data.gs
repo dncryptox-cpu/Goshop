@@ -355,7 +355,7 @@ function doPost(e) {
         var khoValues = khoRange.getValues();
         for (var j = 1; j < khoValues.length; j++) {
           if (String(khoValues[j][0]).trim().toLowerCase() === nextFamEmail.toLowerCase()) {
-            khoRenewSheet.getRange(j + 1, 6).setValue("Đã ghép");
+            khoRenewSheet.getRange(j + 1, 7).setValue("Đã ghép");
             break;
           }
         }
@@ -392,7 +392,7 @@ function doPost(e) {
           
           for (var j = 1; j < khoValues.length; j++) {
             if (String(khoValues[j][0]).trim().toLowerCase() === pairedEmail.toLowerCase()) {
-              khoRenewSheet.getRange(j + 1, 6).setValue(targetStatus);
+              khoRenewSheet.getRange(j + 1, 7).setValue(targetStatus);
               break;
             }
           }
