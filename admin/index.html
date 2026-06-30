@@ -1302,6 +1302,11 @@
 
                     <!-- View Toggle -->
                     <div class="flex gap-2 mb-4">
+                        <button @click="famRenewView='requests'"
+                            :class="famRenewView==='requests' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
+                            <i data-lucide="shopping-cart" class="w-3.5 h-3.5"></i> Yêu cầu Fam
+                        </button>
                         <button @click="famRenewView='table'"
                             :class="famRenewView==='table' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
@@ -1312,6 +1317,107 @@
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
                             <i data-lucide="git-branch" class="w-3.5 h-3.5"></i> Pipeline Thay Fam
                         </button>
+                    </div>
+
+                    <!-- Tab: Yêu cầu Fam -->
+                    <div x-show="famRenewView==='requests'" class="space-y-6 mb-6" x-cloak>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <!-- CONTROL CARD -->
+                            <div class="bg-white p-5 rounded-xl border border-gray-100 card-shadow space-y-4">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="shopping-cart" class="w-4 h-4 text-primary"></i>
+                                    Yêu cầu xuất Fam mới
+                                </h3>
+                                <p class="text-xs text-gray-500 leading-relaxed">
+                                    Nhập số lượng cần lấy. Hệ thống sẽ tự động trích xuất các tài khoản đang ở trạng thái <b>Sẵn sàng</b> trong Kho Renew dưới định dạng bảng để copy-paste trực tiếp vào Google Sheets.
+                                </p>
+                                
+                                <div class="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Kho dự phòng (Sẵn sàng):</span>
+                                        <span class="font-bold text-emerald-600" x-text="khoRenewList.filter(c => c.status === 'Sẵn sàng' || !c.status).length"></span>
+                                    </div>
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Đã ghép cặp:</span>
+                                        <span class="font-bold text-indigo-600" x-text="khoRenewList.filter(c => c.status === 'Đã ghép').length"></span>
+                                    </div>
+                                    <div class="flex justify-between text-xs">
+                                        <span class="text-gray-500">Đã dùng:</span>
+                                        <span class="font-bold text-gray-500" x-text="khoRenewList.filter(c => c.status === 'Đã dùng').length"></span>
+                                    </div>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <label class="block text-xs font-bold text-gray-700">Số lượng Fam cần lấy:</label>
+                                    <input type="number" min="1" x-model="bulkRequestCount" 
+                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary text-gray-700 font-bold">
+                                </div>
+
+                                <button @click="fetchBulkFams()"
+                                    class="w-full bg-primary text-white rounded-lg py-2.5 text-xs font-bold hover:bg-primary-hover shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2">
+                                    <i data-lucide="play" class="w-4 h-4"></i>
+                                    Lấy Danh Sách Fam
+                                </button>
+                            </div>
+
+                            <!-- DATA TABLE / COPY CARD -->
+                            <div class="bg-white p-5 rounded-xl border border-gray-100 card-shadow md:col-span-2 space-y-4">
+                                <div class="flex items-center justify-between flex-wrap gap-2">
+                                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                        <i data-lucide="file-text" class="w-4 h-4 text-emerald-600"></i>
+                                        Danh sách xuất (Định dạng Sheets)
+                                    </h3>
+                                    
+                                    <div class="flex gap-2" x-show="requestedFams.length > 0">
+                                        <button @click="copyRequestedFams()"
+                                            class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-1">
+                                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                            Copy Trọn Bộ
+                                        </button>
+                                        <button @click="confirmBulkFams()"
+                                            class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all flex items-center gap-1 shadow-md shadow-indigo-100">
+                                            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                            Xác nhận đã lấy
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <template x-if="requestedFams.length === 0">
+                                    <div class="border-2 border-dashed border-gray-100 rounded-xl p-12 text-center text-gray-400 space-y-2">
+                                        <i data-lucide="shopping-bag" class="w-8 h-8 mx-auto text-gray-300"></i>
+                                        <p class="text-xs font-medium">Chưa có Fam nào được trích xuất.</p>
+                                        <p class="text-[10px] text-gray-400">Chọn số lượng ở bảng bên trái và nhấn nút "Lấy Danh Sách Fam".</p>
+                                    </div>
+                                </template>
+
+                                <template x-if="requestedFams.length > 0">
+                                    <div class="border border-gray-100 rounded-lg overflow-hidden">
+                                        <div class="overflow-x-auto">
+                                            <table class="w-full text-left border-collapse text-xs">
+                                                <thead>
+                                                    <tr class="bg-gray-50 border-b border-gray-100 text-gray-600 font-bold">
+                                                        <th class="p-3">Email</th>
+                                                        <th class="p-3">Pass</th>
+                                                        <th class="p-3">MKP</th>
+                                                        <th class="p-3">2FA</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <template x-for="f in requestedFams" :key="f.email">
+                                                        <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                                                            <td class="p-3 font-medium text-gray-700" x-text="f.email"></td>
+                                                            <td class="p-3 font-mono text-gray-600" x-text="f.pass"></td>
+                                                            <td class="p-3 font-mono text-gray-500" x-text="f.recoveryEmail || '-'"></td>
+                                                            <td class="p-3 font-mono text-gray-500" x-text="f.twofa || '-'"></td>
+                                                        </tr>
+                                                    </template>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Filter Bar -->
@@ -3794,9 +3900,12 @@
                 famRenewFilterStatus: 'all',
                 famRenewShowUrgentOnly: false,
                 famRenewConfirm: { show: false, item: null, newStatus: '', activationDate: '', expiryDate: '' },
-                famRenewView: 'table',
+                famRenewView: 'requests',
                 famRenewPairings: {},
                 khoRenewList: [],
+                bulkRequestCount: 5,
+                requestedFams: [],
+                isRequestingFams: false,
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
                     FAM_RENEW_SHEET_ID: '1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc',
@@ -4398,6 +4507,66 @@
                         if (!silent) this.showToast(`✅ Đã hủy ghép cặp.`);
                     } catch (e) {
                         if (!silent) this.showToast("Lỗi khi hủy ghép cặp.");
+                    }
+                },
+
+                fetchBulkFams() {
+                    const count = parseInt(this.bulkRequestCount);
+                    if (isNaN(count) || count <= 0) {
+                        this.showToast("Vui lòng nhập số lượng hợp lệ.");
+                        return;
+                    }
+                    const available = this.khoRenewList.filter(c => c.status === 'Sẵn sàng' || !c.status);
+                    if (available.length === 0) {
+                        this.showToast("Kho Renew hiện không còn Fam nào ở trạng thái Sẵn sàng.");
+                        this.requestedFams = [];
+                        return;
+                    }
+                    this.requestedFams = available.slice(0, count);
+                    this.showToast(`✅ Đã lấy ${this.requestedFams.length} Fam từ Kho.`);
+                },
+
+                copyRequestedFams() {
+                    if (this.requestedFams.length === 0) return;
+                    // Format for pasting: Email, Pass, MKP, 2FA
+                    const rows = this.requestedFams.map(f => {
+                        return `${f.email}\t${f.pass}\t${f.recoveryEmail}\t${f.twofa}`;
+                    }).join('\n');
+                    
+                    navigator.clipboard.writeText(rows).then(() => {
+                        this.showToast("📋 Đã copy bảng dữ liệu (định dạng Excel/Sheets) vào clipboard!");
+                    }).catch(() => {
+                        this.showToast("Lỗi khi copy vào clipboard.");
+                    });
+                },
+
+                async confirmBulkFams() {
+                    if (this.requestedFams.length === 0) return;
+                    this.showToast(`Đang xác nhận và đánh dấu đã dùng cho ${this.requestedFams.length} Fam...`);
+                    try {
+                        const emails = this.requestedFams.map(f => f.email);
+                        await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'mark_fams_as_used',
+                                emails: emails
+                            })
+                        });
+                        
+                        // Update local status to Đã dùng
+                        this.requestedFams.forEach(f => {
+                            const found = this.khoRenewList.find(c => c.email.toLowerCase() === f.email.toLowerCase());
+                            if (found) {
+                                found.status = 'Đã dùng';
+                            }
+                        });
+                        
+                        this.showToast("✅ Đã cập nhật trạng thái Đã Dùng thành công!");
+                        this.requestedFams = [];
+                    } catch (e) {
+                        this.showToast("Lỗi khi xác nhận lấy Fam.");
                     }
                 },
 
