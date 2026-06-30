@@ -1455,7 +1455,7 @@
                                         <button @click="confirmBulkFams()"
                                             class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all flex items-center gap-1 shadow-md shadow-indigo-100">
                                             <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                                            Xác nhận đã lấy
+                                            <span x-text="selectedRNDate ? 'Thay thế hàng loạt' : 'Xác nhận đã lấy'"></span>
                                         </button>
                                     </div>
                                 </div>
@@ -1474,7 +1474,9 @@
                                             <table class="w-full text-left border-collapse text-xs">
                                                 <thead>
                                                     <tr class="bg-gray-50 border-b border-gray-100 text-gray-600 font-bold">
-                                                        <th class="p-3">Email</th>
+                                                        <th class="p-3">STT FAM</th>
+                                                        <th class="p-3">Fam Hiện Tại (Cũ)</th>
+                                                        <th class="p-3">Fam Thay Thế (Mới)</th>
                                                         <th class="p-3">Pass</th>
                                                         <th class="p-3">MKP</th>
                                                         <th class="p-3">2FA</th>
@@ -1483,7 +1485,17 @@
                                                 <tbody>
                                                     <template x-for="f in requestedFams" :key="f.email">
                                                         <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                                                            <td class="p-3 font-medium text-gray-700" x-text="f.email"></td>
+                                                            <td class="p-3">
+                                                                <select x-model="f.stt" @change="updateOldEmailForReplacements(f)"
+                                                                    class="bg-gray-50 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-bold text-indigo-600">
+                                                                    <option value="">-- Chưa gán --</option>
+                                                                    <template x-for="item in famRenewList" :key="item.stt">
+                                                                        <option :value="item.stt" x-text="item.stt + (item.status ? ' (' + item.status + ')' : '')"></option>
+                                                                    </template>
+                                                                </select>
+                                                            </td>
+                                                            <td class="p-3 text-gray-400 font-mono text-[11px]" x-text="f.oldEmail || 'Chưa gán'"></td>
+                                                            <td class="p-3 font-semibold text-emerald-700 font-mono" x-text="f.email"></td>
                                                             <td class="p-3 font-mono text-gray-600" x-text="f.pass"></td>
                                                             <td class="p-3 font-mono text-gray-500" x-text="f.recoveryEmail || '-'"></td>
                                                             <td class="p-3 font-mono text-gray-500" x-text="f.twofa || '-'"></td>
@@ -4801,19 +4813,54 @@
                         this.requestedFams = [];
                         return;
                     }
-                    this.requestedFams = available.slice(0, count);
-                    this.showToast(`✅ Đã lấy ${this.requestedFams.length} Fam từ Kho.`);
+                    
+                    // Lấy các Fam cần thay thế dựa trên lựa chọn ngày/stt
+                    let expiringFams = [];
+                    if (this.selectedRNDate) {
+                        if (this.soluongRNTab === 'date') {
+                            expiringFams = this.famRenewList.filter(f => f.expiryDate === this.selectedRNDate && f.status !== 'Hết hạn - đã thay');
+                        } else {
+                            expiringFams = this.famRenewList.filter(f => String(f.stt) === String(this.selectedRNDate));
+                        }
+                    } else {
+                        // Tự động tìm các Fam đã hết hạn hoặc bị lỗi chưa được thay thế để gán trước
+                        expiringFams = this.famRenewList.filter(f => (f.status === 'Hết hạn' || f.status === 'Lỗi') && f.status !== 'Hết hạn - đã thay');
+                    }
+
+                    // Map từng Fam dự phòng với một Slot cũ (nếu có)
+                    const sliceFams = available.slice(0, count);
+                    this.requestedFams = sliceFams.map((backupFam, index) => {
+                        const oldFam = expiringFams[index];
+                        return {
+                            stt: oldFam ? oldFam.stt : '',
+                            oldEmail: oldFam ? oldFam.email : '',
+                            email: backupFam.email,
+                            pass: backupFam.pass,
+                            recoveryEmail: backupFam.recoveryEmail,
+                            twofa: backupFam.twofa
+                        };
+                    });
+                    
+                    this.showToast(`✅ Đã lấy ${this.requestedFams.length} Fam từ Kho và gán cho các Slot cần thay.`);
+                },
+
+                updateOldEmailForReplacements(f) {
+                    if (f.stt) {
+                        const matched = this.famRenewList.find(item => String(item.stt) === String(f.stt));
+                        f.oldEmail = matched ? matched.email : '';
+                    } else {
+                        f.oldEmail = '';
+                    }
                 },
 
                 copyRequestedFams() {
                     if (this.requestedFams.length === 0) return;
-                    // Format for pasting: Email, Pass, MKP, 2FA
                     const rows = this.requestedFams.map(f => {
                         return `${f.email}\t${f.pass}\t${f.recoveryEmail}\t${f.twofa}`;
                     }).join('\n');
                     
                     navigator.clipboard.writeText(rows).then(() => {
-                        this.showToast("📋 Đã copy bảng dữ liệu (định dạng Excel/Sheets) vào clipboard!");
+                        this.showToast("📋 Đã copy bảng dữ liệu vào clipboard!");
                     }).catch(() => {
                         this.showToast("Lỗi khi copy vào clipboard.");
                     });
@@ -4821,7 +4868,74 @@
 
                 async confirmBulkFams() {
                     if (this.requestedFams.length === 0) return;
-                    this.showToast(`Đang xác nhận và đánh dấu đã dùng cho ${this.requestedFams.length} Fam...`);
+
+                    // Lọc ra các cặp có gán STT FAM để thay thế tự động
+                    const replacements = this.requestedFams.filter(f => f.stt);
+                    if (replacements.length > 0) {
+                        this.showToast(`Đang thay thế tự động ${replacements.length} Fam...`);
+                        
+                        const today = new Date();
+                        const expiry = new Date(today);
+                        expiry.setDate(expiry.getDate() + 30);
+                        const ed = String(expiry.getDate()).padStart(2,'0');
+                        const em = String(expiry.getMonth()+1).padStart(2,'0');
+                        const ey = expiry.getFullYear();
+                        const newExpiryDate = `${ed}/${em}/${ey}`;
+
+                        const payloadReplacements = replacements.map(f => {
+                            return {
+                                stt: f.stt,
+                                nextFamEmail: f.email,
+                                nextFamPass: f.pass,
+                                nextFamMkp: f.recoveryEmail,
+                                nextFam2fa: f.twofa
+                            };
+                        });
+
+                        try {
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'bulk_renew_fam_slots',
+                                    replacements: payloadReplacements,
+                                    expiryDate: newExpiryDate
+                                })
+                            });
+
+                            // Cập nhật local state ngay lập tức để giao diện tự động nhảy số
+                            replacements.forEach(f => {
+                                const oldFam = this.famRenewList.find(item => String(item.stt) === String(f.stt));
+                                if (oldFam) {
+                                    oldFam.email = f.email;
+                                    oldFam.pass = f.pass;
+                                    oldFam.recoveryEmail = f.recoveryEmail;
+                                    oldFam.twofa = f.twofa;
+                                    oldFam.status = 'Đang dùng';
+                                    oldFam.expiryDate = newExpiryDate;
+                                }
+
+                                const candidate = this.khoRenewList.find(c => c.email.toLowerCase() === f.email.toLowerCase());
+                                if (candidate) {
+                                    candidate.status = 'Đã dùng';
+                                    candidate.famFollow = f.stt; // Ghi nhớ ID slot cũ vào FamFollow
+                                }
+                            });
+
+                            this.showToast(`✅ Đã thay thế hàng loạt tự động thành công cho ${replacements.length} Fam!`);
+                            this.requestedFams = [];
+                            this.selectedRNDate = null;
+                            this.selectedRNQty = 0;
+                            return;
+                        } catch (e) {
+                            this.showToast("Lỗi khi gửi yêu cầu thay thế hàng loạt.");
+                            return;
+                        }
+                    }
+
+                    // Nếu không có slot nào được gán STT, chỉ đánh dấu Đã dùng
+                    this.showToast(`Đang đánh dấu đã dùng cho ${this.requestedFams.length} Fam...`);
                     try {
                         const emails = this.requestedFams.map(f => f.email);
                         await fetch(this.CONFIG.WEBAPP_URL, {
