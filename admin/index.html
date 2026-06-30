@@ -1318,11 +1318,6 @@
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
                             <i data-lucide="table" class="w-3.5 h-3.5"></i> Bảng dữ liệu
                         </button>
-                        <button @click="famRenewView='pipeline'; loadFamPairings()"
-                            :class="famRenewView==='pipeline' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
-                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
-                            <i data-lucide="git-branch" class="w-3.5 h-3.5"></i> Pipeline Thay Fam
-                        </button>
                     </div>
 
                     <!-- Tab: Yêu cầu Fam -->
@@ -1455,7 +1450,7 @@
                                         <button @click="confirmBulkFams()"
                                             class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all flex items-center gap-1 shadow-md shadow-indigo-100">
                                             <i data-lucide="check" class="w-3.5 h-3.5"></i>
-                                            Xác nhận đã lấy
+                                            <span x-text="selectedRNDate ? 'Thay thế hàng loạt' : 'Xác nhận đã lấy'"></span>
                                         </button>
                                     </div>
                                 </div>
@@ -4821,6 +4816,83 @@
 
                 async confirmBulkFams() {
                     if (this.requestedFams.length === 0) return;
+
+                    // Nếu đang chọn Lịch thay Fam, thực hiện Thay Thế Hàng Loạt tự động
+                    if (this.selectedRNDate) {
+                        let expiringFams = [];
+                        if (this.soluongRNTab === 'date') {
+                            expiringFams = this.famRenewList.filter(f => f.expiryDate === this.selectedRNDate && f.status !== 'Hết hạn - đã thay');
+                        } else {
+                            expiringFams = this.famRenewList.filter(f => String(f.stt) === String(this.selectedRNDate));
+                        }
+
+                        if (expiringFams.length !== this.requestedFams.length) {
+                            this.showToast(`Lỗi: Cần thay ${expiringFams.length} Fam nhưng chỉ mới lấy ${this.requestedFams.length} Fam dự phòng!`);
+                            return;
+                        }
+
+                        this.showToast(`Đang thay thế tự động ${expiringFams.length} Fam...`);
+                        
+                        // Tính ngày hết hạn mới (30 ngày kể từ hôm nay) cho các Fam mới
+                        const today = new Date();
+                        const expiry = new Date(today);
+                        expiry.setDate(expiry.getDate() + 30);
+                        const ed = String(expiry.getDate()).padStart(2,'0');
+                        const em = String(expiry.getMonth()+1).padStart(2,'0');
+                        const ey = expiry.getFullYear();
+                        const newExpiryDate = `${ed}/${em}/${ey}`;
+
+                        const replacements = expiringFams.map((oldFam, index) => {
+                            return {
+                                stt: oldFam.stt,
+                                nextFamEmail: this.requestedFams[index].email,
+                                nextFamPass: this.requestedFams[index].pass,
+                                nextFamMkp: this.requestedFams[index].recoveryEmail,
+                                nextFam2fa: this.requestedFams[index].twofa
+                            };
+                        });
+
+                        try {
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'bulk_renew_fam_slots',
+                                    replacements: replacements,
+                                    expiryDate: newExpiryDate
+                                })
+                            });
+
+                            // Cập nhật local state ngay lập tức để giao diện tự động nhảy số
+                            expiringFams.forEach((oldFam, index) => {
+                                const newFam = this.requestedFams[index];
+                                oldFam.email = newFam.email;
+                                oldFam.pass = newFam.pass;
+                                oldFam.recoveryEmail = newFam.recoveryEmail;
+                                oldFam.twofa = newFam.twofa;
+                                oldFam.status = 'Đang dùng';
+                                oldFam.expiryDate = newExpiryDate;
+
+                                const candidate = this.khoRenewList.find(c => c.email.toLowerCase() === newFam.email.toLowerCase());
+                                if (candidate) {
+                                    candidate.status = 'Đã dùng';
+                                    candidate.famFollow = oldFam.stt; // Ghi nhớ ID slot cũ
+                                }
+                            });
+
+                            this.showToast("✅ Đã thay thế hàng loạt tự động thành công!");
+                            this.requestedFams = [];
+                            this.selectedRNDate = null;
+                            this.selectedRNQty = 0;
+                            return;
+                        } catch (e) {
+                            this.showToast("Lỗi khi gửi yêu cầu thay thế hàng loạt.");
+                            return;
+                        }
+                    }
+
+                    // Nếu KHÔNG chọn lịch thay Fam mà chỉ lấy Fam ra dùng việc khác
                     this.showToast(`Đang xác nhận và đánh dấu đã dùng cho ${this.requestedFams.length} Fam...`);
                     try {
                         const emails = this.requestedFams.map(f => f.email);

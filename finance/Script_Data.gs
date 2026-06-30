@@ -385,6 +385,64 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 9.6. Xử lý Thay Fam Hàng Loạt Từ Tab Yêu Cầu (bulk_renew_fam_slots)
+    if (action === 'bulk_renew_fam_slots') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      
+      var replacements = data.replacements || [];
+      var expiryDate = data.expiryDate || '';
+      
+      if (frSheet && khoRenewSheet && replacements.length > 0) {
+        var renewRange = frSheet.getDataRange();
+        var renewValues = renewRange.getValues();
+        var sheetName = frSheet.getName();
+        
+        var sttColNum     = (sheetName === 'RENEW') ? 2 : 3;
+        var statusColNum  = (sheetName === 'RENEW') ? 3 : 2;
+        var emailColNum   = (sheetName === 'RENEW') ? 4 : 5;
+        var passColNum    = (sheetName === 'RENEW') ? 5 : 6;
+        var mkpColNum     = (sheetName === 'RENEW') ? 6 : 7;
+        var twofaColNum   = (sheetName === 'RENEW') ? 7 : 8;
+        var expiryColNum  = (sheetName === 'RENEW') ? 8 : 9;
+        
+        var khoRange = khoRenewSheet.getDataRange();
+        var khoValues = khoRange.getValues();
+        
+        for (var r = 0; r < replacements.length; r++) {
+          var rep = replacements[r];
+          var stt = String(rep.stt).trim();
+          var nextEmail = String(rep.nextFamEmail).trim();
+          
+          // Ghi đè vào RENEW
+          for (var j = 1; j < renewValues.length; j++) {
+            if (String(renewValues[j][sttColNum - 1]).trim() === stt) {
+              frSheet.getRange(j + 1, statusColNum).setValue("Đang dùng");
+              frSheet.getRange(j + 1, emailColNum).setValue(nextEmail);
+              frSheet.getRange(j + 1, passColNum).setValue(String(rep.nextFamPass).trim());
+              frSheet.getRange(j + 1, mkpColNum).setValue(String(rep.nextFamMkp).trim());
+              frSheet.getRange(j + 1, twofaColNum).setValue(String(rep.nextFam2fa).trim());
+              if (expiryDate) {
+                frSheet.getRange(j + 1, expiryColNum).setValue(expiryDate);
+              }
+              break;
+            }
+          }
+          
+          // Cập nhật KHO_RENEW thành Đã dùng và lưu STT Fam cũ vào cột FamFollow (cột 8)
+          for (var k = 1; k < khoValues.length; k++) {
+            if (String(khoValues[k][0]).trim().toLowerCase() === nextEmail.toLowerCase()) {
+              khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng"); // Cột G
+              khoRenewSheet.getRange(k + 1, 8).setValue(stt);       // Cột H (FamFollow)
+              break;
+            }
+          }
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 10. Luu thong tin ghep cap Fam
     if (action === 'save_fam_pairing') {
       var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
