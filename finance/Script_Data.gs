@@ -348,6 +348,19 @@ function doPost(e) {
         pairingSheet.appendRow([stt, nextFamStt, nextFamEmail, nextFamPass, nextFamMkp, nextFam2fa, pairedDate, verStatus]);
       }
       
+      // Update KHO_RENEW state
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      if (khoRenewSheet && nextFamEmail) {
+        var khoRange = khoRenewSheet.getDataRange();
+        var khoValues = khoRange.getValues();
+        for (var j = 1; j < khoValues.length; j++) {
+          if (String(khoValues[j][0]).trim().toLowerCase() === nextFamEmail.toLowerCase()) {
+            khoRenewSheet.getRange(j + 1, 6).setValue("Đã ghép");
+            break;
+          }
+        }
+      }
+      
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -359,10 +372,29 @@ function doPost(e) {
         var stt = String(data.stt).trim();
         var dataRange = pairingSheet.getDataRange();
         var values = dataRange.getValues();
+        var pairedEmail = "";
+        
         for (var i = 1; i < values.length; i++) {
           if (String(values[i][0]).trim() === stt) {
+            pairedEmail = String(values[i][2] || '').trim();
             pairingSheet.deleteRow(i + 1);
             break;
+          }
+        }
+        
+        // Reset status in KHO_RENEW
+        var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+        if (khoRenewSheet && pairedEmail) {
+          var khoRange = khoRenewSheet.getDataRange();
+          var khoValues = khoRange.getValues();
+          var markAsUsed = data.markAsUsed === true || data.markAsUsed === 'true';
+          var targetStatus = markAsUsed ? "Đã dùng" : "Sẵn sàng";
+          
+          for (var j = 1; j < khoValues.length; j++) {
+            if (String(khoValues[j][0]).trim().toLowerCase() === pairedEmail.toLowerCase()) {
+              khoRenewSheet.getRange(j + 1, 6).setValue(targetStatus);
+              break;
+            }
           }
         }
       }
