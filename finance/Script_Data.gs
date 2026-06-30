@@ -307,6 +307,68 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 10. Luu thong tin ghep cap Fam
+    if (action === 'save_fam_pairing') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var pairingSheet = frSs.getSheetByName("PAIRINGS");
+      if (!pairingSheet) {
+        pairingSheet = frSs.insertSheet("PAIRINGS");
+        pairingSheet.appendRow(["STT FAM", "nextFamStt", "nextFamEmail", "nextFamPass", "nextFamMkp", "nextFam2fa", "pairedDate", "verStatus"]);
+      }
+      
+      var stt = String(data.stt).trim();
+      var nextFamStt = String(data.nextFamStt || '').trim();
+      var nextFamEmail = String(data.nextFamEmail || '').trim();
+      var nextFamPass = String(data.nextFamPass || '').trim();
+      var nextFamMkp = String(data.nextFamMkp || '').trim();
+      var nextFam2fa = String(data.nextFam2fa || '').trim();
+      var pairedDate = new Date().toLocaleString();
+      var verStatus = String(data.verStatus || '').trim();
+      
+      var dataRange = pairingSheet.getDataRange();
+      var values = dataRange.getValues();
+      var foundRow = -1;
+      
+      for (var i = 1; i < values.length; i++) {
+        if (String(values[i][0]).trim() === stt) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+      
+      if (foundRow !== -1) {
+        pairingSheet.getRange(foundRow, 2).setValue(nextFamStt);
+        pairingSheet.getRange(foundRow, 3).setValue(nextFamEmail);
+        pairingSheet.getRange(foundRow, 4).setValue(nextFamPass);
+        pairingSheet.getRange(foundRow, 5).setValue(nextFamMkp);
+        pairingSheet.getRange(foundRow, 6).setValue(nextFam2fa);
+        pairingSheet.getRange(foundRow, 7).setValue(pairedDate);
+        if (verStatus) pairingSheet.getRange(foundRow, 8).setValue(verStatus);
+      } else {
+        pairingSheet.appendRow([stt, nextFamStt, nextFamEmail, nextFamPass, nextFamMkp, nextFam2fa, pairedDate, verStatus]);
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 11. Huy ghep cap Fam
+    if (action === 'unpair_fam') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var pairingSheet = frSs.getSheetByName("PAIRINGS");
+      if (pairingSheet) {
+        var stt = String(data.stt).trim();
+        var dataRange = pairingSheet.getDataRange();
+        var values = dataRange.getValues();
+        for (var i = 1; i < values.length; i++) {
+          if (String(values[i][0]).trim() === stt) {
+            pairingSheet.deleteRow(i + 1);
+            break;
+          }
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()})).setMimeType(ContentService.MimeType.JSON);
   }
