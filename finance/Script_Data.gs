@@ -303,6 +303,8 @@ function doPost(e) {
             break;
           }
         }
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
     // 9.5. Xử lý Thay Fam Mới cho Slot (renew_fam_slot)
