@@ -356,6 +356,7 @@ function doPost(e) {
         for (var j = 1; j < khoValues.length; j++) {
           if (String(khoValues[j][0]).trim().toLowerCase() === nextFamEmail.toLowerCase()) {
             khoRenewSheet.getRange(j + 1, 7).setValue("Đã ghép");
+            khoRenewSheet.getRange(j + 1, 8).setValue(stt);
             break;
           }
         }
@@ -393,6 +394,7 @@ function doPost(e) {
           for (var j = 1; j < khoValues.length; j++) {
             if (String(khoValues[j][0]).trim().toLowerCase() === pairedEmail.toLowerCase()) {
               khoRenewSheet.getRange(j + 1, 7).setValue(targetStatus);
+              khoRenewSheet.getRange(j + 1, 8).setValue("");
               break;
             }
           }
@@ -510,6 +512,9 @@ function doPost(e) {
       }
       if (data.status !== undefined) {
         khoRenewSheet.getRange(foundRowIndex, 7).setValue(String(data.status).trim()); // Column G
+      }
+      if (data.famFollow !== undefined) {
+        khoRenewSheet.getRange(foundRowIndex, 8).setValue(String(data.famFollow).trim()); // Column H
       }
       
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);

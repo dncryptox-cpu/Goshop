@@ -1501,10 +1501,22 @@
                                     </h3>
                                     <p class="text-[11px] text-gray-400 mt-0.5">Danh sách toàn bộ các tài khoản lưu trữ trong kho dự phòng của tháng tới.</p>
                                 </div>
-                                <div class="relative w-full md:w-72">
-                                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"></i>
-                                    <input type="text" x-model="khoRenewSearchQuery" placeholder="Tìm email, trạng thái trong kho..." 
-                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg py-1.5 pl-8 pr-4 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium">
+                                <div class="flex items-center gap-2 w-full md:w-auto">
+                                    <!-- Date Filter Dropdown -->
+                                    <select x-model="khoRenewFilterDate" 
+                                        class="bg-gray-50 border border-gray-200 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium">
+                                        <option value="all">📅 Tất cả ngày</option>
+                                        <template x-for="date in getUniqueKhoRenewDates()" :key="date">
+                                            <option :value="date" x-text="date"></option>
+                                        </template>
+                                    </select>
+
+                                    <!-- Search Input -->
+                                    <div class="relative w-full md:w-72">
+                                        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"></i>
+                                        <input type="text" x-model="khoRenewSearchQuery" placeholder="Tìm email, trạng thái, mã ghép..." 
+                                            class="w-full bg-gray-50 border border-gray-200 rounded-lg py-1.5 pl-8 pr-4 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium">
+                                    </div>
                                 </div>
                             </div>
 
@@ -1520,11 +1532,12 @@
                                                 <th class="p-3">Ngày Renew</th>
                                                 <th class="p-3">Ngày Nhập</th>
                                                 <th class="p-3">Trạng thái</th>
+                                                <th class="p-3">Fam Hiện Tại</th>
                                                 <th class="p-3 text-right">Thao tác</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <template x-for="c in sortedKhoRenewList().filter(c => !khoRenewSearchQuery || c.email.toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.status || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()))" :key="c.email">
+                                            <template x-for="c in sortedKhoRenewList().filter(c => !khoRenewSearchQuery || c.email.toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.status || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.famFollow || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()))" :key="c.email">
                                                 <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors" :class="editingKhoEmail === c.email ? 'bg-blue-50/30' : ''">
                                                     <!-- Email (Không sửa) -->
                                                     <td class="p-3 font-medium text-gray-700 cursor-pointer hover:text-primary" 
@@ -1582,6 +1595,17 @@
                                                             <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-sm inline-block" 
                                                                 :class="getKhoStatusBadgeClass(c.status)" x-text="c.status || 'Sẵn sàng'"></span>
                                                         </template>
+                                                    </td>
+                                                    
+                                                    <!-- Fam Hiện Tại -->
+                                                    <td class="p-3">
+                                                        <div class="flex flex-col gap-0.5" x-show="c.famFollow">
+                                                            <span class="text-[10px] font-extrabold text-indigo-600" x-text="c.famFollow"></span>
+                                                            <span class="text-[9px] text-gray-400 truncate max-w-[150px]" 
+                                                                  :title="famRenewList.find(i => String(i.stt) === String(c.famFollow))?.email || ''"
+                                                                  x-text="famRenewList.find(i => String(i.stt) === String(c.famFollow))?.email || ''"></span>
+                                                        </div>
+                                                        <span x-show="!c.famFollow" class="text-gray-400 font-medium">-</span>
                                                     </td>
                                                     
                                                     <!-- Thao tác (Sửa/Lưu/Hủy) -->
@@ -4105,6 +4129,7 @@
                 requestedFams: [],
                 isRequestingFams: false,
                 khoRenewSearchQuery: '',
+                khoRenewFilterDate: 'all',
                 editingKhoEmail: null,
                 editingKhoTwofa: '',
                 editingKhoRenewDate: '',
@@ -4688,6 +4713,7 @@
                             verStatus: 'normal'
                         };
                         candidate.status = 'Đã ghép';
+                        candidate.famFollow = String(stt);
                         this.showToast(`✅ Đã ghép cặp thành công!`);
                     } catch (e) {
                         this.showToast("Lỗi khi ghép cặp Fam.");
@@ -4696,6 +4722,7 @@
 
                 async unpairFam(stt, silent = false, markAsUsed = false) {
                     if (!silent) this.showToast(`Đang hủy ghép cặp Fam #${stt}...`);
+                    const pairedEmail = this.famRenewPairings[stt]?.nextFamEmail;
                     try {
                         await fetch(this.CONFIG.WEBAPP_URL, {
                             method: 'POST',
@@ -4707,6 +4734,15 @@
                                 markAsUsed: markAsUsed
                             })
                         });
+                        
+                        if (pairedEmail) {
+                            const candidate = this.khoRenewList.find(c => c.email.toLowerCase() === pairedEmail.toLowerCase());
+                            if (candidate) {
+                                candidate.status = markAsUsed ? 'Đã dùng' : 'Sẵn sàng';
+                                candidate.famFollow = '';
+                            }
+                        }
+                        
                         delete this.famRenewPairings[stt];
                         if (!silent) this.showToast(`✅ Đã hủy ghép cặp.`);
                     } catch (e) {
@@ -4862,8 +4898,27 @@
                     }
                 },
 
+                getUniqueKhoRenewDates() {
+                    const dates = new Set();
+                    this.khoRenewList.forEach(c => {
+                        if (c.renewDate) dates.add(c.renewDate);
+                    });
+                    return Array.from(dates).sort((a, b) => {
+                        const parseDate = (dStr) => {
+                            const parts = dStr.split('/');
+                            if (parts.length === 3) return new Date(parts[2], parts[1]-1, parts[0]);
+                            return new Date(0);
+                        };
+                        return parseDate(a) - parseDate(b);
+                    });
+                },
+
                 sortedKhoRenewList() {
-                    return this.khoRenewList.slice().sort((a, b) => {
+                    let list = this.khoRenewList.slice();
+                    if (this.khoRenewFilterDate && this.khoRenewFilterDate !== 'all') {
+                        list = list.filter(c => c.renewDate === this.khoRenewFilterDate);
+                    }
+                    return list.sort((a, b) => {
                         const getWeight = (status) => {
                             status = status || 'Sẵn sàng';
                             switch (status) {
@@ -6897,6 +6952,7 @@
                                         const kRenewDate = keys.find(k => k.toLowerCase().includes('renew')) || keys[4];
                                         const kImportDate = keys.find(k => k.toLowerCase().includes('nhập')) || keys[5];
                                         const kStatus = keys.find(k => k.toLowerCase().includes('trạng thái') || k.toLowerCase().includes('status')) || keys[6];
+                                        const kFamFollow = keys.find(k => k.toLowerCase().includes('famfollow') || k.toLowerCase().includes('follow')) || keys[7];
 
                                         return {
                                             email: String(row[kEmail] || '').trim(),
@@ -6905,7 +6961,8 @@
                                             twofa: String(row[k2fa] || '').trim(),
                                             renewDate: String(row[kRenewDate] || '').trim(),
                                             importDate: String(row[kImportDate] || '').trim(),
-                                            status: String(row[kStatus] || 'Sẵn sàng').trim()
+                                            status: String(row[kStatus] || 'Sẵn sàng').trim(),
+                                            famFollow: String(row[kFamFollow] || '').trim()
                                         };
                                     }).filter(item => item && item.email);
                                 }
