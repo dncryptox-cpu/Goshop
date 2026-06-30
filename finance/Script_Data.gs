@@ -401,6 +401,120 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 12. Lay nhanh danh sach Fam tu Kho
+    if (action === 'request_bulk_fams') {
+      var count = parseInt(data.count || 0);
+      if (count <= 0) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Số lượng phải lớn hơn 0.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      if (!khoRenewSheet) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Tab KHO_RENEW không tồn tại.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      var khoRange = khoRenewSheet.getDataRange();
+      var khoValues = khoRange.getValues();
+      var foundFams = [];
+      var rowIndices = [];
+      
+      for (var j = 1; j < khoValues.length; j++) {
+        var status = String(khoValues[j][6] || '').trim(); // Status is column 7 (index 6)
+        if (status === 'Sẵn sàng' || status === '') {
+          foundFams.push({
+            email: String(khoValues[j][0] || '').trim(),
+            pass: String(khoValues[j][1] || '').trim(),
+            recoveryEmail: String(khoValues[j][2] || '').trim(),
+            twofa: String(khoValues[j][3] || '').trim(),
+            renewDate: String(khoValues[j][4] || '').trim(),
+            importDate: String(khoValues[j][5] || '').trim()
+          });
+          rowIndices.push(j + 1);
+          if (foundFams.length === count) break;
+        }
+      }
+      
+      // If we found them, and confirm is true, mark them as used
+      if (data.confirm === true || data.confirm === 'true') {
+        for (var k = 0; k < rowIndices.length; k++) {
+          khoRenewSheet.getRange(rowIndices[k], 7).setValue("Đã dùng");
+        }
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        fams: foundFams
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 13. Danh dau nhieu Fam da dung
+    if (action === 'mark_fams_as_used') {
+      var emails = data.emails || [];
+      if (emails.length > 0) {
+        var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+        var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+        if (khoRenewSheet) {
+          var khoRange = khoRenewSheet.getDataRange();
+          var khoValues = khoRange.getValues();
+          var emailMap = {};
+          emails.forEach(function(email) {
+            emailMap[String(email).trim().toLowerCase()] = true;
+          });
+          
+          for (var j = 1; j < khoValues.length; j++) {
+            var currentEmail = String(khoValues[j][0] || '').trim().toLowerCase();
+            if (emailMap[currentEmail]) {
+              khoRenewSheet.getRange(j + 1, 7).setValue("Đã dùng");
+            }
+          }
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 14. Cap nhat thong tin Fam trong Kho
+    if (action === 'update_kho_renew_item') {
+      var email = String(data.email || '').trim();
+      if (!email) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Thiếu email.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      if (!khoRenewSheet) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Tab KHO_RENEW không tồn tại.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      var khoRange = khoRenewSheet.getDataRange();
+      var khoValues = khoRange.getValues();
+      var foundRowIndex = -1;
+      
+      for (var j = 1; j < khoValues.length; j++) {
+        if (String(khoValues[j][0] || '').trim().toLowerCase() === email.toLowerCase()) {
+          foundRowIndex = j + 1;
+          break;
+        }
+      }
+      
+      if (foundRowIndex === -1) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Không tìm thấy Fam trong Kho.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      // Update values
+      if (data.twofa !== undefined) {
+        khoRenewSheet.getRange(foundRowIndex, 4).setValue(String(data.twofa).trim()); // Column D
+      }
+      if (data.renewDate !== undefined) {
+        khoRenewSheet.getRange(foundRowIndex, 5).setValue(String(data.renewDate).trim()); // Column E
+      }
+      if (data.status !== undefined) {
+        khoRenewSheet.getRange(foundRowIndex, 7).setValue(String(data.status).trim()); // Column G
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()})).setMimeType(ContentService.MimeType.JSON);
   }
