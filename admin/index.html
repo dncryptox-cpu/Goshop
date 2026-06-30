@@ -1246,10 +1246,16 @@
                         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
                             <h3 class="text-base font-bold text-gray-900 mb-1">Xác nhận thao tác</h3>
                             <p class="text-xs text-gray-500 mb-4">Kiểm tra lại thông tin trước khi xác nhận</p>
+                            <template x-if="famRenewConfirm.newStatus === 'Hết hạn - đã thay' && famRenewPairings[famRenewConfirm.item?.stt]">
+                                <div class="bg-emerald-50 text-emerald-800 p-2.5 rounded-lg border border-emerald-100 mb-4 text-xs flex flex-col gap-1">
+                                    <div class="flex justify-between"><span>Fam Cũ:</span> <span class="font-mono" x-text="famRenewConfirm.item?.email"></span></div>
+                                    <div class="flex justify-between font-bold"><span>Fam Mới:</span> <span class="font-mono text-emerald-700" x-text="famRenewPairings[famRenewConfirm.item.stt].nextFamEmail"></span></div>
+                                </div>
+                            </template>
                             <div class="bg-gray-50 rounded-xl p-4 mb-4 text-xs space-y-1.5">
                                 <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Tài khoản:</span><span class="font-bold text-gray-800" x-text="famRenewConfirm.item?.email"></span></div>
                                 <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Trạng thái cũ:</span><span class="text-gray-600" x-text="famRenewConfirm.item?.status || 'Trống'"></span></div>
-                                <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Trạng thái mới:</span><span class="font-bold" :class="famRenewConfirm.newStatus?.includes('Đang dùng') ? 'text-emerald-600' : famRenewConfirm.newStatus?.includes('Lỗi') ? 'text-red-600' : 'text-amber-600'" x-text="famRenewConfirm.newStatus"></span></div>
+                                <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Trạng thái mới:</span><span class="font-bold" :class="famRenewConfirm.newStatus?.includes('Đang dùng') ? 'text-emerald-600' : famRenewConfirm.newStatus?.includes('Lỗi') ? 'text-red-600' : 'text-amber-600'" x-text="famRenewConfirm.newStatus === 'Hết hạn - đã thay' && famRenewPairings[famRenewConfirm.item?.stt] ? 'Thay Fam Mới' : famRenewConfirm.newStatus"></span></div>
                                 <template x-if="famRenewConfirm.activationDate">
                                     <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Ngày kích hoạt:</span><span class="font-bold text-indigo-600" x-text="famRenewConfirm.activationDate"></span></div>
                                 </template>
@@ -1960,7 +1966,7 @@
                                                 class="text-[9px] font-bold bg-red-50 border border-red-200 text-red-700 px-2 py-1 rounded hover:bg-red-100 transition-all">
                                                 Lần 2: Bỏ
                                             </button>
-                                            <button @click="openFamRenewConfirm(item,'Hết hạn - đã thay'); unpairFam(item.stt)"
+                                            <button @click="openFamRenewConfirm(item,'Hết hạn - đã thay')"
                                                 x-show="famRenewPairings[item.stt]?.nextFamEmail"
                                                 class="text-[9px] font-bold bg-purple-500 text-white px-2 py-1 rounded hover:bg-purple-600 transition-all">
                                                 ✅ Đã Thay Fam
@@ -4565,8 +4571,8 @@
 
                 openFamRenewConfirm(item, newStatus) {
                     let activationDate = '', expiryDate = '';
-                    // Nếu chuyển sang "Đang dùng", tính ngày kích hoạt và hết hạn tự động
-                    if (newStatus === 'Đang dùng') {
+                    // Nếu chuyển sang "Đang dùng" hoặc thay thế Fam mới thành công
+                    if (newStatus === 'Đang dùng' || (newStatus === 'Hết hạn - đã thay' && this.famRenewPairings[item.stt])) {
                         const today = new Date();
                         const dd = String(today.getDate()).padStart(2,'0');
                         const mm = String(today.getMonth()+1).padStart(2,'0');
@@ -4585,25 +4591,58 @@
                 async confirmFamRenewStatus() {
                     const { item, newStatus, activationDate, expiryDate } = this.famRenewConfirm;
                     this.famRenewConfirm.show = false;
-                    this.showToast(`Đang cập nhật ${item.email}...`);
+                    this.showToast(`Đang cập nhật ${item.email || ('STT #' + item.stt)}...`);
                     try {
-                        await fetch(this.CONFIG.WEBAPP_URL, {
-                            method: 'POST',
-                            mode: 'no-cors',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                action: 'update_fam_renew_status',
-                                email: item.email,
-                                status: newStatus,
-                                activationDate,
-                                expiryDate
-                            })
-                        });
-                        // Cập nhật local ngay lập tức
-                        item.status = newStatus;
-                        if (activationDate) item.activationDate = activationDate;
-                        if (expiryDate) item.expiryDate = expiryDate;
-                        this.showToast(`✅ Đã cập nhật: ${newStatus}` + (expiryDate ? ` → HH: ${expiryDate}` : ''));
+                        if (newStatus === 'Hết hạn - đã thay' && this.famRenewPairings[item.stt]) {
+                            const pairing = this.famRenewPairings[item.stt];
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'renew_fam_slot',
+                                    stt: String(item.stt),
+                                    expiryDate
+                                })
+                            });
+                            
+                            // Cập nhật local state ngay lập tức
+                            item.email = pairing.nextFamEmail;
+                            item.pass = pairing.nextFamPass;
+                            item.recoveryEmail = pairing.nextFamMkp;
+                            item.twofa = pairing.nextFam2fa;
+                            item.status = 'Đang dùng'; // Đưa lại về Đang dùng
+                            if (expiryDate) item.expiryDate = expiryDate;
+                            
+                            // Cập nhật kho dự phòng local
+                            const candidate = this.khoRenewList.find(c => c.email.toLowerCase() === pairing.nextFamEmail.toLowerCase());
+                            if (candidate) {
+                                candidate.status = 'Đã dùng';
+                                candidate.famFollow = '';
+                            }
+                            
+                            // Xóa pairing local
+                            delete this.famRenewPairings[item.stt];
+                            this.showToast(`✅ Đã thay thế Fam mới thành công cho STT #${item.stt}!`);
+                        } else {
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'update_fam_renew_status',
+                                    email: item.email,
+                                    status: newStatus,
+                                    activationDate,
+                                    expiryDate
+                                })
+                            });
+                            // Cập nhật local ngay lập tức
+                            item.status = newStatus;
+                            if (activationDate) item.activationDate = activationDate;
+                            if (expiryDate) item.expiryDate = expiryDate;
+                            this.showToast(`✅ Đã cập nhật: ${newStatus}` + (expiryDate ? ` → HH: ${expiryDate}` : ''));
+                        }
                     } catch (e) {
                         this.showToast('Lỗi khi cập nhật trạng thái.');
                     }

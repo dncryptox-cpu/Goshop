@@ -303,6 +303,82 @@ function doPost(e) {
             break;
           }
         }
+    }
+
+    // 9.5. Xử lý Thay Fam Mới cho Slot (renew_fam_slot)
+    if (action === 'renew_fam_slot') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
+      var pairingSheet = frSs.getSheetByName("PAIRINGS");
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      
+      var stt = String(data.stt).trim();
+      var expiryDate = data.expiryDate || '';
+      
+      if (frSheet && pairingSheet && khoRenewSheet) {
+        // 1. Tìm thông tin ghép cặp trong PAIRINGS
+        var pairingRange = pairingSheet.getDataRange();
+        var pairingValues = pairingRange.getValues();
+        var pairedInfo = null;
+        var pairingRowIdx = -1;
+        
+        for (var i = 1; i < pairingValues.length; i++) {
+          if (String(pairingValues[i][0]).trim() === stt) {
+            pairedInfo = {
+              nextFamEmail: String(pairingValues[i][2]).trim(),
+              nextFamPass: String(pairingValues[i][3]).trim(),
+              nextFamMkp: String(pairingValues[i][4]).trim(),
+              nextFam2fa: String(pairingValues[i][5]).trim()
+            };
+            pairingRowIdx = i + 1;
+            break;
+          }
+        }
+        
+        if (pairedInfo && pairedInfo.nextFamEmail) {
+          // 2. Ghi đè vào dòng có STT FAM tương ứng ở RENEW
+          var renewRange = frSheet.getDataRange();
+          var renewValues = renewRange.getValues();
+          var sheetName = frSheet.getName();
+          
+          var sttColNum     = (sheetName === 'RENEW') ? 2 : 3; // Column B vs C
+          var statusColNum  = (sheetName === 'RENEW') ? 3 : 2; // Column C vs B
+          var emailColNum   = (sheetName === 'RENEW') ? 4 : 5; // Column D vs E
+          var passColNum    = (sheetName === 'RENEW') ? 5 : 6; // Column E vs F
+          var mkpColNum     = (sheetName === 'RENEW') ? 6 : 7; // Column F vs G
+          var twofaColNum   = (sheetName === 'RENEW') ? 7 : 8; // Column G vs H
+          var expiryColNum  = (sheetName === 'RENEW') ? 8 : 9; // Column H vs I
+          
+          for (var j = 1; j < renewValues.length; j++) {
+            if (String(renewValues[j][sttColNum - 1]).trim() === stt) {
+              frSheet.getRange(j + 1, statusColNum).setValue("Đang dùng");
+              frSheet.getRange(j + 1, emailColNum).setValue(pairedInfo.nextFamEmail);
+              frSheet.getRange(j + 1, passColNum).setValue(pairedInfo.nextFamPass);
+              frSheet.getRange(j + 1, mkpColNum).setValue(pairedInfo.nextFamMkp);
+              frSheet.getRange(j + 1, twofaColNum).setValue(pairedInfo.nextFam2fa);
+              if (expiryDate) {
+                frSheet.getRange(j + 1, expiryColNum).setValue(expiryDate);
+              }
+              break;
+            }
+          }
+          
+          // 3. Cập nhật trạng thái của Fam mới trong KHO_RENEW thành "Đã dùng" và xóa FamFollow
+          var khoRange = khoRenewSheet.getDataRange();
+          var khoValues = khoRange.getValues();
+          for (var k = 1; k < khoValues.length; k++) {
+            if (String(khoValues[k][0]).trim().toLowerCase() === pairedInfo.nextFamEmail.toLowerCase()) {
+              khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng"); // Cột G
+              khoRenewSheet.getRange(k + 1, 8).setValue("");        // Cột H
+              break;
+            }
+          }
+          
+          // 4. Xóa dòng ghép cặp trong PAIRINGS
+          if (pairingRowIdx !== -1) {
+            pairingSheet.deleteRow(pairingRowIdx);
+          }
+        }
       }
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
