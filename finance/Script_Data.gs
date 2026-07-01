@@ -300,6 +300,10 @@ function doPost(e) {
             if (expiryDate) {
               frSheet.getRange(i + 1, expiryColNum).setValue(expiryDate);
             }
+            if (data.notes !== undefined) {
+              var notesColNum = (sheetName === 'RENEW') ? 9 : 10;  // Cột I (9) vs Cột J (10)
+              frSheet.getRange(i + 1, notesColNum).setValue(String(data.notes).trim());
+            }
             break;
           }
         }
