@@ -2102,6 +2102,7 @@
                                             <table class="w-full text-left text-[11px] font-medium text-gray-500">
                                                 <thead class="bg-white border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
                                                     <tr>
+                                                        <th class="px-4 py-2 w-20">STT FAM</th>
                                                         <th class="px-4 py-2">Email</th>
                                                         <th class="px-4 py-2">Phân loại</th>
                                                         <th class="px-4 py-2">HSD hiện tại</th>
@@ -2113,6 +2114,7 @@
                                                 <tbody class="divide-y divide-gray-50 bg-white">
                                                     <template x-for="(row, idx) in bulkActionResults" :key="idx">
                                                         <tr class="hover:bg-slate-50/50 transition-colors">
+                                                            <td class="px-4 py-2 font-mono font-bold text-indigo-700" x-text="row.stt || '-'"></td>
                                                             <td class="px-4 py-2 font-bold text-gray-800" x-text="row.email"></td>
                                                             <td class="px-4 py-2">
                                                                 <template x-if="row.foundIn === 'BOTH'">
@@ -2161,15 +2163,19 @@
                                                     </template>
                                                     <template x-if="bulkActionResults.length === 0">
                                                         <tr>
-                                                            <td colspan="6" class="text-center py-8 text-gray-400 italic">Nhập email và bấm Phân tích để hiển thị kết quả đối chiếu.</td>
+                                                            <td colspan="7" class="text-center py-8 text-gray-400 italic">Nhập email và bấm Phân tích để hiển thị kết quả đối chiếu.</td>
                                                         </tr>
                                                     </template>
                                                 </tbody>
                                             </table>
                                         </div>
                                     </div>
-
+ 
                                     <div class="flex justify-end gap-3" x-show="bulkActionResults.length > 0">
+                                        <button @click="copyBulkNewAccounts()" x-show="bulkActionType === 'replace'"
+                                            class="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold py-2 px-4 rounded-lg hover:bg-emerald-100 transition-all flex items-center gap-1.5 shadow-sm">
+                                            <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy thông tin acc mới
+                                        </button>
                                         <button @click="bulkActionResults = []" 
                                             class="bg-white border border-gray-200 text-gray-600 text-xs font-bold py-2 px-4 rounded-lg hover:bg-gray-50 transition-all">
                                             Hủy bỏ
@@ -5544,10 +5550,12 @@
                         row.newFamPass = backup.pass;
                         row.newFam2fa = backup.twofa;
                         row.newFamMkp = backup.recoveryEmail;
+                        row.expiryDate = backup.renewDate || '';
                     } else {
                         row.newFamPass = '';
                         row.newFam2fa = '';
                         row.newFamMkp = '';
+                        row.expiryDate = '';
                     }
                 },
                 fillEmailsByRenewDate() {
@@ -5564,6 +5572,22 @@
                     this.bulkEmailInput = emails.join('\n');
                     this.showToast(`✅ Đã lấy ${emails.length} email cho ngày ${this.selectedBulkRenewDate}`);
                     this.analyzeBulkEmails();
+                },
+                copyBulkNewAccounts() {
+                    if (this.bulkActionResults.length === 0) {
+                        this.showToast("Không có dữ liệu để copy.");
+                        return;
+                    }
+                    const lines = this.bulkActionResults.map(row => {
+                        const email = row.newFamEmail || '';
+                        const pass = row.newFamPass || '';
+                        const mkp = row.newFamMkp || '';
+                        const twofa = row.newFam2fa || '';
+                        const exp = row.expiryDate || '';
+                        return `${email}\t${pass}\t${mkp}\t${twofa}\t${exp}`;
+                    });
+                    const textToCopy = lines.join('\n');
+                    this.copyToClipboard(textToCopy, "Email\tPass\tMKP\t2fa\tNgày Renew");
                 },
                 analyzeBulkEmails() {
                     if (!this.bulkEmailInput || !this.bulkEmailInput.trim()) {
@@ -5610,10 +5634,14 @@
                         let daysRemaining = null;
 
                         if (oldExpiry) {
-                            const expDate = this.parseDateDMY(oldExpiry);
-                            if (expDate && expDate.getTime() > 0) {
-                                const diff = expDate.getTime() - todayObj.getTime();
-                                daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                            const parts = String(oldExpiry).trim().split('/');
+                            if (parts.length === 3) {
+                                const expDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                                expDate.setHours(0,0,0,0);
+                                if (expDate.getTime() > 0) {
+                                    const diff = expDate.getTime() - todayObj.getTime();
+                                    daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                                }
                             }
                         }
 
@@ -5639,26 +5667,11 @@
                                 targetItem.newFamPass = backup.pass;
                                 targetItem.newFam2fa = backup.twofa;
                                 targetItem.newFamMkp = backup.recoveryEmail;
+                                targetItem.expiryDate = backup.renewDate || '';
                                 backupIndex++;
                             } else {
                                 targetItem.newFamEmail = 'HẾT ACC SẴN SÀNG';
                             }
-
-                            // Tính ngày hết hạn mới
-                            let newExpDate = null;
-                            if (this.expiryCalculationMethod === 'accumulate' && oldExpiry) {
-                                const parsedOld = this.parseDateDMY(oldExpiry);
-                                if (parsedOld && parsedOld.getTime() > 0) {
-                                    parsedOld.setDate(parsedOld.getDate() + 30);
-                                    newExpDate = parsedOld;
-                                }
-                            }
-                            if (!newExpDate) {
-                                const t = new Date();
-                                t.setDate(t.getDate() + 30);
-                                newExpDate = t;
-                            }
-                            targetItem.expiryDate = this.formatDateDMY(newExpDate);
                         }
 
                         results.push(targetItem);
