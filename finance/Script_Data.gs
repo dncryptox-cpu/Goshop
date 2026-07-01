@@ -788,6 +788,7 @@ function doPost(e) {
               khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng"); // Cột G
               khoRenewSheet.getRange(k + 1, 8).setValue(stt);       // Cột H (FamFollow / FAM HIỆN TẠI)
               khoRenewSheet.getRange(k + 1, 9).setValue(notes);     // Cột I (Ghi chú)
+              khoRenewSheet.getRange(k + 1, 10).setValue(staff);    // Cột J (Người làm)
               break;
             }
           }
@@ -799,6 +800,7 @@ function doPost(e) {
                 khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng"); // Cột G
                 khoRenewSheet.getRange(k + 1, 8).setValue("");         // Cột H (FamFollow / FAM HIỆN TẠI) - Clear it
                 khoRenewSheet.getRange(k + 1, 9).setValue("Thay thế bằng " + nextEmail + (notes ? " - " + notes : "")); // Cột I (Ghi chú)
+                khoRenewSheet.getRange(k + 1, 10).setValue(staff);    // Cột J (Người làm)
                 break;
               }
             }
