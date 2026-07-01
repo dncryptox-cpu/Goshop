@@ -7779,6 +7779,60 @@
                                     source: notesVal
                                 };
                             }).filter(item => item && item.email);
+
+                            // Fetch RENEW_MODIFIED Sheet and overlay overrides (to keep base RENEW sheet untouched)
+                            try {
+                                const modRenewUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=RENEW_MODIFIED&t=${Date.now()}`;
+                                const modRes = await fetch(modRenewUrl);
+                                if (modRes.ok) {
+                                    const modText = await modRes.text();
+                                    if (modText && modText.trim()) {
+                                        const modData = this.parseCSV(modText);
+                                        const modMap = {};
+                                        modData.forEach(row => {
+                                            const keys = Object.keys(row);
+                                            const kStt = keys.find(k => k.toLowerCase().includes('stt') || k.toLowerCase().includes('fam')) || keys[1];
+                                            const kStatus = keys.find(k => k.toLowerCase().includes('trạng thái') || k.toLowerCase().includes('status')) || keys[2];
+                                            const kEmail = keys.find(k => k.toLowerCase().includes('stock') || k.toLowerCase().includes('mail') || k.toLowerCase().includes('email')) || keys[3];
+                                            const kPass = keys.find(k => k.toLowerCase() === 'pass' || k.toLowerCase().includes('mật khẩu')) || keys[4];
+                                            const kRecovery = keys.find(k => k.toLowerCase() === 'mkp' || k.toLowerCase().includes('khôi phục') || k.toLowerCase().includes('phục')) || keys[5];
+                                            const k2fa = keys.find(k => k.toLowerCase() === '2fa' || k.toLowerCase().includes('2fa')) || keys[6];
+                                            const kExpiry = keys.find(k => k.toLowerCase().includes('ngày renew') || k.toLowerCase().includes('renew') || k.toLowerCase().includes('hết hạn')) || keys[7];
+                                            const kNotes = keys.find(k => k.toLowerCase().includes('thay thế') || k.toLowerCase().includes('thay the') || k.toLowerCase().includes('ghi chú')) || keys[8];
+
+                                            const sttVal = String(row[kStt] || '').trim();
+                                            if (sttVal) {
+                                                modMap[sttVal] = {
+                                                    status: String(row[kStatus] || '').trim(),
+                                                    email: String(row[kEmail] || '').trim(),
+                                                    pass: String(row[kPass] || '').trim(),
+                                                    recoveryEmail: String(row[kRecovery] || '').trim(),
+                                                    twofa: String(row[k2fa] || '').trim(),
+                                                    expiryDate: String(row[kExpiry] || '').trim(),
+                                                    source: String(row[kNotes] || '').trim()
+                                                };
+                                            }
+                                        });
+
+                                        // Merge overrides into famRenewList
+                                        this.famRenewList.forEach(item => {
+                                            const override = modMap[item.stt];
+                                            if (override) {
+                                                item.status = override.status;
+                                                item.email = override.email;
+                                                item.pass = override.pass;
+                                                item.recoveryEmail = override.recoveryEmail;
+                                                item.twofa = override.twofa;
+                                                item.expiryDate = override.expiryDate;
+                                                item.source = override.source;
+                                            }
+                                        });
+                                    }
+                                }
+                            } catch(eMod) {
+                                console.warn('Could not load RENEW_MODIFIED sheet (might not exist yet):', eMod);
+                            }
+
                             await this.loadFamPairings();
                             
                             // Fetch KHO_RENEW Sheet

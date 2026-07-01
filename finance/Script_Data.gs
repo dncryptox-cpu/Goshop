@@ -699,8 +699,7 @@ function doPost(e) {
       if (frSheet) {
         var sheetName = frSheet.getName();
         var emailColIndex = (sheetName === 'RENEW') ? 3 : 4;  // Cột D (index 3) vs Cột E (index 4)
-        var statusColNum  = (sheetName === 'RENEW') ? 3 : 2;  // Cột C (col 3) vs Cột B (col 2)
-        var notesColNum   = (sheetName === 'RENEW') ? 9 : 10; // Cột I (9) vs Cột J (10)
+        var sttColIndex   = (sheetName === 'RENEW') ? 1 : 2;  // Cột B (index 1) vs Cột C (index 2)
         
         var dataRange = frSheet.getDataRange();
         var values = dataRange.getValues();
@@ -708,9 +707,14 @@ function doPost(e) {
         for (var i = 1; i < values.length; i++) {
           var currentEmail = String(values[i][emailColIndex] || '').trim().toLowerCase();
           if (emailMap[currentEmail]) {
-            frSheet.getRange(i + 1, statusColNum).setValue("Banned");
-            if (notes) {
-              frSheet.getRange(i + 1, notesColNum).setValue(notes);
+            var stt = String(values[i][sttColIndex] || '').trim();
+            if (stt) {
+              var oldNotes = String(values[i][(sheetName === 'RENEW') ? 8 : 9] || '').trim();
+              var finalNotes = (oldNotes ? oldNotes + " - " : "") + (notes || "Banned");
+              updateRenewModifiedRow(frSs, stt, {
+                status: "Banned",
+                notes: finalNotes
+              });
             }
             updatedCount++;
           }
@@ -786,7 +790,7 @@ function doPost(e) {
           var oldMkp = "";
           var old2fa = "";
           
-          // 1. Ghi đè vào RENEW
+          // 1. Ghi đè vào RENEW_MODIFIED
           var foundRenew = false;
           for (var j = 1; j < renewValues.length; j++) {
             if (String(renewValues[j][sttColNum - 1]).trim() === stt) {
@@ -794,16 +798,19 @@ function doPost(e) {
               oldMkp = String(renewValues[j][mkpColNum - 1] || '');
               old2fa = String(renewValues[j][twofaColNum - 1] || '');
               
-              frSheet.getRange(j + 1, statusColNum).setValue("Đang dùng");
-              frSheet.getRange(j + 1, emailColNum).setValue(nextEmail);
-              frSheet.getRange(j + 1, passColNum).setValue(nextPass);
-              frSheet.getRange(j + 1, mkpColNum).setValue(nextMkp);
-              frSheet.getRange(j + 1, twofaColNum).setValue(next2fa);
-              if (expiryDate) {
-                frSheet.getRange(j + 1, expiryColNum).setValue(expiryDate);
-              }
               var autoNote = "Thay từ " + oldEmail + " ngày " + timestamp.split(' ')[1];
-              frSheet.getRange(j + 1, notesColNum).setValue(autoNote + (notes ? " - " + notes : ""));
+              var finalNotes = autoNote + (notes ? " - " + notes : "");
+              
+              updateRenewModifiedRow(frSs, stt, {
+                status: "Đang dùng",
+                email: nextEmail,
+                pass: nextPass,
+                mkp: nextMkp,
+                twofa: next2fa,
+                expiryDate: expiryDate || undefined,
+                notes: finalNotes
+              });
+              
               foundRenew = true;
               break;
             }
@@ -869,30 +876,15 @@ function doPost(e) {
         }
         
         if (record && histRowIdx !== -1) {
-          // 1. Khôi phục RENEW
-          var renewRange = frSheet.getDataRange();
-          var renewValues = renewRange.getValues();
-          var sheetName = frSheet.getName();
-          
-          var sttColNum     = (sheetName === 'RENEW') ? 2 : 3;
-          var statusColNum  = (sheetName === 'RENEW') ? 3 : 2;
-          var emailColNum   = (sheetName === 'RENEW') ? 4 : 5;
-          var passColNum    = (sheetName === 'RENEW') ? 5 : 6;
-          var mkpColNum     = (sheetName === 'RENEW') ? 6 : 7;
-          var twofaColNum   = (sheetName === 'RENEW') ? 7 : 8;
-          var notesColNum   = (sheetName === 'RENEW') ? 9 : 10;
-          
-          for (var j = 1; j < renewValues.length; j++) {
-            if (String(renewValues[j][sttColNum - 1]).trim() === stt) {
-              frSheet.getRange(j + 1, statusColNum).setValue("Đang dùng");
-              frSheet.getRange(j + 1, emailColNum).setValue(record.oldEmail);
-              frSheet.getRange(j + 1, passColNum).setValue(record.oldPass);
-              frSheet.getRange(j + 1, mkpColNum).setValue(record.oldMkp);
-              frSheet.getRange(j + 1, twofaColNum).setValue(record.old2fa);
-              frSheet.getRange(j + 1, notesColNum).setValue("Hoàn tác thay thế ngày " + new Date().toLocaleDateString('vi-VN'));
-              break;
-            }
-          }
+          // 1. Khôi phục RENEW_MODIFIED
+          updateRenewModifiedRow(frSs, stt, {
+            status: "Đang dùng",
+            email: record.oldEmail,
+            pass: record.oldPass,
+            mkp: record.oldMkp,
+            twofa: record.old2fa,
+            notes: "Hoàn tác thay thế ngày " + new Date().toLocaleDateString('vi-VN')
+          });
           
           // 2. Khôi phục KHO_RENEW: Đặt Fam mới về Sẵn sàng
           var khoRange = khoRenewSheet.getDataRange();
@@ -966,29 +958,15 @@ function doPost(e) {
           if (expiryDate) historySheet.getRange(histRowIdx, 11).setValue(expiryDate);
           historySheet.getRange(histRowIdx, 13).setValue(notes);
           
-          // Nếu email này đang active ở RENEW, cập nhật luôn ở RENEW
+          // Nếu email này đang active ở RENEW, cập nhật luôn ở RENEW_MODIFIED
           if (frSheet) {
-            var renewRange = frSheet.getDataRange();
-            var renewValues = renewRange.getValues();
-            var sheetName = frSheet.getName();
-            
-            var sttColNum     = (sheetName === 'RENEW') ? 2 : 3;
-            var emailColNum   = (sheetName === 'RENEW') ? 4 : 5;
-            var passColNum    = (sheetName === 'RENEW') ? 5 : 6;
-            var mkpColNum     = (sheetName === 'RENEW') ? 6 : 7;
-            var twofaColNum   = (sheetName === 'RENEW') ? 7 : 8;
-            var expiryColNum  = (sheetName === 'RENEW') ? 8 : 9;
-            
-            for (var j = 1; j < renewValues.length; j++) {
-              if (String(renewValues[j][sttColNum - 1]).trim() === stt) {
-                frSheet.getRange(j + 1, emailColNum).setValue(newEmail);
-                frSheet.getRange(j + 1, passColNum).setValue(newPass);
-                frSheet.getRange(j + 1, mkpColNum).setValue(newMkp);
-                frSheet.getRange(j + 1, twofaColNum).setValue(new2fa);
-                if (expiryDate) frSheet.getRange(j + 1, expiryColNum).setValue(expiryDate);
-                break;
-              }
-            }
+            updateRenewModifiedRow(frSs, stt, {
+              email: newEmail,
+              pass: newPass,
+              mkp: newMkp,
+              twofa: new2fa,
+              expiryDate: expiryDate || undefined
+            });
           }
           
           // Cập nhật KHO_RENEW nếu email mới thay đổi
@@ -1307,6 +1285,23 @@ function syncFamHienTaiToKhoRenew() {
     }
   }
   
+  // Đọc từ RENEW_MODIFIED đè lên (nếu có)
+  var modSheet = ss.getSheetByName("RENEW_MODIFIED");
+  if (modSheet) {
+    var modValues = modSheet.getDataRange().getValues();
+    for (var i = 1; i < modValues.length; i++) {
+      var rawEmail = String(modValues[i][3] || '').trim().toLowerCase(); // Cột StockRenew (index 3)
+      var sttFam = String(modValues[i][1] || '').trim();                 // Cột STT FAM (index 1)
+      var status = String(modValues[i][2] || '').trim().toLowerCase();    // Cột Trạng thái (index 2)
+      if (rawEmail && status !== 'banned') {
+        var cleanEmail = rawEmail.replace(/@gmail\.com$/, '');
+        if (cleanEmail) {
+          emailToFamMap[cleanEmail] = sttFam;
+        }
+      }
+    }
+  }
+  
   // 2. Đọc dữ liệu từ sheet KHO_RENEW
   var khoRange = khoRenewSheet.getDataRange();
   var khoValues = khoRange.getValues();
@@ -1354,4 +1349,74 @@ function syncFamHienTaiToKhoRenew() {
     var writeRange = khoRenewSheet.getRange(2, khoFamHienTaiIndex + 1, updatedFamHienTaiValues.length, 1);
     writeRange.setValues(updatedFamHienTaiValues);
   }
+}
+
+// Helper to get or create RENEW_MODIFIED sheet
+function getOrCreateRenewModifiedSheet(ss) {
+  var sheet = ss.getSheetByName("RENEW_MODIFIED");
+  if (!sheet) {
+    sheet = ss.insertSheet("RENEW_MODIFIED");
+    sheet.appendRow(["Slot", "STT FAM", "Trạng thái", "StockRenew", "Pass", "MKP", "2fa", "Ngày Renew", "Ghi chú"]);
+    sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#e6f7ff");
+  }
+  return sheet;
+}
+
+// Helper to update or insert override row in RENEW_MODIFIED sheet
+function updateRenewModifiedRow(ss, stt, updatedData) {
+  var renewSheet = ss.getSheetByName("RENEW") || ss.getSheetByName("FAMRENEW");
+  var modSheet = getOrCreateRenewModifiedSheet(ss);
+  
+  var renewValues = renewSheet.getDataRange().getValues();
+  var modValues = modSheet.getDataRange().getValues();
+  
+  var sttColIdxRenew = -1;
+  for (var c = 0; c < renewValues[0].length; c++) {
+    var h = String(renewValues[0][c]).toLowerCase();
+    if (h.includes('stt') || h.includes('fam')) {
+      sttColIdxRenew = c;
+      break;
+    }
+  }
+  if (sttColIdxRenew === -1) sttColIdxRenew = 1; // default B
+  
+  // Find original row in RENEW
+  var originalRow = null;
+  for (var i = 1; i < renewValues.length; i++) {
+    if (String(renewValues[i][sttColIdxRenew]).trim() === stt) {
+      originalRow = renewValues[i];
+      break;
+    }
+  }
+  
+  if (!originalRow) return false;
+  
+  // Find if row exists in RENEW_MODIFIED
+  var modRowIdx = -1;
+  for (var j = 1; j < modValues.length; j++) {
+    if (String(modValues[j][1]).trim() === stt) {
+      modRowIdx = j + 1;
+      break;
+    }
+  }
+  
+  // Construct the updated row values matching columns: Slot, STT FAM, Trạng thái, StockRenew, Pass, MKP, 2fa, Ngày Renew, Ghi chú
+  var rowValues = [
+    originalRow[0], // Slot (col A)
+    stt,            // STT FAM (col B)
+    updatedData.status !== undefined ? updatedData.status : (originalRow[2] || "Đang dùng"),
+    updatedData.email !== undefined ? updatedData.email : originalRow[3],
+    updatedData.pass !== undefined ? updatedData.pass : originalRow[4],
+    updatedData.mkp !== undefined ? updatedData.mkp : originalRow[5],
+    updatedData.twofa !== undefined ? updatedData.twofa : originalRow[6],
+    updatedData.expiryDate !== undefined ? updatedData.expiryDate : originalRow[7],
+    updatedData.notes !== undefined ? updatedData.notes : originalRow[8]
+  ];
+  
+  if (modRowIdx !== -1) {
+    modSheet.getRange(modRowIdx, 1, 1, 9).setValues([rowValues]);
+  } else {
+    modSheet.appendRow(rowValues);
+  }
+  return true;
 }
