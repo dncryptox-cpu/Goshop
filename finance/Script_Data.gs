@@ -680,104 +680,196 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 14.5. Xử lý hàng loạt danh sách email (bulk_process_emails)
-    if (action === 'bulk_process_emails') {
+    // 15. Bulk Mark Banned
+    if (action === 'bulk_mark_banned') {
       var emails = data.emails || [];
-      var subAction = data.subAction; // 'replace_fam', 'mark_banned', 'lookup_rn'
-      var expiryDate = data.expiryDate || '';
+      var notes = data.notes || '';
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
       
+      var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      
+      var emailMap = {};
+      emails.forEach(function(email) {
+        emailMap[String(email).trim().toLowerCase()] = true;
+      });
+      
+      var updatedCount = 0;
+      
+      if (frSheet) {
+        var sheetName = frSheet.getName();
+        var emailColIndex = (sheetName === 'RENEW') ? 3 : 4;  // Cột D (index 3) vs Cột E (index 4)
+        var statusColNum  = (sheetName === 'RENEW') ? 3 : 2;  // Cột C (col 3) vs Cột B (col 2)
+        var notesColNum   = (sheetName === 'RENEW') ? 9 : 10; // Cột I (9) vs Cột J (10)
+        
+        var dataRange = frSheet.getDataRange();
+        var values = dataRange.getValues();
+        
+        for (var i = 1; i < values.length; i++) {
+          var currentEmail = String(values[i][emailColIndex] || '').trim().toLowerCase();
+          if (emailMap[currentEmail]) {
+            frSheet.getRange(i + 1, statusColNum).setValue("Banned");
+            if (notes) {
+              frSheet.getRange(i + 1, notesColNum).setValue(notes);
+            }
+            updatedCount++;
+          }
+        }
+      }
+      
+      if (khoRenewSheet) {
+        var dataRange = khoRenewSheet.getDataRange();
+        var values = dataRange.getValues();
+        
+        for (var j = 1; j < values.length; j++) {
+          var currentEmail = String(values[j][0] || '').trim().toLowerCase();
+          if (emailMap[currentEmail]) {
+            khoRenewSheet.getRange(j + 1, 7).setValue("Banned"); // Cột G: Trạng thái
+            if (notes) {
+              khoRenewSheet.getRange(j + 1, 9).setValue(notes); // Cột I: Ghi chú
+            }
+            updatedCount++;
+          }
+        }
+      }
+      
+      syncFamHienTaiToKhoRenew();
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', updatedCount: updatedCount})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 16. Bulk Replace Fams With History
+    if (action === 'bulk_replace_fams_with_history') {
       var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
       var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
       var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
       
-      var results = [];
-      
-      if (subAction === 'lookup_rn') {
-        if (frSheet) {
-          var renewRange = frSheet.getDataRange();
-          var renewValues = renewRange.getValues();
-          var sheetName = frSheet.getName();
-          var emailColIndex = (sheetName === 'RENEW') ? 3 : 4;   // Column D vs E
-          var sttColIndex = (sheetName === 'RENEW') ? 1 : 2;     // Column B vs C
-          var statusColIndex = (sheetName === 'RENEW') ? 2 : 1;  // Column C vs B
-          
-          for (var eIdx = 0; eIdx < emails.length; eIdx++) {
-            var targetEmail = String(emails[eIdx]).trim().toLowerCase();
-            var cleanTarget = targetEmail.replace(/@gmail\.com$/, '');
-            var found = false;
-            
-            for (var i = 1; i < renewValues.length; i++) {
-              var rawEmail = String(renewValues[i][emailColIndex] || '').trim().toLowerCase();
-              var cleanEmail = rawEmail.replace(/@gmail\.com$/, '');
-              
-              if (cleanEmail && cleanEmail === cleanTarget) {
-                results.push({
-                  email: targetEmail,
-                  stt: String(renewValues[i][sttColIndex] || '').trim(),
-                  status: String(renewValues[i][statusColIndex] || '').trim(),
-                  message: 'Tìm thấy STT FAM'
-                });
-                found = true;
-                break;
-              }
-            }
-            if (!found) {
-              results.push({
-                email: targetEmail,
-                stt: '-',
-                status: '-',
-                message: 'Không tìm thấy trong RENEW'
-              });
-            }
-          }
-        }
+      var historySheet = frSs.getSheetByName("REPLACE_HISTORY");
+      if (!historySheet) {
+        historySheet = frSs.insertSheet("REPLACE_HISTORY");
+        historySheet.appendRow(["Thời Gian", "STT FAM", "Email Cũ", "Pass Cũ", "MKP Cũ", "2FA Cũ", "Email Mới", "Mật Khẩu Mới", "MKP Mới", "2FA Mới", "HSD Mới", "Người Thực Hiện", "Ghi Chú", "Trạng Thái"]);
+        historySheet.getRange(1, 1, 1, 14).setFontWeight("bold").setBackground("#f3f3f3");
       }
       
-      else if (subAction === 'mark_banned') {
-        if (khoRenewSheet) {
-          var khoRange = khoRenewSheet.getDataRange();
-          var khoValues = khoRange.getValues();
-          var emailColIndex = 0; // Column A
-          var statusColNum = 7;  // Column G
+      var replacements = data.replacements || [];
+      var staff = data.staff || 'Admin';
+      var timestamp = new Date().toLocaleString('vi-VN');
+      
+      if (frSheet && khoRenewSheet && replacements.length > 0) {
+        var renewRange = frSheet.getDataRange();
+        var renewValues = renewRange.getValues();
+        var sheetName = frSheet.getName();
+        
+        var sttColNum     = (sheetName === 'RENEW') ? 2 : 3;
+        var statusColNum  = (sheetName === 'RENEW') ? 3 : 2;
+        var emailColNum   = (sheetName === 'RENEW') ? 4 : 5;
+        var passColNum    = (sheetName === 'RENEW') ? 5 : 6;
+        var mkpColNum     = (sheetName === 'RENEW') ? 6 : 7;
+        var twofaColNum   = (sheetName === 'RENEW') ? 7 : 8;
+        var expiryColNum  = (sheetName === 'RENEW') ? 8 : 9;
+        var notesColNum   = (sheetName === 'RENEW') ? 9 : 10;
+        
+        var khoRange = khoRenewSheet.getDataRange();
+        var khoValues = khoRange.getValues();
+        
+        for (var r = 0; r < replacements.length; r++) {
+          var rep = replacements[r];
+          var stt = String(rep.stt).trim();
+          var oldEmail = String(rep.oldEmail || '').trim();
+          var nextEmail = String(rep.nextFamEmail).trim();
+          var nextPass = String(rep.nextFamPass).trim();
+          var nextMkp = String(rep.nextFamMkp || '').trim();
+          var next2fa = String(rep.nextFam2fa || '').trim();
+          var expiryDate = String(rep.expiryDate || '').trim();
+          var notes = String(rep.notes || '').trim();
           
-          for (var eIdx = 0; eIdx < emails.length; eIdx++) {
-            var targetEmail = String(emails[eIdx]).trim().toLowerCase();
-            var cleanTarget = targetEmail.replace(/@gmail\.com$/, '');
-            var found = false;
-            
-            for (var i = 1; i < khoValues.length; i++) {
-              var rawEmail = String(khoValues[i][emailColIndex] || '').trim().toLowerCase();
-              var cleanEmail = rawEmail.replace(/@gmail\.com$/, '');
+          var oldPass = "";
+          var oldMkp = "";
+          var old2fa = "";
+          
+          // 1. Ghi đè vào RENEW
+          var foundRenew = false;
+          for (var j = 1; j < renewValues.length; j++) {
+            if (String(renewValues[j][sttColNum - 1]).trim() === stt) {
+              oldPass = String(renewValues[j][passColNum - 1] || '');
+              oldMkp = String(renewValues[j][mkpColNum - 1] || '');
+              old2fa = String(renewValues[j][twofaColNum - 1] || '');
               
-              if (cleanEmail && cleanEmail === cleanTarget) {
-                khoRenewSheet.getRange(i + 1, statusColNum).setValue("Banned");
-                results.push({
-                  email: targetEmail,
-                  stt: '-',
-                  status: 'Banned',
-                  message: 'Đã báo Banned thành công'
-                });
-                found = true;
-                break;
+              frSheet.getRange(j + 1, statusColNum).setValue("Đang dùng");
+              frSheet.getRange(j + 1, emailColNum).setValue(nextEmail);
+              frSheet.getRange(j + 1, passColNum).setValue(nextPass);
+              frSheet.getRange(j + 1, mkpColNum).setValue(nextMkp);
+              frSheet.getRange(j + 1, twofaColNum).setValue(next2fa);
+              if (expiryDate) {
+                frSheet.getRange(j + 1, expiryColNum).setValue(expiryDate);
               }
-            }
-            if (!found) {
-              results.push({
-                email: targetEmail,
-                stt: '-',
-                status: '-',
-                message: 'Không tìm thấy trong KHO_RENEW'
-              });
+              var autoNote = "Thay từ " + oldEmail + " ngày " + timestamp.split(' ')[1];
+              frSheet.getRange(j + 1, notesColNum).setValue(autoNote + (notes ? " - " + notes : ""));
+              foundRenew = true;
+              break;
             }
           }
           
-          // Đồng bộ lại
-          syncFamHienTaiToKhoRenew();
+          // 2. Cập nhật KHO_RENEW thành Đã dùng cho Fam mới
+          for (var k = 1; k < khoValues.length; k++) {
+            if (String(khoValues[k][0]).trim().toLowerCase() === nextEmail.toLowerCase()) {
+              khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng"); // Cột G
+              khoRenewSheet.getRange(k + 1, 8).setValue(stt);       // Cột H (FamFollow)
+              break;
+            }
+          }
+          
+          // 3. Đánh dấu Đã thay cho Fam cũ trong KHO_RENEW (nếu tồn tại trong kho)
+          if (oldEmail) {
+            for (var k = 1; k < khoValues.length; k++) {
+              if (String(khoValues[k][0]).trim().toLowerCase() === oldEmail.toLowerCase()) {
+                khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng"); // Cột G
+                khoRenewSheet.getRange(k + 1, 9).setValue("Thay thế bằng " + nextEmail); // Cột I
+                break;
+              }
+            }
+          }
+          
+          // 4. Ghi lịch sử vào REPLACE_HISTORY
+          historySheet.appendRow([timestamp, stt, oldEmail, oldPass, oldMkp, old2fa, nextEmail, nextPass, nextMkp, next2fa, expiryDate, staff, notes, "Hoạt động"]);
         }
+        
+        syncFamHienTaiToKhoRenew();
       }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 17. Revert Replacement
+    if (action === 'revert_replacement') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      var historySheet = frSs.getSheetByName("REPLACE_HISTORY");
       
-      else if (subAction === 'replace_fam') {
-        if (frSheet && khoRenewSheet) {
+      var timestamp = String(data.timestamp).trim();
+      var stt = String(data.stt).trim();
+      
+      if (frSheet && khoRenewSheet && historySheet) {
+        var historyRange = historySheet.getDataRange();
+        var historyValues = historyRange.getValues();
+        var histRowIdx = -1;
+        var record = null;
+        
+        for (var i = 1; i < historyValues.length; i++) {
+          if (String(historyValues[i][0]).trim() === timestamp && String(historyValues[i][1]).trim() === stt) {
+            histRowIdx = i + 1;
+            record = {
+              oldEmail: String(historyValues[i][2]).trim(),
+              oldPass: String(historyValues[i][3]).trim(),
+              oldMkp: String(historyValues[i][4]).trim(),
+              old2fa: String(historyValues[i][5]).trim(),
+              newEmail: String(historyValues[i][6]).trim()
+            };
+            break;
+          }
+        }
+        
+        if (record && histRowIdx !== -1) {
+          // 1. Khôi phục RENEW
           var renewRange = frSheet.getDataRange();
           var renewValues = renewRange.getValues();
           var sheetName = frSheet.getName();
@@ -788,108 +880,195 @@ function doPost(e) {
           var passColNum    = (sheetName === 'RENEW') ? 5 : 6;
           var mkpColNum     = (sheetName === 'RENEW') ? 6 : 7;
           var twofaColNum   = (sheetName === 'RENEW') ? 7 : 8;
-          var expiryColNum  = (sheetName === 'RENEW') ? 8 : 9;
+          var notesColNum   = (sheetName === 'RENEW') ? 9 : 10;
           
-          var khoRange = khoRenewSheet.getDataRange();
-          var khoValues = khoRange.getValues();
-          
-          var usedKhoRowIndices = {};
-          
-          for (var eIdx = 0; eIdx < emails.length; eIdx++) {
-            var oldEmail = String(emails[eIdx]).trim().toLowerCase();
-            var cleanOldEmail = oldEmail.replace(/@gmail\.com$/, '');
-            var matchedStt = '';
-            var matchedRenewRowIdx = -1;
-            
-            for (var j = 1; j < renewValues.length; j++) {
-              var rawEmail = String(renewValues[j][emailColNum - 1] || '').trim().toLowerCase();
-              var cleanEmail = rawEmail.replace(/@gmail\.com$/, '');
-              if (cleanEmail && cleanEmail === cleanOldEmail) {
-                matchedStt = String(renewValues[j][sttColNum - 1]).trim();
-                matchedRenewRowIdx = j + 1;
-                break;
-              }
+          for (var j = 1; j < renewValues.length; j++) {
+            if (String(renewValues[j][sttColNum - 1]).trim() === stt) {
+              frSheet.getRange(j + 1, statusColNum).setValue("Đang dùng");
+              frSheet.getRange(j + 1, emailColNum).setValue(record.oldEmail);
+              frSheet.getRange(j + 1, passColNum).setValue(record.oldPass);
+              frSheet.getRange(j + 1, mkpColNum).setValue(record.oldMkp);
+              frSheet.getRange(j + 1, twofaColNum).setValue(record.old2fa);
+              frSheet.getRange(j + 1, notesColNum).setValue("Hoàn tác thay thế ngày " + new Date().toLocaleDateString('vi-VN'));
+              break;
             }
-            
-            if (matchedRenewRowIdx === -1) {
-              results.push({
-                email: oldEmail,
-                stt: '-',
-                status: 'Thất bại',
-                message: 'Không tìm thấy email cũ trong RENEW'
-              });
-              continue;
-            }
-            
-            var candidateIdx = -1;
-            for (var k = 1; k < khoValues.length; k++) {
-              var status = String(khoValues[k][6] || '').trim().toLowerCase();
-              var candEmail = String(khoValues[k][0] || '').trim();
-              if ((status === 'sẵn sàng' || status === '') && !usedKhoRowIndices[k] && candEmail) {
-                candidateIdx = k;
-                usedKhoRowIndices[k] = true;
-                break;
-              }
-            }
-            
-            if (candidateIdx === -1) {
-              results.push({
-                email: oldEmail,
-                stt: matchedStt,
-                status: 'Thất bại',
-                message: 'Hết tài khoản Sẵn sàng trong Kho'
-              });
-              continue;
-            }
-            
-            var newEmail = String(khoValues[candidateIdx][0] || '').trim();
-            var newPass  = String(khoValues[candidateIdx][1] || '').trim();
-            var newMkp   = String(khoValues[candidateIdx][2] || '').trim();
-            var new2fa   = String(khoValues[candidateIdx][3] || '').trim();
-            
-            // Ghi đè vào RENEW
-            frSheet.getRange(matchedRenewRowIdx, statusColNum).setValue("Đang dùng");
-            frSheet.getRange(matchedRenewRowIdx, emailColNum).setValue(newEmail);
-            frSheet.getRange(matchedRenewRowIdx, passColNum).setValue(newPass);
-            frSheet.getRange(matchedRenewRowIdx, mkpColNum).setValue(newMkp);
-            frSheet.getRange(matchedRenewRowIdx, twofaColNum).setValue(new2fa);
-            if (expiryDate) {
-              frSheet.getRange(matchedRenewRowIdx, expiryColNum).setValue(expiryDate);
-            }
-            
-            // Cập nhật tài khoản mới trong Kho
-            khoRenewSheet.getRange(candidateIdx + 1, 7).setValue("Đã dùng");
-            khoRenewSheet.getRange(candidateIdx + 1, 8).setValue(matchedStt);
-            
-            // Đánh dấu tài khoản cũ là Banned
-            var oldEmailFoundInKho = false;
-            for (var k = 1; k < khoValues.length; k++) {
-              var rawKhoEmail = String(khoValues[k][0] || '').trim().toLowerCase();
-              var cleanKhoEmail = rawKhoEmail.replace(/@gmail\.com$/, '');
-              if (cleanKhoEmail && cleanKhoEmail === cleanOldEmail) {
-                khoRenewSheet.getRange(k + 1, 7).setValue("Banned");
-                khoRenewSheet.getRange(k + 1, 8).setValue("");
-                oldEmailFoundInKho = true;
-                break;
-              }
-            }
-            
-            results.push({
-              email: oldEmail,
-              stt: matchedStt,
-              status: 'Thành công',
-              message: 'Đã thay bằng ' + newEmail + (oldEmailFoundInKho ? ' (Đã báo Banned mail cũ)' : '')
-            });
           }
           
-          // Đồng bộ lại
+          // 2. Khôi phục KHO_RENEW: Đặt Fam mới về Sẵn sàng
+          var khoRange = khoRenewSheet.getDataRange();
+          var khoValues = khoRange.getValues();
+          for (var k = 1; k < khoValues.length; k++) {
+            if (String(khoValues[k][0]).trim().toLowerCase() === record.newEmail.toLowerCase()) {
+              khoRenewSheet.getRange(k + 1, 7).setValue("Sẵn sàng");
+              khoRenewSheet.getRange(k + 1, 8).setValue("");
+              break;
+            }
+          }
+          
+          // Đặt Fam cũ về Đã dùng (nếu có)
+          if (record.oldEmail) {
+            for (var k = 1; k < khoValues.length; k++) {
+              if (String(khoValues[k][0]).trim().toLowerCase() === record.oldEmail.toLowerCase()) {
+                khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng");
+                khoRenewSheet.getRange(k + 1, 8).setValue(stt);
+                break;
+              }
+            }
+          }
+          
+          // 3. Cập nhật trạng thái lịch sử
+          historySheet.getRange(histRowIdx, 14).setValue("Đã hoàn tác");
+          
           syncFamHienTaiToKhoRenew();
+          return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
         }
       }
-      
-      return ContentService.createTextOutput(JSON.stringify({status: 'success', results: results})).setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Không tìm thấy bản ghi lịch sử.'})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 18. Update History Item
+    if (action === 'update_history_item') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      var historySheet = frSs.getSheetByName("REPLACE_HISTORY");
+      
+      var timestamp = String(data.timestamp).trim();
+      var stt = String(data.stt).trim();
+      
+      var newEmail = String(data.newEmail || '').trim();
+      var newPass = String(data.newPass || '').trim();
+      var newMkp = String(data.newMkp || '').trim();
+      var new2fa = String(data.new2fa || '').trim();
+      var expiryDate = String(data.expiryDate || '').trim();
+      var notes = String(data.notes || '').trim();
+      
+      if (historySheet) {
+        var historyRange = historySheet.getDataRange();
+        var historyValues = historyRange.getValues();
+        var histRowIdx = -1;
+        
+        for (var i = 1; i < historyValues.length; i++) {
+          if (String(historyValues[i][0]).trim() === timestamp && String(historyValues[i][1]).trim() === stt) {
+            histRowIdx = i + 1;
+            break;
+          }
+        }
+        
+        if (histRowIdx !== -1) {
+          var oldNewEmail = String(historyValues[histRowIdx - 1][6]).trim();
+          
+          // Cập nhật REPLACE_HISTORY
+          if (newEmail) historySheet.getRange(histRowIdx, 7).setValue(newEmail);
+          historySheet.getRange(histRowIdx, 8).setValue(newPass);
+          historySheet.getRange(histRowIdx, 9).setValue(newMkp);
+          historySheet.getRange(histRowIdx, 10).setValue(new2fa);
+          if (expiryDate) historySheet.getRange(histRowIdx, 11).setValue(expiryDate);
+          historySheet.getRange(histRowIdx, 13).setValue(notes);
+          
+          // Nếu email này đang active ở RENEW, cập nhật luôn ở RENEW
+          if (frSheet) {
+            var renewRange = frSheet.getDataRange();
+            var renewValues = renewRange.getValues();
+            var sheetName = frSheet.getName();
+            
+            var sttColNum     = (sheetName === 'RENEW') ? 2 : 3;
+            var emailColNum   = (sheetName === 'RENEW') ? 4 : 5;
+            var passColNum    = (sheetName === 'RENEW') ? 5 : 6;
+            var mkpColNum     = (sheetName === 'RENEW') ? 6 : 7;
+            var twofaColNum   = (sheetName === 'RENEW') ? 7 : 8;
+            var expiryColNum  = (sheetName === 'RENEW') ? 8 : 9;
+            
+            for (var j = 1; j < renewValues.length; j++) {
+              if (String(renewValues[j][sttColNum - 1]).trim() === stt) {
+                frSheet.getRange(j + 1, emailColNum).setValue(newEmail);
+                frSheet.getRange(j + 1, passColNum).setValue(newPass);
+                frSheet.getRange(j + 1, mkpColNum).setValue(newMkp);
+                frSheet.getRange(j + 1, twofaColNum).setValue(new2fa);
+                if (expiryDate) frSheet.getRange(j + 1, expiryColNum).setValue(expiryDate);
+                break;
+              }
+            }
+          }
+          
+          // Cập nhật KHO_RENEW nếu email mới thay đổi
+          if (newEmail.toLowerCase() !== oldNewEmail.toLowerCase()) {
+            if (khoRenewSheet) {
+              var khoRange = khoRenewSheet.getDataRange();
+              var khoValues = khoRange.getValues();
+              
+              // Set old new email to Sẵn sàng
+              for (var k = 1; k < khoValues.length; k++) {
+                if (String(khoValues[k][0]).trim().toLowerCase() === oldNewEmail.toLowerCase()) {
+                  khoRenewSheet.getRange(k + 1, 7).setValue("Sẵn sàng");
+                  khoRenewSheet.getRange(k + 1, 8).setValue("");
+                  break;
+                }
+              }
+              // Set new new email to Đã dùng
+              for (var k = 1; k < khoValues.length; k++) {
+                if (String(khoValues[k][0]).trim().toLowerCase() === newEmail.toLowerCase()) {
+                  khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng");
+                  khoRenewSheet.getRange(k + 1, 8).setValue(stt);
+                  break;
+                }
+              }
+            }
+          } else {
+            if (khoRenewSheet) {
+              var khoRange = khoRenewSheet.getDataRange();
+              var khoValues = khoRange.getValues();
+              for (var k = 1; k < khoValues.length; k++) {
+                if (String(khoValues[k][0]).trim().toLowerCase() === newEmail.toLowerCase()) {
+                  khoRenewSheet.getRange(k + 1, 4).setValue(new2fa);
+                  break;
+                }
+              }
+            }
+          }
+          
+          syncFamHienTaiToKhoRenew();
+          return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Lỗi cập nhật lịch sử.'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 19. Get Replace History
+    if (action === 'get_replace_history') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var historySheet = frSs.getSheetByName("REPLACE_HISTORY");
+      if (!historySheet) {
+        historySheet = frSs.insertSheet("REPLACE_HISTORY");
+        historySheet.appendRow(["Thời Gian", "STT FAM", "Email Cũ", "Pass Cũ", "MKP Cũ", "2FA Cũ", "Email Mới", "Mật Khẩu Mới", "MKP Mới", "2FA Mới", "HSD Mới", "Người Thực Hiện", "Ghi Chú", "Trạng Thái"]);
+        historySheet.getRange(1, 1, 1, 14).setFontWeight("bold").setBackground("#f3f3f3");
+      }
+      
+      var dataRange = historySheet.getDataRange();
+      var values = dataRange.getValues();
+      var history = [];
+      
+      for (var i = 1; i < values.length; i++) {
+        history.push({
+          timestamp: String(values[i][0] || '').trim(),
+          stt: String(values[i][1] || '').trim(),
+          oldEmail: String(values[i][2] || '').trim(),
+          oldPass: String(values[i][3] || '').trim(),
+          oldMkp: String(values[i][4] || '').trim(),
+          old2fa: String(values[i][5] || '').trim(),
+          newEmail: String(values[i][6] || '').trim(),
+          newPass: String(values[i][7] || '').trim(),
+          newMkp: String(values[i][8] || '').trim(),
+          new2fa: String(values[i][9] || '').trim(),
+          expiryDate: String(values[i][10] || '').trim(),
+          staff: String(values[i][11] || '').trim(),
+          notes: String(values[i][12] || '').trim(),
+          status: String(values[i][13] || 'Hoạt động').trim()
+        });
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history})).setMimeType(ContentService.MimeType.JSON);
+    }
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()})).setMimeType(ContentService.MimeType.JSON);
   }

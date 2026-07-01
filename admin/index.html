@@ -1331,10 +1331,10 @@
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
                             <i data-lucide="git-branch" class="w-3.5 h-3.5"></i> Pipeline Thay Fam
                         </button>
-                        <button @click="famRenewView='bulk'; $nextTick(() => { if (window.lucide) window.lucide.createIcons(); })"
-                            :class="famRenewView==='bulk' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                        <button @click="famRenewView='bulk_tool'"
+                            :class="famRenewView==='bulk_tool' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
-                            <i data-lucide="sliders" class="w-3.5 h-3.5"></i> Công cụ Bulk
+                            <i data-lucide="bolt" class="w-3.5 h-3.5"></i> Thay Nhanh & Banned
                         </button>
                     </div>
 
@@ -1999,102 +1999,311 @@
                         </div>
                     </div>
 
-                    <!-- Tab: Công cụ Bulk -->
-                    <div x-show="famRenewView==='bulk'" x-cloak class="space-y-6">
-                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            <!-- Left Column: Settings and Input -->
-                            <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow col-span-1 space-y-5">
-                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                    <i data-lucide="settings" class="w-4 h-4 text-primary"></i> Thiết lập tác vụ hàng loạt
-                                </h3>
-                                
-                                <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Chọn tác vụ</label>
-                                    <select x-model="bulkActionType" 
-                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary font-medium text-gray-700">
-                                        <option value="replace_fam">🔄 Thay Fam mới (Đồng bộ RENEW & KHO_RENEW)</option>
-                                        <option value="mark_banned">🔴 Báo Banned (Cập nhật KHO_RENEW)</option>
-                                        <option value="lookup_rn">🔍 Tra cứu STT FAM (RN ID)</option>
-                                    </select>
-                                </div>
-                                
-                                <div x-show="bulkActionType === 'replace_fam'">
-                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Ngày hết hạn mới (HSD)</label>
-                                    <input type="date" x-model="bulkNewExpiryDate"
-                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary font-medium text-gray-700">
-                                </div>
-                                
-                                <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Danh sách Email (mỗi dòng 1 mail)</label>
-                                    <textarea x-model="bulkEmailsInput" rows="10" placeholder="Paste danh sách email vào đây..."
-                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs font-mono focus:outline-none focus:border-primary text-gray-700 resize-y"></textarea>
-                                </div>
-                                
-                                <button @click="runBulkAction()" :disabled="bulkIsRunning"
-                                    class="w-full bg-primary hover:bg-primary-dark text-white rounded-lg py-2.5 text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2">
-                                    <template x-if="bulkIsRunning">
-                                        <span class="inline-block animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></span>
-                                    </template>
-                                    <template x-if="!bulkIsRunning">
-                                        <i data-lucide="play" class="w-3.5 h-3.5"></i>
-                                    </template>
-                                    <span x-text="bulkIsRunning ? 'Đang xử lý...' : 'Chạy tác vụ'"></span>
-                                </button>
+                    <!-- Tab: Công cụ thay nhanh & Banned -->
+                    <div x-show="famRenewView==='bulk_tool'" class="space-y-6 mb-6" x-cloak>
+                        <!-- KPI Row for Warehouse -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div class="bg-gradient-to-br from-indigo-50 to-indigo-100/50 p-4 rounded-xl border border-indigo-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-indigo-500 font-bold block mb-1">Tổng Kho Renew</span>
+                                <span class="text-2xl font-extrabold text-indigo-700" x-text="khoRenewList.length">0</span>
                             </div>
-                            
-                            <!-- Right Column: Results & Logs -->
-                            <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow lg:col-span-2 space-y-4">
-                                <div class="flex items-center justify-between">
-                                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                        <i data-lucide="list-checks" class="w-4 h-4 text-primary"></i> Kết quả xử lý hàng loạt
-                                    </h3>
-                                    <button x-show="bulkResults.length > 0" @click="bulkResults = []" 
-                                        class="text-xs text-red-500 hover:text-red-700 font-bold transition-all">
-                                        Xóa lịch sử
+                            <div class="bg-gradient-to-br from-emerald-50 to-emerald-100/50 p-4 rounded-xl border border-emerald-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-emerald-600 font-bold block mb-1">Sẵn sàng (Còn Trống)</span>
+                                <span class="text-2xl font-extrabold text-emerald-700" x-text="khoRenewList.filter(c => c.status === 'Sẵn sàng' || !c.status).length">0</span>
+                            </div>
+                            <div class="bg-gradient-to-br from-blue-50 to-blue-100/50 p-4 rounded-xl border border-blue-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-1">Đã dùng (Đang chạy)</span>
+                                <span class="text-2xl font-extrabold text-blue-700" x-text="khoRenewList.filter(c => c.status === 'Đã dùng').length">0</span>
+                            </div>
+                            <div class="bg-gradient-to-br from-red-50 to-red-100/50 p-4 rounded-xl border border-red-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-red-600 font-bold block mb-1">Đã Banned</span>
+                                <span class="text-2xl font-extrabold text-red-700" x-text="khoRenewList.filter(c => c.status === 'Banned').length">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Bulk input and execution panel -->
+                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
+                            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-4">
+                                <i data-lucide="bolt" class="w-4 h-4 text-primary"></i> Nhập danh sách email xử lý hàng loạt
+                            </h3>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div class="lg:col-span-1 space-y-4">
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nhập danh sách email (mỗi dòng hoặc phẩy 1 email)</label>
+                                        <textarea x-model="bulkEmailInput" rows="6" 
+                                            class="w-full text-xs font-medium border border-gray-200 rounded-lg p-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                                            placeholder="email1@gmail.com&#10;email2@gmail.com, email3@gmail.com"></textarea>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Lựa chọn hành động</label>
+                                        <div class="flex gap-4 flex-wrap">
+                                            <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                                                <input type="radio" value="replace" x-model="bulkActionType" class="text-primary focus:ring-primary">
+                                                Thay thế Fam
+                                            </label>
+                                            <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                                                <input type="radio" value="banned" x-model="bulkActionType" class="text-primary focus:ring-primary">
+                                                Đánh dấu Banned
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div x-show="bulkActionType === 'replace'">
+                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cách tính HSD mới</label>
+                                        <div class="flex gap-4 flex-wrap">
+                                            <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                                                <input type="radio" value="accumulate" x-model="expiryCalculationMethod" class="text-primary focus:ring-primary">
+                                                Cộng dồn (+30d từ HSD cũ)
+                                            </label>
+                                            <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                                                <input type="radio" value="today" x-model="expiryCalculationMethod" class="text-primary focus:ring-primary">
+                                                Từ hôm nay (+30d)
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <button @click="analyzeBulkEmails()" 
+                                        class="w-full bg-slate-800 text-white text-xs font-bold py-2.5 px-4 rounded-lg hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-sm">
+                                        <i data-lucide="sparkles" class="w-4 h-4"></i> Phân tích & Đối chiếu
                                     </button>
                                 </div>
-                                
-                                <!-- Empty Results State -->
-                                <div x-show="bulkResults.length === 0" class="text-center py-16 text-gray-400 border border-dashed border-gray-100 rounded-lg">
-                                    <i data-lucide="play-circle" class="w-10 h-10 mx-auto mb-3 opacity-30"></i>
-                                    <p class="text-xs">Kết quả chạy tác vụ hàng loạt sẽ hiển thị tại đây.</p>
+
+                                <div class="lg:col-span-2 space-y-4">
+                                    <div class="border border-gray-150 rounded-xl overflow-hidden">
+                                        <div class="bg-gray-55 px-4 py-3 border-b border-gray-150 flex items-center justify-between">
+                                            <span class="text-xs font-bold text-gray-600">Bảng xem trước & đối chiếu kết quả</span>
+                                            <span class="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold" x-text="`${bulkActionResults.length} dòng`">&nbsp;</span>
+                                        </div>
+
+                                        <div class="overflow-x-auto max-h-[280px]">
+                                            <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                                <thead class="bg-white border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
+                                                    <tr>
+                                                        <th class="px-4 py-2">Email</th>
+                                                        <th class="px-4 py-2">Phân loại</th>
+                                                        <th class="px-4 py-2">HSD hiện tại</th>
+                                                        <th class="px-4 py-2" x-show="bulkActionType === 'replace'">Đề xuất thay thế</th>
+                                                        <th class="px-4 py-2" x-show="bulkActionType === 'replace'">HSD mới</th>
+                                                        <th class="px-4 py-2">Ghi chú hàng</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="divide-y divide-gray-50 bg-white">
+                                                    <template x-for="(row, idx) in bulkActionResults" :key="idx">
+                                                        <tr class="hover:bg-slate-50/50 transition-colors">
+                                                            <td class="px-4 py-2 font-bold text-gray-800" x-text="row.email"></td>
+                                                            <td class="px-4 py-2">
+                                                                <template x-if="row.foundIn === 'BOTH'">
+                                                                    <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-150 text-[10px] font-bold">Cả 2 bảng</span>
+                                                                </template>
+                                                                <template x-if="row.foundIn === 'RENEW'">
+                                                                    <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-150 text-[10px] font-bold">Active (RENEW)</span>
+                                                                </template>
+                                                                <template x-if="row.foundIn === 'KHO_RENEW'">
+                                                                    <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-150 text-[10px] font-bold">Kho (KHO_RENEW)</span>
+                                                                </template>
+                                                                <template x-if="row.foundIn === 'NOT_FOUND'">
+                                                                    <span class="bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-150 text-[10px] font-bold">Không tìm thấy</span>
+                                                                </template>
+                                                            </td>
+                                                            <td class="px-4 py-2">
+                                                                <div x-text="row.oldExpiry || '-'"></div>
+                                                                <template x-if="row.daysRemaining !== null">
+                                                                    <div :class="row.daysRemaining <= 3 ? 'text-red-500 font-bold' : 'text-gray-405'" class="text-[9px]">
+                                                                        <span x-text="row.daysRemaining > 0 ? `Còn ${row.daysRemaining} ngày` : `Quá hạn ${Math.abs(row.daysRemaining)} ngày`"></span>
+                                                                    </div>
+                                                                </template>
+                                                            </td>
+                                                            <td class="px-4 py-2" x-show="bulkActionType === 'replace'">
+                                                                <template x-if="row.stt">
+                                                                    <select :value="row.newFamEmail" @change="updateSelectedBackupEmail(row, $event.target.value)"
+                                                                        class="text-[10px] font-medium border border-gray-250 rounded p-1 focus:outline-none focus:ring-1 focus:ring-primary w-48 bg-white">
+                                                                        <option value="">-- Chọn tài khoản thay thế --</option>
+                                                                        <option :value="row.newFamEmail" x-text="`${row.newFamEmail} (Đề xuất)`" selected></option>
+                                                                        <template x-for="item in khoRenewList.filter(c => c.status === 'Sẵn sàng' || !c.status)" :key="item.email">
+                                                                            <option :value="item.email" x-text="item.email"></option>
+                                                                        </template>
+                                                                    </select>
+                                                                </template>
+                                                                <template x-if="!row.stt">
+                                                                    <span class="text-red-400 italic text-[10px]">Không thể thay thế (Thiếu STT Fam)</span>
+                                                                </template>
+                                                            </td>
+                                                            <td class="px-4 py-2" x-show="bulkActionType === 'replace'">
+                                                                <input type="text" x-model="row.expiryDate" class="w-20 text-[10px] border border-gray-250 rounded p-0.5 text-center focus:outline-none focus:ring-1 focus:ring-primary bg-white">
+                                                            </td>
+                                                            <td class="px-4 py-2">
+                                                                <input type="text" x-model="row.notes" placeholder="Ghi chú thêm..." class="w-full text-[10px] border border-gray-250 rounded p-0.5 focus:outline-none focus:ring-1 focus:ring-primary bg-white">
+                                                            </td>
+                                                        </tr>
+                                                    </template>
+                                                    <template x-if="bulkActionResults.length === 0">
+                                                        <tr>
+                                                            <td colspan="6" class="text-center py-8 text-gray-400 italic">Nhập email và bấm Phân tích để hiển thị kết quả đối chiếu.</td>
+                                                        </tr>
+                                                    </template>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex justify-end gap-3" x-show="bulkActionResults.length > 0">
+                                        <button @click="bulkActionResults = []" 
+                                            class="bg-white border border-gray-200 text-gray-600 text-xs font-bold py-2 px-4 rounded-lg hover:bg-gray-50 transition-all">
+                                            Hủy bỏ
+                                        </button>
+                                        <button @click="executeBulkAction()" :disabled="isExecutingBulkAction"
+                                            :class="bulkActionType === 'banned' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:bg-primary/95'"
+                                            class="text-white text-xs font-bold py-2 px-4 rounded-lg transition-all flex items-center gap-2 shadow-sm">
+                                            <template x-if="isExecutingBulkAction">
+                                                <i class="animate-spin w-4 h-4" data-lucide="loader-2"></i>
+                                            </template>
+                                            <span x-text="bulkActionType === 'banned' ? 'Xác nhận Banned hàng loạt' : 'Xác nhận Thay Fam hàng loạt'"></span>
+                                        </button>
+                                    </div>
                                 </div>
-                                
-                                <!-- Results Table -->
-                                <div x-show="bulkResults.length > 0" class="overflow-x-auto border border-gray-100 rounded-lg" x-cloak>
-                                    <table class="w-full text-xs text-left text-gray-500">
-                                        <thead class="bg-gray-50 text-[10px] text-gray-400 uppercase font-bold">
+                            </div>
+                        </div>
+
+                        <!-- Historical Log of Replacements -->
+                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
+                            <div class="flex items-center justify-between mb-4">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="history" class="w-4 h-4 text-emerald-600"></i> Lịch sử thay thế & Hoàn tác
+                                </h3>
+                                <button @click="fetchReplaceHistory()" :disabled="isFetchingHistory"
+                                    class="text-xs font-bold text-primary hover:underline flex items-center gap-1">
+                                    <i data-lucide="refresh-cw" :class="isFetchingHistory ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại lịch sử
+                                </button>
+                            </div>
+
+                            <div class="border border-gray-150 rounded-xl overflow-hidden">
+                                <div class="overflow-x-auto max-h-[400px]">
+                                    <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                        <thead class="bg-gray-55 border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
                                             <tr>
-                                                <th class="p-3">Email Yêu Cầu</th>
-                                                <th class="p-3">STT FAM</th>
-                                                <th class="p-3">Trạng thái</th>
-                                                <th class="p-3">Chi tiết / Kết quả</th>
+                                                <th class="px-4 py-3">Thời gian</th>
+                                                <th class="px-4 py-3">STT Fam</th>
+                                                <th class="px-4 py-3">Tài khoản cũ</th>
+                                                <th class="px-4 py-3">Tài khoản mới</th>
+                                                <th class="px-4 py-3">HSD Mới</th>
+                                                <th class="px-4 py-3">Người làm</th>
+                                                <th class="px-4 py-3">Ghi chú</th>
+                                                <th class="px-4 py-3 text-center">Trạng thái</th>
+                                                <th class="px-4 py-3 text-right">Thao tác</th>
                                             </tr>
                                         </thead>
-                                        <tbody class="divide-y divide-gray-100">
-                                            <template x-for="(res, idx) in bulkResults" :key="idx">
-                                                <tr class="hover:bg-gray-50 transition-colors">
-                                                    <td class="p-3 font-medium text-gray-700" x-text="res.email"></td>
-                                                    <td class="p-3">
-                                                        <span class="px-2 py-0.5 rounded font-extrabold text-[10px] bg-indigo-50 text-indigo-600" 
-                                                              x-show="res.stt && res.stt !== '-'" x-text="res.stt"></span>
-                                                        <span x-show="!res.stt || res.stt === '-'" class="text-gray-400">-</span>
+                                        <tbody class="divide-y divide-gray-50 bg-white">
+                                            <template x-for="item in replaceHistoryList" :key="item.timestamp + '_' + item.stt">
+                                                <tr class="hover:bg-slate-50/50 transition-colors">
+                                                    <td class="px-4 py-3 text-gray-500 font-bold" x-text="item.timestamp"></td>
+                                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold" x-text="`STT ${item.stt}`"></span>
                                                     </td>
-                                                    <td class="p-3">
-                                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold"
-                                                              :class="{
-                                                                'bg-emerald-50 text-emerald-600': res.status === 'Thành công' || res.status === 'Banned',
-                                                                'bg-red-50 text-red-600': res.status === 'Thất bại',
-                                                                'bg-gray-50 text-gray-600': res.status === '-'
-                                                              }" 
-                                                              x-text="res.status || '-'"></span>
+                                                    <td class="px-4 py-3">
+                                                        <div class="font-bold text-gray-800" x-text="item.oldEmail"></div>
+                                                        <div class="text-[9px] text-gray-400" x-text="`Pass: ${item.oldPass || '-'}`"></div>
                                                     </td>
-                                                    <td class="p-3 text-gray-600 font-medium" x-text="res.message"></td>
+                                                    <td class="px-4 py-3">
+                                                        <div class="font-bold text-emerald-700" x-text="item.newEmail"></div>
+                                                        <div class="text-[9px] text-gray-400">
+                                                            <span x-text="`Pass: ${item.newPass || '-'}`"></span>
+                                                            <template x-if="item.new2fa">
+                                                                <span class="ml-2 bg-emerald-50 text-emerald-600 border border-emerald-100 px-1 rounded font-semibold" x-text="`2FA: ${item.new2fa}`"></span>
+                                                            </template>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-4 py-3 font-bold text-gray-800" x-text="item.expiryDate"></td>
+                                                    <td class="px-4 py-3" x-text="item.staff"></td>
+                                                    <td class="px-4 py-3 text-gray-450 italic" x-text="item.notes || '-'"></td>
+                                                    <td class="px-4 py-3 text-center">
+                                                        <span :class="item.status === 'Đã hoàn tác' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'"
+                                                            class="px-2 py-0.5 rounded border text-[9px] font-bold" x-text="item.status"></span>
+                                                    </td>
+                                                    <td class="px-4 py-3 text-right">
+                                                        <div class="flex items-center justify-end gap-1.5" x-show="item.status !== 'Đã hoàn tác'">
+                                                            <button @click="startEditHistory(item)" 
+                                                                class="text-blue-600 hover:text-blue-800 text-[10px] font-bold flex items-center gap-0.5">
+                                                                <i data-lucide="edit-3" class="w-3 h-3"></i> Sửa
+                                                            </button>
+                                                            <span class="text-gray-300">|</span>
+                                                            <button @click="revertHistoryItem(item)" 
+                                                                class="text-red-600 hover:text-red-800 text-[10px] font-bold flex items-center gap-0.5">
+                                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Hoàn tác
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="replaceHistoryList.length === 0">
+                                                <tr>
+                                                    <td colspan="9" class="text-center py-12 text-gray-400 italic">Không có lịch sử thay thế nào.</td>
                                                 </tr>
                                             </template>
                                         </tbody>
                                     </table>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal: Sửa Lịch Sử Thay Thế -->
+                    <div x-show="showHistoryEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" x-cloak>
+                        <div class="bg-white rounded-2xl w-full max-w-lg overflow-hidden border border-slate-100 card-shadow animate-in fade-in zoom-in-95 duration-150">
+                            <!-- Header -->
+                            <div class="px-6 py-4 bg-slate-50 border-b border-gray-150 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="edit-3" class="w-4 h-4 text-primary"></i> Sửa lịch sử thay thế
+                                </h3>
+                                <button @click="cancelEditHistory()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                                    <i data-lucide="x" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                            <!-- Body -->
+                            <div class="p-6 space-y-4" x-if="editingHistoryRow">
+                                <div class="bg-slate-50 p-3 rounded-lg text-xs space-y-1">
+                                    <div><span class="font-bold text-gray-500">STT Fam:</span> <span class="font-bold text-gray-800" x-text="editingHistoryRow.stt"></span></div>
+                                    <div><span class="font-bold text-gray-500">Tài khoản cũ:</span> <span class="font-medium text-gray-800" x-text="editingHistoryRow.oldEmail"></span></div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Email mới</label>
+                                        <input type="text" x-model="editingHistoryRow.newEmail" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Mật khẩu mới</label>
+                                        <input type="text" x-model="editingHistoryRow.newPass" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">2FA mới</label>
+                                        <input type="text" x-model="editingHistoryRow.new2fa" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Email khôi phục mới</label>
+                                        <input type="text" x-model="editingHistoryRow.newMkp" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Hạn sử dụng mới (HSD)</label>
+                                        <input type="text" x-model="editingHistoryRow.expiryDate" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Ghi chú</label>
+                                        <input type="text" x-model="editingHistoryRow.notes" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Footer -->
+                            <div class="px-6 py-4 bg-gray-50 border-t border-gray-150 flex justify-end gap-3">
+                                <button @click="cancelEditHistory()" class="bg-white border border-gray-200 text-gray-600 text-xs font-bold py-2 px-4 rounded-lg hover:bg-gray-50 transition-all">Hủy</button>
+                                <button @click="saveHistoryEdit()" class="bg-primary text-white text-xs font-bold py-2 px-4 rounded-lg hover:bg-primary/95 transition-all shadow-sm">Lưu thay đổi</button>
                             </div>
                         </div>
                     </div>
@@ -4238,11 +4447,6 @@
                 famRenewShowUrgentOnly: false,
                 famRenewConfirm: { show: false, item: null, newStatus: '', activationDate: '', expiryDate: '', notes: '' },
                 famRenewView: 'requests',
-                bulkEmailsInput: '',
-                bulkActionType: 'replace_fam',
-                bulkNewExpiryDate: '',
-                bulkIsRunning: false,
-                bulkResults: [],
                 famRenewPairings: {},
                 khoRenewList: [],
                 soluongRNList: [],
@@ -4280,6 +4484,17 @@
                 editingKhoStatus: '',
                 editingKhoNotes: '',
                 isSavingKhoItem: false,
+
+                // Bulk Tool & Banned State
+                bulkEmailInput: '',
+                bulkActionType: 'replace',
+                bulkActionResults: [],
+                replaceHistoryList: [],
+                isExecutingBulkAction: false,
+                isFetchingHistory: false,
+                expiryCalculationMethod: 'accumulate',
+                editingHistoryRow: null,
+                showHistoryEditModal: false,
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
                     FAM_RENEW_SHEET_ID: '1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc',
@@ -5235,72 +5450,6 @@
                     }
                 },
 
-                async runBulkAction() {
-                    if (this.bulkIsRunning) return;
-                    if (!this.CONFIG.WEBAPP_URL) {
-                        this.showToast('Lỗi: Chưa cấu hình WEBAPP_URL để xử lý.');
-                        return;
-                    }
-
-                    const rawText = this.bulkEmailsInput || '';
-                    const emailList = rawText.split(/[\n,;]+/)
-                        .map(e => e.trim())
-                        .filter(e => e.length > 0);
-
-                    if (emailList.length === 0) {
-                        this.showToast('Vui lòng nhập danh sách email cần xử lý.');
-                        return;
-                    }
-
-                    let sheetDate = this.bulkNewExpiryDate || '';
-                    if (sheetDate && sheetDate.includes('-')) {
-                        const parts = sheetDate.split('-');
-                        if (parts.length === 3) {
-                            sheetDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                        }
-                    }
-
-                    this.bulkIsRunning = true;
-                    this.bulkResults = [];
-                    this.showToast(`Đang chạy xử lý hàng loạt cho ${emailList.length} email...`);
-
-                    try {
-                        const response = await fetch(this.CONFIG.WEBAPP_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'text/plain' },
-                            body: JSON.stringify({
-                                action: 'bulk_process_emails',
-                                emails: emailList,
-                                subAction: this.bulkActionType,
-                                expiryDate: sheetDate
-                            })
-                        });
-
-                        const text = await response.text();
-                        let resultData;
-                        try {
-                            resultData = JSON.parse(text);
-                        } catch (e) {
-                            this.showToast('Đang chờ Google Sheets cập nhật...');
-                            setTimeout(() => { this.loadFamRenew(); }, 3000);
-                            return;
-                        }
-
-                        if (resultData && resultData.status === 'success') {
-                            this.bulkResults = resultData.results || [];
-                            this.showToast(`✅ Đã xử lý xong ${emailList.length} email!`);
-                            await this.loadFamRenew();
-                        } else {
-                            this.showToast(`Lỗi: ${resultData ? resultData.message : 'Phản hồi không hợp lệ'}`);
-                        }
-                    } catch (err) {
-                        this.showToast(`Lỗi kết nối: ${err.message}`);
-                    } finally {
-                        this.bulkIsRunning = false;
-                        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
-                    }
-                },
-
                 getUniqueKhoRenewDates() {
                     const dates = new Set();
                     this.khoRenewList.forEach(c => {
@@ -5364,7 +5513,300 @@
                     }
                 },
 
-                getNotifTimeDisplay(notif) {
+                // Bulk Replacement & Banned Helpers
+                updateSelectedBackupEmail(row, newEmail) {
+                    row.newFamEmail = newEmail;
+                    const backup = this.khoRenewList.find(c => c.email.toLowerCase() === newEmail.toLowerCase());
+                    if (backup) {
+                        row.newFamPass = backup.pass;
+                        row.newFam2fa = backup.twofa;
+                        row.newFamMkp = backup.recoveryEmail;
+                    } else {
+                        row.newFamPass = '';
+                        row.newFam2fa = '';
+                        row.newFamMkp = '';
+                    }
+                },
+                analyzeBulkEmails() {
+                    if (!this.bulkEmailInput || !this.bulkEmailInput.trim()) {
+                        this.showToast("Vui lòng nhập danh sách email.");
+                        this.bulkActionResults = [];
+                        return;
+                    }
+
+                    const emails = this.bulkEmailInput.split(/[\n,;]+/)
+                        .map(s => s.trim().toLowerCase())
+                        .filter(Boolean);
+
+                    const results = [];
+                    // Lấy tất cả các tài khoản sẵn sàng trong kho
+                    let availableBackup = this.khoRenewList.filter(c => c.status === 'Sẵn sàng' || !c.status);
+                    
+                    // Loại trừ các tài khoản đã được gán cặp chờ xử lý
+                    const pairedEmails = new Set(Object.values(this.famRenewPairings).map(p => (p.nextFamEmail || '').toLowerCase()));
+                    availableBackup = availableBackup.filter(c => !pairedEmails.has(c.email.toLowerCase()));
+
+                    let backupIndex = 0;
+                    const todayObj = new Date();
+                    todayObj.setHours(0,0,0,0);
+
+                    emails.forEach(email => {
+                        const activeMatch = this.famRenewList.find(f => (f.email || '').toLowerCase() === email);
+                        const warehouseMatch = this.khoRenewList.find(c => (c.email || '').toLowerCase() === email);
+
+                        let foundIn = 'NOT_FOUND';
+                        if (activeMatch && warehouseMatch) {
+                            foundIn = 'BOTH';
+                        } else if (activeMatch) {
+                            foundIn = 'RENEW';
+                        } else if (warehouseMatch) {
+                            foundIn = 'KHO_RENEW';
+                        }
+
+                        let currentStatus = '-';
+                        if (activeMatch) currentStatus = activeMatch.status || 'Mới';
+                        else if (warehouseMatch) currentStatus = warehouseMatch.status || 'Sẵn sàng';
+
+                        let stt = activeMatch ? activeMatch.stt : '';
+                        let oldExpiry = activeMatch ? activeMatch.expiryDate : '';
+                        let daysRemaining = null;
+
+                        if (oldExpiry) {
+                            const expDate = this.parseDateDMY(oldExpiry);
+                            if (expDate && expDate.getTime() > 0) {
+                                const diff = expDate.getTime() - todayObj.getTime();
+                                daysRemaining = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                            }
+                        }
+
+                        let targetItem = {
+                            email: email,
+                            foundIn: foundIn,
+                            currentStatus: currentStatus,
+                            stt: stt,
+                            oldExpiry: oldExpiry,
+                            daysRemaining: daysRemaining,
+                            newFamEmail: '',
+                            newFamPass: '',
+                            newFam2fa: '',
+                            newFamMkp: '',
+                            expiryDate: '',
+                            notes: ''
+                        };
+
+                        if (this.bulkActionType === 'replace') {
+                            if (backupIndex < availableBackup.length) {
+                                const backup = availableBackup[backupIndex];
+                                targetItem.newFamEmail = backup.email;
+                                targetItem.newFamPass = backup.pass;
+                                targetItem.newFam2fa = backup.twofa;
+                                targetItem.newFamMkp = backup.recoveryEmail;
+                                backupIndex++;
+                            } else {
+                                targetItem.newFamEmail = 'HẾT ACC SẴN SÀNG';
+                            }
+
+                            // Tính ngày hết hạn mới
+                            let newExpDate = null;
+                            if (this.expiryCalculationMethod === 'accumulate' && oldExpiry) {
+                                const parsedOld = this.parseDateDMY(oldExpiry);
+                                if (parsedOld && parsedOld.getTime() > 0) {
+                                    parsedOld.setDate(parsedOld.getDate() + 30);
+                                    newExpDate = parsedOld;
+                                }
+                            }
+                            if (!newExpDate) {
+                                const t = new Date();
+                                t.setDate(t.getDate() + 30);
+                                newExpDate = t;
+                            }
+                            targetItem.expiryDate = this.formatDateDMY(newExpDate);
+                        }
+
+                        results.push(targetItem);
+                    });
+
+                    this.bulkActionResults = results;
+                    this.showToast(`📊 Đã đối chiếu xong ${results.length} email.`);
+                },
+
+                async executeBulkAction() {
+                    if (this.isExecutingBulkAction) return;
+                    if (this.bulkActionResults.length === 0) {
+                        this.showToast("Chưa có danh sách đối chiếu.");
+                        return;
+                    }
+
+                    this.isExecutingBulkAction = true;
+                    this.showToast("Đang thực hiện yêu cầu lên hệ thống...");
+
+                    try {
+                        if (this.bulkActionType === 'banned') {
+                            const emails = this.bulkActionResults.map(r => r.email);
+                            const notesVal = prompt("Nhập ghi chú cho việc Banned (nếu có):") || "Banned hàng loạt";
+                            
+                            const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    action: 'bulk_mark_banned',
+                                    emails: emails,
+                                    notes: notesVal
+                                })
+                            });
+                            const result = await res.json();
+                            if (result.status === 'success') {
+                                this.showToast(`✅ Đã đánh dấu banned thành công cho ${result.updatedCount} tài khoản!`);
+                                this.bulkEmailInput = '';
+                                this.bulkActionResults = [];
+                                await this.fetchSheetData();
+                            } else {
+                                this.showToast("❌ Lỗi: " + result.message);
+                            }
+                        } else {
+                            // Thay thế Fam mới
+                            const validReps = this.bulkActionResults.filter(r => r.stt && r.newFamEmail && r.newFamEmail !== 'HẾT ACC SẴN SÀNG');
+                            if (validReps.length === 0) {
+                                this.showToast("Không có email nào đủ điều kiện thay thế (cần khớp STT Fam và có Acc sẵn sàng).");
+                                this.isExecutingBulkAction = false;
+                                return;
+                            }
+
+                            const payloadReps = validReps.map(r => ({
+                                stt: r.stt,
+                                oldEmail: r.email,
+                                nextFamEmail: r.newFamEmail,
+                                nextFamPass: r.newFamPass,
+                                nextFamMkp: r.newFamMkp,
+                                nextFam2fa: r.newFam2fa,
+                                expiryDate: r.expiryDate,
+                                notes: r.notes || ''
+                            }));
+
+                            const staffVal = localStorage.getItem('goshop_admin_creds') ? JSON.parse(localStorage.getItem('goshop_admin_creds')).username : 'Admin';
+
+                            const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                    action: 'bulk_replace_fams_with_history',
+                                    replacements: payloadReps,
+                                    staff: staffVal
+                                })
+                            });
+                            const result = await res.json();
+                            if (result.status === 'success') {
+                                this.showToast(`✅ Đã thay thế thành công ${payloadReps.length} Fam!`);
+                                this.bulkEmailInput = '';
+                                this.bulkActionResults = [];
+                                await this.fetchSheetData();
+                            } else {
+                                this.showToast("❌ Lỗi: " + result.message);
+                            }
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.showToast("❌ Lỗi kết nối khi gửi yêu cầu!");
+                    } finally {
+                        this.isExecutingBulkAction = false;
+                    }
+                },
+
+                async fetchReplaceHistory() {
+                    this.isFetchingHistory = true;
+                    try {
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'get_replace_history' })
+                        });
+                        const result = await res.json();
+                        if (result.status === 'success' && result.data) {
+                            this.replaceHistoryList = result.data.reverse();
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch history:", e);
+                    } finally {
+                        this.isFetchingHistory = false;
+                    }
+                },
+
+                async revertHistoryItem(item) {
+                    if (!confirm(`Bạn có chắc chắn muốn hoàn tác (revert) thay thế cho STT ${item.stt}?\nTài khoản sẽ được đổi về: ${item.oldEmail}\nTài khoản mới ${item.newEmail} sẽ được trả về trạng thái Sẵn sàng.`)) {
+                        return;
+                    }
+
+                    this.showToast("Đang thực hiện hoàn tác...");
+                    try {
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'revert_replacement',
+                                timestamp: item.timestamp,
+                                stt: item.stt
+                            })
+                        });
+                        const result = await res.json();
+                        if (result.status === 'success') {
+                            this.showToast("✅ Đã hoàn tác thay thế thành công!");
+                            await this.fetchSheetData();
+                        } else {
+                            this.showToast("❌ Lỗi: " + result.message);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.showToast("❌ Lỗi kết nối!");
+                    }
+                },
+
+                startEditHistory(item) {
+                    this.editingHistoryRow = { ...item };
+                    this.showHistoryEditModal = true;
+                },
+
+                async saveHistoryEdit() {
+                    if (!this.editingHistoryRow) return;
+                    this.showToast("Đang lưu chỉnh sửa lịch sử...");
+                    try {
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'update_history_item',
+                                timestamp: this.editingHistoryRow.timestamp,
+                                stt: this.editingHistoryRow.stt,
+                                newEmail: this.editingHistoryRow.newEmail,
+                                newPass: this.editingHistoryRow.newPass,
+                                newMkp: this.editingHistoryRow.newMkp,
+                                new2fa: this.editingHistoryRow.new2fa,
+                                expiryDate: this.editingHistoryRow.expiryDate,
+                                notes: this.editingHistoryRow.notes
+                            })
+                        });
+                        const result = await res.json();
+                        if (result.status === 'success') {
+                            this.showToast("✅ Đã cập nhật thành công!");
+                            this.editingHistoryRow = null;
+                            this.showHistoryEditModal = false;
+                            await this.fetchSheetData();
+                        } else {
+                            this.showToast("❌ Lỗi: " + result.message);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.showToast("❌ Lỗi kết nối!");
+                    }
+                },
+
+                cancelEditHistory() {
+                    this.editingHistoryRow = null;
+                    this.showHistoryEditModal = false;
+                },
+
+                formatDateDMY(dateObj) {
+                    const d = String(dateObj.getDate()).padStart(2, '0');
+                    const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+                    const y = dateObj.getFullYear();
+                    return `${d}/${m}/${y}`;
+                },
+ 
+                 getNotifTimeDisplay(notif) {
                     if (!notif.timestamp) return notif.time || 'N/A';
                     
                     const notifDate = new Date(notif.timestamp);
@@ -7439,6 +7881,7 @@
                         }
 
                         this.mapData();
+                        await this.fetchReplaceHistory();
                     } catch (error) {
                         console.error('Error fetching sheet data:', error);
                     } finally {
