@@ -1331,6 +1331,11 @@
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
                             <i data-lucide="git-branch" class="w-3.5 h-3.5"></i> Pipeline Thay Fam
                         </button>
+                        <button @click="famRenewView='bulk'; $nextTick(() => { if (window.lucide) window.lucide.createIcons(); })"
+                            :class="famRenewView==='bulk' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
+                            <i data-lucide="sliders" class="w-3.5 h-3.5"></i> Công cụ Bulk
+                        </button>
                     </div>
 
                     <!-- Tab: Yêu cầu Fam -->
@@ -1991,6 +1996,106 @@
                                     <p class="text-sm">Không có Fam FULL nào đang hoạt động.</p>
                                 </div>
                             </template>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Công cụ Bulk -->
+                    <div x-show="famRenewView==='bulk'" x-cloak class="space-y-6">
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <!-- Left Column: Settings and Input -->
+                            <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow col-span-1 space-y-5">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="settings" class="w-4 h-4 text-primary"></i> Thiết lập tác vụ hàng loạt
+                                </h3>
+                                
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Chọn tác vụ</label>
+                                    <select x-model="bulkActionType" 
+                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary font-medium text-gray-700">
+                                        <option value="replace_fam">🔄 Thay Fam mới (Đồng bộ RENEW & KHO_RENEW)</option>
+                                        <option value="mark_banned">🔴 Báo Banned (Cập nhật KHO_RENEW)</option>
+                                        <option value="lookup_rn">🔍 Tra cứu STT FAM (RN ID)</option>
+                                    </select>
+                                </div>
+                                
+                                <div x-show="bulkActionType === 'replace_fam'">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Ngày hết hạn mới (HSD)</label>
+                                    <input type="date" x-model="bulkNewExpiryDate"
+                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary font-medium text-gray-700">
+                                </div>
+                                
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Danh sách Email (mỗi dòng 1 mail)</label>
+                                    <textarea x-model="bulkEmailsInput" rows="10" placeholder="Paste danh sách email vào đây..."
+                                        class="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs font-mono focus:outline-none focus:border-primary text-gray-700 resize-y"></textarea>
+                                </div>
+                                
+                                <button @click="runBulkAction()" :disabled="bulkIsRunning"
+                                    class="w-full bg-primary hover:bg-primary-dark text-white rounded-lg py-2.5 text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2">
+                                    <template x-if="bulkIsRunning">
+                                        <span class="inline-block animate-spin rounded-full h-3.5 w-3.5 border-2 border-white border-t-transparent"></span>
+                                    </template>
+                                    <template x-if="!bulkIsRunning">
+                                        <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                                    </template>
+                                    <span x-text="bulkIsRunning ? 'Đang xử lý...' : 'Chạy tác vụ'"></span>
+                                </button>
+                            </div>
+                            
+                            <!-- Right Column: Results & Logs -->
+                            <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow lg:col-span-2 space-y-4">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                        <i data-lucide="list-checks" class="w-4 h-4 text-primary"></i> Kết quả xử lý hàng loạt
+                                    </h3>
+                                    <button x-show="bulkResults.length > 0" @click="bulkResults = []" 
+                                        class="text-xs text-red-500 hover:text-red-700 font-bold transition-all">
+                                        Xóa lịch sử
+                                    </button>
+                                </div>
+                                
+                                <!-- Empty Results State -->
+                                <div x-show="bulkResults.length === 0" class="text-center py-16 text-gray-400 border border-dashed border-gray-100 rounded-lg">
+                                    <i data-lucide="play-circle" class="w-10 h-10 mx-auto mb-3 opacity-30"></i>
+                                    <p class="text-xs">Kết quả chạy tác vụ hàng loạt sẽ hiển thị tại đây.</p>
+                                </div>
+                                
+                                <!-- Results Table -->
+                                <div x-show="bulkResults.length > 0" class="overflow-x-auto border border-gray-100 rounded-lg" x-cloak>
+                                    <table class="w-full text-xs text-left text-gray-500">
+                                        <thead class="bg-gray-50 text-[10px] text-gray-400 uppercase font-bold">
+                                            <tr>
+                                                <th class="p-3">Email Yêu Cầu</th>
+                                                <th class="p-3">STT FAM</th>
+                                                <th class="p-3">Trạng thái</th>
+                                                <th class="p-3">Chi tiết / Kết quả</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-100">
+                                            <template x-for="(res, idx) in bulkResults" :key="idx">
+                                                <tr class="hover:bg-gray-50 transition-colors">
+                                                    <td class="p-3 font-medium text-gray-700" x-text="res.email"></td>
+                                                    <td class="p-3">
+                                                        <span class="px-2 py-0.5 rounded font-extrabold text-[10px] bg-indigo-50 text-indigo-600" 
+                                                              x-show="res.stt && res.stt !== '-'" x-text="res.stt"></span>
+                                                        <span x-show="!res.stt || res.stt === '-'" class="text-gray-400">-</span>
+                                                    </td>
+                                                    <td class="p-3">
+                                                        <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                                                              :class="{
+                                                                'bg-emerald-50 text-emerald-600': res.status === 'Thành công' || res.status === 'Banned',
+                                                                'bg-red-50 text-red-600': res.status === 'Thất bại',
+                                                                'bg-gray-50 text-gray-600': res.status === '-'
+                                                              }" 
+                                                              x-text="res.status || '-'"></span>
+                                                    </td>
+                                                    <td class="p-3 text-gray-600 font-medium" x-text="res.message"></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -4133,6 +4238,11 @@
                 famRenewShowUrgentOnly: false,
                 famRenewConfirm: { show: false, item: null, newStatus: '', activationDate: '', expiryDate: '', notes: '' },
                 famRenewView: 'requests',
+                bulkEmailsInput: '',
+                bulkActionType: 'replace_fam',
+                bulkNewExpiryDate: '',
+                bulkIsRunning: false,
+                bulkResults: [],
                 famRenewPairings: {},
                 khoRenewList: [],
                 soluongRNList: [],
@@ -5122,6 +5232,72 @@
                         this.showToast(`Lỗi khi cập nhật tài khoản: ${e.message}`);
                     } finally {
                         this.isSavingKhoItem = false;
+                    }
+                },
+
+                async runBulkAction() {
+                    if (this.bulkIsRunning) return;
+                    if (!this.CONFIG.WEBAPP_URL) {
+                        this.showToast('Lỗi: Chưa cấu hình WEBAPP_URL để xử lý.');
+                        return;
+                    }
+
+                    const rawText = this.bulkEmailsInput || '';
+                    const emailList = rawText.split(/[\n,;]+/)
+                        .map(e => e.trim())
+                        .filter(e => e.length > 0);
+
+                    if (emailList.length === 0) {
+                        this.showToast('Vui lòng nhập danh sách email cần xử lý.');
+                        return;
+                    }
+
+                    let sheetDate = this.bulkNewExpiryDate || '';
+                    if (sheetDate && sheetDate.includes('-')) {
+                        const parts = sheetDate.split('-');
+                        if (parts.length === 3) {
+                            sheetDate = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        }
+                    }
+
+                    this.bulkIsRunning = true;
+                    this.bulkResults = [];
+                    this.showToast(`Đang chạy xử lý hàng loạt cho ${emailList.length} email...`);
+
+                    try {
+                        const response = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({
+                                action: 'bulk_process_emails',
+                                emails: emailList,
+                                subAction: this.bulkActionType,
+                                expiryDate: sheetDate
+                            })
+                        });
+
+                        const text = await response.text();
+                        let resultData;
+                        try {
+                            resultData = JSON.parse(text);
+                        } catch (e) {
+                            this.showToast('Đang chờ Google Sheets cập nhật...');
+                            setTimeout(() => { this.loadFamRenew(); }, 3000);
+                            return;
+                        }
+
+                        if (resultData && resultData.status === 'success') {
+                            this.bulkResults = resultData.results || [];
+                            this.showToast(`✅ Đã xử lý xong ${emailList.length} email!`);
+                            await this.loadFamRenew();
+                        } else {
+                            this.showToast(`Lỗi: ${resultData ? resultData.message : 'Phản hồi không hợp lệ'}`);
+                        }
+                    } catch (err) {
+                        this.showToast(`Lỗi kết nối: ${err.message}`);
+                    } finally {
+                        this.bulkIsRunning = false;
+                        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
                     }
                 },
 
