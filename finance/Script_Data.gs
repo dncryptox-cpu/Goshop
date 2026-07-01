@@ -719,7 +719,10 @@ function doPost(e) {
       
       var replacements = data.replacements || [];
       var staff = data.staff || 'Admin';
-      var timestamp = new Date().toLocaleString('vi-VN');
+      if (String(staff).trim().toLowerCase() === 'goshop1') {
+        staff = 'Lộc';
+      }
+      var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
       
       if (frSheet && khoRenewSheet && replacements.length > 0) {
         var renewRange = frSheet.getDataRange();
@@ -761,7 +764,7 @@ function doPost(e) {
               oldMkp = String(renewValues[j][mkpColNum - 1] || '');
               old2fa = String(renewValues[j][twofaColNum - 1] || '');
               
-              var autoNote = "Thay từ " + oldEmail + " ngày " + timestamp.split(' ')[1];
+              var autoNote = "Thay từ " + oldEmail + " ngày " + timestamp.split(' ')[0];
               var finalNotes = autoNote + (notes ? " - " + notes : "");
               
               updateRenewModifiedRow(frSs, stt, {
@@ -783,7 +786,8 @@ function doPost(e) {
           for (var k = 1; k < khoValues.length; k++) {
             if (String(khoValues[k][0]).trim().toLowerCase() === nextEmail.toLowerCase()) {
               khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng"); // Cột G
-              khoRenewSheet.getRange(k + 1, 8).setValue(stt);       // Cột H (FamFollow)
+              khoRenewSheet.getRange(k + 1, 8).setValue(stt);       // Cột H (FamFollow / FAM HIỆN TẠI)
+              khoRenewSheet.getRange(k + 1, 9).setValue(notes);     // Cột I (Ghi chú)
               break;
             }
           }
@@ -793,7 +797,8 @@ function doPost(e) {
             for (var k = 1; k < khoValues.length; k++) {
               if (String(khoValues[k][0]).trim().toLowerCase() === oldEmail.toLowerCase()) {
                 khoRenewSheet.getRange(k + 1, 7).setValue("Đã dùng"); // Cột G
-                khoRenewSheet.getRange(k + 1, 9).setValue("Thay thế bằng " + nextEmail); // Cột I
+                khoRenewSheet.getRange(k + 1, 8).setValue("");         // Cột H (FamFollow / FAM HIỆN TẠI) - Clear it
+                khoRenewSheet.getRange(k + 1, 9).setValue("Thay thế bằng " + nextEmail + (notes ? " - " + notes : "")); // Cột I (Ghi chú)
                 break;
               }
             }
@@ -825,7 +830,8 @@ function doPost(e) {
         var record = null;
         
         for (var i = 1; i < historyValues.length; i++) {
-          if (String(historyValues[i][0]).trim() === timestamp && String(historyValues[i][1]).trim() === stt) {
+          var rowTime = formatCellDateTime(historyValues[i][0]);
+          if (rowTime === timestamp && String(historyValues[i][1]).trim() === stt) {
             histRowIdx = i + 1;
             record = {
               oldEmail: String(historyValues[i][2]).trim(),
@@ -904,7 +910,8 @@ function doPost(e) {
         var histRowIdx = -1;
         
         for (var i = 1; i < historyValues.length; i++) {
-          if (String(historyValues[i][0]).trim() === timestamp && String(historyValues[i][1]).trim() === stt) {
+          var rowTime = formatCellDateTime(historyValues[i][0]);
+          if (rowTime === timestamp && String(historyValues[i][1]).trim() === stt) {
             histRowIdx = i + 1;
             break;
           }
@@ -991,7 +998,7 @@ function doPost(e) {
       
       for (var i = 1; i < values.length; i++) {
         history.push({
-          timestamp: String(values[i][0] || '').trim(),
+          timestamp: formatCellDateTime(values[i][0]),
           stt: String(values[i][1] || '').trim(),
           oldEmail: String(values[i][2] || '').trim(),
           oldPass: String(values[i][3] || '').trim(),
@@ -1001,7 +1008,7 @@ function doPost(e) {
           newPass: String(values[i][7] || '').trim(),
           newMkp: String(values[i][8] || '').trim(),
           new2fa: String(values[i][9] || '').trim(),
-          expiryDate: String(values[i][10] || '').trim(),
+          expiryDate: formatCellDate(values[i][10]),
           staff: String(values[i][11] || '').trim(),
           notes: String(values[i][12] || '').trim(),
           status: String(values[i][13] || 'Hoạt động').trim()
@@ -1403,4 +1410,20 @@ function updateRenewModifiedRow(ss, stt, updatedData) {
     modSheet.appendRow(rowValues);
   }
   return true;
+}
+
+function formatCellDate(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, "GMT+7", "dd/MM/yyyy");
+  }
+  return String(val).trim();
+}
+
+function formatCellDateTime(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, "GMT+7", "dd/MM/yyyy HH:mm:ss");
+  }
+  return String(val).trim();
 }
