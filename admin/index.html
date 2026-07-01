@@ -1316,6 +1316,11 @@
 
                     <!-- View Toggle -->
                     <div class="flex gap-2 mb-4">
+                        <button @click="famRenewView='bulk_tool'"
+                            :class="famRenewView==='bulk_tool' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
+                            <i data-lucide="bolt" class="w-3.5 h-3.5"></i> Thay Nhanh & Banned
+                        </button>
                         <button @click="famRenewView='requests'"
                             :class="famRenewView==='requests' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
@@ -1330,11 +1335,6 @@
                             :class="famRenewView==='pipeline' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
                             <i data-lucide="git-branch" class="w-3.5 h-3.5"></i> Pipeline Thay Fam
-                        </button>
-                        <button @click="famRenewView='bulk_tool'"
-                            :class="famRenewView==='bulk_tool' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
-                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
-                            <i data-lucide="bolt" class="w-3.5 h-3.5"></i> Thay Nhanh & Banned
                         </button>
                     </div>
 
@@ -2005,7 +2005,7 @@
                     <!-- Tab: Công cụ thay nhanh & Banned -->
                     <div x-show="famRenewView==='bulk_tool'" class="space-y-6 mb-6" x-cloak>
                         <!-- KPI Row for Warehouse -->
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
                             <div class="bg-gradient-to-br from-indigo-50 to-indigo-100/50 p-4 rounded-xl border border-indigo-100 card-shadow">
                                 <span class="text-[10px] uppercase tracking-wider text-indigo-500 font-bold block mb-1">Tổng Kho Renew</span>
                                 <span class="text-2xl font-extrabold text-indigo-700" x-text="khoRenewList.length">0</span>
@@ -2017,6 +2017,10 @@
                             <div class="bg-gradient-to-br from-blue-50 to-blue-100/50 p-4 rounded-xl border border-blue-100 card-shadow">
                                 <span class="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-1">Đã dùng (Đang chạy)</span>
                                 <span class="text-2xl font-extrabold text-blue-700" x-text="khoRenewList.filter(c => c.status === 'Đã dùng').length">0</span>
+                            </div>
+                            <div class="bg-gradient-to-br from-amber-50 to-amber-100/50 p-4 rounded-xl border border-amber-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-amber-600 font-bold block mb-1">Các Fam Lỗi</span>
+                                <span class="text-2xl font-extrabold text-amber-700" x-text="khoRenewList.filter(c => ['Chưa sẵn sàng', 'Ver lần 1', 'Ver lần 2', 'ko có Trail', 'Ver khi chưa dùng', 'Lỗi Pay'].includes(c.status)).length">0</span>
                             </div>
                             <div class="bg-gradient-to-br from-red-50 to-red-100/50 p-4 rounded-xl border border-red-100 card-shadow">
                                 <span class="text-[10px] uppercase tracking-wider text-red-600 font-bold block mb-1">Đã Banned</span>
@@ -4486,7 +4490,7 @@
                 famRenewFilterStatus: 'all',
                 famRenewShowUrgentOnly: false,
                 famRenewConfirm: { show: false, item: null, newStatus: '', activationDate: '', expiryDate: '', notes: '' },
-                famRenewView: 'requests',
+                famRenewView: 'bulk_tool',
                 famRenewPairings: {},
                 khoRenewList: [],
                 soluongRNList: [],
@@ -7345,6 +7349,18 @@
                     if (this.isLoggedIn && !this.isModuleAllowed(this.activeModule)) {
                         this.activeModule = 'dashboard';
                     }
+                    const initialHash = window.location.hash.replace('#', '');
+                    if (initialHash && this.isModuleAllowed(initialHash)) {
+                        this.activeModule = initialHash;
+                    } else if (!window.location.hash && this.activeModule) {
+                        window.location.hash = this.activeModule;
+                    }
+                    window.addEventListener('hashchange', () => {
+                        const newHash = window.location.hash.replace('#', '');
+                        if (newHash && this.isModuleAllowed(newHash) && this.activeModule !== newHash) {
+                            this.activeModule = newHash;
+                        }
+                    });
                     this.loadTwofaData();
                     this.loadPromoCodes();
                     this.loadOrders();
@@ -7362,6 +7378,10 @@
                     this.$watch('activeModule', (val) => {
                         if (!this.isModuleAllowed(val)) {
                             this.activeModule = 'dashboard';
+                            val = 'dashboard';
+                        }
+                        if (window.location.hash.replace('#', '') !== val) {
+                            window.location.hash = val;
                         }
                         this.$nextTick(() => lucide.createIcons());
                     });
