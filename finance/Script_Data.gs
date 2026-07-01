@@ -1329,6 +1329,7 @@ function syncFamHienTaiToKhoRenew() {
   }
   
   var updatedFamHienTaiValues = [];
+  var updatedStatusValues = [];
   var isModified = false;
   
   for (var i = 1; i < khoValues.length; i++) {
@@ -1338,16 +1339,34 @@ function syncFamHienTaiToKhoRenew() {
     var currentFamValue = String(khoValues[i][khoFamHienTaiIndex] || '').trim();
     var mappedFamValue = cleanEmail ? (emailToFamMap[cleanEmail] || '') : '';
     
-    if (currentFamValue !== mappedFamValue) {
+    var currentStatus = String(khoValues[i][6] || '').trim(); // Cột G (index 6, tức cột 7)
+    var mappedStatus = currentStatus;
+    
+    if (mappedFamValue) {
+      if (currentStatus !== "Banned" && currentStatus !== "Đã dùng") {
+        mappedStatus = "Đã dùng";
+      }
+    } else {
+      if (currentStatus === "Đã dùng") {
+        mappedStatus = "Sẵn sàng";
+      }
+    }
+    
+    if (currentFamValue !== mappedFamValue || currentStatus !== mappedStatus) {
       isModified = true;
     }
+    
     updatedFamHienTaiValues.push([mappedFamValue]);
+    updatedStatusValues.push([mappedStatus]);
   }
   
-  // 3. Ghi đè hàng loạt vào cột FAM HIỆN TẠI nếu có thay đổi
+  // 3. Ghi đè hàng loạt vào cột FAM HIỆN TẠI và TRẠNG THÁI nếu có thay đổi
   if (isModified && updatedFamHienTaiValues.length > 0) {
-    var writeRange = khoRenewSheet.getRange(2, khoFamHienTaiIndex + 1, updatedFamHienTaiValues.length, 1);
-    writeRange.setValues(updatedFamHienTaiValues);
+    var writeRangeFam = khoRenewSheet.getRange(2, khoFamHienTaiIndex + 1, updatedFamHienTaiValues.length, 1);
+    writeRangeFam.setValues(updatedFamHienTaiValues);
+    
+    var writeRangeStatus = khoRenewSheet.getRange(2, 7, updatedStatusValues.length, 1); // Cột G (cột 7)
+    writeRangeStatus.setValues(updatedStatusValues);
   }
 }
 
