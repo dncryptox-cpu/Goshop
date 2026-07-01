@@ -652,6 +652,14 @@ function doPost(e) {
       if (data.famFollow !== undefined) {
         khoRenewSheet.getRange(foundRowIndex, 8).setValue(String(data.famFollow).trim()); // Column H
       }
+      if (data.notes !== undefined) {
+        // Ghi chú lỗi ở cột I (cột 9)
+        var headerCell = khoRenewSheet.getRange(1, 9);
+        if (headerCell.getValue() === "") {
+          headerCell.setValue("Ghi chú").setFontWeight("bold");
+        }
+        khoRenewSheet.getRange(foundRowIndex, 9).setValue(String(data.notes).trim());
+      }
       
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
@@ -788,4 +796,59 @@ function base32Decode(base32) {
     }
   }
   return output;
+}
+
+// 15. Hàm Trigger onEdit tự động note ghi chú khi đổi trạng thái lỗi ở cột G (sheet KHO_RENEW)
+function onEdit(e) {
+  if (!e) return;
+  
+  var lock = LockService.getDocumentLock();
+  try {
+    // Chờ tối đa 5 giây để lấy khóa chống ghi đè đồng thời
+    if (lock.tryLock(5000)) {
+      var range = e.range;
+      var sheet = range.getSheet();
+      var sheetName = sheet.getName();
+      var row = range.getRow();
+      var col = range.getColumn();
+      
+      // Bỏ qua dòng tiêu đề (dòng 1)
+      if (row === 1) return;
+      
+      // Chỉ chạy trên sheet KHO_RENEW và cột G (cột 7)
+      if (sheetName === "KHO_RENEW" && col === 7) {
+        var newValue = String(e.value || '').trim();
+        
+        // Các trạng thái bình thường (không cần note lý do lỗi)
+        var normalStatuses = ["sẵn sàng", "đã dùng", "đã ghép", ""];
+        var isError = normalStatuses.indexOf(newValue.toLowerCase()) === -1;
+        
+        if (isError) {
+          // Hiển thị hộp thoại Input Box nhập lý do lỗi trực tiếp trên Google Sheets
+          var note = Browser.inputBox(
+            "⚠️ Trạng thái đặc biệt: " + newValue,
+            "Nhập lý do lỗi hoặc ghi chú cho tài khoản này (hoặc Cancel):",
+            Browser.Buttons.OK_CANCEL
+          );
+          
+          if (note !== "cancel" && note.trim() !== "") {
+            // Kiểm tra cột I (cột 9) xem đã có tiêu đề "Ghi chú" chưa
+            var headerCell = sheet.getRange(1, 9);
+            if (headerCell.getValue() === "") {
+              headerCell.setValue("Ghi chú").setFontWeight("bold");
+            }
+            // Ghi nội dung note vào cột I (cột 9)
+            sheet.getRange(row, 9).setValue(note.trim());
+          }
+        } else {
+          // Nếu chuyển về Sẵn sàng/Đã dùng hoặc xóa trạng thái -> Tự động xóa ghi chú cũ ở cột I
+          sheet.getRange(row, 9).setValue("");
+        }
+      }
+    }
+  } catch (error) {
+    Logger.log("Lỗi trong onEdit: " + error.toString());
+  } finally {
+    lock.releaseLock();
+  }
 }

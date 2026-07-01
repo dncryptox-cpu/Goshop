@@ -1517,12 +1517,13 @@
                                                 <th class="p-3">Ngày Renew</th>
                                                 <th class="p-3">Ngày Nhập</th>
                                                 <th class="p-3">Trạng thái</th>
+                                                <th class="p-3">Ghi chú</th>
                                                 <th class="p-3">Fam Hiện Tại</th>
                                                 <th class="p-3 text-right">Thao tác</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <template x-for="c in sortedKhoRenewList().filter(c => !khoRenewSearchQuery || c.email.toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.status || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.famFollow || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()))" :key="c.email">
+                                            <template x-for="c in sortedKhoRenewList().filter(c => !khoRenewSearchQuery || c.email.toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.status || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.famFollow || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.notes || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()))" :key="c.email">
                                                 <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors" :class="editingKhoEmail === c.email ? 'bg-blue-50/30' : ''">
                                                     <!-- Email (Không sửa) -->
                                                     <td class="p-3 font-medium text-gray-700 cursor-pointer hover:text-primary" 
@@ -1579,6 +1580,19 @@
                                                         <template x-if="editingKhoEmail !== c.email">
                                                             <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-sm inline-block" 
                                                                 :class="getKhoStatusBadgeClass(c.status)" x-text="c.status || 'Sẵn sàng'"></span>
+                                                        </template>
+                                                    </td>
+                                                    
+                                                    <!-- Ghi chú (Sửa được) -->
+                                                    <td class="p-3 text-gray-500">
+                                                        <template x-if="editingKhoEmail === c.email">
+                                                            <input type="text" x-model="editingKhoNotes" placeholder="Nhập ghi chú lỗi..." 
+                                                                class="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-primary text-gray-800">
+                                                        </template>
+                                                        <template x-if="editingKhoEmail !== c.email">
+                                                            <span class="cursor-pointer hover:text-primary max-w-[150px] truncate block" 
+                                                                  :title="c.notes || '-'"
+                                                                  @click="copyToClipboard(c.notes, 'Ghi chú')" x-text="c.notes || '-'"></span>
                                                         </template>
                                                     </td>
                                                     
@@ -4139,6 +4153,7 @@
                 editingKhoTwofa: '',
                 editingKhoRenewDate: '',
                 editingKhoStatus: '',
+                editingKhoNotes: '',
                 isSavingKhoItem: false,
                 CONFIG: {
                     SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
@@ -5017,6 +5032,7 @@
                     }
                     this.editingKhoRenewDate = inputDate;
                     this.editingKhoStatus = c.status || 'Sẵn sàng';
+                    this.editingKhoNotes = c.notes || '';
                 },
 
                 cancelEditKho() {
@@ -5024,18 +5040,29 @@
                     this.editingKhoTwofa = '';
                     this.editingKhoRenewDate = '';
                     this.editingKhoStatus = '';
+                    this.editingKhoNotes = '';
                 },
 
                 async saveKhoItem(c) {
                     if (this.isSavingKhoItem) return;
 
-                    // Auto status transition to Sẵn sàng if Email, Pass, MKP, and 2FA are all filled
                     const emailVal = String(c.email || '').trim();
                     const passVal = String(c.pass || '').trim();
                     const mkpVal = String(c.recoveryEmail || '').trim();
                     const twofaVal = String(this.editingKhoTwofa || '').trim();
 
-                    if (emailVal && passVal && mkpVal && twofaVal) {
+                    const errorStatuses = ['Chưa sẵn sàng', 'Ver lần 1', 'Ver lần 2', 'Banned', 'ko có Trail', 'Ver khi chưa dùng'];
+
+                    // Prompt for notes if an error/special status is chosen and notes are empty
+                    if (errorStatuses.includes(this.editingKhoStatus) && !this.editingKhoNotes.trim()) {
+                        const noteVal = prompt(`⚠️ Bạn đã chọn trạng thái lỗi/đặc biệt "${this.editingKhoStatus}".\nVui lòng nhập lý do hoặc ghi chú cụ thể:`);
+                        if (noteVal !== null && noteVal.trim()) {
+                            this.editingKhoNotes = noteVal.trim();
+                        }
+                    }
+
+                    // Auto status transition to Sẵn sàng if Email, Pass, MKP, and 2FA are all filled and status is not an error status
+                    if (emailVal && passVal && mkpVal && twofaVal && !errorStatuses.includes(this.editingKhoStatus)) {
                         this.editingKhoStatus = 'Sẵn sàng';
                     }
 
@@ -5061,7 +5088,8 @@
                                 email: c.email,
                                 twofa: this.editingKhoTwofa,
                                 renewDate: sheetDate,
-                                status: this.editingKhoStatus
+                                status: this.editingKhoStatus,
+                                notes: this.editingKhoNotes
                             })
                         });
                         
@@ -5069,6 +5097,7 @@
                         c.twofa = this.editingKhoTwofa;
                         c.renewDate = sheetDate;
                         c.status = this.editingKhoStatus;
+                        c.notes = this.editingKhoNotes;
                         
                         this.showToast(`✅ Đã cập nhật thành công!`);
                         this.cancelEditKho();
@@ -7134,6 +7163,7 @@
                                         const kImportDate = keys.find(k => k.toLowerCase().includes('nhập')) || keys[5];
                                         const kStatus = keys.find(k => k.toLowerCase().includes('trạng thái') || k.toLowerCase().includes('status')) || keys[6];
                                         const kFamFollow = keys.find(k => k.toLowerCase().includes('famfollow') || k.toLowerCase().includes('follow')) || keys[7];
+                                        const kNotes = keys.find(k => k.toLowerCase().includes('ghi chú') || k.toLowerCase().includes('note') || k.toLowerCase().includes('notes')) || keys[8];
 
                                         return {
                                             email: String(row[kEmail] || '').trim(),
@@ -7143,7 +7173,8 @@
                                             renewDate: String(row[kRenewDate] || '').trim(),
                                             importDate: String(row[kImportDate] || '').trim(),
                                             status: String(row[kStatus] || 'Sẵn sàng').trim(),
-                                            famFollow: String(row[kFamFollow] || '').trim()
+                                            famFollow: String(row[kFamFollow] || '').trim(),
+                                            notes: String(row[kNotes] || '').trim()
                                         };
                                     }).filter(item => item && item.email);
                                 }
