@@ -1019,6 +1019,75 @@ function doPost(e) {
       
       return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history})).setMimeType(ContentService.MimeType.JSON);
     }
+
+    // 20. Bulk Update Status
+    if (action === 'bulk_update_status') {
+      var emails = data.emails || [];
+      var newStatus = String(data.status || 'Banned').trim();
+      var notes = data.notes || '';
+      var staff = data.staff || 'Admin';
+      if (String(staff).trim().toLowerCase() === 'goshop1') {
+        staff = 'Lộc';
+      }
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      
+      var modSheet = frSs.getSheetByName("RENEW_MODIFIED");
+      var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      
+      var emailMap = {};
+      emails.forEach(function(email) {
+        emailMap[String(email).trim().toLowerCase()] = true;
+      });
+      
+      var updatedCount = 0;
+      
+      if (frSheet) {
+        var targetSheet = modSheet || frSheet;
+        var sheetName = frSheet.getName();
+        var emailColIndex = (sheetName === 'RENEW') ? 3 : 4;  // Cột D (index 3) vs Cột E (index 4)
+        var sttColIndex   = (sheetName === 'RENEW') ? 1 : 2;  // Cột B (index 1) vs Cột C (index 2)
+        
+        var dataRange = targetSheet.getDataRange();
+        var values = dataRange.getValues();
+        
+        for (var i = 1; i < values.length; i++) {
+          var currentEmail = String(values[i][emailColIndex] || '').trim().toLowerCase();
+          if (emailMap[currentEmail]) {
+            var stt = String(values[i][sttColIndex] || '').trim();
+            if (stt) {
+              var oldNotes = String(values[i][(sheetName === 'RENEW') ? 8 : 9] || '').trim();
+              var finalNotes = (oldNotes ? oldNotes + " - " : "") + (notes || (newStatus + " hàng loạt"));
+              updateRenewModifiedRow(frSs, stt, {
+                status: newStatus,
+                notes: finalNotes
+              });
+            }
+            updatedCount++;
+          }
+        }
+      }
+      
+      if (khoRenewSheet) {
+        var dataRange = khoRenewSheet.getDataRange();
+        var values = dataRange.getValues();
+        
+        for (var j = 1; j < values.length; j++) {
+          var currentEmail = String(values[j][0] || '').trim().toLowerCase();
+          if (emailMap[currentEmail]) {
+            khoRenewSheet.getRange(j + 1, 7).setValue(newStatus); // Cột G: Trạng thái
+            if (notes) {
+              khoRenewSheet.getRange(j + 1, 9).setValue(notes); // Cột I: Ghi chú
+            }
+            khoRenewSheet.getRange(j + 1, 10).setValue(staff); // Cột J: Người làm
+            updatedCount++;
+          }
+        }
+      }
+      
+      syncFamHienTaiToKhoRenew();
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', updatedCount: updatedCount})).setMimeType(ContentService.MimeType.JSON);
+    }
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()})).setMimeType(ContentService.MimeType.JSON);
   }

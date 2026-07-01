@@ -2059,15 +2059,26 @@
 
                                     <div>
                                         <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Lựa chọn hành động</label>
-                                        <div class="flex gap-4 flex-wrap">
+                                        <div class="flex gap-4 flex-wrap items-center">
                                             <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
                                                 <input type="radio" value="replace" x-model="bulkActionType" class="text-primary focus:ring-primary">
                                                 Thay thế Fam
                                             </label>
                                             <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
-                                                <input type="radio" value="banned" x-model="bulkActionType" class="text-primary focus:ring-primary">
-                                                Đánh dấu Banned
+                                                <input type="radio" value="status" x-model="bulkActionType" class="text-primary focus:ring-primary">
+                                                Cập nhật Trạng thái:
                                             </label>
+                                            <select x-show="bulkActionType === 'status'" x-model="bulkStatusTarget"
+                                                class="text-xs font-bold border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary bg-white text-gray-700">
+                                                <option value="Banned">Banned</option>
+                                                <option value="Ver lần 1">Ver lần 1</option>
+                                                <option value="Ver lần 2">Ver lần 2</option>
+                                                <option value="ko có Trail">ko có Trail</option>
+                                                <option value="Ver khi chưa dùng">Ver khi chưa dùng</option>
+                                                <option value="Chưa sẵn sàng">Chưa sẵn sàng</option>
+                                                <option value="Sẵn sàng">Sẵn sàng</option>
+                                                <option value="Đã dùng">Đã dùng</option>
+                                            </select>
                                         </div>
                                     </div>
 
@@ -2181,12 +2192,12 @@
                                             Hủy bỏ
                                         </button>
                                         <button @click="executeBulkAction()" :disabled="isExecutingBulkAction"
-                                            :class="bulkActionType === 'banned' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:bg-primary/95'"
+                                            :class="(bulkActionType === 'banned' || bulkActionType === 'status') ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:bg-primary/95'"
                                             class="text-white text-xs font-bold py-2 px-4 rounded-lg transition-all flex items-center gap-2 shadow-sm">
                                             <template x-if="isExecutingBulkAction">
                                                 <i class="animate-spin w-4 h-4" data-lucide="loader-2"></i>
                                             </template>
-                                            <span x-text="bulkActionType === 'banned' ? 'Xác nhận Banned hàng loạt' : 'Xác nhận Thay Fam hàng loạt'"></span>
+                                            <span x-text="(bulkActionType === 'banned' || bulkActionType === 'status') ? 'Xác nhận Cập nhật Trạng thái' : 'Xác nhận Thay Fam hàng loạt'"></span>
                                         </button>
                                     </div>
                                 </div>
@@ -4516,6 +4527,7 @@
                 selectedBulkRenewDate: '',
                 bulkEmailInput: '',
                 bulkActionType: 'replace',
+                bulkStatusTarget: 'Banned',
                 bulkActionResults: [],
                 replaceHistoryList: [],
                 isExecutingBulkAction: false,
@@ -5692,21 +5704,32 @@
                     this.showToast("Đang thực hiện yêu cầu lên hệ thống...");
 
                     try {
-                        if (this.bulkActionType === 'banned') {
+                        if (this.bulkActionType === 'status' || this.bulkActionType === 'banned') {
                             const emails = this.bulkActionResults.map(r => r.email);
-                            const notesVal = prompt("Nhập ghi chú cho việc Banned (nếu có):") || "Banned hàng loạt";
+                            const targetStatus = this.bulkActionType === 'banned' ? 'Banned' : this.bulkStatusTarget;
+                            const notesVal = prompt(`Nhập ghi chú cho việc cập nhật Trạng thái sang "${targetStatus}" (nếu có):`) || `${targetStatus} hàng loạt`;
                             
+                            let staffVal = localStorage.getItem('goshop_admin_logged_username');
+                            if (!staffVal) {
+                                staffVal = (this.currentUserRole === 'staff') ? 'goshop1' : 'Admin';
+                            }
+                            if (staffVal.toLowerCase() === 'goshop1') {
+                                staffVal = 'Lộc';
+                            }
+
                             const res = await fetch(this.CONFIG.WEBAPP_URL, {
                                 method: 'POST',
                                 body: JSON.stringify({
-                                    action: 'bulk_mark_banned',
+                                    action: 'bulk_update_status',
                                     emails: emails,
-                                    notes: notesVal
+                                    status: targetStatus,
+                                    notes: notesVal,
+                                    staff: staffVal
                                 })
                             });
                             const result = await res.json();
                             if (result.status === 'success') {
-                                this.showToast(`✅ Đã đánh dấu banned thành công cho ${result.updatedCount} tài khoản!`);
+                                this.showToast(`✅ Đã cập nhật trạng thái "${targetStatus}" thành công cho ${result.updatedCount} tài khoản!`);
                                 this.bulkEmailInput = '';
                                 this.bulkActionResults = [];
                                 await this.fetchSheetData();
