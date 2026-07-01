@@ -2220,19 +2220,35 @@
                             </div>
                         </div>
 
-                        <!-- Historical Log of Replacements -->
-                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
-                            <div class="flex items-center justify-between mb-4">
-                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
-                                    <i data-lucide="history" class="w-4 h-4 text-emerald-600"></i> Lịch sử thay thế & Hoàn tác
-                                </h3>
-                                <button @click="fetchReplaceHistory()" :disabled="isFetchingHistory"
-                                    class="text-xs font-bold text-primary hover:underline flex items-center gap-1">
-                                    <i data-lucide="refresh-cw" :class="isFetchingHistory ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại lịch sử
-                                </button>
+                        <!-- Historical Log of Replacements & Status Updates -->
+                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow" x-data="{ historyTab: 'replace' }">
+                            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
+                                <div class="flex items-center gap-2 border-b border-gray-150 pb-1">
+                                    <button @click="historyTab = 'replace'" :class="historyTab === 'replace' ? 'text-emerald-600 border-b-2 border-emerald-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="pb-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="history" class="w-4 h-4"></i> Lịch sử Thay thế & Hoàn tác
+                                    </button>
+                                    <button @click="historyTab = 'status'; if(statusHistoryList.length === 0) fetchStatusHistory();" :class="historyTab === 'status' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="pb-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="activity" class="w-4 h-4"></i> Lịch sử Cập nhật Trạng thái
+                                    </button>
+                                </div>
+                                <div>
+                                    <template x-if="historyTab === 'replace'">
+                                        <button @click="fetchReplaceHistory()" :disabled="isFetchingHistory"
+                                            class="text-xs font-bold text-primary hover:underline flex items-center gap-1">
+                                            <i data-lucide="refresh-cw" :class="isFetchingHistory ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại lịch sử thay thế
+                                        </button>
+                                    </template>
+                                    <template x-if="historyTab === 'status'">
+                                        <button @click="fetchStatusHistory()" :disabled="isFetchingStatusHistory"
+                                            class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+                                            <i data-lucide="refresh-cw" :class="isFetchingStatusHistory ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại lịch sử trạng thái
+                                        </button>
+                                    </template>
+                                </div>
                             </div>
 
-                            <div class="border border-gray-150 rounded-xl overflow-hidden">
+                            <!-- Table 1: Lịch sử thay thế -->
+                            <div class="border border-gray-150 rounded-xl overflow-hidden" x-show="historyTab === 'replace'">
                                 <div class="overflow-x-auto max-h-[400px]">
                                     <table class="w-full text-left text-[11px] font-medium text-gray-500">
                                         <thead class="bg-gray-55 border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
@@ -2293,6 +2309,46 @@
                                             <template x-if="replaceHistoryList.length === 0">
                                                 <tr>
                                                     <td colspan="9" class="text-center py-12 text-gray-400 italic">Không có lịch sử thay thế nào.</td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Table 2: Lịch sử trạng thái -->
+                            <div class="border border-gray-150 rounded-xl overflow-hidden" x-show="historyTab === 'status'">
+                                <div class="overflow-x-auto max-h-[400px]">
+                                    <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                        <thead class="bg-gray-55 border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
+                                            <tr>
+                                                <th class="px-4 py-3">Thời gian</th>
+                                                <th class="px-4 py-3">STT Fam</th>
+                                                <th class="px-4 py-3">Tài khoản</th>
+                                                <th class="px-4 py-3">Trạng thái cập nhật</th>
+                                                <th class="px-4 py-3">Người làm</th>
+                                                <th class="px-4 py-3">Ghi chú</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-50 bg-white">
+                                            <template x-for="item in statusHistoryList" :key="item.timestamp + '_' + item.email + '_' + item.status">
+                                                <tr class="hover:bg-slate-50/50 transition-colors">
+                                                    <td class="px-4 py-3 text-gray-500 font-bold" x-text="item.timestamp"></td>
+                                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold" x-text="`STT ${item.stt || '-'}`"></span>
+                                                    </td>
+                                                    <td class="px-4 py-3 font-bold text-gray-800" x-text="item.email"></td>
+                                                    <td class="px-4 py-3">
+                                                        <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-sm inline-block" 
+                                                            :class="getKhoStatusBadgeClass(item.status)" x-text="item.status"></span>
+                                                    </td>
+                                                    <td class="px-4 py-3 font-semibold text-gray-700" x-text="item.staff"></td>
+                                                    <td class="px-4 py-3 text-gray-450 italic" x-text="item.notes || '-'"></td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="statusHistoryList.length === 0">
+                                                <tr>
+                                                    <td colspan="6" class="text-center py-12 text-gray-400 italic">Không có lịch sử cập nhật trạng thái nào.</td>
                                                 </tr>
                                             </template>
                                         </tbody>
