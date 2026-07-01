@@ -984,6 +984,34 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Lỗi cập nhật lịch sử.'})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 18.1 Get Status History
+    if (action === 'get_status_history') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var statusSheet = frSs.getSheetByName("STATUS_HISTORY");
+      if (!statusSheet) {
+        statusSheet = frSs.insertSheet("STATUS_HISTORY");
+        statusSheet.appendRow(["Thời Gian", "STT FAM", "Email", "Trạng Thái Mới", "Người Thực Hiện", "Ghi Chú"]);
+        statusSheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#f3f3f3");
+      }
+      
+      var dataRange = statusSheet.getDataRange();
+      var values = dataRange.getValues();
+      var history = [];
+      
+      for (var i = 1; i < values.length; i++) {
+        history.push({
+          timestamp: formatCellDateTime(values[i][0]),
+          stt: String(values[i][1] || '').trim(),
+          email: String(values[i][2] || '').trim(),
+          status: String(values[i][3] || '').trim(),
+          staff: String(values[i][4] || '').trim(),
+          notes: String(values[i][5] || '').trim()
+        });
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history})).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 19. Get Replace History
     if (action === 'get_replace_history') {
       var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
@@ -1035,11 +1063,11 @@ function doPost(e) {
       var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
       var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
       
-      var historySheet = frSs.getSheetByName("REPLACE_HISTORY");
-      if (!historySheet) {
-        historySheet = frSs.insertSheet("REPLACE_HISTORY");
-        historySheet.appendRow(["Thời Gian", "STT FAM", "Email Cũ", "Pass Cũ", "MKP Cũ", "2FA Cũ", "Email Mới", "Mật Khẩu Mới", "MKP Mới", "2FA Mới", "HSD Mới", "Người Thực Hiện", "Ghi Chú", "Trạng Thái"]);
-        historySheet.getRange(1, 1, 1, 14).setFontWeight("bold").setBackground("#f3f3f3");
+      var statusHistorySheet = frSs.getSheetByName("STATUS_HISTORY");
+      if (!statusHistorySheet) {
+        statusHistorySheet = frSs.insertSheet("STATUS_HISTORY");
+        statusHistorySheet.appendRow(["Thời Gian", "STT FAM", "Email", "Trạng Thái Mới", "Người Thực Hiện", "Ghi Chú"]);
+        statusHistorySheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#f3f3f3");
       }
       var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
       
@@ -1075,7 +1103,7 @@ function doPost(e) {
               });
             }
             if (!loggedEmails[currentEmail]) {
-              historySheet.appendRow([timestamp, stt || "", currentEmail, "", "", "", "[Cập nhật trạng thái]", "", "", "", "", staff, finalNotes || notes || (newStatus + " hàng loạt"), newStatus]);
+              statusHistorySheet.appendRow([timestamp, stt || "", currentEmail, newStatus, staff, finalNotes || notes || (newStatus + " hàng loạt")]);
               loggedEmails[currentEmail] = true;
             }
             updatedCount++;
@@ -1097,7 +1125,7 @@ function doPost(e) {
             khoRenewSheet.getRange(j + 1, 10).setValue(staff); // Cột J: Người làm
             if (!loggedEmails[currentEmail]) {
               var sttVal = sttMap[currentEmail] || String(values[j][7] || '').trim(); // Cột H: Fam hiện tại
-              historySheet.appendRow([timestamp, sttVal || "", currentEmail, "", "", "", "[Cập nhật trạng thái]", "", "", "", "", staff, notes || (newStatus + " hàng loạt"), newStatus]);
+              statusHistorySheet.appendRow([timestamp, sttVal || "", currentEmail, newStatus, staff, notes || (newStatus + " hàng loạt")]);
               loggedEmails[currentEmail] = true;
             }
             updatedCount++;
