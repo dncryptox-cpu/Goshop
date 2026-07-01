@@ -1035,12 +1035,22 @@ function doPost(e) {
       var frSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
       var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
       
+      var historySheet = frSs.getSheetByName("REPLACE_HISTORY");
+      if (!historySheet) {
+        historySheet = frSs.insertSheet("REPLACE_HISTORY");
+        historySheet.appendRow(["Thời Gian", "STT FAM", "Email Cũ", "Pass Cũ", "MKP Cũ", "2FA Cũ", "Email Mới", "Mật Khẩu Mới", "MKP Mới", "2FA Mới", "HSD Mới", "Người Thực Hiện", "Ghi Chú", "Trạng Thái"]);
+        historySheet.getRange(1, 1, 1, 14).setFontWeight("bold").setBackground("#f3f3f3");
+      }
+      var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
+      
       var emailMap = {};
       emails.forEach(function(email) {
         emailMap[String(email).trim().toLowerCase()] = true;
       });
       
       var updatedCount = 0;
+      var sttMap = {};
+      var loggedEmails = {};
       
       if (frSheet) {
         var targetSheet = modSheet || frSheet;
@@ -1055,6 +1065,7 @@ function doPost(e) {
           var currentEmail = String(values[i][emailColIndex] || '').trim().toLowerCase();
           if (emailMap[currentEmail]) {
             var stt = String(values[i][sttColIndex] || '').trim();
+            sttMap[currentEmail] = stt;
             if (stt) {
               var oldNotes = String(values[i][(sheetName === 'RENEW') ? 8 : 9] || '').trim();
               var finalNotes = (oldNotes ? oldNotes + " - " : "") + (notes || (newStatus + " hàng loạt"));
@@ -1062,6 +1073,10 @@ function doPost(e) {
                 status: newStatus,
                 notes: finalNotes
               });
+            }
+            if (!loggedEmails[currentEmail]) {
+              historySheet.appendRow([timestamp, stt || "", currentEmail, "", "", "", "[Cập nhật trạng thái]", "", "", "", "", staff, finalNotes || notes || (newStatus + " hàng loạt"), newStatus]);
+              loggedEmails[currentEmail] = true;
             }
             updatedCount++;
           }
@@ -1080,6 +1095,11 @@ function doPost(e) {
               khoRenewSheet.getRange(j + 1, 9).setValue(notes); // Cột I: Ghi chú
             }
             khoRenewSheet.getRange(j + 1, 10).setValue(staff); // Cột J: Người làm
+            if (!loggedEmails[currentEmail]) {
+              var sttVal = sttMap[currentEmail] || String(values[j][7] || '').trim(); // Cột H: Fam hiện tại
+              historySheet.appendRow([timestamp, sttVal || "", currentEmail, "", "", "", "[Cập nhật trạng thái]", "", "", "", "", staff, notes || (newStatus + " hàng loạt"), newStatus]);
+              loggedEmails[currentEmail] = true;
+            }
             updatedCount++;
           }
         }
