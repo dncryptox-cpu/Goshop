@@ -307,6 +307,9 @@ function doPost(e) {
             break;
           }
         }
+        
+        // Đồng bộ Fam hiện tại sang Kho
+        syncFamHienTaiToKhoRenew();
       }
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
@@ -385,6 +388,9 @@ function doPost(e) {
             pairingSheet.deleteRow(pairingRowIdx);
           }
         }
+        
+        // Đồng bộ Fam hiện tại sang Kho
+        syncFamHienTaiToKhoRenew();
       }
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
@@ -443,6 +449,9 @@ function doPost(e) {
             }
           }
         }
+        
+        // Đồng bộ Fam hiện tại sang Kho
+        syncFamHienTaiToKhoRenew();
       }
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
@@ -665,6 +674,9 @@ function doPost(e) {
         khoRenewSheet.getRange(foundRowIndex, 9).setValue(String(data.notes).trim());
       }
       
+      // Đồng bộ Fam hiện tại sang Kho
+      syncFamHienTaiToKhoRenew();
+      
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -816,6 +828,11 @@ function onEdit(e) {
       var row = range.getRow();
       var col = range.getColumn();
       
+      // Tự động đối chiếu đồng bộ FAM HIỆN TẠI (Cột H của KHO_RENEW) từ RENEW
+      if (sheetName === "KHO_RENEW" || sheetName === "RENEW" || sheetName === "FAMRENEW") {
+        syncFamHienTaiToKhoRenew();
+      }
+      
       // Bỏ qua dòng tiêu đề (dòng 1)
       if (row === 1) return;
       
@@ -854,5 +871,98 @@ function onEdit(e) {
     Logger.log("Lỗi trong onEdit: " + error.toString());
   } finally {
     lock.releaseLock();
+  }
+}
+
+// 16. Hàm tự động đối chiếu KHO_RENEW sang RENEW để lấy STT FAM điền vào FAM HIỆN TẠI (Cột H / Cột 8)
+function syncFamHienTaiToKhoRenew() {
+  var ss = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+  var renewSheet = ss.getSheetByName("RENEW") || ss.getSheetByName("FAMRENEW");
+  var khoRenewSheet = ss.getSheetByName("KHO_RENEW");
+  
+  if (!renewSheet || !khoRenewSheet) return;
+  
+  // 1. Đọc dữ liệu từ sheet RENEW
+  var renewRange = renewSheet.getDataRange();
+  var renewValues = renewRange.getValues();
+  var renewHeaders = renewValues[0];
+  
+  // Tìm cột STT FAM và Email/StockRenew ở sheet RENEW
+  var kSttIndex = -1;
+  var kEmailIndex = -1;
+  for (var c = 0; c < renewHeaders.length; c++) {
+    var h = String(renewHeaders[c]).toLowerCase();
+    if (h.includes('stt') || h.includes('fam')) {
+      kSttIndex = c;
+    }
+    if (h.includes('email') || h.includes('stock') || h.includes('renew')) {
+      kEmailIndex = c;
+    }
+  }
+  
+  // Nếu không tìm thấy cột thì dùng index mặc định
+  if (kSttIndex === -1) kSttIndex = 1; // Cột B
+  if (kEmailIndex === -1) kEmailIndex = 3; // Cột D
+  
+  // Tạo map từ email sang STT FAM
+  var emailToFamMap = {};
+  for (var i = 1; i < renewValues.length; i++) {
+    var rawEmail = String(renewValues[i][kEmailIndex] || '').trim().toLowerCase();
+    var sttFam = String(renewValues[i][kSttIndex] || '').trim();
+    if (rawEmail) {
+      // Chuẩn hóa email: bỏ phần @gmail.com nếu có để đối chiếu chính xác
+      var cleanEmail = rawEmail.replace(/@gmail\.com$/, '');
+      if (cleanEmail) {
+        emailToFamMap[cleanEmail] = sttFam;
+      }
+    }
+  }
+  
+  // 2. Đọc dữ liệu từ sheet KHO_RENEW
+  var khoRange = khoRenewSheet.getDataRange();
+  var khoValues = khoRange.getValues();
+  var khoHeaders = khoValues[0];
+  
+  // Tìm cột Email và cột FAM HIỆN TẠI ở sheet KHO_RENEW
+  var khoEmailIndex = -1;
+  var khoFamHienTaiIndex = -1;
+  for (var c = 0; c < khoHeaders.length; c++) {
+    var h = String(khoHeaders[c]).toLowerCase();
+    if (h.includes('email') || h.includes('mail')) {
+      khoEmailIndex = c;
+    }
+    if (h.includes('fam hiện tại') || h.includes('fam hien tai') || h.includes('famfollow')) {
+      khoFamHienTaiIndex = c;
+    }
+  }
+  
+  // Nếu không tìm thấy cột thì dùng index mặc định
+  if (khoEmailIndex === -1) khoEmailIndex = 0; // Cột A
+  if (khoFamHienTaiIndex === -1) {
+    // Nếu chưa có cột FAM HIỆN TẠI, ta tự tạo tiêu đề ở cột H (index 7, cột 8)
+    khoFamHienTaiIndex = 7;
+    khoRenewSheet.getRange(1, 8).setValue("FAM HIỆN TẠI").setFontWeight("bold");
+  }
+  
+  var updatedFamHienTaiValues = [];
+  var isModified = false;
+  
+  for (var i = 1; i < khoValues.length; i++) {
+    var rawEmail = String(khoValues[i][khoEmailIndex] || '').trim().toLowerCase();
+    var cleanEmail = rawEmail.replace(/@gmail\.com$/, '');
+    
+    var currentFamValue = String(khoValues[i][khoFamHienTaiIndex] || '').trim();
+    var mappedFamValue = cleanEmail ? (emailToFamMap[cleanEmail] || '') : '';
+    
+    if (currentFamValue !== mappedFamValue) {
+      isModified = true;
+    }
+    updatedFamHienTaiValues.push([mappedFamValue]);
+  }
+  
+  // 3. Ghi đè hàng loạt vào cột FAM HIỆN TẠI nếu có thay đổi
+  if (isModified && updatedFamHienTaiValues.length > 0) {
+    var writeRange = khoRenewSheet.getRange(2, khoFamHienTaiIndex + 1, updatedFamHienTaiValues.length, 1);
+    writeRange.setValues(updatedFamHienTaiValues);
   }
 }
