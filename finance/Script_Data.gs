@@ -1243,9 +1243,11 @@ function doPost(e) {
       var history = [];
       
       for (var i = 1; i < values.length; i++) {
+        var rnVal = String(values[i][1] || '').trim();
+        if (!rnVal || rnVal.toLowerCase() === 'stt fam' || rnVal.toLowerCase() === 'stt' || rnVal.toLowerCase() === 'định danh rn' || rnVal.toLowerCase() === 'slot' || rnVal === 'N/A') continue;
         history.push({
           timestamp: formatCellDateTime(values[i][0]),
-          rn: String(values[i][1] || '').trim(),
+          rn: rnVal,
           eventType: String(values[i][2] || '').trim(),
           oldEmail: String(values[i][3] || '').trim(),
           newEmail: String(values[i][4] || '').trim(),
@@ -1261,8 +1263,8 @@ function doPost(e) {
       var renewList = [];
       if (renewSheet) {
         var rVals = renewSheet.getDataRange().getValues();
-        if (rVals.length > 1) {
-          var rHeaders = rVals[0];
+        if (rVals.length > 2) {
+          var rHeaders = rVals[1]; // Dòng 2 (index 1) là dòng tên cột thực sự
           var sttColIdx = -1;
           var emailColIdx = -1;
           var statColIdx = -1;
@@ -1279,9 +1281,9 @@ function doPost(e) {
           if (statColIdx === -1) statColIdx = 2;   // Cột C
           if (expColIdx === -1) expColIdx = 7;     // Cột H
           
-          for (var r = 1; r < rVals.length; r++) {
+          for (var r = 2; r < rVals.length; r++) { // Bỏ qua 2 dòng trên (dòng 0 là note "7", dòng 1 là tiêu đề)
             var sttVal = String(rVals[r][sttColIdx] || '').trim();
-            if (sttVal) {
+            if (sttVal && sttVal.toLowerCase() !== 'stt fam' && sttVal.toLowerCase() !== 'stt' && sttVal.toLowerCase() !== 'slot') {
               renewList.push({
                 rn: sttVal,
                 email: String(rVals[r][emailColIdx] || '').trim(),
@@ -1318,7 +1320,7 @@ function doPost(e) {
         for (var r = 0; r < repVals.length; r++) {
           var ts = formatCellDateTime(repVals[r][0]);
           var stt = String(repVals[r][1] || '').trim();
-          if (stt) {
+          if (stt && stt.toLowerCase() !== 'stt fam' && stt.toLowerCase() !== 'stt' && stt.toLowerCase() !== 'slot') {
             var rawTs = 0;
             try {
               var parts = ts.split(' ');
@@ -1352,7 +1354,7 @@ function doPost(e) {
           var tsStat = formatCellDateTime(statVals[s][0]);
           var sttStat = String(statVals[s][1] || '').trim();
           var emailStat = String(statVals[s][2] || '').trim();
-          if (sttStat || emailStat) {
+          if ((sttStat || emailStat) && sttStat.toLowerCase() !== 'stt fam' && sttStat.toLowerCase() !== 'stt') {
             var rawTsStat = 0;
             try {
               var partsS = tsStat.split(' ');
@@ -1622,10 +1624,11 @@ function syncFamHienTaiToKhoRenew() {
   
   // Tạo map từ email sang STT FAM
   var emailToFamMap = {};
-  for (var i = 1; i < renewValues.length; i++) {
+  var startRowRenew = (targetSheet.getName() === 'RENEW' || targetSheet.getName() === 'FAMRENEW') ? 2 : 1;
+  for (var i = startRowRenew; i < renewValues.length; i++) {
     var rawEmail = String(renewValues[i][kEmailIndex] || '').trim().toLowerCase();
     var sttFam = String(renewValues[i][kSttIndex] || '').trim();
-    if (rawEmail) {
+    if (rawEmail && sttFam && sttFam.toLowerCase() !== 'stt fam' && sttFam.toLowerCase() !== 'stt') {
       // Chuẩn hóa email: bỏ phần @gmail.com nếu có để đối chiếu chính xác
       var cleanEmail = rawEmail.replace(/@gmail\.com$/, '');
       if (cleanEmail) {
@@ -1728,7 +1731,7 @@ function trackRenewEmailChanges(ss) {
     var renewValues = renewSheet.getDataRange().getValues();
     if (renewValues.length <= 1) return;
     
-    var headers = renewValues[0];
+    var headers = renewValues.length > 1 ? renewValues[1] : renewValues[0];
     var sttCol = -1;
     var emailCol = -1;
     for (var c = 0; c < headers.length; c++) {
@@ -1749,12 +1752,15 @@ function trackRenewEmailChanges(ss) {
     
     var trackValues = trackingSheet.getDataRange().getValues();
     var latestEmailInHistory = {};
+    var rowsToDelete = [];
     
     for (var i = 1; i < trackValues.length; i++) {
       var rnKey = String(trackValues[i][1] || '').trim();
       var newEmail = String(trackValues[i][4] || '').trim();
       var oldEmail = String(trackValues[i][3] || '').trim();
-      if (rnKey) {
+      if (rnKey.toLowerCase() === 'stt fam' || rnKey.toLowerCase() === 'stt' || rnKey.toLowerCase() === 'định danh rn' || rnKey.toLowerCase() === 'slot') {
+        rowsToDelete.push(i + 1);
+      } else if (rnKey) {
         if (newEmail) {
           latestEmailInHistory[rnKey] = newEmail.toLowerCase();
         } else if (oldEmail) {
@@ -1763,13 +1769,18 @@ function trackRenewEmailChanges(ss) {
       }
     }
     
+    // Tự động dọn dẹp các dòng tiêu đề bị ghi nhầm vào sheet KIEM_SOAT_RN
+    for (var d = rowsToDelete.length - 1; d >= 0; d--) {
+      try { trackingSheet.deleteRow(rowsToDelete[d]); } catch(err) {}
+    }
+    
     var newLogs = [];
     var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
     
-    for (var r = 1; r < renewValues.length; r++) {
+    for (var r = 2; r < renewValues.length; r++) { // Bỏ qua 2 dòng trên (dòng 0 note "7", dòng 1 tiêu đề)
       var stt = String(renewValues[r][sttCol] || '').trim();
       var currentEmail = String(renewValues[r][emailCol] || '').trim();
-      if (stt && currentEmail) {
+      if (stt && currentEmail && stt.toLowerCase() !== 'stt fam' && stt.toLowerCase() !== 'stt' && stt.toLowerCase() !== 'slot') {
         var cleanCurrent = currentEmail.toLowerCase();
         var recordedLatest = latestEmailInHistory[stt];
         
@@ -1830,9 +1841,10 @@ function updateRenewModifiedRow(ss, stt, updatedData) {
   var renewValues = renewSheet.getDataRange().getValues();
   var modValues = modSheet.getDataRange().getValues();
   
+  var hdRow = renewValues.length > 1 ? renewValues[1] : renewValues[0];
   var sttColIdxRenew = -1;
-  for (var c = 0; c < renewValues[0].length; c++) {
-    var h = String(renewValues[0][c]).toLowerCase();
+  for (var c = 0; c < hdRow.length; c++) {
+    var h = String(hdRow[c]).toLowerCase();
     if (h.includes('stt') || h.includes('fam')) {
       sttColIdxRenew = c;
       break;
@@ -1842,7 +1854,7 @@ function updateRenewModifiedRow(ss, stt, updatedData) {
   
   // Find original row in RENEW
   var originalRow = null;
-  for (var i = 1; i < renewValues.length; i++) {
+  for (var i = 2; i < renewValues.length; i++) {
     if (String(renewValues[i][sttColIdxRenew]).trim() === stt) {
       originalRow = renewValues[i];
       break;
