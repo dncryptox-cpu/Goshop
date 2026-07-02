@@ -366,6 +366,7 @@ function doPost(e) {
           if (pairingRowIdx !== -1) {
             pairingSheet.deleteRow(pairingRowIdx);
           }
+          logToKiemSoatRN(frSs, stt, "Thay mới tài khoản (từ PAIRINGS)", "", pairedInfo.nextFamEmail, "Đang dùng", expiryDate, "Admin", "Ghép từ PAIRINGS");
         }
         
         // Đồng bộ Fam hiện tại sang Kho
@@ -409,6 +410,7 @@ function doPost(e) {
               break;
             }
           }
+          logToKiemSoatRN(frSs, stt, "Thay mới tài khoản (từ Yêu Cầu)", "", nextEmail, "Đang dùng", expiryDate, "Admin", "Xử lý yêu cầu renew");
         }
         
         // Đồng bộ Fam hiện tại sang Kho
@@ -678,6 +680,7 @@ function doPost(e) {
                 status: "Banned",
                 notes: finalNotes
               });
+              logToKiemSoatRN(frSs, stt, "Cập nhật trạng thái", currentEmail, currentEmail, "Banned", "", "Admin", finalNotes || "Banned");
             }
             updatedCount++;
           }
@@ -808,6 +811,7 @@ function doPost(e) {
           
           // 4. Ghi lịch sử vào REPLACE_HISTORY
           historySheet.appendRow([timestamp, stt, oldEmail, oldPass, oldMkp, old2fa, nextEmail, nextPass, nextMkp, next2fa, expiryDate, staff, notes, "Hoạt động"]);
+          logToKiemSoatRN(frSs, stt, "Thay mới tài khoản", oldEmail, nextEmail, "Đang dùng", expiryDate, staff, notes || ("Thay từ " + oldEmail + " sang " + nextEmail));
         }
         
         syncFamHienTaiToKhoRenew();
@@ -881,6 +885,7 @@ function doPost(e) {
           
           // 3. Cập nhật trạng thái lịch sử
           historySheet.getRange(histRowIdx, 14).setValue("Đã hoàn tác");
+          logToKiemSoatRN(frSs, stt, "Hoàn tác thay thế", record.newEmail, record.oldEmail, "Đang dùng", "", "Admin", "Hoàn tác về " + record.oldEmail);
           
           syncFamHienTaiToKhoRenew();
           return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
@@ -1126,6 +1131,7 @@ function doPost(e) {
             if (!loggedEmails[currentEmail]) {
               var sttVal = sttMap[currentEmail] || String(values[j][7] || '').trim(); // Cột H: Fam hiện tại
               statusHistorySheet.appendRow([timestamp, sttVal || "", currentEmail, newStatus, staff, notes || (newStatus + " hàng loạt")]);
+              logToKiemSoatRN(frSs, sttVal || "", "Cập nhật trạng thái", currentEmail, currentEmail, newStatus, "", staff, notes || (newStatus + " hàng loạt"));
               loggedEmails[currentEmail] = true;
             }
             updatedCount++;
@@ -1135,6 +1141,211 @@ function doPost(e) {
       
       syncFamHienTaiToKhoRenew();
       return ContentService.createTextOutput(JSON.stringify({status: 'success', updatedCount: updatedCount})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 21. Get Kiem Soat RN (Hệ thống kiểm soát định danh RN - Nhật ký & Timeline)
+    if (action === 'get_kiem_soat_rn') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var trackingSheet = frSs.getSheetByName("KIEM_SOAT_RN");
+      
+      if (!trackingSheet) {
+        trackingSheet = frSs.insertSheet("KIEM_SOAT_RN");
+        trackingSheet.appendRow(["Thời Gian", "Định Danh RN", "Sự Kiện", "Email Cũ", "Email Mới", "Trạng Thái", "HSD", "Người Thực Hiện", "Ghi Chú Chi Tiết"]);
+        trackingSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#e0e7ff").setFontColor("#1e1b4b");
+        trackingSheet.setFrozenRows(1);
+      }
+      
+      // Nếu sheet mới tạo hoặc chỉ có dòng tiêu đề, tiến hành tự động migration dữ liệu từ REPLACE_HISTORY và STATUS_HISTORY
+      if (trackingSheet.getLastRow() <= 1) {
+        var migratedRows = [];
+        
+        var replaceSheet = frSs.getSheetByName("REPLACE_HISTORY");
+        if (replaceSheet && replaceSheet.getLastRow() > 1) {
+          var repVals = replaceSheet.getRange(2, 1, replaceSheet.getLastRow() - 1, replaceSheet.getLastColumn()).getValues();
+          for (var r = 0; r < repVals.length; r++) {
+            var ts = formatCellDateTime(repVals[r][0]);
+            var stt = String(repVals[r][1] || '').trim();
+            if (stt) {
+              var rawTs = 0;
+              try {
+                var parts = ts.split(' ');
+                var dParts = parts[0].split('/');
+                if (dParts.length === 3) {
+                  rawTs = new Date(parseInt(dParts[2]), parseInt(dParts[1])-1, parseInt(dParts[0])).getTime();
+                }
+              } catch(err) {}
+              
+              migratedRows.push({
+                rawDate: rawTs || r,
+                row: [
+                  ts,
+                  stt,
+                  "Thay mới tài khoản",
+                  String(repVals[r][2] || '').trim(),
+                  String(repVals[r][6] || '').trim(),
+                  String(repVals[r][13] || 'Đang dùng').trim(),
+                  formatCellDate(repVals[r][10]),
+                  String(repVals[r][11] || 'Admin').trim(),
+                  String(repVals[r][12] || '').trim()
+                ]
+              });
+            }
+          }
+        }
+        
+        var statusSheet = frSs.getSheetByName("STATUS_HISTORY");
+        if (statusSheet && statusSheet.getLastRow() > 1) {
+          var statVals = statusSheet.getRange(2, 1, statusSheet.getLastRow() - 1, statusSheet.getLastColumn()).getValues();
+          for (var s = 0; s < statVals.length; s++) {
+            var tsStat = formatCellDateTime(statVals[s][0]);
+            var sttStat = String(statVals[s][1] || '').trim();
+            var emailStat = String(statVals[s][2] || '').trim();
+            if (sttStat || emailStat) {
+              var rawTsStat = 0;
+              try {
+                var partsS = tsStat.split(' ');
+                var dPartsS = partsS[0].split('/');
+                if (dPartsS.length === 3) {
+                  rawTsStat = new Date(parseInt(dPartsS[2]), parseInt(dPartsS[1])-1, parseInt(dPartsS[0])).getTime();
+                }
+              } catch(err) {}
+              
+              migratedRows.push({
+                rawDate: rawTsStat || (100000 + s),
+                row: [
+                  tsStat,
+                  sttStat || "N/A",
+                  "Cập nhật trạng thái",
+                  emailStat,
+                  emailStat,
+                  String(statVals[s][3] || '').trim(),
+                  "-",
+                  String(statVals[s][4] || 'Admin').trim(),
+                  String(statVals[s][5] || '').trim()
+                ]
+              });
+            }
+          }
+        }
+        
+        if (migratedRows.length > 0) {
+          migratedRows.sort(function(a, b) { return a.rawDate - b.rawDate; });
+          var appendData = migratedRows.map(function(m) { return m.row; });
+          trackingSheet.getRange(2, 1, appendData.length, 9).setValues(appendData);
+        }
+      }
+      
+      var dataRange = trackingSheet.getDataRange();
+      var values = dataRange.getValues();
+      var history = [];
+      
+      for (var i = 1; i < values.length; i++) {
+        history.push({
+          timestamp: formatCellDateTime(values[i][0]),
+          rn: String(values[i][1] || '').trim(),
+          eventType: String(values[i][2] || '').trim(),
+          oldEmail: String(values[i][3] || '').trim(),
+          newEmail: String(values[i][4] || '').trim(),
+          status: String(values[i][5] || '').trim(),
+          expiryDate: formatCellDate(values[i][6]),
+          staff: String(values[i][7] || '').trim(),
+          notes: String(values[i][8] || '').trim()
+        });
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 22. Rebuild Kiem Soat RN (Đồng bộ lại từ đầu sheet Kiểm Soát RN)
+    if (action === 'rebuild_kiem_soat_rn') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var trackingSheet = frSs.getSheetByName("KIEM_SOAT_RN");
+      if (trackingSheet) {
+        if (trackingSheet.getLastRow() > 1) {
+          trackingSheet.deleteRows(2, trackingSheet.getLastRow() - 1);
+        }
+      } else {
+        trackingSheet = frSs.insertSheet("KIEM_SOAT_RN");
+        trackingSheet.appendRow(["Thời Gian", "Định Danh RN", "Sự Kiện", "Email Cũ", "Email Mới", "Trạng Thái", "HSD", "Người Thực Hiện", "Ghi Chú Chi Tiết"]);
+        trackingSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#e0e7ff").setFontColor("#1e1b4b");
+        trackingSheet.setFrozenRows(1);
+      }
+      
+      var migratedRows = [];
+      var replaceSheet = frSs.getSheetByName("REPLACE_HISTORY");
+      if (replaceSheet && replaceSheet.getLastRow() > 1) {
+        var repVals = replaceSheet.getRange(2, 1, replaceSheet.getLastRow() - 1, replaceSheet.getLastColumn()).getValues();
+        for (var r = 0; r < repVals.length; r++) {
+          var ts = formatCellDateTime(repVals[r][0]);
+          var stt = String(repVals[r][1] || '').trim();
+          if (stt) {
+            var rawTs = 0;
+            try {
+              var parts = ts.split(' ');
+              var dParts = parts[0].split('/');
+              if (dParts.length === 3) {
+                rawTs = new Date(parseInt(dParts[2]), parseInt(dParts[1])-1, parseInt(dParts[0])).getTime();
+              }
+            } catch(err) {}
+            migratedRows.push({
+              rawDate: rawTs || r,
+              row: [
+                ts,
+                stt,
+                "Thay mới tài khoản",
+                String(repVals[r][2] || '').trim(),
+                String(repVals[r][6] || '').trim(),
+                String(repVals[r][13] || 'Đang dùng').trim(),
+                formatCellDate(repVals[r][10]),
+                String(repVals[r][11] || 'Admin').trim(),
+                String(repVals[r][12] || '').trim()
+              ]
+            });
+          }
+        }
+      }
+      
+      var statusSheet = frSs.getSheetByName("STATUS_HISTORY");
+      if (statusSheet && statusSheet.getLastRow() > 1) {
+        var statVals = statusSheet.getRange(2, 1, statusSheet.getLastRow() - 1, statusSheet.getLastColumn()).getValues();
+        for (var s = 0; s < statVals.length; s++) {
+          var tsStat = formatCellDateTime(statVals[s][0]);
+          var sttStat = String(statVals[s][1] || '').trim();
+          var emailStat = String(statVals[s][2] || '').trim();
+          if (sttStat || emailStat) {
+            var rawTsStat = 0;
+            try {
+              var partsS = tsStat.split(' ');
+              var dPartsS = partsS[0].split('/');
+              if (dPartsS.length === 3) {
+                rawTsStat = new Date(parseInt(dPartsS[2]), parseInt(dPartsS[1])-1, parseInt(dPartsS[0])).getTime();
+              }
+            } catch(err) {}
+            migratedRows.push({
+              rawDate: rawTsStat || (100000 + s),
+              row: [
+                tsStat,
+                sttStat || "N/A",
+                "Cập nhật trạng thái",
+                emailStat,
+                emailStat,
+                String(statVals[s][3] || '').trim(),
+                "-",
+                String(statVals[s][4] || 'Admin').trim(),
+                String(statVals[s][5] || '').trim()
+              ]
+            });
+          }
+        }
+      }
+      
+      if (migratedRows.length > 0) {
+        migratedRows.sort(function(a, b) { return a.rawDate - b.rawDate; });
+        var appendData = migratedRows.map(function(m) { return m.row; });
+        trackingSheet.getRange(2, 1, appendData.length, 9).setValues(appendData);
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()})).setMimeType(ContentService.MimeType.JSON);
@@ -1545,4 +1756,20 @@ function formatCellDateTime(val) {
     return Utilities.formatDate(val, "GMT+7", "dd/MM/yyyy HH:mm:ss");
   }
   return String(val).trim();
+}
+
+function logToKiemSoatRN(frSs, stt, eventType, oldEmail, newEmail, status, expiryDate, staff, notes) {
+  try {
+    var sheet = frSs.getSheetByName("KIEM_SOAT_RN");
+    if (!sheet) {
+      sheet = frSs.insertSheet("KIEM_SOAT_RN");
+      sheet.appendRow(["Thời Gian", "Định Danh RN", "Sự Kiện", "Email Cũ", "Email Mới", "Trạng Thái", "HSD", "Người Thực Hiện", "Ghi Chú Chi Tiết"]);
+      sheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#e0e7ff").setFontColor("#1e1b4b");
+      sheet.setFrozenRows(1);
+    }
+    var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
+    sheet.appendRow([timestamp, String(stt || '').trim(), String(eventType || '').trim(), String(oldEmail || '').trim(), String(newEmail || '').trim(), String(status || '').trim(), String(expiryDate || '').trim(), String(staff || 'Admin').trim(), String(notes || '').trim()]);
+  } catch (e) {
+    Logger.log("Error logging to KIEM_SOAT_RN: " + e.toString());
+  }
 }

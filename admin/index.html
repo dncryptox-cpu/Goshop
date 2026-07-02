@@ -2221,17 +2221,36 @@
                         </div>
 
                         <!-- Historical Log of Replacements & Status Updates -->
-                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow" x-data="{ historyTab: 'replace' }">
+                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow" x-data="{ historyTab: 'rn_tracking' }" x-init="fetchRnTracking()">
                             <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
-                                <div class="flex items-center gap-2 border-b border-gray-150 pb-1">
-                                    <button @click="historyTab = 'replace'" :class="historyTab === 'replace' ? 'text-emerald-600 border-b-2 border-emerald-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="pb-2 px-3 text-sm flex items-center gap-2 transition-colors">
-                                        <i data-lucide="history" class="w-4 h-4"></i> Lịch sử Thay thế & Hoàn tác
+                                <div class="flex items-center gap-1 border-b border-gray-150 pb-1 flex-wrap">
+                                    <button @click="historyTab = 'rn_tracking'; if(rnTrackingList.length === 0) fetchRnTracking();" :class="historyTab === 'rn_tracking' ? 'text-purple-600 border-b-2 border-purple-600 font-bold bg-purple-50/60 rounded-t-lg' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="shield-check" class="w-4 h-4 text-purple-600"></i> Kiểm Soát RN (Timeline)
                                     </button>
-                                    <button @click="historyTab = 'status'; if(statusHistoryList.length === 0) fetchStatusHistory();" :class="historyTab === 'status' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="pb-2 px-3 text-sm flex items-center gap-2 transition-colors">
-                                        <i data-lucide="activity" class="w-4 h-4"></i> Lịch sử Cập nhật Trạng thái
+                                    <button @click="historyTab = 'rn_table'; if(rnTrackingList.length === 0) fetchRnTracking();" :class="historyTab === 'rn_table' ? 'text-indigo-600 border-b-2 border-indigo-600 font-bold bg-indigo-50/60 rounded-t-lg' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="table" class="w-4 h-4 text-indigo-600"></i> Bảng Sheet KIEM_SOAT_RN
+                                    </button>
+                                    <button @click="historyTab = 'replace'; if(replaceHistoryList.length === 0) fetchReplaceHistory();" :class="historyTab === 'replace' ? 'text-emerald-600 border-b-2 border-emerald-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="history" class="w-4 h-4"></i> Lịch sử Thay thế
+                                    </button>
+                                    <button @click="historyTab = 'status'; if(statusHistoryList.length === 0) fetchStatusHistory();" :class="historyTab === 'status' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="activity" class="w-4 h-4"></i> Lịch sử Trạng thái
                                     </button>
                                 </div>
-                                <div>
+                                <div class="flex items-center gap-3">
+                                    <template x-if="historyTab === 'rn_tracking' || historyTab === 'rn_table'">
+                                        <div class="flex items-center gap-3">
+                                            <button @click="rebuildRnTracking()" :disabled="isFetchingRnTracking"
+                                                class="text-xs font-bold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-2xs transition-all"
+                                                title="Tự động dọn dẹp và gom lại toàn bộ lịch sử thay thế cũ vào sheet KIEM_SOAT_RN">
+                                                <i data-lucide="git-pull-request" class="w-3.5 h-3.5"></i> Đồng bộ lại từ đầu
+                                            </button>
+                                            <button @click="fetchRnTracking()" :disabled="isFetchingRnTracking"
+                                                class="text-xs font-bold text-purple-600 hover:underline flex items-center gap-1">
+                                                <i data-lucide="refresh-cw" :class="isFetchingRnTracking ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Làm mới
+                                            </button>
+                                        </div>
+                                    </template>
                                     <template x-if="historyTab === 'replace'">
                                         <button @click="fetchReplaceHistory()" :disabled="isFetchingHistory"
                                             class="text-xs font-bold text-primary hover:underline flex items-center gap-1">
@@ -2244,6 +2263,207 @@
                                             <i data-lucide="refresh-cw" :class="isFetchingStatusHistory ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại lịch sử trạng thái
                                         </button>
                                     </template>
+                                </div>
+                            </div>
+
+                            <!-- Table 0: Timeline Kiểm Soát Định Danh RN (Group theo RN) -->
+                            <div class="space-y-4" x-show="historyTab === 'rn_tracking'">
+                                <!-- Filter & Search Bar -->
+                                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3">
+                                    <div class="relative w-full md:w-80">
+                                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                                        <input type="text" x-model="rnTrackingSearchQuery"
+                                            placeholder="🔍 Nhập STT RN (vd: 12, RN01...) hoặc Email để tra cứu..."
+                                            class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm">
+                                    </div>
+                                    <div class="flex items-center gap-1.5 flex-wrap w-full md:w-auto">
+                                        <span class="text-[11px] font-bold text-slate-500 mr-1">Lọc nhanh:</span>
+                                        <button @click="rnTrackingFilterType = 'all'"
+                                            :class="rnTrackingFilterType === 'all' ? 'bg-purple-600 text-white shadow-sm font-bold' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'"
+                                            class="px-2.5 py-1 rounded-lg text-xs transition-colors">
+                                            Tất cả Định danh
+                                        </button>
+                                        <button @click="rnTrackingFilterType = 'errors'"
+                                            :class="rnTrackingFilterType === 'errors' ? 'bg-amber-600 text-white shadow-sm font-bold' : 'bg-white text-amber-700 hover:bg-amber-50 border border-amber-200'"
+                                            class="px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 transition-colors">
+                                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> RN Có lịch sử lỗi/Ver
+                                        </button>
+                                        <button @click="rnTrackingFilterType = 'multiple'"
+                                            :class="rnTrackingFilterType === 'multiple' ? 'bg-indigo-600 text-white shadow-sm font-bold' : 'bg-white text-indigo-700 hover:bg-indigo-50 border border-indigo-200'"
+                                            class="px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 transition-colors">
+                                            <i data-lucide="git-merge" class="w-3.5 h-3.5"></i> RN Thay nhiều lần (>1)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Loading / Empty state -->
+                                <div x-show="isFetchingRnTracking" class="text-center py-12 text-slate-400 font-medium">
+                                    <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-purple-600"></i> Đang tải dữ liệu kiểm soát định danh RN...
+                                </div>
+                                <div x-show="!isFetchingRnTracking && groupedRnTrackingList.length === 0" class="text-center py-12 bg-slate-50 rounded-xl border border-slate-200 text-slate-400 italic">
+                                    Không tìm thấy hành trình của định danh RN nào phù hợp với bộ lọc.
+                                </div>
+
+                                <!-- List of RN Timelines -->
+                                <div x-show="!isFetchingRnTracking && groupedRnTrackingList.length > 0" class="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                                    <template x-for="(group, idx) in groupedRnTrackingList" :key="group.rn">
+                                        <div class="bg-white border rounded-xl shadow-sm overflow-hidden transition-all duration-200"
+                                            :class="group.hasError ? 'border-amber-200 hover:border-amber-400 bg-amber-50/10' : 'border-slate-200 hover:border-purple-300'"
+                                            x-data="{ open: idx === 0 || groupedRnTrackingList.length <= 3 }">
+                                            
+                                            <!-- RN Header / Summary Bar -->
+                                            <div @click="open = !open" class="px-4 py-3 bg-slate-50/80 hover:bg-slate-100/80 cursor-pointer flex items-center justify-between gap-3 border-b border-slate-100 transition-colors">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shadow-sm"
+                                                        :class="group.hasError ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-purple-100 text-purple-800 border border-purple-300'">
+                                                        <span x-text="group.rn"></span>
+                                                    </div>
+                                                    <div>
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="font-bold text-slate-800 text-sm" x-text="`Định Danh RN: STT ${group.rn}`"></span>
+                                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded border shadow-2xs"
+                                                                :class="getKhoStatusBadgeClass(group.latestStatus)" x-text="group.latestStatus"></span>
+                                                        </div>
+                                                        <div class="text-[11px] text-slate-500 font-medium flex items-center gap-2 mt-0.5">
+                                                            <span>📧 Acc hiện tại: <strong class="text-emerald-700 font-bold" x-text="group.latestEmail"></strong></span>
+                                                            <span>•</span>
+                                                            <span>🕒 Lần cuối: <span x-text="group.latestTime"></span></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="flex items-center gap-3">
+                                                    <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 flex items-center gap-1 shadow-2xs">
+                                                        <i data-lucide="git-commit" class="w-3.5 h-3.5 text-purple-600"></i>
+                                                        <span x-text="`${group.totalEvents} bước`"></span>
+                                                    </span>
+                                                    <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="open ? 'rotate-180 text-purple-600' : ''"></i>
+                                                </div>
+                                            </div>
+
+                                            <!-- Step-by-Step Timeline Body -->
+                                            <div x-show="open" x-collapse class="p-4 bg-white">
+                                                <div class="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                                                    <template x-for="(ev, stepIdx) in group.events" :key="ev.timestamp + '_' + stepIdx">
+                                                        <div class="relative group/step">
+                                                            <!-- Timeline Dot -->
+                                                            <div class="absolute -left-6 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm flex items-center justify-center transition-transform group-hover/step:scale-125"
+                                                                :class="ev.eventType.includes('Thay mới') ? 'bg-emerald-500' : (ev.eventType.includes('Hoàn tác') ? 'bg-red-500' : 'bg-amber-500')">
+                                                            </div>
+                                                            
+                                                            <!-- Step Box -->
+                                                            <div class="bg-slate-50/60 hover:bg-slate-50 p-3 rounded-xl border border-slate-150 transition-colors">
+                                                                <div class="flex items-center justify-between gap-2 border-b border-slate-150/60 pb-1.5 mb-2">
+                                                                    <div class="flex items-center gap-2">
+                                                                        <span class="font-bold text-xs px-2 py-0.5 rounded shadow-2xs"
+                                                                            :class="ev.eventType.includes('Thay mới') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : (ev.eventType.includes('Hoàn tác') ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-amber-100 text-amber-800 border border-amber-200')"
+                                                                            x-text="`Bước ${stepIdx + 1}: ${ev.eventType}`"></span>
+                                                                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                                                                            :class="getKhoStatusBadgeClass(ev.status)" x-text="ev.status"></span>
+                                                                    </div>
+                                                                    <div class="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                                                        <i data-lucide="clock" class="w-3 h-3"></i> <span x-text="ev.timestamp"></span>
+                                                                        <span>•</span>
+                                                                        <i data-lucide="user" class="w-3 h-3"></i> <span class="text-slate-600" x-text="ev.staff"></span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <!-- Details: Old -> New Email -->
+                                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                                                    <template x-if="ev.oldEmail && ev.oldEmail !== ev.newEmail && ev.oldEmail !== ''">
+                                                                        <div class="bg-white p-2 rounded-lg border border-slate-150 flex items-center justify-between">
+                                                                            <span class="text-slate-400 text-[10px] font-bold">📤 Từ Acc cũ:</span>
+                                                                            <span @click="copyToClipboard(ev.oldEmail, 'Acc cũ')" 
+                                                                                class="font-bold text-slate-700 cursor-pointer hover:text-red-600 hover:underline flex items-center gap-1"
+                                                                                title="Bấm để copy">
+                                                                                <span x-text="ev.oldEmail"></span>
+                                                                                <i data-lucide="copy" class="w-3 h-3 text-slate-400"></i>
+                                                                            </span>
+                                                                        </div>
+                                                                    </template>
+                                                                    
+                                                                    <div class="bg-white p-2 rounded-lg border border-slate-150 flex items-center justify-between"
+                                                                        :class="(!ev.oldEmail || ev.oldEmail === ev.newEmail) ? 'md:col-span-2' : ''">
+                                                                        <span class="text-slate-400 text-[10px] font-bold">📥 Acc áp dụng (Mới):</span>
+                                                                        <span @click="copyToClipboard(ev.newEmail || ev.oldEmail, 'Acc mới')" 
+                                                                            class="font-bold text-emerald-700 cursor-pointer hover:text-emerald-800 hover:underline flex items-center gap-1"
+                                                                            title="Bấm để copy">
+                                                                            <span x-text="ev.newEmail || ev.oldEmail"></span>
+                                                                            <i data-lucide="copy" class="w-3 h-3 text-emerald-500"></i>
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <!-- Expiry & Notes -->
+                                                                <div class="mt-2 flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-150/40 text-slate-600">
+                                                                    <div>
+                                                                        <template x-if="ev.expiryDate && ev.expiryDate !== '-' && ev.expiryDate !== ''">
+                                                                            <span class="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
+                                                                                📅 HSD: <span x-text="ev.expiryDate"></span>
+                                                                            </span>
+                                                                        </template>
+                                                                    </div>
+                                                                    <div class="italic text-slate-500 text-right font-medium">
+                                                                        <span x-text="ev.notes ? `💬 Ghi chú: ${ev.notes}` : 'Không có ghi chú'"></span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Table 0.5: Bảng Tổng Hợp Sheet KIEM_SOAT_RN -->
+                            <div class="border border-gray-150 rounded-xl overflow-hidden" x-show="historyTab === 'rn_table'">
+                                <div class="overflow-x-auto max-h-[450px]">
+                                    <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                        <thead class="bg-purple-50/70 border-b border-purple-200 text-purple-900 font-bold uppercase tracking-wider sticky top-0 z-10">
+                                            <tr>
+                                                <th class="px-3 py-3">Thời gian</th>
+                                                <th class="px-3 py-3">Định Danh RN</th>
+                                                <th class="px-3 py-3">Sự Kiện</th>
+                                                <th class="px-3 py-3">Email Cũ</th>
+                                                <th class="px-3 py-3">Email Mới</th>
+                                                <th class="px-3 py-3">Trạng Thái</th>
+                                                <th class="px-3 py-3">HSD</th>
+                                                <th class="px-3 py-3">Người làm</th>
+                                                <th class="px-3 py-3">Ghi chú chi tiết</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-50 bg-white">
+                                            <template x-for="(item, iIdx) in rnTrackingList" :key="item.timestamp + '_' + iIdx">
+                                                <tr class="hover:bg-purple-50/30 transition-colors">
+                                                    <td class="px-3 py-2.5 text-gray-500 font-bold" x-text="item.timestamp"></td>
+                                                    <td class="px-3 py-2.5 font-bold text-slate-800">
+                                                        <span class="bg-purple-100 text-purple-800 border border-purple-200 px-2 py-0.5 rounded font-black text-xs" x-text="item.rn"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5 font-bold text-slate-700" x-text="item.eventType"></td>
+                                                    <td class="px-3 py-2.5">
+                                                        <span @click="copyToClipboard(item.oldEmail, 'Email cũ')" class="font-bold text-gray-700 hover:text-primary hover:underline cursor-pointer" x-text="item.oldEmail || '-'"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5">
+                                                        <span @click="copyToClipboard(item.newEmail, 'Email mới')" class="font-bold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer" x-text="item.newEmail || '-'"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5">
+                                                        <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-2xs inline-block" 
+                                                            :class="getKhoStatusBadgeClass(item.status)" x-text="item.status"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5 font-bold text-indigo-600" x-text="item.expiryDate || '-'"></td>
+                                                    <td class="px-3 py-2.5 font-semibold text-gray-700" x-text="item.staff"></td>
+                                                    <td class="px-3 py-2.5 text-gray-500 italic" x-text="item.notes || '-'"></td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="rnTrackingList.length === 0">
+                                                <tr>
+                                                    <td colspan="9" class="text-center py-12 text-gray-400 italic">Chưa có nhật ký kiểm soát định danh RN.</td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
 
@@ -4601,6 +4821,10 @@
                 bulkActionType: 'replace',
                 bulkStatusTarget: 'Banned',
                 bulkActionResults: [],
+                rnTrackingList: [],
+                isFetchingRnTracking: false,
+                rnTrackingSearchQuery: '',
+                rnTrackingFilterType: 'all',
                 replaceHistoryList: [],
                 statusHistoryList: [],
                 isExecutingBulkAction: false,
@@ -5901,6 +6125,121 @@
                     } finally {
                         this.isFetchingStatusHistory = false;
                     }
+                },
+
+                async fetchRnTracking() {
+                    this.isFetchingRnTracking = true;
+                    try {
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'get_kiem_soat_rn' })
+                        });
+                        const result = await res.json();
+                        if (result.status === 'success' && result.data) {
+                            this.rnTrackingList = result.data.reverse();
+                            this.$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch rn tracking:", e);
+                    } finally {
+                        this.isFetchingRnTracking = false;
+                    }
+                },
+
+                async rebuildRnTracking() {
+                    if (!confirm("Bạn có chắc chắn muốn đồng bộ lại (Rebuild) toàn bộ dữ liệu Sheet KIEM_SOAT_RN từ lịch sử thay thế và cập nhật trạng thái cũ không?")) {
+                        return;
+                    }
+                    this.isFetchingRnTracking = true;
+                    this.showToast("Đang đồng bộ lại dữ liệu Kiểm Soát RN...");
+                    try {
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'rebuild_kiem_soat_rn' })
+                        });
+                        const result = await res.json();
+                        if (result.status === 'success') {
+                            this.showToast("✅ Đã đồng bộ lại Sheet KIEM_SOAT_RN thành công!");
+                            await this.fetchRnTracking();
+                        } else {
+                            this.showToast("❌ Lỗi: " + result.message);
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        this.showToast("❌ Lỗi kết nối!");
+                    } finally {
+                        this.isFetchingRnTracking = false;
+                    }
+                },
+
+                get groupedRnTrackingList() {
+                    const query = (this.rnTrackingSearchQuery || '').trim().toLowerCase();
+                    const filter = this.rnTrackingFilterType || 'all';
+                    
+                    const groups = {};
+                    this.rnTrackingList.forEach(item => {
+                        const rnKey = (item.rn || 'N/A').toString().trim();
+                        if (!groups[rnKey]) {
+                            groups[rnKey] = {
+                                rn: rnKey,
+                                events: [],
+                                latestStatus: '-',
+                                latestEmail: '-',
+                                latestTime: '-',
+                                totalEvents: 0,
+                                hasError: false
+                            };
+                        }
+                        groups[rnKey].events.push(item);
+                    });
+                    
+                    const resultList = Object.values(groups).map(g => {
+                        g.events.sort((a, b) => {
+                            const parseT = (s) => {
+                                try {
+                                    const p = (s || '').split(' ');
+                                    const dp = p[0].split('/');
+                                    const tp = (p[1] || '00:00:00').split(':');
+                                    if (dp.length === 3) {
+                                        return new Date(dp[2], dp[1]-1, dp[0], tp[0]||0, tp[1]||0, tp[2]||0).getTime();
+                                    }
+                                } catch(e){}
+                                return 0;
+                            };
+                            return parseT(a.timestamp) - parseT(b.timestamp);
+                        });
+                        
+                        g.totalEvents = g.events.length;
+                        if (g.events.length > 0) {
+                            const latest = g.events[g.events.length - 1];
+                            g.latestStatus = latest.status || '-';
+                            g.latestEmail = latest.newEmail || latest.oldEmail || '-';
+                            g.latestTime = latest.timestamp || '-';
+                        }
+                        
+                        const errWords = ['ver', 'lỗi', 'banned', 'ko có trail', 'chưa sẵn sàng'];
+                        g.hasError = g.events.some(e => {
+                            const st = (e.status || '').toLowerCase();
+                            return errWords.some(w => st.includes(w));
+                        });
+                        
+                        return g;
+                    });
+                    
+                    return resultList.filter(g => {
+                        if (query) {
+                            const matchRn = g.rn.toLowerCase().includes(query);
+                            const matchEmail = g.events.some(e => (e.oldEmail||'').toLowerCase().includes(query) || (e.newEmail||'').toLowerCase().includes(query));
+                            const matchNote = g.events.some(e => (e.notes||'').toLowerCase().includes(query));
+                            if (!matchRn && !matchEmail && !matchNote) return false;
+                        }
+                        if (filter === 'errors') {
+                            if (!g.hasError) return false;
+                        } else if (filter === 'multiple') {
+                            if (g.totalEvents <= 1) return false;
+                        }
+                        return true;
+                    }).sort((a, b) => b.totalEvents - a.totalEvents);
                 },
 
                 async revertHistoryItem(item) {
