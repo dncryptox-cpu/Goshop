@@ -4822,6 +4822,7 @@
                 bulkStatusTarget: 'Banned',
                 bulkActionResults: [],
                 rnTrackingList: [],
+                renewList: [],
                 isFetchingRnTracking: false,
                 rnTrackingSearchQuery: '',
                 rnTrackingFilterType: 'all',
@@ -6135,8 +6136,9 @@
                             body: JSON.stringify({ action: 'get_kiem_soat_rn' })
                         });
                         const result = await res.json();
-                        if (result.status === 'success' && result.data) {
-                            this.rnTrackingList = result.data.reverse();
+                        if (result.status === 'success') {
+                            if (result.data) this.rnTrackingList = result.data.reverse();
+                            if (result.renewList) this.renewList = result.renewList;
                             this.$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
                         }
                     } catch (e) {
@@ -6177,6 +6179,25 @@
                     const filter = this.rnTrackingFilterType || 'all';
                     
                     const groups = {};
+                    // 1. Lấy danh sách gốc từ sheet RENEW (Cột B định danh cố định, cột D Email hiện tại do hàm)
+                    (this.renewList || []).forEach(item => {
+                        const rnKey = (item.rn || 'N/A').toString().trim();
+                        if (rnKey && !groups[rnKey]) {
+                            groups[rnKey] = {
+                                rn: rnKey,
+                                events: [],
+                                latestStatus: item.status || 'Đang dùng',
+                                latestEmail: item.email || '-',
+                                latestTime: '-',
+                                expiryDate: item.expiryDate || '-',
+                                totalEvents: 0,
+                                hasError: false,
+                                isFromRenew: true
+                            };
+                        }
+                    });
+                    
+                    // 2. Gom các sự kiện theo dõi trong KIEM_SOAT_RN vào từng định danh RN
                     this.rnTrackingList.forEach(item => {
                         const rnKey = (item.rn || 'N/A').toString().trim();
                         if (!groups[rnKey]) {
@@ -6186,13 +6207,16 @@
                                 latestStatus: '-',
                                 latestEmail: '-',
                                 latestTime: '-',
+                                expiryDate: '-',
                                 totalEvents: 0,
-                                hasError: false
+                                hasError: false,
+                                isFromRenew: false
                             };
                         }
                         groups[rnKey].events.push(item);
                     });
                     
+                    // 3. Sắp xếp timeline và tổng hợp trạng thái mới nhất
                     const resultList = Object.values(groups).map(g => {
                         g.events.sort((a, b) => {
                             const parseT = (s) => {
@@ -6212,9 +6236,25 @@
                         g.totalEvents = g.events.length;
                         if (g.events.length > 0) {
                             const latest = g.events[g.events.length - 1];
-                            g.latestStatus = latest.status || '-';
-                            g.latestEmail = latest.newEmail || latest.oldEmail || '-';
+                            g.latestStatus = latest.status || g.latestStatus || '-';
+                            g.latestEmail = latest.newEmail || latest.oldEmail || g.latestEmail || '-';
                             g.latestTime = latest.timestamp || '-';
+                            if (latest.expiryDate && latest.expiryDate !== '-') {
+                                g.expiryDate = latest.expiryDate;
+                            }
+                        } else if (g.isFromRenew) {
+                            // Tạo step hiển thị trạng thái gốc hiện tại ở cột D sheet RENEW
+                            g.events.push({
+                                timestamp: 'Ban đầu / Hiện tại',
+                                eventType: 'Ghi nhận từ RENEW',
+                                oldEmail: '',
+                                newEmail: g.latestEmail,
+                                status: g.latestStatus,
+                                expiryDate: g.expiryDate,
+                                staff: 'Hệ thống / Hàm',
+                                notes: 'Định danh RN theo cột B, email hiện tại theo cột D sheet RENEW'
+                            });
+                            g.totalEvents = 1;
                         }
                         
                         const errWords = ['ver', 'lỗi', 'banned', 'ko có trail', 'chưa sẵn sàng'];

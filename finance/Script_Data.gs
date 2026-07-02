@@ -1146,8 +1146,11 @@ function doPost(e) {
     // 21. Get Kiem Soat RN (Hệ thống kiểm soát định danh RN - Nhật ký & Timeline)
     if (action === 'get_kiem_soat_rn') {
       var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
-      var trackingSheet = frSs.getSheetByName("KIEM_SOAT_RN");
       
+      // Tự động phát hiện và track thay đổi email ở cột D sheet RENEW
+      trackRenewEmailChanges(frSs);
+      
+      var trackingSheet = frSs.getSheetByName("KIEM_SOAT_RN");
       if (!trackingSheet) {
         trackingSheet = frSs.insertSheet("KIEM_SOAT_RN");
         trackingSheet.appendRow(["Thời Gian", "Định Danh RN", "Sự Kiện", "Email Cũ", "Email Mới", "Trạng Thái", "HSD", "Người Thực Hiện", "Ghi Chú Chi Tiết"]);
@@ -1253,7 +1256,44 @@ function doPost(e) {
         });
       }
       
-      return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history})).setMimeType(ContentService.MimeType.JSON);
+      // Lấy danh sách Định Danh gốc từ RENEW / FAMRENEW (Cột B là định danh RN, Cột D là Email hiện tại)
+      var renewSheet = frSs.getSheetByName("RENEW") || frSs.getSheetByName("FAMRENEW");
+      var renewList = [];
+      if (renewSheet) {
+        var rVals = renewSheet.getDataRange().getValues();
+        if (rVals.length > 1) {
+          var rHeaders = rVals[0];
+          var sttColIdx = -1;
+          var emailColIdx = -1;
+          var statColIdx = -1;
+          var expColIdx = -1;
+          for (var c = 0; c < rHeaders.length; c++) {
+            var h = String(rHeaders[c]).toLowerCase();
+            if (h.includes('stt') || h.includes('fam')) sttColIdx = c;
+            if (h.includes('email') || h.includes('stock') || h.includes('renew')) emailColIdx = c;
+            if (h.includes('trạng thái') || h.includes('trang thai') || h.includes('status')) statColIdx = c;
+            if (h.includes('ngày') || h.includes('ngay') || h.includes('hsd') || h.includes('exp')) expColIdx = c;
+          }
+          if (sttColIdx === -1) sttColIdx = 1;     // Cột B
+          if (emailColIdx === -1) emailColIdx = 3; // Cột D
+          if (statColIdx === -1) statColIdx = 2;   // Cột C
+          if (expColIdx === -1) expColIdx = 7;     // Cột H
+          
+          for (var r = 1; r < rVals.length; r++) {
+            var sttVal = String(rVals[r][sttColIdx] || '').trim();
+            if (sttVal) {
+              renewList.push({
+                rn: sttVal,
+                email: String(rVals[r][emailColIdx] || '').trim(),
+                status: String(rVals[r][statColIdx] || 'Đang dùng').trim(),
+                expiryDate: formatCellDate(rVals[r][expColIdx])
+              });
+            }
+          }
+        }
+      }
+      
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history, renewList: renewList})).setMimeType(ContentService.MimeType.JSON);
     }
 
     // 22. Rebuild Kiem Soat RN (Đồng bộ lại từ đầu sheet Kiểm Soát RN)
@@ -1344,6 +1384,9 @@ function doPost(e) {
         var appendData = migratedRows.map(function(m) { return m.row; });
         trackingSheet.getRange(2, 1, appendData.length, 9).setValues(appendData);
       }
+      
+      // Tự động quét RENEW để track tiếp
+      trackRenewEmailChanges(frSs);
       
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
@@ -1544,6 +1587,10 @@ function onEdit(e) {
 // 16. Hàm tự động đối chiếu KHO_RENEW sang RENEW để lấy STT FAM điền vào FAM HIỆN TẠI (Cột H / Cột 8)
 function syncFamHienTaiToKhoRenew() {
   var ss = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+  
+  // Tự động theo dõi thay đổi Email ở cột D sheet RENEW (do hàm hoặc thao tác) vào sheet KIEM_SOAT_RN
+  trackRenewEmailChanges(ss);
+  
   var modSheet = ss.getSheetByName("RENEW_MODIFIED");
   var renewSheet = ss.getSheetByName("RENEW") || ss.getSheetByName("FAMRENEW");
   var khoRenewSheet = ss.getSheetByName("KHO_RENEW");
@@ -1669,6 +1716,98 @@ function syncFamHienTaiToKhoRenew() {
     
     var writeRangeStatus = khoRenewSheet.getRange(2, 7, updatedStatusValues.length, 1); // Cột G (cột 7)
     writeRangeStatus.setValues(updatedStatusValues);
+  }
+}
+
+// Tự động phát hiện và theo dõi khi cột D (Email) của định danh RN (cột B) trong sheet RENEW thay đổi do hàm/thao tác
+function trackRenewEmailChanges(ss) {
+  try {
+    var renewSheet = ss.getSheetByName("RENEW") || ss.getSheetByName("FAMRENEW");
+    if (!renewSheet) return;
+    
+    var renewValues = renewSheet.getDataRange().getValues();
+    if (renewValues.length <= 1) return;
+    
+    var headers = renewValues[0];
+    var sttCol = -1;
+    var emailCol = -1;
+    for (var c = 0; c < headers.length; c++) {
+      var h = String(headers[c]).toLowerCase();
+      if (h.includes('stt') || h.includes('fam')) sttCol = c;
+      if (h.includes('email') || h.includes('stock') || h.includes('renew')) emailCol = c;
+    }
+    if (sttCol === -1) sttCol = 1;   // Cột B
+    if (emailCol === -1) emailCol = 3; // Cột D
+    
+    var trackingSheet = ss.getSheetByName("KIEM_SOAT_RN");
+    if (!trackingSheet) {
+      trackingSheet = ss.insertSheet("KIEM_SOAT_RN");
+      trackingSheet.appendRow(["Thời Gian", "Định Danh RN", "Sự Kiện", "Email Cũ", "Email Mới", "Trạng Thái", "HSD", "Người Thực Hiện", "Ghi Chú Chi Tiết"]);
+      trackingSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#e0e7ff").setFontColor("#1e1b4b");
+      trackingSheet.setFrozenRows(1);
+    }
+    
+    var trackValues = trackingSheet.getDataRange().getValues();
+    var latestEmailInHistory = {};
+    
+    for (var i = 1; i < trackValues.length; i++) {
+      var rnKey = String(trackValues[i][1] || '').trim();
+      var newEmail = String(trackValues[i][4] || '').trim();
+      var oldEmail = String(trackValues[i][3] || '').trim();
+      if (rnKey) {
+        if (newEmail) {
+          latestEmailInHistory[rnKey] = newEmail.toLowerCase();
+        } else if (oldEmail) {
+          latestEmailInHistory[rnKey] = oldEmail.toLowerCase();
+        }
+      }
+    }
+    
+    var newLogs = [];
+    var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
+    
+    for (var r = 1; r < renewValues.length; r++) {
+      var stt = String(renewValues[r][sttCol] || '').trim();
+      var currentEmail = String(renewValues[r][emailCol] || '').trim();
+      if (stt && currentEmail) {
+        var cleanCurrent = currentEmail.toLowerCase();
+        var recordedLatest = latestEmailInHistory[stt];
+        
+        if (recordedLatest && recordedLatest !== cleanCurrent) {
+          newLogs.push([
+            timestamp,
+            stt,
+            "Thay đổi tài khoản (từ RENEW)",
+            recordedLatest,
+            currentEmail,
+            "Đang dùng",
+            formatCellDate(renewValues[r][7]),
+            "Hệ thống / Hàm",
+            "Tự động track thay đổi email cột D sheet RENEW"
+          ]);
+          latestEmailInHistory[stt] = cleanCurrent;
+        } else if (!recordedLatest) {
+          newLogs.push([
+            timestamp,
+            stt,
+            "Ghi nhận ban đầu (từ RENEW)",
+            "",
+            currentEmail,
+            "Đang dùng",
+            formatCellDate(renewValues[r][7]),
+            "Hệ thống",
+            "Khởi tạo theo dõi định danh RN theo bảng RENEW"
+          ]);
+          latestEmailInHistory[stt] = cleanCurrent;
+        }
+      }
+    }
+    
+    if (newLogs.length > 0) {
+      trackingSheet.getRange(trackingSheet.getLastRow() + 1, 1, newLogs.length, 9).setValues(newLogs);
+    }
+  } catch (err) {
+    Logger.log("Error in trackRenewEmailChanges: " + err.toString());
   }
 }
 
