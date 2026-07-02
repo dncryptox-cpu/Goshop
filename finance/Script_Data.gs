@@ -366,7 +366,7 @@ function doPost(e) {
           if (pairingRowIdx !== -1) {
             pairingSheet.deleteRow(pairingRowIdx);
           }
-          logToKiemSoatRN(frSs, stt, "Thay mới tài khoản (từ PAIRINGS)", "", pairedInfo.nextFamEmail, "Đang dùng", expiryDate, "Admin", "Ghép từ PAIRINGS");
+          logToKiemSoatRN(frSs, stt, "Thay mới tài khoản (từ PAIRINGS)", "", pairedInfo.nextFamEmail, "Đang dùng", expiryDate, "DNC", "Ghép từ PAIRINGS");
         }
         
         // Đồng bộ Fam hiện tại sang Kho
@@ -410,7 +410,7 @@ function doPost(e) {
               break;
             }
           }
-          logToKiemSoatRN(frSs, stt, "Thay mới tài khoản (từ Yêu Cầu)", "", nextEmail, "Đang dùng", expiryDate, "Admin", "Xử lý yêu cầu renew");
+          logToKiemSoatRN(frSs, stt, "Thay mới tài khoản (từ Yêu Cầu)", "", nextEmail, "Đang dùng", expiryDate, "DNC", "Xử lý yêu cầu renew");
         }
         
         // Đồng bộ Fam hiện tại sang Kho
@@ -680,7 +680,7 @@ function doPost(e) {
                 status: "Banned",
                 notes: finalNotes
               });
-              logToKiemSoatRN(frSs, stt, "Cập nhật trạng thái", currentEmail, currentEmail, "Banned", "", "Admin", finalNotes || "Banned");
+              logToKiemSoatRN(frSs, stt, "Cập nhật trạng thái", currentEmail, currentEmail, "Banned", "", "DNC", finalNotes || "Banned");
             }
             updatedCount++;
           }
@@ -721,10 +721,7 @@ function doPost(e) {
       }
       
       var replacements = data.replacements || [];
-      var staff = data.staff || 'Admin';
-      if (String(staff).trim().toLowerCase() === 'goshop1') {
-        staff = 'Lộc';
-      }
+      var staff = standardizeStaffName(data.staff);
       var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
       
       if (frSheet && khoRenewSheet && replacements.length > 0) {
@@ -885,7 +882,7 @@ function doPost(e) {
           
           // 3. Cập nhật trạng thái lịch sử
           historySheet.getRange(histRowIdx, 14).setValue("Đã hoàn tác");
-          logToKiemSoatRN(frSs, stt, "Hoàn tác thay thế", record.newEmail, record.oldEmail, "Đang dùng", "", "Admin", "Hoàn tác về " + record.oldEmail);
+          logToKiemSoatRN(frSs, stt, "Hoàn tác thay thế", record.newEmail, record.oldEmail, "Đang dùng", "", "DNC", "Hoàn tác về " + record.oldEmail);
           
           syncFamHienTaiToKhoRenew();
           return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
@@ -1009,7 +1006,7 @@ function doPost(e) {
           stt: String(values[i][1] || '').trim(),
           email: String(values[i][2] || '').trim(),
           status: String(values[i][3] || '').trim(),
-          staff: String(values[i][4] || '').trim(),
+          staff: standardizeStaffName(values[i][4]),
           notes: String(values[i][5] || '').trim()
         });
       }
@@ -1044,7 +1041,7 @@ function doPost(e) {
           newMkp: String(values[i][8] || '').trim(),
           new2fa: String(values[i][9] || '').trim(),
           expiryDate: formatCellDate(values[i][10]),
-          staff: String(values[i][11] || '').trim(),
+          staff: standardizeStaffName(values[i][11]),
           notes: String(values[i][12] || '').trim(),
           status: String(values[i][13] || 'Hoạt động').trim()
         });
@@ -1058,10 +1055,7 @@ function doPost(e) {
       var emails = data.emails || [];
       var newStatus = String(data.status || 'Banned').trim();
       var notes = data.notes || '';
-      var staff = data.staff || 'Admin';
-      if (String(staff).trim().toLowerCase() === 'goshop1') {
-        staff = 'Lộc';
-      }
+      var staff = standardizeStaffName(data.staff);
       var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
       
       var modSheet = frSs.getSheetByName("RENEW_MODIFIED");
@@ -1188,7 +1182,7 @@ function doPost(e) {
                   String(repVals[r][6] || '').trim(),
                   String(repVals[r][13] || 'Đang dùng').trim(),
                   formatCellDate(repVals[r][10]),
-                  String(repVals[r][11] || 'Admin').trim(),
+                  standardizeStaffName(repVals[r][11]),
                   String(repVals[r][12] || '').trim()
                 ]
               });
@@ -1223,7 +1217,7 @@ function doPost(e) {
                   emailStat,
                   String(statVals[s][3] || '').trim(),
                   "-",
-                  String(statVals[s][4] || 'Admin').trim(),
+                  standardizeStaffName(statVals[s][4]),
                   String(statVals[s][5] || '').trim()
                 ]
               });
@@ -1254,7 +1248,7 @@ function doPost(e) {
           newEmail: newEmailVal,
           status: String(values[i][5] || '').trim(),
           expiryDate: formatCellDate(values[i][6]),
-          staff: String(values[i][7] || '').trim(),
+          staff: standardizeStaffName(values[i][7]),
           notes: String(values[i][8] || '').trim()
         });
       }
@@ -1299,99 +1293,9 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history, renewList: renewList})).setMimeType(ContentService.MimeType.JSON);
     }
 
-    // 22. Rebuild Kiem Soat RN (Đồng bộ lại từ đầu sheet Kiểm Soát RN)
+    // 22. Rebuild Kiem Soat RN (Đã vô hiệu hóa để tránh mất dữ liệu lịch sử)
     if (action === 'rebuild_kiem_soat_rn') {
-      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
-      var trackingSheet = frSs.getSheetByName("KIEM_SOAT_RN");
-      if (trackingSheet) {
-        if (trackingSheet.getLastRow() > 1) {
-          trackingSheet.deleteRows(2, trackingSheet.getLastRow() - 1);
-        }
-      } else {
-        trackingSheet = frSs.insertSheet("KIEM_SOAT_RN");
-        trackingSheet.appendRow(["Thời Gian", "Định Danh RN", "Sự Kiện", "Email Cũ", "Email Mới", "Trạng Thái", "HSD", "Người Thực Hiện", "Ghi Chú Chi Tiết"]);
-        trackingSheet.getRange(1, 1, 1, 9).setFontWeight("bold").setBackground("#e0e7ff").setFontColor("#1e1b4b");
-        trackingSheet.setFrozenRows(1);
-      }
-      
-      var migratedRows = [];
-      var replaceSheet = frSs.getSheetByName("REPLACE_HISTORY");
-      if (replaceSheet && replaceSheet.getLastRow() > 1) {
-        var repVals = replaceSheet.getRange(2, 1, replaceSheet.getLastRow() - 1, replaceSheet.getLastColumn()).getValues();
-        for (var r = 0; r < repVals.length; r++) {
-          var ts = formatCellDateTime(repVals[r][0]);
-          var stt = String(repVals[r][1] || '').trim();
-          if (stt && stt.toLowerCase() !== 'stt fam' && stt.toLowerCase() !== 'stt' && stt.toLowerCase() !== 'slot') {
-            var rawTs = 0;
-            try {
-              var parts = ts.split(' ');
-              var dParts = parts[0].split('/');
-              if (dParts.length === 3) {
-                rawTs = new Date(parseInt(dParts[2]), parseInt(dParts[1])-1, parseInt(dParts[0])).getTime();
-              }
-            } catch(err) {}
-            migratedRows.push({
-              rawDate: rawTs || r,
-              row: [
-                ts,
-                stt,
-                "Thay mới tài khoản",
-                String(repVals[r][2] || '').trim(),
-                String(repVals[r][6] || '').trim(),
-                String(repVals[r][13] || 'Đang dùng').trim(),
-                formatCellDate(repVals[r][10]),
-                String(repVals[r][11] || 'Admin').trim(),
-                String(repVals[r][12] || '').trim()
-              ]
-            });
-          }
-        }
-      }
-      
-      var statusSheet = frSs.getSheetByName("STATUS_HISTORY");
-      if (statusSheet && statusSheet.getLastRow() > 1) {
-        var statVals = statusSheet.getRange(2, 1, statusSheet.getLastRow() - 1, statusSheet.getLastColumn()).getValues();
-        for (var s = 0; s < statVals.length; s++) {
-          var tsStat = formatCellDateTime(statVals[s][0]);
-          var sttStat = String(statVals[s][1] || '').trim();
-          var emailStat = String(statVals[s][2] || '').trim();
-          if ((sttStat || emailStat) && sttStat.toLowerCase() !== 'stt fam' && sttStat.toLowerCase() !== 'stt') {
-            var rawTsStat = 0;
-            try {
-              var partsS = tsStat.split(' ');
-              var dPartsS = partsS[0].split('/');
-              if (dPartsS.length === 3) {
-                rawTsStat = new Date(parseInt(dPartsS[2]), parseInt(dPartsS[1])-1, parseInt(dPartsS[0])).getTime();
-              }
-            } catch(err) {}
-            migratedRows.push({
-              rawDate: rawTsStat || (100000 + s),
-              row: [
-                tsStat,
-                sttStat || "N/A",
-                "Cập nhật trạng thái",
-                emailStat,
-                emailStat,
-                String(statVals[s][3] || '').trim(),
-                "-",
-                String(statVals[s][4] || 'Admin').trim(),
-                String(statVals[s][5] || '').trim()
-              ]
-            });
-          }
-        }
-      }
-      
-      if (migratedRows.length > 0) {
-        migratedRows.sort(function(a, b) { return a.rawDate - b.rawDate; });
-        var appendData = migratedRows.map(function(m) { return m.row; });
-        trackingSheet.getRange(2, 1, appendData.length, 9).setValues(appendData);
-      }
-      
-      // Tự động quét RENEW để track tiếp
-      trackRenewEmailChanges(frSs);
-      
-      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+      return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Chức năng đồng bộ lại từ đầu (Rebuild) đã bị vô hiệu hóa để bảo vệ dữ liệu lịch sử.'})).setMimeType(ContentService.MimeType.JSON);
     }
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({status: 'error', message: error.toString()})).setMimeType(ContentService.MimeType.JSON);
@@ -1928,6 +1832,17 @@ function formatCellDateTime(val) {
   return str;
 }
 
+function standardizeStaffName(staff) {
+  var s = String(staff || '').trim();
+  if (!s || s.toLowerCase() === 'admin' || s.toLowerCase() === 'dnc operator' || s.toLowerCase() === 'dnc') {
+    return 'DNC';
+  }
+  if (s.toLowerCase() === 'goshop1' || s.toLowerCase() === 'staff' || s.toLowerCase() === 'lộc' || s.toLowerCase() === 'loc') {
+    return 'Lộc';
+  }
+  return s;
+}
+
 function logToKiemSoatRN(frSs, stt, eventType, oldEmail, newEmail, status, expiryDate, staff, notes) {
   try {
     var sheet = frSs.getSheetByName("KIEM_SOAT_RN");
@@ -1938,7 +1853,7 @@ function logToKiemSoatRN(frSs, stt, eventType, oldEmail, newEmail, status, expir
       sheet.setFrozenRows(1);
     }
     var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
-    sheet.appendRow([timestamp, String(stt || '').trim(), String(eventType || '').trim(), String(oldEmail || '').trim(), String(newEmail || '').trim(), String(status || '').trim(), String(expiryDate || '').trim(), String(staff || 'Admin').trim(), String(notes || '').trim()]);
+    sheet.appendRow([timestamp, String(stt || '').trim(), String(eventType || '').trim(), String(oldEmail || '').trim(), String(newEmail || '').trim(), String(status || '').trim(), String(expiryDate || '').trim(), standardizeStaffName(staff), String(notes || '').trim()]);
   } catch (e) {
     Logger.log("Error logging to KIEM_SOAT_RN: " + e.toString());
   }
