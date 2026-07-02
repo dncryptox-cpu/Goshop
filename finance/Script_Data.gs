@@ -1244,13 +1244,14 @@ function doPost(e) {
       
       for (var i = 1; i < values.length; i++) {
         var rnVal = String(values[i][1] || '').trim();
-        if (!rnVal || rnVal.toLowerCase() === 'stt fam' || rnVal.toLowerCase() === 'stt' || rnVal.toLowerCase() === 'định danh rn' || rnVal.toLowerCase() === 'slot' || rnVal === 'N/A') continue;
+        var newEmailVal = String(values[i][4] || '').trim();
+        if (!rnVal || rnVal.toLowerCase() === 'stt fam' || rnVal.toLowerCase() === 'stt' || rnVal.toLowerCase() === 'định danh rn' || rnVal.toLowerCase() === 'slot' || rnVal === 'N/A' || newEmailVal.includes('GMT+') || newEmailVal.includes('Indochina Time')) continue;
         history.push({
           timestamp: formatCellDateTime(values[i][0]),
           rn: rnVal,
           eventType: String(values[i][2] || '').trim(),
           oldEmail: String(values[i][3] || '').trim(),
-          newEmail: String(values[i][4] || '').trim(),
+          newEmail: newEmailVal,
           status: String(values[i][5] || '').trim(),
           expiryDate: formatCellDate(values[i][6]),
           staff: String(values[i][7] || '').trim(),
@@ -1272,7 +1273,7 @@ function doPost(e) {
           for (var c = 0; c < rHeaders.length; c++) {
             var h = String(rHeaders[c]).toLowerCase();
             if (h.includes('stt') || h.includes('fam')) sttColIdx = c;
-            if (h.includes('email') || h.includes('stock') || h.includes('renew')) emailColIdx = c;
+            if ((h.includes('email') || h.includes('stock') || h === 'stockrenew' || h === 'renew') && !h.includes('ngày') && !h.includes('ngay') && !h.includes('hsd') && !h.includes('date')) emailColIdx = c;
             if (h.includes('trạng thái') || h.includes('trang thai') || h.includes('status')) statColIdx = c;
             if (h.includes('ngày') || h.includes('ngay') || h.includes('hsd') || h.includes('exp')) expColIdx = c;
           }
@@ -1613,7 +1614,7 @@ function syncFamHienTaiToKhoRenew() {
     if (h.includes('stt') || h.includes('fam')) {
       kSttIndex = c;
     }
-    if (h.includes('email') || h.includes('stock') || h.includes('renew')) {
+    if ((h.includes('email') || h.includes('stock') || h === 'stockrenew' || h === 'renew') && !h.includes('ngày') && !h.includes('ngay') && !h.includes('hsd') && !h.includes('date')) {
       kEmailIndex = c;
     }
   }
@@ -1737,7 +1738,7 @@ function trackRenewEmailChanges(ss) {
     for (var c = 0; c < headers.length; c++) {
       var h = String(headers[c]).toLowerCase();
       if (h.includes('stt') || h.includes('fam')) sttCol = c;
-      if (h.includes('email') || h.includes('stock') || h.includes('renew')) emailCol = c;
+      if ((h.includes('email') || h.includes('stock') || h === 'stockrenew' || h === 'renew') && !h.includes('ngày') && !h.includes('ngay') && !h.includes('hsd') && !h.includes('date')) emailCol = c;
     }
     if (sttCol === -1) sttCol = 1;   // Cột B
     if (emailCol === -1) emailCol = 3; // Cột D
@@ -1758,7 +1759,7 @@ function trackRenewEmailChanges(ss) {
       var rnKey = String(trackValues[i][1] || '').trim();
       var newEmail = String(trackValues[i][4] || '').trim();
       var oldEmail = String(trackValues[i][3] || '').trim();
-      if (rnKey.toLowerCase() === 'stt fam' || rnKey.toLowerCase() === 'stt' || rnKey.toLowerCase() === 'định danh rn' || rnKey.toLowerCase() === 'slot') {
+      if (rnKey.toLowerCase() === 'stt fam' || rnKey.toLowerCase() === 'stt' || rnKey.toLowerCase() === 'định danh rn' || rnKey.toLowerCase() === 'slot' || newEmail.includes('GMT+') || oldEmail.includes('GMT+') || newEmail.includes('Indochina Time') || oldEmail.includes('Indochina Time')) {
         rowsToDelete.push(i + 1);
       } else if (rnKey) {
         if (newEmail) {
@@ -1898,7 +1899,16 @@ function formatCellDate(val) {
   if (val instanceof Date) {
     return Utilities.formatDate(val, "GMT+7", "dd/MM/yyyy");
   }
-  return String(val).trim();
+  var str = String(val).trim();
+  if (str.includes('GMT+') || str.includes('Indochina Time') || str.match(/^[a-zA-Z]{3} [a-zA-Z]{3} \d{2} \d{4}/)) {
+    try {
+      var d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return Utilities.formatDate(d, "GMT+7", "dd/MM/yyyy");
+      }
+    } catch(err) {}
+  }
+  return str;
 }
 
 function formatCellDateTime(val) {
@@ -1906,7 +1916,16 @@ function formatCellDateTime(val) {
   if (val instanceof Date) {
     return Utilities.formatDate(val, "GMT+7", "dd/MM/yyyy HH:mm:ss");
   }
-  return String(val).trim();
+  var str = String(val).trim();
+  if (str.includes('GMT+') || str.includes('Indochina Time') || str.match(/^[a-zA-Z]{3} [a-zA-Z]{3} \d{2} \d{4}/)) {
+    try {
+      var d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return Utilities.formatDate(d, "GMT+7", "dd/MM/yyyy HH:mm:ss");
+      }
+    } catch(err) {}
+  }
+  return str;
 }
 
 function logToKiemSoatRN(frSs, stt, eventType, oldEmail, newEmail, status, expiryDate, staff, notes) {
