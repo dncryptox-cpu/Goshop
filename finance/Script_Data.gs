@@ -1492,7 +1492,9 @@ function onEdit(e) {
 }
 
 // 16. Hàm tự động đối chiếu KHO_RENEW sang RENEW để lấy STT FAM điền vào FAM HIỆN TẠI (Cột H / Cột 8)
+// ĐÃ VÔ HIỆU HÓA - Chỉ dùng 1 lần để sync ban đầu, không cần chạy tự động nữa
 function syncFamHienTaiToKhoRenew() {
+  return; // Disabled
   var ss = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
   
   // Tự động theo dõi thay đổi Email ở cột D sheet RENEW (do hàm hoặc thao tác) vào sheet KIEM_SOAT_RN
@@ -1599,12 +1601,19 @@ function syncFamHienTaiToKhoRenew() {
     var currentStatus = String(khoValues[i][6] || '').trim(); // Cột G (index 6, tức cột 7)
     var mappedStatus = currentStatus;
     
+    // Các trạng thái thủ công không được sync tự động ghi đè
+    var PROTECTED_STATUSES = ["Banned", "Ver lần 1", "Lỗi Pay", "Đã ghép"];
+    var isProtected = PROTECTED_STATUSES.indexOf(currentStatus) !== -1;
+    
     if (mappedFamValue) {
-      if (currentStatus !== "Banned" && currentStatus !== "Đã dùng") {
+      // Có Fam đang dùng → chỉ set Đã dùng nếu chưa phải và không bị protected
+      if (!isProtected && currentStatus !== "Đã dùng") {
         mappedStatus = "Đã dùng";
       }
     } else {
-      if (currentStatus === "Đã dùng") {
+      // Không tìm thấy mapping → chỉ reset về Sẵn sàng nếu đúng là "Đã dùng" (không protected)
+      // KHÔNG reset nếu là các trạng thái thủ công như Banned, Ver lần 1, Lỗi Pay...
+      if (currentStatus === "Đã dùng" && !isProtected) {
         mappedStatus = "Sẵn sàng";
       }
     }

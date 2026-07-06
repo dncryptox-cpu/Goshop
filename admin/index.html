@@ -1331,10 +1331,10 @@
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
                             <i data-lucide="table" class="w-3.5 h-3.5"></i> Bảng dữ liệu
                         </button>
-                        <button @click="famRenewView='pipeline'; loadFamPairings()"
-                            :class="famRenewView==='pipeline' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                        <button @click="famRenewView='loi_fam'"
+                            :class="famRenewView==='loi_fam' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
                             class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
-                            <i data-lucide="git-branch" class="w-3.5 h-3.5"></i> Pipeline Thay Fam
+                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Theo Dõi Lỗi
                         </button>
                     </div>
 
@@ -1826,181 +1826,348 @@
                             </table>
                         </div>
                     </div>
-                    <!-- Pipeline View -->
-                    <div x-show="famRenewView==='pipeline'" x-cloak>
+                    <!-- Tab: Theo Dõi Lỗi -->
+                    <div x-show="famRenewView==='loi_fam'" x-cloak x-data="{
+                        loiNotes: JSON.parse(localStorage.getItem('fam_loi_notes') || '[]'),
+                        noteForm: { email: '', loai: '', xu_ly: '', date: '' },
+                        showNoteForm: false,
+                        loiFilter: 'all',
+                        autoRefreshTimer: null,
+                        lastRefreshed: null,
 
-                        <!-- Summary pills -->
-                        <div class="flex flex-wrap gap-3 mb-5">
-                            <div class="bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 text-xs font-bold text-emerald-700 flex items-center gap-1.5">
-                                <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
-                                Đã ghép cặp: <span x-text="Object.values(famRenewPairings).filter(p=>p.nextFamStt).length" class="ml-1 text-base font-extrabold"></span>
+                        get loiStatusList() {
+                            return ['Ver lần 1', 'Lỗi Pay', 'Banned', 'Lỗi BH', 'Hủy (ver 2)', 'Ver lần 2'];
+                        },
+
+                        get loiFams() {
+                            const today = new Date(); today.setHours(0,0,0,0);
+                            return $store?.khoRenewList
+                                ? $store.khoRenewList.filter(f => {
+                                    const st = (f.status || '').trim();
+                                    if (!this.loiStatusList.includes(st)) return false;
+                                    // Chưa hết hạn: renewDate (cột E) còn hạn hoặc trống
+                                    if (!f.renewDate) return true;
+                                    const parts = f.renewDate.split('/');
+                                    if (parts.length !== 3) return true;
+                                    const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+                                    return d >= today;
+                                })
+                                : this.getLoiFams(today);
+                        },
+
+                        getLoiFams(today) {
+                            // fallback dùng $root khoRenewList
+                            const list = document.querySelector('[x-data]')?.__x?.$data?.khoRenewList || [];
+                            return list.filter(f => {
+                                const st = (f.status || '').trim();
+                                if (!this.loiStatusList.includes(st)) return false;
+                                if (!f.renewDate) return true;
+                                const parts = f.renewDate.split('/');
+                                if (parts.length !== 3) return true;
+                                const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+                                return d >= today;
+                            });
+                        },
+
+                        filteredLoiFams() {
+                            const today = new Date(); today.setHours(0,0,0,0);
+                            const list = this.$root.__x ? this.$root.__x.$data.khoRenewList : [];
+                            return list.filter(f => {
+                                const st = (f.status || '').trim();
+                                if (!this.loiStatusList.includes(st)) return false;
+                                if (this.loiFilter !== 'all' && st !== this.loiFilter) return false;
+                                if (!f.renewDate) return true;
+                                const parts = f.renewDate.split('/');
+                                if (parts.length !== 3) return true;
+                                const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+                                return d >= today;
+                            });
+                        },
+
+                        countByStatus(st) {
+                            const today = new Date(); today.setHours(0,0,0,0);
+                            const list = this.$root.__x ? this.$root.__x.$data.khoRenewList : [];
+                            return list.filter(f => {
+                                if ((f.status||'').trim() !== st) return false;
+                                if (!f.renewDate) return true;
+                                const parts = f.renewDate.split('/');
+                                if (parts.length !== 3) return true;
+                                const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+                                return d >= today;
+                            }).length;
+                        },
+
+                        daysLeft(dateStr) {
+                            if (!dateStr) return null;
+                            const parts = dateStr.split('/');
+                            if (parts.length !== 3) return null;
+                            const d = new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+                            const diff = Math.round((d - new Date()) / 86400000);
+                            return diff;
+                        },
+
+                        statusBadge(st) {
+                            const m = {
+                                'Ver lần 1': 'bg-amber-100 text-amber-800 border-amber-300',
+                                'Ver lần 2': 'bg-orange-100 text-orange-800 border-orange-300',
+                                'Lỗi Pay':   'bg-red-100 text-red-700 border-red-300',
+                                'Banned':    'bg-gray-800 text-white border-gray-700',
+                                'Lỗi BH':   'bg-red-200 text-red-900 border-red-400',
+                                'Hủy (ver 2)':'bg-rose-100 text-rose-800 border-rose-300',
+                            };
+                            return (m[st] || 'bg-gray-100 text-gray-600 border-gray-200') + ' text-[9px] font-bold px-1.5 py-0.5 rounded border';
+                        },
+
+                        addNote() {
+                            if (!this.noteForm.email) return;
+                            const today = new Date();
+                            this.loiNotes.unshift({
+                                id: Date.now(),
+                                email: this.noteForm.email,
+                                loai: this.noteForm.loai,
+                                xu_ly: this.noteForm.xu_ly,
+                                date: today.toLocaleDateString('vi-VN')
+                            });
+                            localStorage.setItem('fam_loi_notes', JSON.stringify(this.loiNotes));
+                            this.noteForm = { email: '', loai: '', xu_ly: '', date: '' };
+                            this.showNoteForm = false;
+                        },
+
+                        removeNote(id) {
+                            this.loiNotes = this.loiNotes.filter(n => n.id !== id);
+                            localStorage.setItem('fam_loi_notes', JSON.stringify(this.loiNotes));
+                        },
+
+                        startAutoRefresh() {
+                            this.triggerRefresh();
+                            this.autoRefreshTimer = setInterval(() => this.triggerRefresh(), 60000);
+                        },
+
+                        triggerRefresh() {
+                            // Gọi lại loadFamRenewData từ parent scope
+                            const root = document.querySelector('[x-data]');
+                            if (root?.__x?.$data?.loadFamRenewData) {
+                                root.__x.$data.loadFamRenewData();
+                            }
+                            this.lastRefreshed = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                        }
+                    }"
+                    x-init="startAutoRefresh()"
+                    @destroy="clearInterval(autoRefreshTimer)">
+
+                        <!-- Header row: bộ lọc + refresh -->
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+                            <!-- Summary pills theo loại -->
+                            <div class="flex flex-wrap gap-2">
+                                <button @click="loiFilter='all'"
+                                    :class="loiFilter==='all' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 border border-gray-200'"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+                                    Tất cả
+                                    <span class="ml-1 bg-white/20 text-xs px-1.5 py-0.5 rounded-full font-extrabold"
+                                        x-text="filteredLoiFams().length + (loiFilter==='all' ? '' : '')"></span>
+                                </button>
+                                <template x-for="st in loiStatusList" :key="st">
+                                    <button @click="loiFilter = (loiFilter===st ? 'all' : st)"
+                                        :class="loiFilter===st ? 'bg-primary text-white shadow' : 'bg-white text-gray-500 border border-gray-200'"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+                                        <span x-text="st"></span>
+                                        <span class="bg-white/20 text-xs px-1.5 py-0.5 rounded-full font-extrabold" x-text="countByStatus(st)"></span>
+                                    </button>
+                                </template>
                             </div>
-                            <div class="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 text-xs font-bold text-orange-700 flex items-center gap-1.5">
-                                <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
-                                Chưa có Fam tháng tới: <span x-text="famRenewList.filter(i=>{ const slots=parseInt(i.slots)||0; return slots>=5 && !famRenewPairings[i.stt]?.nextFamStt; }).length" class="ml-1 text-base font-extrabold"></span>
-                            </div>
-                            <div class="bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2 text-xs font-bold text-cyan-700 flex items-center gap-1.5">
-                                <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-                                Kho dự phòng (còn slot): <span x-text="famRenewList.filter(i=>{ const slots=parseInt(i.slots)||0; return slots>0 && slots<5; }).length" class="ml-1 text-base font-extrabold"></span>
+
+                            <!-- Auto-refresh indicator -->
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400 flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block"></span>
+                                    Cập nhật: <span x-text="lastRefreshed || '--:--'"></span>
+                                </span>
+                                <button @click="triggerRefresh()"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1 transition-all">
+                                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Làm mới
+                                </button>
                             </div>
                         </div>
 
-                        <!-- Pipeline cards grid -->
-                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                            <template x-for="item in famRenewList.filter(i=>{ const s=parseInt(i.slots)||0; return s>=5; })" :key="item.id">
-                                <div class="bg-white rounded-xl border card-shadow overflow-hidden transition-all"
-                                    :class="famRenewPairings[item.stt]?.nextFamStt ? 'border-emerald-200' : getFamRenewAlert(item).isExpiryUrgent ? 'border-orange-300' : 'border-gray-200'">
+                        <!-- Danh sách Fam lỗi -->
+                        <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden mb-6">
+                            <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-500"></i>
+                                    Fam chưa hết hạn đang có vấn đề
+                                </h3>
+                                <span class="text-xs text-gray-400" x-text="filteredLoiFams().length + ' fam'"></span>
+                            </div>
 
-                                    <!-- Card header: Mã Fam -->
-                                    <div class="flex items-center justify-between px-4 py-2.5 border-b"
-                                        :class="famRenewPairings[item.stt]?.nextFamStt ? 'bg-emerald-50 border-emerald-100' : 'bg-gray-50 border-gray-100'">
-                                        <div class="flex items-center gap-2">
-                                            <span class="text-[10px] font-bold text-gray-400 uppercase">Mã Fam</span>
-                                            <span class="text-sm font-extrabold text-gray-800" x-text="'#' + (item.stt || item.rowIndex)"></span>
+                            <!-- Table header -->
+                            <div class="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                <div class="col-span-3">Email</div>
+                                <div class="col-span-2">Pass / MKP</div>
+                                <div class="col-span-2">Trạng thái</div>
+                                <div class="col-span-2">HSD (Ngày Renew)</div>
+                                <div class="col-span-2">Fam đang dùng</div>
+                                <div class="col-span-1">Thao tác</div>
+                            </div>
+
+                            <!-- Rows -->
+                            <div class="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
+                                <template x-for="item in filteredLoiFams()" :key="item.email">
+                                    <div class="grid grid-cols-12 gap-2 px-4 py-2.5 hover:bg-gray-50/60 transition-all items-center text-xs">
+                                        <!-- Email -->
+                                        <div class="col-span-3">
+                                            <span class="font-mono text-gray-800 text-[11px] cursor-pointer hover:text-primary transition-colors"
+                                                @click="$root.__x.$data.copyToClipboard(item.email,'Email')"
+                                                x-text="item.email"></span>
                                         </div>
-                                        <div class="flex items-center gap-1.5">
-                                            <!-- Expiry alert -->
-                                            <template x-if="getFamRenewAlert(item).isExpiryUrgent">
-                                                <span class="text-[9px] font-bold bg-orange-100 text-orange-700 border border-orange-200 px-1.5 py-0.5 rounded animate-pulse" x-text="getFamRenewAlert(item).text"></span>
-                                            </template>
-                                            <!-- Paired indicator -->
-                                            <template x-if="famRenewPairings[item.stt]?.nextFamEmail">
-                                                <span class="text-[9px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded">✅ Đã ghép cặp</span>
-                                            </template>
-                                            <template x-if="!famRenewPairings[item.stt]?.nextFamEmail">
-                                                <span class="text-[9px] font-bold bg-orange-50 text-orange-600 border border-orange-200 px-1.5 py-0.5 rounded">⚠ Chưa có Fam tới</span>
-                                            </template>
-                                        </div>
-                                    </div>
-
-                                    <!-- Two-column body -->
-                                    <div class="flex divide-x divide-gray-100">
-
-                                        <!-- LEFT: Fam hiện tại -->
-                                        <div class="flex-1 p-3 space-y-1.5">
-                                            <p class="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-1">📌 Fam hiện tại</p>
-                                            <div class="flex items-center gap-1 mb-2">
-                                                <template x-if="item.status === 'Đang dùng'">
-                                                    <span class="text-[8px] font-bold bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded">🟢 Đang dùng</span>
-                                                </template>
-                                                <template x-if="item.status === 'Quét ver 1'">
-                                                    <span class="text-[8px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded">⚠️ Quét ver 1</span>
-                                                </template>
-                                                <template x-if="item.status === 'Hủy (ver 2)'">
-                                                    <span class="text-[8px] font-bold bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded">🔴 Hủy (ver 2)</span>
-                                                </template>
-                                                <template x-if="item.status === 'Lỗi BH'">
-                                                    <span class="text-[8px] font-bold bg-red-100 text-red-800 border border-red-200 px-1.5 py-0.5 rounded">🔴 Lỗi BH</span>
-                                                </template>
+                                        <!-- Pass / MKP -->
+                                        <div class="col-span-2 space-y-0.5">
+                                            <div class="flex gap-1 items-center">
+                                                <span class="text-[9px] text-gray-400 w-8">Pass:</span>
+                                                <span class="font-mono text-[10px] text-gray-700 cursor-pointer hover:text-primary"
+                                                    @click="$root.__x.$data.copyToClipboard(item.pass,'Pass')"
+                                                    x-text="item.pass||'-'"></span>
                                             </div>
-                                            <p class="text-[10px] font-bold text-gray-700 truncate cursor-pointer hover:text-primary" @click="copyToClipboard(item.email,'Email')" x-text="item.email"></p>
-                                            <div class="flex gap-1 flex-wrap">
-                                                <span class="text-[9px] text-gray-400">Pass:</span>
-                                                <span class="text-[9px] font-mono text-gray-600 cursor-pointer hover:text-primary" @click="copyToClipboard(item.pass,'Pass')" x-text="item.pass||'-'"></span>
-                                            </div>
-                                            <div class="flex gap-1 flex-wrap">
-                                                <span class="text-[9px] text-gray-400">MKP:</span>
-                                                <span class="text-[9px] font-mono text-gray-600 cursor-pointer hover:text-primary" @click="copyToClipboard(item.recoveryEmail,'MKP')" x-text="item.recoveryEmail||'-'"></span>
-                                            </div>
-                                            <div class="flex gap-1 items-center mt-1">
-                                                <span class="text-[9px] text-gray-400">HSD:</span>
-                                                <span class="text-[9px] font-bold px-1.5 py-0.5 rounded"
-                                                    :class="getFamRenewAlert(item).isExpiryUrgent ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'"
-                                                    x-text="item.expiryDate||'-'"></span>
+                                            <div class="flex gap-1 items-center">
+                                                <span class="text-[9px] text-gray-400 w-8">MKP:</span>
+                                                <span class="font-mono text-[10px] text-gray-700 cursor-pointer hover:text-primary truncate max-w-[80px]"
+                                                    @click="$root.__x.$data.copyToClipboard(item.recoveryEmail,'MKP')"
+                                                    x-text="item.recoveryEmail||'-'"></span>
                                             </div>
                                         </div>
-
-                                        <!-- RIGHT: Fam tháng tới -->
-                                        <div class="flex-1 p-3 space-y-1.5">
-                                            <p class="text-[9px] font-extrabold text-gray-400 uppercase tracking-wider mb-2">🔄 Fam tháng tới</p>
-
-                                            <!-- Not yet paired -->
-                                            <template x-if="!famRenewPairings[item.stt]?.nextFamEmail">
+                                        <!-- Status badge -->
+                                        <div class="col-span-2">
+                                            <span :class="statusBadge(item.status)" x-text="item.status"></span>
+                                        </div>
+                                        <!-- HSD -->
+                                        <div class="col-span-2">
+                                            <template x-if="item.renewDate">
                                                 <div>
-                                                    <p class="text-[9px] text-gray-400 mb-1.5">Chọn Fam từ Kho Renew:</p>
-                                                    <select @change="pairFam(item.stt, $event.target.value)"
-                                                        class="w-full text-[9px] border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 focus:outline-none focus:border-primary text-gray-700">
-                                                        <option value="">-- Chọn Fam mới --</option>
-                                                        <template x-for="candidate in khoRenewList.filter(c => c.status === 'Sẵn sàng')" :key="candidate.email">
-                                                            <option :value="candidate.email" x-text="`${candidate.email}`"></option>
-                                                        </template>
-                                                    </select>
+                                                    <span class="font-bold text-[11px]"
+                                                        :class="daysLeft(item.renewDate) !== null && daysLeft(item.renewDate) <= 7 ? 'text-orange-600' : 'text-gray-700'"
+                                                        x-text="item.renewDate"></span>
+                                                    <span class="text-[9px] block"
+                                                        :class="daysLeft(item.renewDate) !== null && daysLeft(item.renewDate) <= 0 ? 'text-red-500' : 'text-gray-400'"
+                                                        x-text="daysLeft(item.renewDate) !== null ? (daysLeft(item.renewDate) >= 0 ? 'còn ' + daysLeft(item.renewDate) + ' ngày' : 'quá hạn ' + Math.abs(daysLeft(item.renewDate)) + ' ngày') : ''"></span>
                                                 </div>
                                             </template>
-
-                                            <!-- Already paired -->
-                                            <template x-if="famRenewPairings[item.stt]?.nextFamEmail">
-                                                <div class="space-y-1 bg-emerald-50/50 border border-emerald-100 rounded-lg p-2 mt-1">
-                                                    <p class="text-[10px] font-bold text-emerald-800 truncate" x-text="famRenewPairings[item.stt].nextFamEmail"></p>
-                                                    <div class="flex gap-1 items-center">
-                                                        <span class="text-[9px] text-gray-400">Pass:</span>
-                                                        <span class="text-[9px] font-mono text-gray-700 cursor-pointer hover:text-emerald-700 font-bold" @click="copyToClipboard(famRenewPairings[item.stt].nextFamPass,'Pass mới')" x-text="famRenewPairings[item.stt].nextFamPass||'-'"></span>
-                                                    </div>
-                                                    <div class="flex gap-1 items-center">
-                                                        <span class="text-[9px] text-gray-400">MKP:</span>
-                                                        <span class="text-[9px] font-mono text-gray-700 cursor-pointer hover:text-emerald-700 font-bold truncate max-w-[120px]" @click="copyToClipboard(famRenewPairings[item.stt].nextFamMkp,'MKP mới')" x-text="famRenewPairings[item.stt].nextFamMkp||'-'"></span>
-                                                    </div>
-                                                    <div class="flex gap-1 items-center">
-                                                        <span class="text-[9px] text-gray-400">2FA:</span>
-                                                        <span class="text-[9px] font-mono text-gray-500 truncate max-w-[80px]" x-text="famRenewPairings[item.stt].nextFam2fa||'-'"></span>
-                                                    </div>
-                                                    <p class="text-[8px] text-gray-400 mt-1">Ghép: <span x-text="famRenewPairings[item.stt].pairedDate||'-'"></span></p>
-                                                    
-                                                    <div class="flex gap-1.5 mt-1 border-t border-emerald-100 pt-1.5 justify-between items-center">
-                                                        <button @click="unpairFam(item.stt)" class="text-[8px] text-red-500 hover:text-red-700 underline font-bold">Hủy ghép</button>
-                                                        <button @click="copyToClipboard(`${famRenewPairings[item.stt].nextFamEmail}|${famRenewPairings[item.stt].nextFamPass}|${famRenewPairings[item.stt].nextFamMkp}|${famRenewPairings[item.stt].nextFam2fa}`,'Thông tin Fam mới')"
-                                                            class="text-[8px] bg-white border border-emerald-200 text-emerald-700 px-1 py-0.5 rounded hover:bg-emerald-50 transition-all font-bold">
-                                                            Copy Trọn Bộ
-                                                        </button>
-                                                    </div>
-                                                </div>
+                                            <template x-if="!item.renewDate">
+                                                <span class="text-gray-400 text-[10px]">—</span>
                                             </template>
                                         </div>
-                                    </div>
-
-                                    <!-- Footer: action buttons -->
-                                    <div class="px-3 py-2 border-t border-gray-100 flex items-center justify-between gap-2 bg-gray-50/50">
-                                        <div class="flex gap-1.5">
-                                            <button @click="copyFamRenewTwofaCode(item)"
-                                                x-show="item.twofa && item.twofa.trim()"
-                                                class="text-[9px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-100 transition-all flex items-center gap-0.5">
-                                                <i data-lucide="key" class="w-2.5 h-2.5"></i> OTP
-                                            </button>
-                                            <button @click="copyToClipboard(`${item.email}|${item.pass}|${item.recoveryEmail}|${item.twofa}`,'Thông tin')"
-                                                class="text-[9px] font-bold bg-gray-100 border border-gray-200 text-gray-600 px-2 py-1 rounded hover:bg-gray-200 transition-all flex items-center gap-0.5">
-                                                <i data-lucide="copy" class="w-2.5 h-2.5"></i> Copy
-                                            </button>
+                                        <!-- Fam đang dùng (famFollow = STT fam khách) -->
+                                        <div class="col-span-2">
+                                            <span class="text-[10px] text-gray-600" x-text="item.famFollow || '—'"></span>
                                         </div>
-                                        <div class="flex gap-1.5">
-                                            <button @click="openFamRenewConfirm(item,'Quét ver 1')"
-                                                x-show="item.status==='Đang dùng'"
-                                                class="text-[9px] font-bold bg-amber-50 border border-amber-200 text-amber-700 px-2 py-1 rounded hover:bg-amber-100 transition-all">
-                                                Ver lần 1
-                                            </button>
-                                            <button @click="openFamRenewConfirm(item,'Hủy (ver 2)')"
-                                                x-show="item.status==='Quét ver 1'"
-                                                class="text-[9px] font-bold bg-red-50 border border-red-200 text-red-700 px-2 py-1 rounded hover:bg-red-100 transition-all">
-                                                Lần 2: Bỏ
-                                            </button>
-                                            <button @click="openFamRenewConfirm(item,'Hết hạn - đã thay')"
-                                                x-show="famRenewPairings[item.stt]?.nextFamEmail"
-                                                class="text-[9px] font-bold bg-purple-500 text-white px-2 py-1 rounded hover:bg-purple-600 transition-all">
-                                                ✅ Đã Thay Fam
+                                        <!-- Thao tác -->
+                                        <div class="col-span-1">
+                                            <button @click="noteForm.email = item.email; noteForm.loai = item.status; showNoteForm = true"
+                                                class="text-[9px] bg-blue-50 border border-blue-200 text-blue-700 px-1.5 py-1 rounded hover:bg-blue-100 transition-all font-bold flex items-center gap-0.5">
+                                                <i data-lucide="pen-line" class="w-2.5 h-2.5"></i> Ghi
                                             </button>
                                         </div>
                                     </div>
-                                </div>
-                            </template>
+                                </template>
 
-                            <!-- Empty state -->
-                            <template x-if="famRenewList.filter(i=>{ const s=parseInt(i.slots)||0; return s>=5; }).length===0">
-                                <div class="col-span-3 text-center py-16 text-gray-400">
-                                    <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-3 opacity-30"></i>
-                                    <p class="text-sm">Không có Fam FULL nào đang hoạt động.</p>
-                                </div>
-                            </template>
+                                <!-- Empty state -->
+                                <template x-if="filteredLoiFams().length === 0">
+                                    <div class="text-center py-12 text-gray-400">
+                                        <i data-lucide="check-circle-2" class="w-8 h-8 mx-auto mb-2 text-emerald-300"></i>
+                                        <p class="text-sm">Không có Fam nào đang có lỗi</p>
+                                    </div>
+                                </template>
+                            </div>
                         </div>
+
+                        <!-- Modal ghi chú nhanh -->
+                        <div x-show="showNoteForm" x-cloak
+                            class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+                            @click.self="showNoteForm=false">
+                            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+                                <h4 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    <i data-lucide="pen-line" class="w-4 h-4 text-primary"></i>
+                                    Ghi chú xử lý
+                                </h4>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Email Fam</label>
+                                        <input x-model="noteForm.email" type="text"
+                                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-primary">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Loại lỗi</label>
+                                        <select x-model="noteForm.loai"
+                                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary">
+                                            <option value="">-- Chọn loại --</option>
+                                            <template x-for="st in loiStatusList" :key="st">
+                                                <option :value="st" x-text="st"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] font-bold text-gray-500 uppercase mb-1 block">Cách xử lý / Ghi chú</label>
+                                        <textarea x-model="noteForm.xu_ly" rows="3"
+                                            placeholder="Mô tả cách đã xử lý..."
+                                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary resize-none"></textarea>
+                                    </div>
+                                </div>
+                                <div class="flex gap-2 mt-4">
+                                    <button @click="showNoteForm=false"
+                                        class="flex-1 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-500 hover:bg-gray-50 transition-all">
+                                        Hủy
+                                    </button>
+                                    <button @click="addNote()"
+                                        class="flex-1 py-2 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary/90 transition-all">
+                                        ✓ Lưu ghi chú
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Bảng ghi chú đã xử lý -->
+                        <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="clipboard-check" class="w-4 h-4 text-emerald-500"></i>
+                                    Nhật ký xử lý
+                                    <span class="text-xs text-gray-400 font-normal">(lưu trên thiết bị)</span>
+                                </h3>
+                                <button @click="showNoteForm=true"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-white hover:bg-primary/90 transition-all flex items-center gap-1">
+                                    <i data-lucide="plus" class="w-3 h-3"></i> Thêm ghi chú
+                                </button>
+                            </div>
+
+                            <template x-if="loiNotes.length === 0">
+                                <div class="text-center py-10 text-gray-400">
+                                    <i data-lucide="clipboard" class="w-7 h-7 mx-auto mb-2 opacity-30"></i>
+                                    <p class="text-xs">Chưa có ghi chú nào</p>
+                                </div>
+                            </template>
+
+                            <div class="divide-y divide-gray-50 max-h-[320px] overflow-y-auto">
+                                <template x-for="note in loiNotes" :key="note.id">
+                                    <div class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50 transition-all">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2 mb-1 flex-wrap">
+                                                <span class="font-mono text-[11px] text-gray-800 font-bold cursor-pointer hover:text-primary"
+                                                    @click="$root.__x.$data.copyToClipboard(note.email,'Email')"
+                                                    x-text="note.email"></span>
+                                                <span :class="statusBadge(note.loai)" x-text="note.loai||'—'"></span>
+                                                <span class="text-[9px] text-gray-400 ml-auto" x-text="note.date"></span>
+                                            </div>
+                                            <p class="text-xs text-gray-600 leading-relaxed" x-text="note.xu_ly||'—'"></p>
+                                        </div>
+                                        <button @click="removeNote(note.id)"
+                                            class="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 mt-0.5">
+                                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
                     </div>
+
 
                     <!-- Tab: Công cụ thay nhanh & Banned -->
                     <div x-show="famRenewView==='bulk_tool'" class="space-y-6 mb-6" x-cloak>
