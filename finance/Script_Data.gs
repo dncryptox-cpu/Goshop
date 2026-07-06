@@ -320,6 +320,9 @@ function doPost(e) {
       }
       var email = String(data.email || '').trim().toLowerCase();
       var newStatus = String(data.status || '').trim();
+      var notes = String(data.notes || '').trim();
+      var operator = String(data.operator || 'Admin').trim();
+      
       if (!email || !newStatus) {
         return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Missing email or status'})).setMimeType(ContentService.MimeType.JSON);
       }
@@ -330,6 +333,14 @@ function doPost(e) {
         var rowEmail = String(khoValues[i][0] || '').trim().toLowerCase();
         if (rowEmail === email) {
           khoRenewSheet.getRange(i + 1, 7).setValue(newStatus); // Cột G = Trạng thái
+          
+          if (notes) {
+            var fullNote = "[" + operator + "] " + notes;
+            var currentNote = String(khoValues[i][8] || '').trim(); // Cột I (index 8)
+            var finalNote = currentNote ? currentNote + "\n" + fullNote : fullNote;
+            khoRenewSheet.getRange(i + 1, 9).setValue(finalNote);
+          }
+          
           updated = true;
           break;
         }
