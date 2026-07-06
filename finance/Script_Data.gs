@@ -341,6 +341,26 @@ function doPost(e) {
             khoRenewSheet.getRange(i + 1, 9).setValue(finalNote);
           }
           
+          // Ghi vào NHAT_KY_XU_LY
+          var nhatKySheet = frSs.getSheetByName("NHAT_KY_XU_LY");
+          if (!nhatKySheet) {
+            nhatKySheet = frSs.insertSheet("NHAT_KY_XU_LY");
+            nhatKySheet.appendRow(["Thời Gian", "Email", "Trạng Thái Mới", "Người Xử Lý", "Ghi Chú"]);
+            nhatKySheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#f3f3f3");
+          }
+          var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
+          nhatKySheet.appendRow([timestamp, email, newStatus, operator, notes]);
+
+          // Ghi thêm vào STATUS_HISTORY để đồng bộ với các tab lịch sử khác
+          var statusHistorySheet = frSs.getSheetByName("STATUS_HISTORY");
+          if (!statusHistorySheet) {
+            statusHistorySheet = frSs.insertSheet("STATUS_HISTORY");
+            statusHistorySheet.appendRow(["Thời Gian", "STT FAM", "Email", "Trạng Thái Mới", "Người Thực Hiện", "Ghi Chú"]);
+            statusHistorySheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#f3f3f3");
+          }
+          var stt = String(khoValues[i][7] || '').trim(); // Cột H
+          statusHistorySheet.appendRow([timestamp, stt, email, newStatus, operator, notes]);
+
           updated = true;
           break;
         }
@@ -350,6 +370,31 @@ function doPost(e) {
       } else {
         return ContentService.createTextOutput(JSON.stringify({status: 'not_found', message: 'Email không tìm thấy trong KHO_RENEW'})).setMimeType(ContentService.MimeType.JSON);
       }
+    }
+
+    // 9.4c. Lấy danh sách Nhật Ký Xử Lý (từ tab Theo Dõi Lỗi)
+    if (action === 'get_nhat_ky_xu_ly') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var nhatKySheet = frSs.getSheetByName("NHAT_KY_XU_LY");
+      if (!nhatKySheet) {
+        nhatKySheet = frSs.insertSheet("NHAT_KY_XU_LY");
+        nhatKySheet.appendRow(["Thời Gian", "Email", "Trạng Thái Mới", "Người Xử Lý", "Ghi Chú"]);
+        nhatKySheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#f3f3f3");
+      }
+      var dataRange = nhatKySheet.getDataRange();
+      var values = dataRange.getValues();
+      var history = [];
+      for (var i = 1; i < values.length; i++) {
+        history.push({
+          id: i,
+          date: formatCellDateTime(values[i][0]),
+          email: String(values[i][1] || '').trim(),
+          loai: String(values[i][2] || '').trim(),
+          nguoi_lam: standardizeStaffName(values[i][3]),
+          xu_ly: String(values[i][4] || '').trim()
+        });
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history.reverse()})).setMimeType(ContentService.MimeType.JSON);
     }
 
 
