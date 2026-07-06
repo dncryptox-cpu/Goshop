@@ -311,6 +311,37 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 9.4b. Cập nhật trạng thái trực tiếp trong KHO_RENEW (từ tab Theo Dõi Lỗi)
+    if (action === 'update_kho_renew_status') {
+      var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      if (!khoRenewSheet) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'KHO_RENEW not found'})).setMimeType(ContentService.MimeType.JSON);
+      }
+      var email = String(data.email || '').trim().toLowerCase();
+      var newStatus = String(data.status || '').trim();
+      if (!email || !newStatus) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Missing email or status'})).setMimeType(ContentService.MimeType.JSON);
+      }
+      var khoRange = khoRenewSheet.getDataRange();
+      var khoValues = khoRange.getValues();
+      var updated = false;
+      for (var i = 1; i < khoValues.length; i++) {
+        var rowEmail = String(khoValues[i][0] || '').trim().toLowerCase();
+        if (rowEmail === email) {
+          khoRenewSheet.getRange(i + 1, 7).setValue(newStatus); // Cột G = Trạng thái
+          updated = true;
+          break;
+        }
+      }
+      if (updated) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify({status: 'not_found', message: 'Email không tìm thấy trong KHO_RENEW'})).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+
+
     // 9.5. Xử lý Thay Fam Mới cho Slot (renew_fam_slot)
     if (action === 'renew_fam_slot') {
       var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
