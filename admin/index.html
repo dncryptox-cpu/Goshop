@@ -2278,6 +2278,9 @@
                                     <button @click="historyTab = 'status'; if(statusHistoryList.length === 0) fetchStatusHistory();" :class="historyTab === 'status' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
                                         <i data-lucide="activity" class="w-4 h-4"></i> Lịch sử Trạng thái
                                     </button>
+                                    <button @click="historyTab = 'audit_log'; if(auditLogList.length === 0) fetchAuditLog();" :class="historyTab === 'audit_log' ? 'text-amber-600 border-b-2 border-amber-600 font-bold bg-amber-50/60 rounded-t-lg' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="clipboard-list" class="w-4 h-4 text-amber-600"></i> Lịch sử Thao tác (Kho YTB)
+                                    </button>
                                 </div>
                                 <div class="flex items-center gap-3">
                                     <template x-if="historyTab === 'rn_tracking' || historyTab === 'rn_table'">
@@ -2298,6 +2301,12 @@
                                         <button @click="fetchStatusHistory()" :disabled="isFetchingStatusHistory"
                                             class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
                                             <i data-lucide="refresh-cw" :class="isFetchingStatusHistory ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại lịch sử trạng thái
+                                        </button>
+                                    </template>
+                                    <template x-if="historyTab === 'audit_log'">
+                                        <button @click="fetchAuditLog()" :disabled="isFetchingAuditLog"
+                                            class="text-xs font-bold text-amber-600 hover:underline flex items-center gap-1">
+                                            <i data-lucide="refresh-cw" :class="isFetchingAuditLog ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại nhật ký thao tác
                                         </button>
                                     </template>
                                 </div>
@@ -2606,6 +2615,66 @@
                                             <template x-if="statusHistoryList.length === 0">
                                                 <tr>
                                                     <td colspan="6" class="text-center py-12 text-gray-400 italic">Không có lịch sử cập nhật trạng thái nào.</td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Table 3: Nhật ký Thao tác (Kho YTB / Audit Log) -->
+                            <div class="border border-gray-150 rounded-xl overflow-hidden" x-show="historyTab === 'audit_log'">
+                                <div class="bg-amber-50/50 p-3 border-b border-amber-100 flex items-center justify-between flex-wrap gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="shield-alert" class="w-4 h-4 text-amber-600"></i>
+                                        <span class="text-xs font-bold text-amber-900">Ghi nhận thao tác thực tế từ Sheet LICH_SU_THAO_TAC</span>
+                                    </div>
+                                    <div class="relative w-full sm:w-64">
+                                        <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2"></i>
+                                        <input type="text" x-model="auditLogSearchQuery" placeholder="🔍 Lọc theo Email, Cột, Người làm..."
+                                            class="w-full pl-8 pr-3 py-1 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-amber-500">
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto max-h-[450px]">
+                                    <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                        <thead class="bg-gray-55 border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
+                                            <tr>
+                                                <th class="px-3 py-3">Thời gian</th>
+                                                <th class="px-3 py-3">Người làm</th>
+                                                <th class="px-3 py-3">Tab & Dòng</th>
+                                                <th class="px-3 py-3">Khách hàng (Email/ID)</th>
+                                                <th class="px-3 py-3">Cột thay đổi</th>
+                                                <th class="px-3 py-3">Giá trị cũ</th>
+                                                <th class="px-3 py-3">Giá trị mới</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-50 bg-white">
+                                            <template x-for="item in filteredAuditLogList" :key="item.id + '_' + item.timestamp">
+                                                <tr class="hover:bg-amber-50/30 transition-colors">
+                                                    <td class="px-3 py-2.5 text-gray-500 font-bold whitespace-nowrap" x-text="item.timestamp"></td>
+                                                    <td class="px-3 py-2.5 font-bold text-slate-800">
+                                                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold flex items-center gap-1 w-max">
+                                                            <i data-lucide="user" class="w-3 h-3 text-slate-400"></i>
+                                                            <span x-text="item.staff || 'Admin'"></span>
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5 text-gray-450 font-mono text-[10px]" x-text="`${item.tab} (${item.row})`"></td>
+                                                    <td class="px-3 py-2.5">
+                                                        <span @click="copyToClipboard(item.customer, 'Email Khách')" class="font-bold text-indigo-700 hover:text-indigo-900 hover:underline cursor-pointer" x-text="item.customer || '-'"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5">
+                                                        <span class="bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded font-bold text-[10px]" x-text="item.column || '-'"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5 font-mono text-red-600 line-through bg-red-50/50 px-2 py-1 rounded max-w-[150px] truncate" :title="item.oldValue" x-text="item.oldValue || '(Trống)'"></td>
+                                                    <td class="px-3 py-2.5 font-mono font-bold text-emerald-700 bg-emerald-50/50 px-2 py-1 rounded max-w-[150px] truncate" :title="item.newValue" x-text="item.newValue || '(Trống)'"></td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="filteredAuditLogList.length === 0">
+                                                <tr>
+                                                    <td colspan="7" class="text-center py-12 text-gray-400 italic">
+                                                        <i data-lucide="clipboard-list" class="w-8 h-8 mx-auto mb-2 opacity-30"></i>
+                                                        <p>Chưa có dữ liệu nhật ký thao tác nào hoặc không khớp bộ lọc.</p>
+                                                    </td>
                                                 </tr>
                                             </template>
                                         </tbody>
@@ -4872,6 +4941,9 @@
                 rnTrackingFilterType: 'all',
                 replaceHistoryList: [],
                 statusHistoryList: [],
+                auditLogList: [],
+                isFetchingAuditLog: false,
+                auditLogSearchQuery: '',
                 isExecutingBulkAction: false,
                 isFetchingHistory: false,
                 isFetchingStatusHistory: false,
@@ -6323,6 +6395,24 @@
                     }
                 },
 
+                async fetchAuditLog() {
+                    this.isFetchingAuditLog = true;
+                    try {
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'get_lich_su_thao_tac' })
+                        });
+                        const result = await res.json();
+                        if (result.status === 'success' && result.data) {
+                            this.auditLogList = result.data;
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch audit log:", e);
+                    } finally {
+                        this.isFetchingAuditLog = false;
+                    }
+                },
+
                 async fetchNhatKyXuLy() {
                     try {
                         const res = await fetch(this.CONFIG.WEBAPP_URL, {
@@ -6492,6 +6582,18 @@
                         }
                         return true;
                     }).sort((a, b) => b.totalEvents - a.totalEvents);
+                },
+
+                get filteredAuditLogList() {
+                    const q = (this.auditLogSearchQuery || '').trim().toLowerCase();
+                    if (!q) return this.auditLogList || [];
+                    return (this.auditLogList || []).filter(item => {
+                        return (item.customer || '').toLowerCase().includes(q) ||
+                               (item.staff || '').toLowerCase().includes(q) ||
+                               (item.column || '').toLowerCase().includes(q) ||
+                               (item.oldValue || '').toLowerCase().includes(q) ||
+                               (item.newValue || '').toLowerCase().includes(q);
+                    });
                 },
 
                 async revertHistoryItem(item) {
@@ -8728,6 +8830,7 @@
                         this.mapData();
                         await this.fetchReplaceHistory();
                         await this.fetchStatusHistory();
+                        await this.fetchAuditLog();
                     } catch (error) {
                         console.error('Error fetching sheet data:', error);
                     } finally {

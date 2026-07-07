@@ -397,6 +397,55 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history.reverse()})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 9.4d. Lấy danh sách Lịch Sử Thao Tác (Audit Log từ Kho YTB/Renew)
+    if (action === 'get_lich_su_thao_tac' || action === 'get_audit_log') {
+      var possibleIds = [
+        '1Agq-0ITsQgzhwnWvQTUthAjS2e8zJfgNd8dGGkCDniA', // Kho YTB new
+        '1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc', // FamRenew
+        '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c'  // Main SS
+      ];
+      var logSheet = null;
+      for (var p = 0; p < possibleIds.length; p++) {
+        try {
+          var tempSs = SpreadsheetApp.openById(possibleIds[p]);
+          var tempSheet = tempSs.getSheetByName("LICH_SU_THAO_TAC");
+          if (tempSheet && tempSheet.getLastRow() > 1) {
+            logSheet = tempSheet;
+            break;
+          } else if (tempSheet && !logSheet) {
+            logSheet = tempSheet;
+          }
+        } catch(err) {
+          // ignore error if no access or not found
+        }
+      }
+      if (!logSheet) {
+        var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+        logSheet = frSs.insertSheet("LICH_SU_THAO_TAC");
+        logSheet.appendRow(["Thời gian (GMT+7)", "Người thao tác", "Tab", "Dòng", "Email / ID Khách", "Cột thay đổi", "Giá trị cũ", "Giá trị mới"]);
+        logSheet.getRange("A1:H1").setFontWeight("bold").setBackground("#d9ead3");
+      }
+      var dataRange = logSheet.getDataRange();
+      var values = dataRange.getValues();
+      var history = [];
+      for (var i = 1; i < values.length; i++) {
+        if (values[i][0] || values[i][1] || values[i][4]) {
+          history.push({
+            id: i,
+            timestamp: String(values[i][0] || '').trim(),
+            staff: standardizeStaffName(values[i][1]),
+            tab: String(values[i][2] || '').trim(),
+            row: String(values[i][3] || '').trim(),
+            customer: String(values[i][4] || '').trim(),
+            column: String(values[i][5] || '').trim(),
+            oldValue: String(values[i][6] || '').trim(),
+            newValue: String(values[i][7] || '').trim()
+          });
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history.reverse()})).setMimeType(ContentService.MimeType.JSON);
+    }
+
 
     // 9.5. Xử lý Thay Fam Mới cho Slot (renew_fam_slot)
     if (action === 'renew_fam_slot') {
