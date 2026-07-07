@@ -403,45 +403,42 @@ function doPost(e) {
         '1Agq-0ITsQgzhwnWvQTUthAjS2e8zJfgNd8dGGkCDniA', // Kho YTB new
         '1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc', // FamRenew
         '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c'  // Main SS
-      ];
-      var logSheet = null;
+      var history = [];
+      var logSheetFound = false;
       for (var p = 0; p < possibleIds.length; p++) {
         try {
           var tempSs = SpreadsheetApp.openById(possibleIds[p]);
           var tempSheet = tempSs.getSheetByName("LICH_SU_THAO_TAC");
           if (tempSheet && tempSheet.getLastRow() > 1) {
-            logSheet = tempSheet;
-            break;
-          } else if (tempSheet && !logSheet) {
-            logSheet = tempSheet;
+            logSheetFound = true;
+            var values = tempSheet.getDataRange().getValues();
+            for (var i = 1; i < values.length; i++) {
+              if (values[i][0] || values[i][1] || values[i][4]) {
+                history.push({
+                  id: p + '_' + i,
+                  timestamp: String(values[i][0] || '').trim(),
+                  staff: standardizeStaffName(values[i][1]),
+                  tab: String(values[i][2] || '').trim(),
+                  row: String(values[i][3] || '').trim(),
+                  customer: String(values[i][4] || '').trim(),
+                  column: String(values[i][5] || '').trim(),
+                  oldValue: String(values[i][6] || '').trim(),
+                  newValue: String(values[i][7] || '').trim()
+                });
+              }
+            }
           }
         } catch(err) {
           // ignore error if no access or not found
         }
       }
-      if (!logSheet) {
-        var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
-        logSheet = frSs.insertSheet("LICH_SU_THAO_TAC");
-        logSheet.appendRow(["Thời gian (GMT+7)", "Người thao tác", "Tab", "Dòng", "Email / ID Khách", "Cột thay đổi", "Giá trị cũ", "Giá trị mới"]);
-        logSheet.getRange("A1:H1").setFontWeight("bold").setBackground("#d9ead3");
-      }
-      var dataRange = logSheet.getDataRange();
-      var values = dataRange.getValues();
-      var history = [];
-      for (var i = 1; i < values.length; i++) {
-        if (values[i][0] || values[i][1] || values[i][4]) {
-          history.push({
-            id: i,
-            timestamp: String(values[i][0] || '').trim(),
-            staff: standardizeStaffName(values[i][1]),
-            tab: String(values[i][2] || '').trim(),
-            row: String(values[i][3] || '').trim(),
-            customer: String(values[i][4] || '').trim(),
-            column: String(values[i][5] || '').trim(),
-            oldValue: String(values[i][6] || '').trim(),
-            newValue: String(values[i][7] || '').trim()
-          });
-        }
+      if (!logSheetFound && history.length === 0) {
+        try {
+          var frSs = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+          var logSheet = frSs.insertSheet("LICH_SU_THAO_TAC");
+          logSheet.appendRow(["Thời gian (GMT+7)", "Người thao tác", "Tab", "Dòng", "Email / ID Khách", "Cột thay đổi", "Giá trị cũ", "Giá trị mới"]);
+          logSheet.getRange("A1:H1").setFontWeight("bold").setBackground("#d9ead3");
+        } catch(e) {}
       }
       return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history.reverse()})).setMimeType(ContentService.MimeType.JSON);
     }
