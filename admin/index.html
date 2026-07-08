@@ -1525,6 +1525,7 @@
                                     <table class="w-full text-left border-collapse text-xs">
                                         <thead>
                                             <tr class="bg-gray-50 border-b border-gray-100 text-gray-600 font-bold">
+                                                <th class="p-3 w-16">STT Fam</th>
                                                 <th class="p-3">Email</th>
                                                 <th class="p-3">Pass</th>
                                                 <th class="p-3">MKP</th>
@@ -1538,8 +1539,14 @@
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <template x-for="c in sortedKhoRenewList().filter(c => !khoRenewSearchQuery || c.email.toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.status || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.famFollow || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.notes || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()))" :key="c.email">
+                                            <template x-for="c in sortedKhoRenewList().filter(c => !khoRenewSearchQuery || c.email.toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.status || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.famFollow || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.sttFam || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.notes || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()))" :key="c.email">
                                                 <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors" :class="editingKhoEmail === c.email ? 'bg-blue-50/30' : ''">
+                                                    <!-- STT Fam -->
+                                                    <td class="p-3 font-bold">
+                                                        <span class="bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-black inline-block shadow-2xs" x-show="c.sttFam" x-text="c.sttFam"></span>
+                                                        <span x-show="!c.sttFam" class="text-gray-400 font-medium">-</span>
+                                                    </td>
+
                                                     <!-- Email (Không sửa) -->
                                                     <td class="p-3 font-medium text-gray-700 cursor-pointer hover:text-primary" 
                                                         @click="editingKhoEmail !== c.email && copyToClipboard(c.email, 'Email')" x-text="c.email"></td>
@@ -6287,6 +6294,22 @@
                     }
                 },
 
+                parseTimestampMs(s) {
+                    try {
+                        if (!s || s === '-' || s === 'Ban đầu / Hiện tại') return 0;
+                        const str = String(s).trim();
+                        const p = str.split(' ');
+                        const dp = p[0].split('/');
+                        const tp = (p[1] || '00:00:00').split(':');
+                        if (dp.length === 3) {
+                            return new Date(dp[2], dp[1]-1, dp[0], tp[0]||0, tp[1]||0, tp[2]||0).getTime();
+                        }
+                        const d = new Date(str);
+                        if (!isNaN(d.getTime())) return d.getTime();
+                    } catch(e){}
+                    return 0;
+                },
+
                 async fetchReplaceHistory() {
                     this.isFetchingHistory = true;
                     try {
@@ -6296,7 +6319,7 @@
                         });
                         const result = await res.json();
                         if (result.status === 'success' && result.data) {
-                            this.replaceHistoryList = result.data.reverse();
+                            this.replaceHistoryList = result.data.slice().sort((a, b) => this.parseTimestampMs(b.timestamp) - this.parseTimestampMs(a.timestamp));
                         }
                     } catch (e) {
                         console.error("Failed to fetch history:", e);
@@ -6314,7 +6337,7 @@
                         });
                         const result = await res.json();
                         if (result.status === 'success' && result.data) {
-                            this.statusHistoryList = result.data.reverse();
+                            this.statusHistoryList = result.data.slice().sort((a, b) => this.parseTimestampMs(b.timestamp) - this.parseTimestampMs(a.timestamp));
                         }
                     } catch (e) {
                         console.error("Failed to fetch status history:", e);
@@ -6348,7 +6371,7 @@
                         });
                         const result = await res.json();
                         if (result.status === 'success') {
-                            if (result.data) this.rnTrackingList = result.data.reverse();
+                            if (result.data) this.rnTrackingList = result.data.slice().sort((a, b) => this.parseTimestampMs(b.timestamp) - this.parseTimestampMs(a.timestamp));
                             if (result.renewList) this.renewList = result.renewList;
                             this.$nextTick(() => { if (typeof lucide !== 'undefined') lucide.createIcons(); });
                         }
@@ -6406,18 +6429,7 @@
                     // 3. Sắp xếp timeline và tổng hợp trạng thái mới nhất
                     const resultList = Object.values(groups).map(g => {
                         g.events.sort((a, b) => {
-                            const parseT = (s) => {
-                                try {
-                                    const p = (s || '').split(' ');
-                                    const dp = p[0].split('/');
-                                    const tp = (p[1] || '00:00:00').split(':');
-                                    if (dp.length === 3) {
-                                        return new Date(dp[2], dp[1]-1, dp[0], tp[0]||0, tp[1]||0, tp[2]||0).getTime();
-                                    }
-                                } catch(e){}
-                                return 0;
-                            };
-                            return parseT(a.timestamp) - parseT(b.timestamp);
+                            return this.parseTimestampMs(a.timestamp) - this.parseTimestampMs(b.timestamp);
                         });
                         
                         const formatCleanVal = (val) => {
@@ -6491,7 +6503,12 @@
                             if (g.totalEvents <= 1) return false;
                         }
                         return true;
-                    }).sort((a, b) => b.totalEvents - a.totalEvents);
+                    }).sort((a, b) => {
+                        const timeA = this.parseTimestampMs(a.latestTime);
+                        const timeB = this.parseTimestampMs(b.latestTime);
+                        if (timeB !== timeA) return timeB - timeA;
+                        return b.totalEvents - a.totalEvents;
+                    });
                 },
 
                 async revertHistoryItem(item) {
@@ -8639,6 +8656,7 @@
                                         const kStatus = keys.find(k => k.toLowerCase().includes('trạng thái') || k.toLowerCase().includes('status')) || keys[6];
                                         const kFamFollow = keys.find(k => k.toLowerCase().includes('fam hiện tại') || k.toLowerCase().includes('fam hien tai') || k.toLowerCase().includes('famfollow') || k.toLowerCase().includes('follow')) || keys[7];
                                         const kNotes = keys.find(k => k.toLowerCase().includes('ghi chú') || k.toLowerCase().includes('note') || k.toLowerCase().includes('notes')) || keys[8];
+                                        const kSttFam = keys.find(k => k.toLowerCase() === 'stt' || k.toLowerCase().includes('stt fam') || k.toLowerCase().includes('stt kho') || k.toLowerCase().includes('số thứ tự') || k.toLowerCase().includes('stt')) || keys[10] || '';
 
                                         return {
                                             email: String(row[kEmail] || '').trim(),
@@ -8649,7 +8667,8 @@
                                             importDate: String(row[kImportDate] || '').trim(),
                                             status: String(row[kStatus] || 'Sẵn sàng').trim(),
                                             famFollow: String(row[kFamFollow] || '').trim(),
-                                            notes: String(row[kNotes] || '').trim()
+                                            notes: String(row[kNotes] || '').trim(),
+                                            sttFam: kSttFam ? String(row[kSttFam] || '').trim() : ''
                                         };
                                     }).filter(item => item && item.email);
                                 }
