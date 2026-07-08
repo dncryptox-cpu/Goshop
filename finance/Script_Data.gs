@@ -1129,18 +1129,39 @@ function doPost(e) {
         statusSheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#f3f3f3");
       }
       
+      var khoRenewSheet = frSs.getSheetByName("KHO_RENEW");
+      var khoMap = {};
+      if (khoRenewSheet) {
+        var khoValues = khoRenewSheet.getDataRange().getValues();
+        for (var k = 1; k < khoValues.length; k++) {
+          var kEmail = String(khoValues[k][0] || '').trim().toLowerCase();
+          if (kEmail) {
+            khoMap[kEmail] = {
+              renewDate: String(khoValues[k][4] || '').trim(),  // Cột E: Ngày Renew
+              importDate: String(khoValues[k][5] || '').trim(), // Cột F: Ngày Nhập
+              sttFam: String(khoValues[k][10] || '').trim()     // Cột K: STT Fam
+            };
+          }
+        }
+      }
+      
       var dataRange = statusSheet.getDataRange();
       var values = dataRange.getValues();
       var history = [];
       
       for (var i = 1; i < values.length; i++) {
+        var emailStr = String(values[i][2] || '').trim();
+        var info = khoMap[emailStr.toLowerCase()] || {};
         history.push({
           timestamp: formatCellDateTime(values[i][0]),
           stt: String(values[i][1] || '').trim(),
-          email: String(values[i][2] || '').trim(),
+          email: emailStr,
           status: String(values[i][3] || '').trim(),
           staff: standardizeStaffName(values[i][4]),
-          notes: String(values[i][5] || '').trim()
+          notes: String(values[i][5] || '').trim(),
+          sttFam: info.sttFam || '',
+          renewDate: info.renewDate || '',
+          importDate: info.importDate || ''
         });
       }
       
