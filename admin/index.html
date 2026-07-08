@@ -2605,8 +2605,8 @@
                                                               x-text="(item.sttFam || getKhoRenewInfo(item.email).sttFam) ? 'STT ' + (item.sttFam || getKhoRenewInfo(item.email).sttFam) : (item.stt ? 'Slot ' + item.stt : 'STT -')"></span>
                                                     </td>
                                                     <td class="px-4 py-3 font-bold text-gray-800 cursor-pointer hover:text-primary hover:underline" @click="copyToClipboard(item.email, 'Email')" title="Bấm để copy Email" x-text="item.email"></td>
-                                                    <td class="px-4 py-3 text-slate-600 font-semibold" x-text="item.renewDate || getKhoRenewInfo(item.email).renewDate || '-'"></td>
-                                                    <td class="px-4 py-3 text-slate-600 font-semibold" x-text="item.importDate || getKhoRenewInfo(item.email).importDate || '-'"></td>
+                                                    <td class="px-4 py-3 text-slate-600 font-semibold" x-text="cleanDateDisplay(item.renewDate) || getKhoRenewInfo(item.email).renewDate || '-'"></td>
+                                                    <td class="px-4 py-3 text-slate-600 font-semibold" x-text="cleanDateDisplay(item.importDate) || getKhoRenewInfo(item.email).importDate || '-'"></td>
                                                     <td class="px-4 py-3">
                                                         <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-sm inline-block" 
                                                             :class="getKhoStatusBadgeClass(item.status)" x-text="item.status"></span>
@@ -6309,6 +6309,23 @@
                     return '';
                 },
 
+                cleanDateDisplay(val) {
+                    if (!val || val === '-' || val === '') return '';
+                    const str = String(val).trim();
+                    if (str.includes('GMT') || str.includes('Indochina') || str.includes('00:00:00') || str.match(/^[a-zA-Z]{3} [a-zA-Z]{3} \d{2} \d{4}/) || str.match(/^\d{4}-\d{2}-\d{2}/)) {
+                        try {
+                            const d = new Date(str);
+                            if (!isNaN(d.getTime())) {
+                                const day = String(d.getDate()).padStart(2, '0');
+                                const month = String(d.getMonth() + 1).padStart(2, '0');
+                                const year = d.getFullYear();
+                                return `${day}/${month}/${year}`;
+                            }
+                        } catch(e) {}
+                    }
+                    return str.split(' ')[0];
+                },
+
                 getKhoRenewInfo(email) {
                     if (!email || email === '-') return { sttFam: '', renewDate: '', importDate: '' };
                     const cleanEmail = String(email).trim().toLowerCase();
@@ -6316,8 +6333,8 @@
                     if (found) {
                         return {
                             sttFam: found.sttFam || '',
-                            renewDate: found.renewDate || '',
-                            importDate: found.importDate || ''
+                            renewDate: this.cleanDateDisplay(found.renewDate || ''),
+                            importDate: this.cleanDateDisplay(found.importDate || '')
                         };
                     }
                     return { sttFam: '', renewDate: '', importDate: '' };
@@ -6366,7 +6383,11 @@
                         });
                         const result = await res.json();
                         if (result.status === 'success' && result.data) {
-                            this.statusHistoryList = result.data.slice().sort((a, b) => this.parseTimestampMs(b.timestamp) - this.parseTimestampMs(a.timestamp));
+                            this.statusHistoryList = result.data.map(item => ({
+                                ...item,
+                                renewDate: this.cleanDateDisplay(item.renewDate || ''),
+                                importDate: this.cleanDateDisplay(item.importDate || '')
+                            })).slice().sort((a, b) => this.parseTimestampMs(b.timestamp) - this.parseTimestampMs(a.timestamp));
                         }
                     } catch (e) {
                         console.error("Failed to fetch status history:", e);
@@ -8692,8 +8713,8 @@
                                             pass: String(row[kPass] || '').trim(),
                                             recoveryEmail: String(row[kMkp] || '').trim(),
                                             twofa: String(row[k2fa] || '').trim(),
-                                            renewDate: String(row[kRenewDate] || '').trim(),
-                                            importDate: String(row[kImportDate] || '').trim(),
+                                            renewDate: this.cleanDateDisplay(String(row[kRenewDate] || '').trim()),
+                                            importDate: this.cleanDateDisplay(String(row[kImportDate] || '').trim()),
                                             status: String(row[kStatus] || 'Sẵn sàng').trim(),
                                             famFollow: String(row[kFamFollow] || '').trim(),
                                             notes: String(row[kNotes] || '').trim(),

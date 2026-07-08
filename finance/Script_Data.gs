@@ -675,8 +675,8 @@ function doPost(e) {
             pass: String(khoValues[j][1] || '').trim(),
             recoveryEmail: String(khoValues[j][2] || '').trim(),
             twofa: String(khoValues[j][3] || '').trim(),
-            renewDate: String(khoValues[j][4] || '').trim(),
-            importDate: String(khoValues[j][5] || '').trim()
+            renewDate: formatCellDateOnly(khoValues[j][4]),
+            importDate: formatCellDateOnly(khoValues[j][5])
           });
           rowIndices.push(j + 1);
           if (foundFams.length === count) break;
@@ -1138,8 +1138,8 @@ function doPost(e) {
           var kEmail = String(khoValues[k][0] || '').trim().toLowerCase();
           if (kEmail) {
             khoMap[kEmail] = {
-              renewDate: String(khoValues[k][4] || '').trim(),  // Cột E: Ngày Renew
-              importDate: String(khoValues[k][5] || '').trim(), // Cột F: Ngày Nhập
+              renewDate: formatCellDateOnly(khoValues[k][4]),  // Cột E: Ngày Renew
+              importDate: formatCellDateOnly(khoValues[k][5]), // Cột F: Ngày Nhập
               sttFam: String(khoValues[k][10] || '').trim()     // Cột K: STT Fam
             };
           }
@@ -1994,6 +1994,23 @@ function formatCellDateTime(val) {
     } catch(err) {}
   }
   return str;
+}
+
+function formatCellDateOnly(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, "GMT+7", "dd/MM/yyyy");
+  }
+  var str = String(val).trim();
+  if (str.includes('GMT') || str.includes('Indochina Time') || str.includes('00:00:00') || str.match(/^[a-zA-Z]{3} [a-zA-Z]{3} \d{2} \d{4}/) || str.match(/^\d{4}-\d{2}-\d{2}/)) {
+    try {
+      var d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        return Utilities.formatDate(d, "GMT+7", "dd/MM/yyyy");
+      }
+    } catch(err) {}
+  }
+  return str.split(' ')[0];
 }
 
 function standardizeStaffName(staff) {
