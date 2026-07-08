@@ -1504,6 +1504,7 @@ function doPost(e) {
       var foundRow = -1;
       var oldExpiry = '';
       var oldProduct = '';
+      var oldMonths = '';
 
       for (var i = 1; i < values.length; i++) {
         var rowEmail = String(values[i][2] || '').trim().toLowerCase();
@@ -1511,6 +1512,7 @@ function doPost(e) {
           foundRow = i + 1; // 1-indexed
           oldProduct = String(values[i][0] || '').trim();
           oldExpiry = formatCellDateOnly(values[i][5]);
+          oldMonths = String(values[i][4] || '').trim();
           break;
         }
       }
@@ -1526,8 +1528,21 @@ function doPost(e) {
       } else {
         if (product) sheet.getRange(foundRow, 1).setValue(product);
         if (category) sheet.getRange(foundRow, 2).setValue(category);
-        if (purchaseDate) sheet.getRange(foundRow, 4).setValue(purchaseDate);
-        if (months) sheet.getRange(foundRow, 5).setValue(months);
+        
+        // KHÔNG đè lên Ngày Mua ban đầu (Cột D - index 4) của khách hàng cũ, chỉ ghi nếu ô đang trống
+        var currentPurchaseDate = String(sheet.getRange(foundRow, 4).getValue() || '').trim();
+        if (!currentPurchaseDate && purchaseDate) {
+          sheet.getRange(foundRow, 4).setValue(purchaseDate);
+        }
+        
+        // Cộng dồn số tháng vào Cột E (index 5) thay vì đè lên số cũ
+        if (months) {
+          var oldM = parseInt(oldMonths.replace(/[^0-9]/g, ''), 10) || 0;
+          var addM = parseInt(months.replace(/[^0-9]/g, ''), 10) || 0;
+          var totalM = oldM + addM;
+          sheet.getRange(foundRow, 5).setValue(totalM > 0 ? totalM : months);
+        }
+        
         if (expiryDate) sheet.getRange(foundRow, 6).setValue(expiryDate);
         if (subEmail) sheet.getRange(foundRow, 7).setValue(subEmail);
         sheet.getRange(foundRow, 8).setValue(operator);
@@ -1560,7 +1575,7 @@ function doPost(e) {
           nhatKySheet.appendRow(["Thời Gian", "Email", "Trạng Thái Mới", "Người Xử Lý", "Ghi Chú"]);
         }
         var logText = isNewRow ? ("Thêm mới DATAGoc: " + months + " tháng") : ("Gia hạn DATAGoc: " + months + " tháng");
-        var logNote = isNewRow ? ("Ngày mua: " + purchaseDate + " -> HSD: " + expiryDate) : ("HSD cũ: " + oldExpiry + " -> HSD mới: " + expiryDate);
+        var logNote = isNewRow ? ("Ngày mua: " + purchaseDate + " -> HSD: " + expiryDate) : ("Cộng dồn: " + oldMonths + " + " + months + " | HSD cũ: " + oldExpiry + " -> HSD mới: " + expiryDate);
         nhatKySheet.appendRow([timestamp, email, logText, operator, logNote]);
       } catch(e) {}
 
@@ -2159,7 +2174,7 @@ function formatCellDateOnly(val) {
 function standardizeStaffName(staff) {
   var s = String(staff || '').trim();
   if (!s || s.toLowerCase() === 'admin' || s.toLowerCase() === 'dnc operator' || s.toLowerCase() === 'dnc') {
-    return 'DNC';
+    return 'Dnc';
   }
   if (s.toLowerCase() === 'goshop1' || s.toLowerCase() === 'staff' || s.toLowerCase() === 'lộc' || s.toLowerCase() === 'loc') {
     return 'Lộc';
