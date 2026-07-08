@@ -1470,7 +1470,8 @@ function doPost(e) {
             expiryDate: formatCellDateOnly(values[i][5]),
             subEmail: String(values[i][6] || '').trim(),
             staff: standardizeStaffName(values[i][7]),
-            daysLeft: String(values[i][8] || '').trim()
+            daysLeft: String(values[i][8] || '').trim(),
+            orderCode: String(values[i][9] || '').trim()
           });
         }
       }
@@ -1488,6 +1489,7 @@ function doPost(e) {
       var subEmail = String(data.subEmail || '').trim();
       var operator = standardizeStaffName(data.operator || data.staff || 'Admin');
       var note = String(data.note || '').trim() || ("Gia hạn " + months + " tháng");
+      var orderCode = String(data.orderCode || '').trim();
       var createIfNotFound = data.createIfNotFound === true || data.createIfNotFound === 'true';
       var isNewOrder = data.isNewOrder === true || data.isNewOrder === 'true';
       var forceOverwrite = data.forceOverwrite === true || data.forceOverwrite === 'true';
@@ -1526,8 +1528,8 @@ function doPost(e) {
         }
         isNewRow = true;
         foundRow = values.length + 1;
-        // Để trống cột F (index 6) vì đã có ARRAYFORMULA tự động tính HSD trong Google Sheet
-        sheet.appendRow([product || 'YTB', category || 'FULL', email, purchaseDate, months, '', subEmail, operator, '']);
+        // Để trống cột F (index 6) vì đã có ARRAYFORMULA tự động tính HSD trong Google Sheet. Cột J (index 9, cột 10) là Mã đơn
+        sheet.appendRow([product || 'YTB', category || 'FULL', email, purchaseDate, months, '', subEmail, operator, '', orderCode]);
       } else {
         if (isNewOrder && !forceOverwrite) {
           return ContentService.createTextOutput(JSON.stringify({
@@ -1555,6 +1557,7 @@ function doPost(e) {
         // KHÔNG đè hoặc ghi vào Cột F (HSD) vì đã có hàm ARRAYFORMULA tự động tính: EDATE(Ngày mua, Số tháng)
         if (subEmail) sheet.getRange(foundRow, 7).setValue(subEmail);
         sheet.getRange(foundRow, 8).setValue(operator);
+        if (orderCode) sheet.getRange(foundRow, 10).setValue(orderCode);
         
         // Cập nhật lại ngày còn lại (Cột I - index 9) nếu không có công thức
         var cellI = sheet.getRange(foundRow, 9);

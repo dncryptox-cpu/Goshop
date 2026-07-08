@@ -1561,6 +1561,7 @@
                                     <thead class="bg-white/10 sticky top-0 text-gray-300 uppercase font-extrabold backdrop-blur-md">
                                         <tr>
                                             <th class="p-3">#</th>
+                                            <th class="p-3">Mã Đơn / NTT</th>
                                             <th class="p-3">Email Khách Hàng</th>
                                             <th class="p-3">Sản Phẩm</th>
                                             <th class="p-3">Phân Loại</th>
@@ -1575,6 +1576,9 @@
                                         <template x-for="(row, idx) in dataGocBulkList" :key="idx">
                                             <tr class="hover:bg-white/5 transition-all" :class="row.status === 'success' ? 'bg-emerald-950/30' : (row.warning ? 'bg-amber-950/20' : '')">
                                                 <td class="p-3 text-gray-400 font-bold" x-text="idx + 1"></td>
+                                                <td class="p-3">
+                                                    <input type="text" x-model="row.orderCode" class="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-amber-300 w-32 focus:border-emerald-500 focus:outline-none">
+                                                </td>
                                                 <td class="p-3">
                                                     <input type="text" x-model="row.email" @input="recalcBulkRow(row)" class="bg-black/40 border border-white/15 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white w-52 focus:border-emerald-500 focus:outline-none">
                                                 </td>
@@ -7266,7 +7270,10 @@
                         line = line.trim();
                         if (!line) continue;
                         
-                        // Extract all emails
+                        const parts = line.split(/\t+/).map(p => p.trim()).filter(p => p !== '');
+                        if (parts.length === 0) continue;
+                        
+                        // Extract all emails from line
                         const emails = line.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9_-]+)/gi) || [];
                         if (emails.length === 0) continue;
                         
@@ -7285,53 +7292,74 @@
                         
                         const currentInfo = this.dataGocList.find(c => (c.email || '').toLowerCase() === targetEmail);
                         
+                        // Order Code (Mã đơn / NTT): In 4-column copy, it's usually parts[0]
+                        let orderCode = '';
+                        if (parts.length >= 3) {
+                            const p0 = parts[0];
+                            if (p0.toLowerCase() !== targetEmail) {
+                                orderCode = p0;
+                            }
+                        }
+                        if (!orderCode) {
+                            const ordMatch = line.match(/(ORD\d+)/i);
+                            if (ordMatch) orderCode = ordMatch[1];
+                        }
+
                         // Mode: Gia han vs New
                         const lower = line.toLowerCase();
                         let mode = 'renew';
-                        if (lower.includes('\tnew\t') || lower.includes('\tmới\t') || lower.includes('don moi') || lower.includes('\tnew') || lower.includes('đơn mới')) {
+                        if (lower.includes('\tnew\t') || lower.includes('\tmới\t') || lower.includes('don moi') || lower.includes('\tnew') || lower.includes('đơn mới') || parts.some(p => p.toLowerCase() === 'new' || p.toLowerCase() === 'mới')) {
                             mode = 'new';
-                        } else if (lower.includes('\tgia hạn') || lower.includes('\tgia han') || lower.includes('gh')) {
+                        } else if (lower.includes('\tgia hạn') || lower.includes('\tgia han') || lower.includes('gh') || parts.some(p => p.toLowerCase() === 'gia hạn' || p.toLowerCase() === 'gia han')) {
                             mode = 'renew';
                         } else if (!currentInfo) {
                             mode = 'new';
                         }
                         
-                        // Product
+                        // Product & Months: In 4-column copy, it's usually parts[3] (e.g. "Lưu trữ đám mây 2TB-12", "Youtube-3")
+                        let productStr = '';
+                        let months = '6';
+                        
+                        // Find part containing product string
+                        const prodPart = [...parts].reverse().find(p => {
+                            const lp = p.toLowerCase();
+                            return lp.includes('youtube') || lp.includes('ytb') || lp.includes('lưu trữ') || lp.includes('đám mây') || lp.includes('văn phòng') || lp.includes('365') || lp.includes('gpt') || lp.includes('canva') || lp.includes('spotify') || lp.includes('netflix') || lp.includes('drive') || lp.includes('one') || lp.includes('2tb') || lp.includes('5tb');
+                        });
+                        
+                        if (prodPart) {
+                            productStr = prodPart;
+                            const mMatch = prodPart.match(/(?:-|\s+)(\d+)\s*(?:th|tháng|thg|month|m\b)?\s*$/i);
+                            if (mMatch && ['1', '2', '3', '6', '9', '12', '18', '24', '36'].includes(mMatch[1])) {
+                                months = mMatch[1];
+                            }
+                        } else {
+                            // fallback month checking
+                            const tabParts = line.split('\t');
+                            for (let p of tabParts) {
+                                const cleanP = p.trim();
+                                if (['1', '2', '3', '6', '9', '12', '18', '24', '36'].includes(cleanP)) {
+                                    months = cleanP;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Map standard product
                         let product = currentInfo ? currentInfo.product : 'YTB';
-                        if (lower.includes('ytb') || lower.includes('youtube')) product = 'YTB';
-                        else if (lower.includes('gpt') || lower.includes('chatgpt')) product = 'ChatGPT';
-                        else if (lower.includes('netflix')) product = 'Netflix';
-                        else if (lower.includes('canva')) product = 'Canva';
-                        else if (lower.includes('gg') || lower.includes('google') || lower.includes('one') || lower.includes('drive') || lower.includes('lưu trữ đám mây') || lower.includes('5tb') || lower.includes('2tb')) product = 'Google One';
-                        else if (lower.includes('spotify') || lower.includes('nhạc bản quyền')) product = 'Spotify';
-                        else if (lower.includes('office') || lower.includes('365') || lower.includes('văn phòng')) product = 'Office 365';
+                        const lpStr = (productStr || lower).toLowerCase();
+                        if (lpStr.includes('ytb') || lpStr.includes('youtube')) product = 'YTB';
+                        else if (lpStr.includes('gpt') || lpStr.includes('chatgpt')) product = 'ChatGPT';
+                        else if (lpStr.includes('netflix')) product = 'Netflix';
+                        else if (lpStr.includes('canva')) product = 'Canva';
+                        else if (lpStr.includes('gg') || lpStr.includes('google') || lpStr.includes('one') || lpStr.includes('drive') || lpStr.includes('lưu trữ') || lpStr.includes('đám mây') || lpStr.includes('5tb') || lpStr.includes('2tb')) product = 'Google One';
+                        else if (lpStr.includes('spotify') || lpStr.includes('nhạc')) product = 'Spotify';
+                        else if (lpStr.includes('office') || lpStr.includes('365') || lpStr.includes('văn phòng')) product = 'Office 365';
                         
                         // Category
                         let category = currentInfo ? currentInfo.category : 'FULL';
-                        if (lower.includes('plus')) category = 'PLUS';
-                        else if (lower.includes('thường') || lower.includes('thuong') || lower.includes('nom')) category = 'NOM';
-                        else if (lower.includes('full')) category = 'FULL';
-                        
-                        // Months
-                        let months = '6';
-                        const tabParts = line.split('\t');
-                        let foundM = false;
-                        for (let p of tabParts) {
-                            const cleanP = p.trim();
-                            if (['1', '2', '3', '6', '9', '12', '18', '24', '36'].includes(cleanP)) {
-                                months = cleanP;
-                                foundM = true;
-                                break;
-                            }
-                        }
-                        if (!foundM) {
-                            const monthMatch = line.match(/(?:-|–|\b)(\d+)\s*(?:th|tháng|thg|month|m\b)/i) || line.match(/(?:Youtube|YoutubePlus|GPT|GPTshare|Canva|Spotify|Netflix|Drive|One)-?\s*(\d+)/i);
-                            if (monthMatch && ['1', '2', '3', '6', '9', '12', '18', '24', '36'].includes(monthMatch[1])) {
-                                months = monthMatch[1];
-                            } else if (currentInfo && currentInfo.months) {
-                                months = currentInfo.months;
-                            }
-                        }
+                        if (lpStr.includes('plus') || lower.includes('plus')) category = 'PLUS';
+                        else if (lpStr.includes('thường') || lpStr.includes('thuong') || lpStr.includes('nom') || lower.includes('nom')) category = 'NOM';
+                        else if (lpStr.includes('full') || lower.includes('full')) category = 'FULL';
                         
                         // Purchase date & Expiry date
                         const dateMatches = line.match(/(\d{1,2}[\/\.\-]\d{1,2}[\/\.\-]\d{2,4})/g);
@@ -7367,6 +7395,7 @@
                         const warning = (mode === 'new' && currentInfo) ? `⚠️ Email đã có trong DATAGoc (HSD: ${currentInfo.expiryDate})` : null;
                         
                         list.push({
+                            orderCode: orderCode,
                             email: targetEmail,
                             product: product,
                             category: category,
@@ -7433,6 +7462,7 @@
                                 months: row.months,
                                 expiryDate: row.expiryDate,
                                 operator: row.operator,
+                                orderCode: row.orderCode,
                                 isNewOrder: row.mode === 'new',
                                 forceOverwrite: this.bulkAutoOverwrite,
                                 createIfNotFound: true
