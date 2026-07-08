@@ -358,7 +358,7 @@ function doPost(e) {
             statusHistorySheet.appendRow(["Thời Gian", "STT FAM", "Email", "Trạng Thái Mới", "Người Thực Hiện", "Ghi Chú"]);
             statusHistorySheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#f3f3f3");
           }
-          var stt = String(khoValues[i][7] || '').trim(); // Cột H
+          var stt = String(khoValues[i][10] || '').trim() || String(khoValues[i][7] || '').trim(); // Cột K (STT Fam) hoặc Cột H (Fam hiện tại)
           statusHistorySheet.appendRow([timestamp, stt, email, newStatus, operator, notes]);
 
           updated = true;
@@ -1256,7 +1256,7 @@ function doPost(e) {
             }
             khoRenewSheet.getRange(j + 1, 10).setValue(staff); // Cột J: Người làm
             if (!loggedEmails[currentEmail]) {
-              var sttVal = sttMap[currentEmail] || String(values[j][7] || '').trim(); // Cột H: Fam hiện tại
+              var sttVal = String(values[j][10] || '').trim() || sttMap[currentEmail] || String(values[j][7] || '').trim(); // Cột K (STT Fam) hoặc Cột H (Fam hiện tại)
               statusHistorySheet.appendRow([timestamp, sttVal || "", currentEmail, newStatus, staff, notes || (newStatus + " hàng loạt")]);
               logToKiemSoatRN(frSs, sttVal || "", "Cập nhật trạng thái", currentEmail, currentEmail, newStatus, "", staff, notes || (newStatus + " hàng loạt"));
               loggedEmails[currentEmail] = true;
