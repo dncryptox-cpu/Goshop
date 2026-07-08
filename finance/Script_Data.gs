@@ -1489,6 +1489,8 @@ function doPost(e) {
       var operator = standardizeStaffName(data.operator || data.staff || 'Admin');
       var note = String(data.note || '').trim() || ("Gia hạn " + months + " tháng");
       var createIfNotFound = data.createIfNotFound === true || data.createIfNotFound === 'true';
+      var isNewOrder = data.isNewOrder === true || data.isNewOrder === 'true';
+      var forceOverwrite = data.forceOverwrite === true || data.forceOverwrite === 'true';
 
       if (!email) {
         return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Vui lòng cung cấp email khách hàng.'})).setMimeType(ContentService.MimeType.JSON);
@@ -1527,6 +1529,12 @@ function doPost(e) {
         // Để trống cột F (index 6) vì đã có ARRAYFORMULA tự động tính HSD trong Google Sheet
         sheet.appendRow([product || 'YTB', category || 'FULL', email, purchaseDate, months, '', subEmail, operator, '']);
       } else {
+        if (isNewOrder && !forceOverwrite) {
+          return ContentService.createTextOutput(JSON.stringify({
+            status: 'already_exists',
+            message: '⚠️ CẢNH BÁO: Email "' + email + '" đã tồn tại trong hệ thống DATAGoc với HSD hiện tại: ' + oldExpiry + '.\n\nBạn đang tạo ĐƠN MỚI. Vui lòng kiểm tra kỹ xem đây là Khách Gia Hạn hay Đơn Mới! Bạn có muốn tiếp tục cập nhật/cộng dồn không?'
+          })).setMimeType(ContentService.MimeType.JSON);
+        }
         if (product) sheet.getRange(foundRow, 1).setValue(product);
         if (category) sheet.getRange(foundRow, 2).setValue(category);
         
