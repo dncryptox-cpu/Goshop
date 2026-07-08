@@ -1448,6 +1448,149 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify({status: 'success', data: history, renewList: renewList})).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 20. Lấy danh sách từ tab DATAGoc
+    if (action === 'get_data_goc') {
+      var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+      var sheet = ss.getSheetByName("DATAGoc") || ss.getSheetByName("DATAGOC") || ss.getSheetByName("DataGoc");
+      if (!sheet) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Không tìm thấy tab DATAGoc trong Google Sheet.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+      var values = sheet.getDataRange().getDisplayValues();
+      var list = [];
+      for (var i = 1; i < values.length; i++) {
+        var email = String(values[i][2] || '').trim();
+        if (email && (email.includes('@') || email !== '')) {
+          list.push({
+            row: i + 1,
+            product: String(values[i][0] || '').trim(),
+            category: String(values[i][1] || '').trim(),
+            email: email,
+            purchaseDate: formatCellDateOnly(values[i][3]),
+            months: String(values[i][4] || '').trim(),
+            expiryDate: formatCellDateOnly(values[i][5]),
+            subEmail: String(values[i][6] || '').trim(),
+            staff: standardizeStaffName(values[i][7]),
+            daysLeft: String(values[i][8] || '').trim()
+          });
+        }
+      }
+      return ContentService.createTextOutput(JSON.stringify({status: 'success', data: list})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 21. Cập nhật gia hạn trong tab DATAGoc (hoặc thêm mới nếu không tìm thấy)
+    if (action === 'update_data_goc_renew') {
+      var email = String(data.email || '').trim().toLowerCase();
+      var purchaseDate = String(data.purchaseDate || '').trim();
+      var months = String(data.months || '').trim();
+      var expiryDate = String(data.expiryDate || '').trim();
+      var product = String(data.product || '').trim();
+      var category = String(data.category || '').trim();
+      var subEmail = String(data.subEmail || '').trim();
+      var operator = standardizeStaffName(data.operator || data.staff || 'Admin');
+      var note = String(data.note || '').trim() || ("Gia hạn " + months + " tháng");
+      var createIfNotFound = data.createIfNotFound === true || data.createIfNotFound === 'true';
+
+      if (!email) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Vui lòng cung cấp email khách hàng.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+      var sheet = ss.getSheetByName("DATAGoc") || ss.getSheetByName("DATAGOC") || ss.getSheetByName("DataGoc");
+      if (!sheet) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Không tìm thấy tab DATAGoc trong Google Sheet.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var values = sheet.getDataRange().getValues();
+      var foundRow = -1;
+      var oldExpiry = '';
+      var oldProduct = '';
+
+      for (var i = 1; i < values.length; i++) {
+        var rowEmail = String(values[i][2] || '').trim().toLowerCase();
+        if (rowEmail === email) {
+          foundRow = i + 1; // 1-indexed
+          oldProduct = String(values[i][0] || '').trim();
+          oldExpiry = formatCellDateOnly(values[i][5]);
+          break;
+        }
+      }
+
+      var isNewRow = false;
+      if (foundRow === -1) {
+        if (!createIfNotFound) {
+          return ContentService.createTextOutput(JSON.stringify({status: 'not_found', message: 'Không tìm thấy email "' + email + '" trong tab DATAGoc. Bạn có muốn thêm mới không?'})).setMimeType(ContentService.MimeType.JSON);
+        }
+        isNewRow = true;
+        foundRow = values.length + 1;
+        sheet.appendRow([product || 'YTB', category || 'FULL', email, purchaseDate, months, expiryDate, subEmail, operator, '']);
+      } else {
+        if (product) sheet.getRange(foundRow, 1).setValue(product);
+        if (category) sheet.getRange(foundRow, 2).setValue(category);
+        if (purchaseDate) sheet.getRange(foundRow, 4).setValue(purchaseDate);
+        if (months) sheet.getRange(foundRow, 5).setValue(months);
+        if (expiryDate) sheet.getRange(foundRow, 6).setValue(expiryDate);
+        if (subEmail) sheet.getRange(foundRow, 7).setValue(subEmail);
+        sheet.getRange(foundRow, 8).setValue(operator);
+        
+        // Cập nhật lại ngày còn lại (Cột I - index 9) nếu không có công thức
+        var cellI = sheet.getRange(foundRow, 9);
+        if (!cellI.getFormula()) {
+          try {
+            var expD = null;
+            var parts = expiryDate.split('/');
+            if (parts.length === 3) {
+              expD = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+            } else {
+              expD = new Date(expiryDate);
+            }
+            if (!isNaN(expD.getTime())) {
+              var diffDays = Math.ceil((expD.getTime() - Date.now()) / (1000 * 3600 * 24));
+              cellI.setValue(diffDays);
+            }
+          } catch(e) {}
+        }
+      }
+
+      // Ghi nhật ký vào NHAT_KY_XU_LY (Main SS)
+      var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
+      try {
+        var nhatKySheet = ss.getSheetByName("NHAT_KY_XU_LY");
+        if (!nhatKySheet) {
+          nhatKySheet = ss.insertSheet("NHAT_KY_XU_LY");
+          nhatKySheet.appendRow(["Thời Gian", "Email", "Trạng Thái Mới", "Người Xử Lý", "Ghi Chú"]);
+        }
+        var logText = isNewRow ? ("Thêm mới DATAGoc: " + months + " tháng") : ("Gia hạn DATAGoc: " + months + " tháng");
+        var logNote = isNewRow ? ("Ngày mua: " + purchaseDate + " -> HSD: " + expiryDate) : ("HSD cũ: " + oldExpiry + " -> HSD mới: " + expiryDate);
+        nhatKySheet.appendRow([timestamp, email, logText, operator, logNote]);
+      } catch(e) {}
+
+      // Ghi vào STATUS_HISTORY (FamRenew SS) để double check toàn bộ hệ thống
+      try {
+        var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+        var statusHistorySheet = frSs.getSheetByName("STATUS_HISTORY");
+        if (statusHistorySheet) {
+          statusHistorySheet.appendRow([timestamp, "DATAGoc", email, "Gia hạn " + months + " tháng (" + (product || oldProduct || 'YTB') + ")", operator, "HSD mới: " + expiryDate]);
+        }
+      } catch(e) {}
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        message: (isNewRow ? 'Đã thêm mới thành công cho ' : 'Đã gia hạn thành công cho ') + email + ' tới ngày ' + expiryDate,
+        data: {
+          email: email,
+          product: product || oldProduct || 'YTB',
+          category: category || 'FULL',
+          purchaseDate: purchaseDate,
+          months: months,
+          expiryDate: expiryDate,
+          subEmail: subEmail,
+          operator: operator,
+          timestamp: timestamp,
+          isNewRow: isNewRow
+        }
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 22. Rebuild Kiem Soat RN (Đã vô hiệu hóa để tránh mất dữ liệu lịch sử)
     if (action === 'rebuild_kiem_soat_rn') {
       return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Chức năng đồng bộ lại từ đầu (Rebuild) đã bị vô hiệu hóa để bảo vệ dữ liệu lịch sử.'})).setMimeType(ContentService.MimeType.JSON);
