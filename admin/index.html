@@ -1402,19 +1402,43 @@
                                             </div>
                                             <div>
                                                 <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Sản Phẩm</label>
-                                                <input type="text" x-model="dataGocPreview.product" class="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-orange-300 focus:outline-none">
+                                                <select x-model="dataGocPreview.product" class="w-full bg-black border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-orange-300 focus:outline-none focus:border-orange-500">
+                                                    <option value="YTB">YTB</option>
+                                                    <option value="ChatGPT">ChatGPT</option>
+                                                    <option value="Netflix">Netflix</option>
+                                                    <option value="Canva">Canva</option>
+                                                    <option value="Google One">Google One</option>
+                                                    <option value="Spotify">Spotify</option>
+                                                    <option value="Office 365">Office 365</option>
+                                                </select>
                                             </div>
                                             <div>
                                                 <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Phân Loại</label>
-                                                <input type="text" x-model="dataGocPreview.category" class="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-emerald-300 focus:outline-none">
+                                                <select x-model="dataGocPreview.category" class="w-full bg-black border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-emerald-300 focus:outline-none focus:border-emerald-500">
+                                                    <option value="FULL">FULL</option>
+                                                    <option value="PLUS">PLUS</option>
+                                                    <option value="NOM">NOM</option>
+                                                    <option value="ACC CẤP">ACC CẤP</option>
+                                                </select>
                                             </div>
                                             <div>
                                                 <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Ngày Mua Mới</label>
-                                                <input type="text" x-model="dataGocPreview.purchaseDate" class="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none">
+                                                <input type="text" x-model="dataGocPreview.purchaseDate" @input="recalcDataGocExpiry()" class="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none">
                                             </div>
                                             <div>
                                                 <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Số Tháng</label>
-                                                <input type="text" x-model="dataGocPreview.months" class="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-blue-300 focus:outline-none">
+                                                <select x-model="dataGocPreview.months" @change="recalcDataGocExpiry()" class="w-full bg-black border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-blue-300 focus:outline-none focus:border-blue-500">
+                                                    <option x-show="!['1','2','3','6','9','12','18','24','36'].includes(String(dataGocPreview.months))" :value="dataGocPreview.months" x-text="dataGocPreview.months + ' tháng'"></option>
+                                                    <option value="1">1 tháng</option>
+                                                    <option value="2">2 tháng</option>
+                                                    <option value="3">3 tháng</option>
+                                                    <option value="6">6 tháng</option>
+                                                    <option value="9">9 tháng</option>
+                                                    <option value="12">12 tháng</option>
+                                                    <option value="18">18 tháng</option>
+                                                    <option value="24">24 tháng</option>
+                                                    <option value="36">36 tháng</option>
+                                                </select>
                                             </div>
                                             <div class="col-span-2">
                                                 <label class="block text-[10px] font-extrabold text-orange-400 uppercase mb-1">Hạn Sử Dụng Mới (HSD)</label>
@@ -6912,6 +6936,33 @@
                         currentInfo: currentInfo,
                         isNew: !currentInfo
                     };
+                },
+
+                recalcDataGocExpiry() {
+                    if (!this.dataGocPreview || this.dataGocPreview.error) return;
+                    const months = parseInt(this.dataGocPreview.months || 0);
+                    const email = (this.dataGocPreview.email || '').toLowerCase();
+                    const currentInfo = this.dataGocList.find(c => (c.email || '').toLowerCase() === email);
+                    
+                    let baseDateStr = this.dataGocPreview.purchaseDate;
+                    if (currentInfo && currentInfo.expiryDate) {
+                        const pParts = currentInfo.expiryDate.replace(/[\.\-]/g, '/').split('/');
+                        if (pParts.length === 3) {
+                            const expObj = new Date(parseInt(pParts[2]), parseInt(pParts[1]) - 1, parseInt(pParts[0]));
+                            if (!isNaN(expObj.getTime()) && expObj.getTime() > Date.now()) {
+                                baseDateStr = currentInfo.expiryDate;
+                            }
+                        }
+                    }
+                    
+                    const parts = (baseDateStr || '').replace(/[\.\-]/g, '/').split('/');
+                    if (parts.length === 3) {
+                        const dObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                        if (!isNaN(dObj.getTime())) {
+                            dObj.setMonth(dObj.getMonth() + months);
+                            this.dataGocPreview.expiryDate = `${String(dObj.getDate()).padStart(2, '0')}/${String(dObj.getMonth() + 1).padStart(2, '0')}/${dObj.getFullYear()}`;
+                        }
+                    }
                 },
 
                 async submitDataGocRenew() {

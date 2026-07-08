@@ -1524,7 +1524,8 @@ function doPost(e) {
         }
         isNewRow = true;
         foundRow = values.length + 1;
-        sheet.appendRow([product || 'YTB', category || 'FULL', email, purchaseDate, months, expiryDate, subEmail, operator, '']);
+        // Để trống cột F (index 6) vì đã có ARRAYFORMULA tự động tính HSD trong Google Sheet
+        sheet.appendRow([product || 'YTB', category || 'FULL', email, purchaseDate, months, '', subEmail, operator, '']);
       } else {
         if (product) sheet.getRange(foundRow, 1).setValue(product);
         if (category) sheet.getRange(foundRow, 2).setValue(category);
@@ -1543,7 +1544,7 @@ function doPost(e) {
           sheet.getRange(foundRow, 5).setValue(totalM > 0 ? totalM : months);
         }
         
-        if (expiryDate) sheet.getRange(foundRow, 6).setValue(expiryDate);
+        // KHÔNG đè hoặc ghi vào Cột F (HSD) vì đã có hàm ARRAYFORMULA tự động tính: EDATE(Ngày mua, Số tháng)
         if (subEmail) sheet.getRange(foundRow, 7).setValue(subEmail);
         sheet.getRange(foundRow, 8).setValue(operator);
         
