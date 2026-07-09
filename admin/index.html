@@ -1451,7 +1451,7 @@
                                                 </td>
                                             </tr>
                                         </template>
-                                        <template x-for="(item, index) in filteredDataGocList" :key="index">
+                                        <template x-for="(item, index) in paginatedDataGocList" :key="index">
                                             <tr class="hover:bg-indigo-50/40 transition-all group border-b border-gray-100/80">
                                                 <!-- Cột 1: STT -->
                                                 <td class="py-4 px-4 text-center font-bold text-gray-400 text-xs" x-text="index + 1"></td>
@@ -1541,7 +1541,7 @@
                                     Không tìm thấy khách hàng nào thỏa điều kiện tra cứu.
                                 </div>
                             </template>
-                            <template x-for="(item, index) in filteredDataGocList" :key="index">
+                            <template x-for="(item, index) in paginatedDataGocList" :key="index">
                                 <div class="bg-white rounded-2xl border border-gray-100 card-shadow hover:shadow-lg transition-all p-5 flex flex-col justify-between group">
                                     <div>
                                         <div class="flex items-center justify-between gap-2 mb-3">
@@ -1607,6 +1607,16 @@
                                     </div>
                                 </div>
                             </template>
+                        </div>
+
+                        <!-- PAGINATION / SHOW MORE FOOTER -->
+                        <div x-show="filteredDataGocList.length > dataGocDisplayLimit" class="py-6 text-center bg-white rounded-2xl border border-gray-100 card-shadow">
+                            <button @click="dataGocDisplayLimit += 50; $nextTick(() => { if (window.lucide) window.lucide.createIcons(); });"
+                                class="px-6 py-3 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl text-xs font-black transition-all shadow-sm inline-flex items-center gap-2">
+                                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                                <span>Hiển thị thêm 50 khách hàng nữa</span>
+                                <span class="opacity-80" x-text="'(Đang hiện ' + paginatedDataGocList.length + ' / ' + filteredDataGocList.length + ')'"></span>
+                            </button>
                         </div>
                     </div>
 
@@ -5702,6 +5712,10 @@
                     }
                     return list;
                 },
+                dataGocDisplayLimit: 50,
+                get paginatedDataGocList() {
+                    return this.filteredDataGocList.slice(0, this.dataGocDisplayLimit);
+                },
                 soluongRNList: [],
                 soluongRNTab: 'date',
                 selectedRNDate: null,
@@ -7290,6 +7304,14 @@
                 // DATAGoc Logic
                 async fetchDataGoc(forceRefresh = false) {
                     if (this.isFetchingDataGoc && !forceRefresh) return;
+                    if (!forceRefresh) {
+                        try {
+                            const cached = localStorage.getItem('goshop_cached_datagoc');
+                            if (cached) {
+                                this.dataGocList = JSON.parse(cached);
+                            }
+                        } catch(err) {}
+                    }
                     this.isFetchingDataGoc = true;
                     try {
                         const csvUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATAGoc&t=${Date.now()}`;
@@ -7339,6 +7361,9 @@
                                     daysLeft: calcDays
                                 };
                             }).filter(Boolean);
+                            try {
+                                localStorage.setItem('goshop_cached_datagoc', JSON.stringify(this.dataGocList));
+                            } catch(e) {}
                         } else {
                             const apiRes = await fetch(this.CONFIG.WEBAPP_URL, {
                                 method: 'POST',
@@ -7347,13 +7372,16 @@
                             const apiResult = await apiRes.json();
                             if (apiResult.status === 'success' && apiResult.data) {
                                 this.dataGocList = apiResult.data;
+                                try {
+                                    localStorage.setItem('goshop_cached_datagoc', JSON.stringify(this.dataGocList));
+                                } catch(e) {}
                             }
                         }
                     } catch (e) {
                         console.error("Lỗi khi tải DATAGoc:", e);
                     } finally {
                         this.isFetchingDataGoc = false;
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
                     }
                 },
 
@@ -9990,6 +10018,14 @@
                 },
 
                 async fetchSheetData() {
+                    try {
+                        const cachedDb = localStorage.getItem('goshop_cached_db');
+                        if (cachedDb) {
+                            this.db = JSON.parse(cachedDb);
+                            this.mapData();
+                            this.calculateGlobalProfit();
+                        }
+                    } catch(e) {}
                     this.isLoading = true;
                     try {
                         await Promise.all(this.CONFIG.TABS.map(async tab => {
@@ -10234,13 +10270,16 @@
                         }
 
                         this.mapData();
+                        try {
+                            localStorage.setItem('goshop_cached_db', JSON.stringify(this.db));
+                        } catch(e) {}
                         await this.fetchReplaceHistory();
                         await this.fetchStatusHistory();
                     } catch (error) {
                         console.error('Error fetching sheet data:', error);
                     } finally {
                         this.isLoading = false;
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
                     }
                 },
 
