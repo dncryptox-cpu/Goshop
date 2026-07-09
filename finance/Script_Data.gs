@@ -1661,21 +1661,33 @@ function doPost(e) {
           var rowIdx = emailRowMap[email];
           if (product) sheet.getRange(rowIdx, 1).setValue(product);
           if (category) sheet.getRange(rowIdx, 2).setValue(category);
-          sheet.getRange(rowIdx, 6).setValue(expiryDate);
+          if (purchaseDate) sheet.getRange(rowIdx, 4).setValue(purchaseDate);
+          if (months && months !== '0') sheet.getRange(rowIdx, 5).setValue(months);
+          // KHÔNG ghi đè Cột F (index 6 - HSD) vì đã có ARRAYFORMULA tự động tính
           sheet.getRange(rowIdx, 7).setValue(subEmail);
           sheet.getRange(rowIdx, 8).setValue(staff);
           if (orderCode) sheet.getRange(rowIdx, 10).setValue(orderCode);
 
-          try {
-            var expD = new Date(expiryDate.split('/').reverse().join('-'));
-            if (!isNaN(expD.getTime())) {
-              var diffDays = Math.ceil((expD.getTime() - Date.now()) / (1000 * 3600 * 24));
-              sheet.getRange(rowIdx, 9).setValue(diffDays);
-            }
-          } catch(e) {}
+          var cellI = sheet.getRange(rowIdx, 9);
+          if (!cellI.getFormula()) {
+            try {
+              var expD = null;
+              var parts = expiryDate.split('/');
+              if (parts.length === 3) {
+                expD = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+              } else {
+                expD = new Date(expiryDate);
+              }
+              if (expD && !isNaN(expD.getTime())) {
+                var diffDays = Math.ceil((expD.getTime() - Date.now()) / (1000 * 3600 * 24));
+                cellI.setValue(diffDays);
+              }
+            } catch(e) {}
+          }
           updatedCount++;
         } else {
-          sheet.appendRow([product, category, email, purchaseDate, months, expiryDate, subEmail, staff, '', orderCode]);
+          // Để trống cột F (HSD) để ARRAYFORMULA tự tính
+          sheet.appendRow([product || 'YTB', category || 'FULL', email, purchaseDate, months, '', subEmail, staff, '', orderCode]);
           newCount++;
         }
 
