@@ -294,116 +294,298 @@
             <!-- Content Area -->
             <main class="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
                 <!-- Module: Dashboard -->
-                <div x-show="activeModule === 'dashboard'" x-cloak>
-                    <div class="mb-8">
-                        <h1 class="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
-                        <p class="text-sm text-gray-500 mt-1">Welcome back, here's what's happening today.</p>
+                <div x-show="activeModule === 'dashboard'" x-cloak class="space-y-6">
+                    <!-- Header & Time Filter Bar -->
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-100 card-shadow">
+                        <div>
+                            <div class="flex items-center gap-2.5">
+                                <span class="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                                    <i data-lucide="layout-dashboard" class="w-6 h-6"></i>
+                                </span>
+                                <div>
+                                    <h1 class="text-xl font-black text-gray-900 tracking-tight">Trung Tâm Điều Hành & Tài Chính</h1>
+                                    <p class="text-xs font-semibold text-gray-500">Đồng bộ trực tiếp từ Sheet Tài Chính & Sheet DATA Khách Hàng</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <!-- Bộ chọn tháng Tài Chính -->
+                            <div class="flex items-center bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 gap-2">
+                                <i data-lucide="calendar" class="w-4 h-4 text-gray-400"></i>
+                                <span class="text-xs font-bold text-gray-500">Kỳ báo cáo:</span>
+                                <select x-model="globalProfitFilter.month" @change="globalProfitFilter.type = 'month'; calculateGlobalProfit()" class="bg-transparent text-xs font-extrabold text-indigo-600 focus:outline-none">
+                                    <option value="">Tất cả các tháng</option>
+                                    <template x-for="m in availableMonths">
+                                        <option :value="m" x-text="'Tháng ' + m"></option>
+                                    </template>
+                                </select>
+                            </div>
+                            <button @click="fetchSheetData(); fetchDataGoc(true);" :disabled="isLoading || isFetchingDataGoc" class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-extrabold transition-all shadow-sm flex items-center gap-1.5">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': isLoading || isFetchingDataGoc}"></i>
+                                <span>Đồng Bộ Dữ Liệu</span>
+                            </button>
+                        </div>
                     </div>
 
-                    <!-- Stats Widgets -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                        <template x-for="stat in stats">
-                            <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
+                    <!-- 1. CHỈ SỐ TÀI CHÍNH THỰC TẾ (TỪ SHEET TÀI CHÍNH) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h2 class="text-xs font-extrabold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <i data-lucide="bar-chart-3" class="w-4 h-4 text-indigo-500"></i>
+                                <span>Chỉ Số Tài Chính Goshop (<span x-text="globalProfitReport.month || 'Tổng hợp'"></span>)</span>
+                            </h2>
+                            <button @click="activeModule = 'global_profit'" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                                <span>Xem chi tiết Báo Cáo Tài Chính</span>
+                                <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <!-- Thẻ 1: Tổng Đơn Tài Chính -->
+                            <div class="bg-white p-5 rounded-2xl border border-gray-100 card-shadow hover:shadow-md transition-all">
+                                <div class="flex items-center justify-between mb-3">
+                                    <p class="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider">Tổng Đơn Tài Chính</p>
+                                    <div class="bg-indigo-50 text-indigo-600 w-9 h-9 rounded-xl flex items-center justify-center">
+                                        <i data-lucide="file-spreadsheet" class="w-4.5 h-4.5"></i>
+                                    </div>
+                                </div>
+                                <div class="flex items-baseline justify-between">
+                                    <h3 class="text-2xl font-black text-gray-900" x-text="(globalProfitReport.totalTransactions || 0) + ' đơn'"></h3>
+                                </div>
+                                <div class="mt-2.5 pt-2.5 border-t border-gray-100/80 flex items-center justify-between text-xs font-bold">
+                                    <span class="text-emerald-600">Mới: <span x-text="globalProfitReport.totalNew || 0"></span></span>
+                                    <span class="text-indigo-600">Gia hạn: <span x-text="globalProfitReport.totalRenewal || 0"></span></span>
+                                </div>
+                            </div>
+
+                            <!-- Thẻ 2: Doanh Thu Thực Tế -->
+                            <div class="bg-white p-5 rounded-2xl border border-gray-100 card-shadow hover:shadow-md transition-all">
+                                <div class="flex items-center justify-between mb-3">
+                                    <p class="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider">Doanh Thu Ghi Nhận</p>
+                                    <div class="bg-emerald-50 text-emerald-600 w-9 h-9 rounded-xl flex items-center justify-center">
+                                        <i data-lucide="trending-up" class="w-4.5 h-4.5"></i>
+                                    </div>
+                                </div>
+                                <div class="flex items-baseline justify-between">
+                                    <h3 class="text-2xl font-black text-emerald-600 tracking-tight" x-text="(globalProfitReport.totalRevenue || 0).toLocaleString('vi-VN') + 'đ'"></h3>
+                                </div>
+                                <div class="mt-2.5 pt-2.5 border-t border-gray-100/80 text-xs font-medium text-gray-500">
+                                    <span>Tổng thu từ Sheet Tài Chính</span>
+                                </div>
+                            </div>
+
+                            <!-- Thẻ 3: Tổng Chi Phí (Vốn + HH) -->
+                            <div class="bg-white p-5 rounded-2xl border border-gray-100 card-shadow hover:shadow-md transition-all">
+                                <div class="flex items-center justify-between mb-3">
+                                    <p class="text-[11px] font-extrabold text-gray-400 uppercase tracking-wider">Tổng Chi Phí & Vốn</p>
+                                    <div class="bg-orange-50 text-orange-600 w-9 h-9 rounded-xl flex items-center justify-center">
+                                        <i data-lucide="coins" class="w-4.5 h-4.5"></i>
+                                    </div>
+                                </div>
+                                <div class="flex items-baseline justify-between">
+                                    <h3 class="text-2xl font-black text-orange-600 tracking-tight" x-text="((globalProfitReport.totalCost || 0) + (globalProfitReport.totalCommission || 0) + (globalProfitReport.totalMisc || 0)).toLocaleString('vi-VN') + 'đ'"></h3>
+                                </div>
+                                <div class="mt-2.5 pt-2.5 border-t border-gray-100/80 flex items-center justify-between text-xs font-medium text-gray-500">
+                                    <span>Vốn: <strong class="text-gray-700" x-text="(globalProfitReport.totalCost || 0).toLocaleString('vi-VN') + 'đ'"></strong></span>
+                                    <span>HH: <strong class="text-gray-700" x-text="(globalProfitReport.totalCommission || 0).toLocaleString('vi-VN') + 'đ'"></strong></span>
+                                </div>
+                            </div>
+
+                            <!-- Thẻ 4: Lợi Nhuận Ròng (Net Profit) -->
+                            <div class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-5 rounded-2xl card-shadow hover:shadow-lg transition-all">
+                                <div class="flex items-center justify-between mb-3">
+                                    <p class="text-[11px] font-extrabold text-indigo-300 uppercase tracking-wider">Lợi Nhuận Ròng (Net Profit)</p>
+                                    <div class="bg-white/10 text-yellow-300 w-9 h-9 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                                        <i data-lucide="award" class="w-4.5 h-4.5"></i>
+                                    </div>
+                                </div>
+                                <div class="flex items-baseline justify-between">
+                                    <h3 class="text-2xl font-black tracking-tight"
+                                        :class="(globalProfitReport.netProfit || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'"
+                                        x-text="(globalProfitReport.netProfit || 0).toLocaleString('vi-VN') + 'đ'"></h3>
+                                </div>
+                                <div class="mt-2.5 pt-2.5 border-t border-white/10 flex items-center justify-between text-xs font-bold text-indigo-200">
+                                    <span>Lợi nhuận ròng thực tế</span>
+                                    <span class="px-2 py-0.5 rounded bg-white/10 text-[10px] font-extrabold uppercase">Đã trừ chi phí</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. THỐNG KÊ TỔNG QUAN KHÁCH HÀNG (TỪ SHEET DATA DATAGOC) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <h2 class="text-xs font-extrabold text-gray-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <i data-lucide="users" class="w-4 h-4 text-indigo-500"></i>
+                                <span>Thống Kê Khách Hàng (Từ Sheet DATA)</span>
+                            </h2>
+                            <a href="https://docs.google.com/spreadsheets/d/1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c/edit?gid=1005374611#gid=1005374611" target="_blank" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                                <span>Mở Sheet DATA Google Sheet</span>
+                                <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                            </a>
+                        </div>
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            <button @click="dashboardCustomerStatus = 'all'"
+                                :class="dashboardCustomerStatus === 'all' ? 'ring-2 ring-indigo-500 bg-indigo-50/50' : 'bg-white hover:bg-gray-50'"
+                                class="p-4 rounded-xl border border-gray-100 card-shadow text-left transition-all">
+                                <p class="text-[11px] font-bold text-gray-400 uppercase">Tổng Khách DATA</p>
+                                <h4 class="text-xl font-black text-gray-900 mt-1" x-text="(dataGocList || []).length"></h4>
+                            </button>
+                            <button @click="dashboardCustomerStatus = 'active'"
+                                :class="dashboardCustomerStatus === 'active' ? 'ring-2 ring-emerald-500 bg-emerald-50/50' : 'bg-white hover:bg-gray-50'"
+                                class="p-4 rounded-xl border border-gray-100 card-shadow text-left transition-all">
+                                <p class="text-[11px] font-bold text-emerald-600 uppercase">Đang Hoạt Động (>15 ngày)</p>
+                                <h4 class="text-xl font-black text-emerald-700 mt-1" x-text="(dataGocList || []).filter(i => i.daysLeft !== null && i.daysLeft > 15).length"></h4>
+                            </button>
+                            <button @click="dashboardCustomerStatus = 'warning'"
+                                :class="dashboardCustomerStatus === 'warning' ? 'ring-2 ring-amber-500 bg-amber-50/50' : 'bg-white hover:bg-gray-50'"
+                                class="p-4 rounded-xl border border-gray-100 card-shadow text-left transition-all">
+                                <p class="text-[11px] font-bold text-amber-600 uppercase">Sắp Hết Hạn (<=15 ngày)</p>
+                                <h4 class="text-xl font-black text-amber-700 mt-1" x-text="(dataGocList || []).filter(i => i.daysLeft !== null && i.daysLeft >= 0 && i.daysLeft <= 15).length"></h4>
+                            </button>
+                            <button @click="dashboardCustomerStatus = 'expired'"
+                                :class="dashboardCustomerStatus === 'expired' ? 'ring-2 ring-red-500 bg-red-50/50' : 'bg-white hover:bg-gray-50'"
+                                class="p-4 rounded-xl border border-gray-100 card-shadow text-left transition-all">
+                                <p class="text-[11px] font-bold text-red-600 uppercase">Đã Quá Hạn HSD</p>
+                                <h4 class="text-xl font-black text-red-700 mt-1" x-text="(dataGocList || []).filter(i => i.daysLeft !== null && i.daysLeft < 0).length"></h4>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 3. LƯỚI KHÁCH HÀNG (SHEET DATA) & PHÂN TÍCH GÓI (TÀI CHÍNH) -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        <!-- Cột Trái: Danh Sách Khách Hàng Từ Sheet DATA -->
+                        <div class="lg:col-span-7 bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden flex flex-col">
+                            <div class="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div>
+                                    <h3 class="font-black text-gray-900 text-base flex items-center gap-2">
+                                        <i data-lucide="list-filter" class="w-4.5 h-4.5 text-indigo-600"></i>
+                                        <span>Danh Sách Khách Hàng (Sheet DATA)</span>
+                                    </h3>
+                                    <p class="text-xs text-gray-500 mt-0.5">Hiển thị nhanh danh sách theo tình trạng Hạn Sử Dụng</p>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <div class="relative w-48 sm:w-56">
+                                        <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                                        <input type="text" x-model="dashboardCustomerSearch" placeholder="Tìm email, gói..." class="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white focus:ring-2 focus:ring-indigo-500/20">
+                                    </div>
+                                    <button @click="activeModule = 'data_goc'" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0">
+                                        Xem Tất Cả
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Bảng Khách Hàng DATA -->
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-gray-50/80 border-b border-gray-100 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider">
+                                            <th class="py-3 px-3 text-center w-10">#</th>
+                                            <th class="py-3 px-3">Khách Hàng & Email</th>
+                                            <th class="py-3 px-3">Gói & CTV</th>
+                                            <th class="py-3 px-3">Hạn Sử Dụng (HSD)</th>
+                                            <th class="py-3 px-3 text-center">Thao Tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 text-xs">
+                                        <template x-if="dashboardFilteredCustomers.length === 0">
+                                            <tr>
+                                                <td colspan="5" class="py-12 text-center text-gray-400 font-medium">
+                                                    Không tìm thấy khách hàng nào thỏa điều kiện.
+                                                </td>
+                                            </tr>
+                                        </template>
+                                        <template x-for="(c, idx) in dashboardFilteredCustomers" :key="idx">
+                                            <tr class="hover:bg-gray-50/70 transition-colors group">
+                                                <td class="py-3 px-3 text-center font-bold text-gray-400" x-text="idx + 1"></td>
+                                                <td class="py-3 px-3">
+                                                    <div class="font-extrabold text-gray-900 select-all" x-text="c.email"></div>
+                                                    <template x-if="c.subEmail && c.subEmail !== '-'">
+                                                        <div class="text-[10px] text-indigo-600 font-bold mt-0.5" x-text="'Phụ: ' + c.subEmail"></div>
+                                                    </template>
+                                                </td>
+                                                <td class="py-3 px-3">
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="px-1.5 py-0.5 rounded font-black uppercase text-[10px]"
+                                                            :class="c.product === 'YTB' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'"
+                                                            x-text="c.product || 'YTB'"></span>
+                                                        <span class="text-gray-500 font-semibold" x-text="c.staff || 'Dnc'"></span>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3 px-3">
+                                                    <div class="font-bold"
+                                                        :class="c.daysLeft !== null && c.daysLeft < 0 ? 'text-red-600 font-black' : (c.daysLeft !== null && c.daysLeft <= 15 ? 'text-amber-600' : 'text-gray-700')"
+                                                        x-text="c.expiryDate || '-'"></div>
+                                                    <template x-if="c.daysLeft !== null">
+                                                        <div class="text-[10px] font-semibold"
+                                                            :class="c.daysLeft < 0 ? 'text-red-500' : (c.daysLeft <= 15 ? 'text-amber-600' : 'text-gray-400')"
+                                                            x-text="c.daysLeft < 0 ? ('Quá hạn ' + Math.abs(c.daysLeft) + ' ngày') : ('Còn ' + c.daysLeft + ' ngày')"></div>
+                                                    </template>
+                                                </td>
+                                                <td class="py-3 px-3 text-center">
+                                                    <button @click="activeModule = 'data_goc'; dataGocActiveTab = 'ai_tool'; dataGocAiInput = c.email + ' '; parseDataGocAiInput();"
+                                                        class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-lg font-bold transition-all inline-flex items-center gap-1">
+                                                        <i data-lucide="zap" class="w-3 h-3"></i>
+                                                        <span>Gia Hạn</span>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Cột Phải: Phân Tích Lợi Nhuận Sản Phẩm (Sheet Tài Chính) -->
+                        <div class="lg:col-span-5 space-y-6">
+                            <div class="bg-white p-5 rounded-2xl border border-gray-100 card-shadow">
                                 <div class="flex items-center justify-between mb-4">
-                                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest" x-text="stat.label"></p>
-                                    <div :class="stat.bg" class="w-8 h-8 rounded-lg flex items-center justify-center">
-                                        <i :data-lucide="stat.icon" :class="stat.color" class="w-4 h-4"></i>
-                                    </div>
+                                    <h3 class="font-black text-gray-900 text-base flex items-center gap-2">
+                                        <i data-lucide="pie-chart" class="w-4.5 h-4.5 text-indigo-600"></i>
+                                        <span>Lợi Nhuận Theo Sản Phẩm (Tài Chính)</span>
+                                    </h3>
+                                    <span class="text-xs font-bold text-gray-400" x-text="globalProfitReport.month || 'Tổng'"></span>
                                 </div>
-                                <div class="flex items-end justify-between">
-                                    <h3 class="text-2xl font-bold" x-text="stat.value"></h3>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-
-                    <!-- Order Stats Section (VietQR OMS) -->
-                    <div class="mb-4">
-                        <h2 class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Hệ thống Đơn Hàng & Doanh Thu (VietQR OMS)</h2>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
-                        <!-- Card 1: Pending Payments -->
-                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
-                            <div class="flex items-center justify-between mb-4">
-                                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Pending Payments</p>
-                                <div class="bg-orange-50 w-8 h-8 rounded-lg flex items-center justify-center">
-                                    <i data-lucide="clock" class="text-orange-500 w-4 h-4"></i>
-                                </div>
-                            </div>
-                            <div class="flex items-end justify-between">
-                                <h3 class="text-2xl font-bold text-orange-500" x-text="orders.filter(o => o.status === 'Pending Payment').length"></h3>
-                            </div>
-                        </div>
-
-                        <!-- Card 2: Orders Today -->
-                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
-                            <div class="flex items-center justify-between mb-4">
-                                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Orders Today</p>
-                                <div class="bg-blue-50 w-8 h-8 rounded-lg flex items-center justify-center">
-                                    <i data-lucide="shopping-cart" class="text-blue-500 w-4 h-4"></i>
-                                </div>
-                            </div>
-                            <div class="flex items-end justify-between">
-                                <h3 class="text-2xl font-bold text-blue-600" x-text="getOrdersToday()"></h3>
-                            </div>
-                        </div>
-
-                        <!-- Card 3: Processing Orders -->
-                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
-                            <div class="flex items-center justify-between mb-4">
-                                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Processing Orders</p>
-                                <div class="bg-indigo-50 w-8 h-8 rounded-lg flex items-center justify-center">
-                                    <i data-lucide="loader" class="text-indigo-500 w-4 h-4"></i>
-                                </div>
-                            </div>
-                            <div class="flex items-end justify-between">
-                                <h3 class="text-2xl font-bold text-indigo-500" x-text="orders.filter(o => o.status === 'Paid' || o.status === 'Processing').length"></h3>
-                            </div>
-                        </div>
-
-                        <!-- Card 4: Completed Orders -->
-                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
-                            <div class="flex items-center justify-between mb-4">
-                                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Completed Orders</p>
-                                <div class="bg-green-50 w-8 h-8 rounded-lg flex items-center justify-center">
-                                    <i data-lucide="check-circle" class="text-green-500 w-4 h-4"></i>
-                                </div>
-                            </div>
-                            <div class="flex items-end justify-between">
-                                <h3 class="text-2xl font-bold text-green-600" x-text="orders.filter(o => o.status === 'Completed').length"></h3>
-                            </div>
-                        </div>
-
-                        <!-- Card 5: Revenue Today -->
-                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
-                            <div class="flex items-center justify-between mb-4">
-                                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Revenue Today</p>
-                                <div class="bg-emerald-50 w-8 h-8 rounded-lg flex items-center justify-center">
-                                    <i data-lucide="banknote" class="text-emerald-500 w-4 h-4"></i>
-                                </div>
-                            </div>
-                            <div class="flex items-end justify-between">
-                                <h3 class="text-2xl font-bold text-emerald-600" x-text="getRevenueToday().toLocaleString('vi-VN') + 'đ'"></h3>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <!-- Secondary Widget -->
-                        <div class="lg:col-span-3 bg-white p-6 rounded-xl border border-gray-100 card-shadow">
-                            <h2 class="font-bold text-gray-900 mb-6">Staff Performance</h2>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <template x-for="staff in staffPerformance">
-                                    <div>
-                                        <div class="flex items-center justify-between mb-2">
-                                            <span class="text-sm font-medium text-gray-700" x-text="staff.name"></span>
-                                            <span class="text-xs font-bold text-primary" x-text="staff.sales + ' sales'"></span>
+                                <div class="space-y-3.5">
+                                    <template x-if="!(globalProfitReport.breakdown && globalProfitReport.breakdown.length > 0)">
+                                        <div class="py-8 text-center text-gray-400 text-xs">
+                                            Chưa có số liệu phát sinh trong kỳ này.
                                         </div>
-                                        <div class="w-full bg-gray-100 rounded-full h-1.5">
-                                            <div :style="'width: ' + staff.percent + '%'" class="bg-primary h-1.5 rounded-full"></div>
+                                    </template>
+                                    <template x-for="(item, i) in (globalProfitReport.breakdown || [])" :key="i">
+                                        <div class="p-3 bg-gray-50/80 rounded-xl border border-gray-100/80 hover:border-indigo-100 transition-all">
+                                            <div class="flex items-center justify-between text-xs mb-1.5">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-extrabold text-gray-900" x-text="item.name"></span>
+                                                    <span class="px-1.5 py-0.5 bg-white text-gray-500 font-bold rounded border border-gray-200/80 text-[10px]" x-text="item.count + ' đơn'"></span>
+                                                </div>
+                                                <span class="font-black"
+                                                    :class="item.net >= 0 ? 'text-emerald-600' : 'text-red-600'"
+                                                    x-text="item.net.toLocaleString('vi-VN') + 'đ'"></span>
+                                            </div>
+                                            <!-- Thanh tỷ trọng -->
+                                            <div class="w-full bg-gray-200/80 rounded-full h-1.5 overflow-hidden">
+                                                <div class="bg-indigo-600 h-1.5 rounded-full"
+                                                    :style="'width: ' + Math.min(100, Math.max(8, (item.net / (globalProfitReport.netProfit || 1)) * 100)) + '%'"></div>
+                                            </div>
                                         </div>
-                                    </div>
-                                </template>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Hiệu Suất CTV Trên Tài Chính -->
+                            <div class="bg-white p-5 rounded-2xl border border-gray-100 card-shadow">
+                                <h3 class="font-black text-gray-900 text-base mb-4 flex items-center gap-2">
+                                    <i data-lucide="user-check" class="w-4.5 h-4.5 text-indigo-600"></i>
+                                    <span>Hiệu Suất CTV / Đội Ngũ</span>
+                                </h3>
+                                <div class="space-y-3">
+                                    <template x-for="staff in staffPerformance">
+                                        <div class="flex items-center justify-between text-xs py-1.5 border-b border-gray-100/80 last:border-0">
+                                            <span class="font-bold text-gray-700" x-text="staff.name"></span>
+                                            <span class="font-black text-indigo-600" x-text="staff.sales + ' đơn'"></span>
+                                        </div>
+                                    </template>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1226,30 +1408,36 @@
                                     <option value="warning">Sắp hết hạn (<=15 ngày)</option>
                                     <option value="expired">Quá hạn</option>
                                 </select>
+                                <div class="flex items-center bg-gray-100 p-1 rounded-xl shrink-0">
+                                    <button @click="dataGocViewMode = 'table'; $nextTick(() => { if(window.lucide) window.lucide.createIcons(); });" :class="dataGocViewMode === 'table' ? 'bg-white text-indigo-600 shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-700'" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5" title="Bảng Tổng Quan Gọn">
+                                        <i data-lucide="table-2" class="w-3.5 h-3.5"></i>
+                                        <span>Bảng Gọn</span>
+                                    </button>
+                                    <button @click="dataGocViewMode = 'cards'; $nextTick(() => { if(window.lucide) window.lucide.createIcons(); });" :class="dataGocViewMode === 'cards' ? 'bg-white text-indigo-600 shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-700'" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5" title="Lưới Thẻ (Cards)">
+                                        <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+                                        <span>Lưới Thẻ</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
-                        <!-- Data Table -->
-                        <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
-                            <div class="overflow-x-auto max-h-[680px] overflow-y-auto">
+                        <!-- Data Table (Bảng Gọn - Không phải kéo ngang) -->
+                        <div x-show="dataGocViewMode === 'table'" class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                            <div class="overflow-y-auto max-h-[680px]">
                                 <table class="w-full text-left border-collapse">
                                     <thead>
-                                        <tr class="bg-gray-50/80 border-b border-gray-100 text-[11px] font-extrabold text-gray-500 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-sm">
-                                            <th class="py-3.5 px-4 text-center w-12">STT</th>
-                                            <th class="py-3.5 px-4">Sản phẩm & Phân loại</th>
-                                            <th class="py-3.5 px-4">Email Khách Hàng</th>
-                                            <th class="py-3.5 px-4">Ngày Mua & Số Tháng</th>
-                                            <th class="py-3.5 px-4">Hạn Sử Dụng (HSD)</th>
-                                            <th class="py-3.5 px-4">Mail Phụ</th>
-                                            <th class="py-3.5 px-4 text-center">CTV</th>
-                                            <th class="py-3.5 px-4 text-center">Số Ngày Còn Lại</th>
-                                            <th class="py-3.5 px-4 text-center">Thao Tác</th>
+                                        <tr class="bg-gray-50/95 border-b border-gray-200/80 text-[11px] font-extrabold text-gray-500 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-md">
+                                            <th class="py-3.5 px-4 text-center w-12">#</th>
+                                            <th class="py-3.5 px-5">Khách Hàng & Dịch Vụ</th>
+                                            <th class="py-3.5 px-4">Chu Kỳ & Hạn Sử Dụng (HSD)</th>
+                                            <th class="py-3.5 px-4 text-center">Trạng Thái HSD</th>
+                                            <th class="py-3.5 px-4 text-center w-28">Thao Tác</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-100 text-sm">
                                         <template x-if="isFetchingDataGoc && filteredDataGocList.length === 0">
                                             <tr>
-                                                <td colspan="9" class="py-16 text-center text-gray-400 font-medium">
+                                                <td colspan="5" class="py-16 text-center text-gray-400 font-medium">
                                                     <i data-lucide="loader-2" class="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-500"></i>
                                                     Đang đồng bộ dữ liệu từ sheet DATAGoc...
                                                 </td>
@@ -1257,51 +1445,64 @@
                                         </template>
                                         <template x-if="!isFetchingDataGoc && filteredDataGocList.length === 0">
                                             <tr>
-                                                <td colspan="9" class="py-16 text-center text-gray-400 font-medium">
+                                                <td colspan="5" class="py-16 text-center text-gray-400 font-medium">
                                                     <i data-lucide="database-backup" class="w-10 h-10 mx-auto mb-2 text-gray-300"></i>
                                                     Không tìm thấy khách hàng nào thỏa điều kiện tra cứu.
                                                 </td>
                                             </tr>
                                         </template>
                                         <template x-for="(item, index) in filteredDataGocList" :key="index">
-                                            <tr class="hover:bg-indigo-50/30 transition-colors group">
-                                                <td class="py-3 px-4 text-center font-bold text-gray-400 text-xs" x-text="index + 1"></td>
-                                                <td class="py-3 px-4">
-                                                    <div class="flex items-center gap-1.5">
-                                                        <span class="px-2 py-0.5 rounded text-xs font-black tracking-wide uppercase shadow-sm"
-                                                            :class="item.product === 'YTB' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'"
-                                                            x-text="item.product || 'YTB'"></span>
-                                                        <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase"
-                                                            :class="item.category === 'FULL' ? 'bg-green-100 text-green-800' : (item.category === 'NOM' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700')"
-                                                            x-text="item.category || 'FULL'"></span>
-                                                    </div>
-                                                </td>
-                                                <td class="py-3 px-4">
-                                                    <div class="flex items-center gap-2">
-                                                        <span class="font-bold text-gray-900 select-all" x-text="item.email"></span>
+                                            <tr class="hover:bg-indigo-50/40 transition-all group border-b border-gray-100/80">
+                                                <!-- Cột 1: STT -->
+                                                <td class="py-4 px-4 text-center font-bold text-gray-400 text-xs" x-text="index + 1"></td>
+                                                
+                                                <!-- Cột 2: Khách Hàng & Dịch Vụ -->
+                                                <td class="py-4 px-5">
+                                                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                                                        <span class="font-bold text-gray-900 text-sm select-all tracking-tight" x-text="item.email"></span>
                                                         <button @click="navigator.clipboard.writeText(item.email); alert('Đã sao chép email: ' + item.email)" class="text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" title="Copy Email">
                                                             <i data-lucide="copy" class="w-3.5 h-3.5"></i>
                                                         </button>
+                                                        <template x-if="item.subEmail && item.subEmail !== '-'">
+                                                            <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 select-all" title="Mail Phụ">
+                                                                <i data-lucide="mail" class="w-3 h-3 text-indigo-500"></i>
+                                                                <span x-text="item.subEmail"></span>
+                                                            </span>
+                                                        </template>
+                                                    </div>
+                                                    <div class="flex flex-wrap items-center gap-1.5">
+                                                        <span class="px-2 py-0.5 rounded text-[11px] font-black tracking-wide uppercase shadow-2xs"
+                                                            :class="item.product === 'YTB' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'"
+                                                            x-text="item.product || 'YTB'"></span>
+                                                        <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase"
+                                                            :class="item.category === 'FULL' ? 'bg-green-100 text-green-800 border border-green-200/60' : (item.category === 'NOM' ? 'bg-amber-100 text-amber-800 border border-amber-200/60' : 'bg-gray-100 text-gray-700 border border-gray-200')"
+                                                            x-text="item.category || 'FULL'"></span>
+                                                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase inline-flex items-center gap-1"
+                                                            :class="item.staff && item.staff.toLowerCase().includes('lộc') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'">
+                                                            <i data-lucide="user" class="w-2.5 h-2.5"></i>
+                                                            <span x-text="item.staff || 'Dnc'"></span>
+                                                        </span>
                                                     </div>
                                                 </td>
-                                                <td class="py-3 px-4 text-gray-600 font-medium">
-                                                    <span x-text="item.purchaseDate || '-'"></span>
-                                                    <span x-show="item.months" class="ml-1 px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-bold" x-text="item.months + ' tháng'"></span>
+
+                                                <!-- Cột 3: Chu Kỳ & Hạn Sử Dụng -->
+                                                <td class="py-4 px-4">
+                                                    <div class="flex items-center gap-2 mb-1.5">
+                                                        <span class="text-xs font-semibold text-gray-400 uppercase">HSD:</span>
+                                                        <span class="text-sm font-black tracking-tight"
+                                                            :class="item.daysLeft !== null && item.daysLeft < 0 ? 'text-red-600' : (item.daysLeft !== null && item.daysLeft <= 15 ? 'text-amber-600' : 'text-gray-900')"
+                                                            x-text="item.expiryDate || '-'"></span>
+                                                    </div>
+                                                    <div class="flex items-center gap-2 text-xs text-gray-500 font-medium">
+                                                        <span>Mua: <strong class="text-gray-700" x-text="item.purchaseDate || '-'"></strong></span>
+                                                        <span x-show="item.months" class="px-1.5 py-0.5 bg-gray-100 text-gray-700 font-bold rounded text-[11px]" x-text="item.months + ' tháng'"></span>
+                                                    </div>
                                                 </td>
-                                                <td class="py-3 px-4 font-bold text-gray-800">
-                                                    <span x-text="item.expiryDate || '-'"></span>
-                                                </td>
-                                                <td class="py-3 px-4 text-gray-500 text-xs">
-                                                    <span x-text="item.subEmail || '-'" class="select-all"></span>
-                                                </td>
-                                                <td class="py-3 px-4 text-center">
-                                                    <span class="px-2 py-1 rounded-md text-xs font-bold uppercase"
-                                                        :class="item.staff && item.staff.toLowerCase().includes('lộc') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
-                                                        x-text="item.staff || 'Dnc'"></span>
-                                                </td>
-                                                <td class="py-3 px-4 text-center">
+
+                                                <!-- Cột 4: Trạng Thái HSD -->
+                                                <td class="py-4 px-4 text-center">
                                                     <template x-if="item.daysLeft !== null">
-                                                        <span class="px-2.5 py-1 rounded-full text-xs font-black shadow-sm inline-flex items-center gap-1"
+                                                        <span class="px-3 py-1.5 rounded-full text-xs font-black shadow-2xs inline-flex items-center gap-1.5"
                                                             :class="item.daysLeft > 15 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : (item.daysLeft >= 0 ? 'bg-amber-50 text-amber-700 border border-amber-300 animate-pulse' : 'bg-red-50 text-red-700 border border-red-300')">
                                                             <i :data-lucide="item.daysLeft < 0 ? 'alert-triangle' : (item.daysLeft <= 15 ? 'clock' : 'check-circle')" class="w-3.5 h-3.5"></i>
                                                             <span x-text="item.daysLeft < 0 ? ('Quá hạn ' + Math.abs(item.daysLeft) + ' ngày') : ('Còn ' + item.daysLeft + ' ngày')"></span>
@@ -1311,9 +1512,11 @@
                                                         <span class="text-gray-400 text-xs">-</span>
                                                     </template>
                                                 </td>
-                                                <td class="py-3 px-4 text-center">
-                                                    <button @click="dataGocActiveTab = 'ai_tool'; dataGocAiInput = item.email + ' '; $nextTick(() => { $refs.aiInputBox.focus(); }); parseDataGocAiInput();" class="bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1 mx-auto">
-                                                        <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+
+                                                <!-- Cột 5: Thao Tác -->
+                                                <td class="py-4 px-4 text-center">
+                                                    <button @click="dataGocActiveTab = 'ai_tool'; dataGocAiInput = item.email + ' '; $nextTick(() => { $refs.aiInputBox.focus(); }); parseDataGocAiInput();" class="bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-md flex items-center justify-center gap-1.5 mx-auto group-hover:bg-indigo-600 group-hover:text-white">
+                                                        <i data-lucide="zap" class="w-3.5 h-3.5 text-indigo-500 group-hover:text-yellow-300 transition-colors"></i>
                                                         <span>Gia Hạn</span>
                                                     </button>
                                                 </td>
@@ -1322,6 +1525,88 @@
                                     </tbody>
                                 </table>
                             </div>
+                        </div>
+
+                        <!-- Card Grid View (Lưới Thẻ) -->
+                        <div x-show="dataGocViewMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" x-cloak>
+                            <template x-if="isFetchingDataGoc && filteredDataGocList.length === 0">
+                                <div class="col-span-full py-16 text-center text-gray-400 font-medium bg-white rounded-2xl border border-gray-100">
+                                    <i data-lucide="loader-2" class="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-500"></i>
+                                    Đang đồng bộ dữ liệu từ sheet DATAGoc...
+                                </div>
+                            </template>
+                            <template x-if="!isFetchingDataGoc && filteredDataGocList.length === 0">
+                                <div class="col-span-full py-16 text-center text-gray-400 font-medium bg-white rounded-2xl border border-gray-100">
+                                    <i data-lucide="database-backup" class="w-10 h-10 mx-auto mb-2 text-gray-300"></i>
+                                    Không tìm thấy khách hàng nào thỏa điều kiện tra cứu.
+                                </div>
+                            </template>
+                            <template x-for="(item, index) in filteredDataGocList" :key="index">
+                                <div class="bg-white rounded-2xl border border-gray-100 card-shadow hover:shadow-lg transition-all p-5 flex flex-col justify-between group">
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2 mb-3">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="px-2 py-0.5 rounded text-xs font-black tracking-wide uppercase"
+                                                    :class="item.product === 'YTB' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'"
+                                                    x-text="item.product || 'YTB'"></span>
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase"
+                                                    :class="item.category === 'FULL' ? 'bg-green-100 text-green-800' : (item.category === 'NOM' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700')"
+                                                    x-text="item.category || 'FULL'"></span>
+                                            </div>
+                                            <template x-if="item.daysLeft !== null">
+                                                <span class="px-2.5 py-1 rounded-full text-[11px] font-black inline-flex items-center gap-1"
+                                                    :class="item.daysLeft > 15 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : (item.daysLeft >= 0 ? 'bg-amber-50 text-amber-700 border border-amber-300 animate-pulse' : 'bg-red-50 text-red-700 border border-red-300')">
+                                                    <i :data-lucide="item.daysLeft < 0 ? 'alert-triangle' : (item.daysLeft <= 15 ? 'clock' : 'check-circle')" class="w-3 h-3"></i>
+                                                    <span x-text="item.daysLeft < 0 ? ('Quá hạn ' + Math.abs(item.daysLeft) + ' ngày') : ('Còn ' + item.daysLeft + ' ngày')"></span>
+                                                </span>
+                                            </template>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-extrabold text-gray-900 text-sm select-all" x-text="item.email"></span>
+                                                <button @click="navigator.clipboard.writeText(item.email); alert('Đã sao chép email: ' + item.email)" class="text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" title="Copy Email">
+                                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                                </button>
+                                            </div>
+                                            <template x-if="item.subEmail && item.subEmail !== '-'">
+                                                <div class="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50/80 text-indigo-700 border border-indigo-100/80 select-all">
+                                                    <i data-lucide="mail" class="w-3 h-3 text-indigo-500"></i>
+                                                    <span>Phụ: <span x-text="item.subEmail"></span></span>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <div class="bg-gray-50/80 rounded-xl p-3 border border-gray-100 space-y-1.5 text-xs">
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-500 font-medium">Hạn Sử Dụng (HSD):</span>
+                                                <span class="font-black text-sm"
+                                                    :class="item.daysLeft !== null && item.daysLeft < 0 ? 'text-red-600' : (item.daysLeft !== null && item.daysLeft <= 15 ? 'text-amber-600' : 'text-gray-900')"
+                                                    x-text="item.expiryDate || '-'"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center text-gray-500">
+                                                <span>Ngày mua: <strong class="text-gray-700" x-text="item.purchaseDate || '-'"></strong></span>
+                                                <span x-show="item.months" class="px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 font-bold rounded text-[10px]" x-text="item.months + ' tháng'"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center pt-1 border-t border-gray-200/60">
+                                                <span class="text-gray-400 font-semibold">CTV Phụ Trách:</span>
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                                                    :class="item.staff && item.staff.toLowerCase().includes('lộc') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
+                                                    x-text="item.staff || 'Dnc'"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                                        <span class="text-[11px] font-bold text-gray-400">#<span x-text="index + 1"></span></span>
+                                        <button @click="dataGocActiveTab = 'ai_tool'; dataGocAiInput = item.email + ' '; $nextTick(() => { $refs.aiInputBox.focus(); }); parseDataGocAiInput();"
+                                            class="bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5">
+                                            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                                            <span>Gia Hạn Nhanh</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
                         </div>
                     </div>
 
@@ -5352,10 +5637,40 @@
                 dataGocMode: 'renew', // 'renew' or 'new'
                 dataGocPreview: null,
                 dataGocActiveTab: 'list', // 'list', 'ai_tool', 'bulk_ai', 'history'
+                dataGocViewMode: 'table', // 'table' or 'cards'
                 dataGocBulkInput: '',
                 dataGocBulkList: [],
                 isUpdatingBulk: false,
                 bulkAutoOverwrite: true,
+                dashboardCustomerSearch: '',
+                dashboardCustomerStatus: 'all',
+                get dashboardFilteredCustomers() {
+                    let list = [...(this.dataGocList || [])];
+                    if (this.dashboardCustomerStatus === 'active') {
+                        list = list.filter(item => item.daysLeft !== null && item.daysLeft > 15);
+                    } else if (this.dashboardCustomerStatus === 'warning') {
+                        list = list.filter(item => item.daysLeft !== null && item.daysLeft >= 0 && item.daysLeft <= 15);
+                    } else if (this.dashboardCustomerStatus === 'expired') {
+                        list = list.filter(item => item.daysLeft !== null && item.daysLeft < 0);
+                    }
+                    const q = (this.dashboardCustomerSearch || '').trim().toLowerCase();
+                    if (q) {
+                        list = list.filter(item => 
+                            String(item.email || '').toLowerCase().includes(q) ||
+                            String(item.subEmail || '').toLowerCase().includes(q) ||
+                            String(item.product || '').toLowerCase().includes(q) ||
+                            String(item.staff || '').toLowerCase().includes(q)
+                        );
+                    }
+                    if (this.dashboardCustomerStatus === 'all') {
+                        list.sort((a, b) => {
+                            const da = a.daysLeft !== null ? a.daysLeft : 9999;
+                            const db = b.daysLeft !== null ? b.daysLeft : 9999;
+                            return da - db;
+                        });
+                    }
+                    return list.slice(0, 20);
+                },
                 get filteredDataGocList() {
                     let list = this.dataGocList || [];
                     const q = (this.dataGocSearchQuery || '').trim().toLowerCase();
@@ -9220,9 +9535,15 @@
                     this.loadTwofaData();
                     this.fetchDataGoc();
                     this.$watch('activeModule', (val) => {
-                        if (val === 'data_goc') {
+                        if (val === 'data_goc' || val === 'dashboard') {
                             this.fetchDataGoc();
                         }
+                        if (val === 'dashboard') {
+                            this.calculateGlobalProfit();
+                        }
+                        this.$nextTick(() => {
+                            if (window.lucide) window.lucide.createIcons();
+                        });
                     });
                     this.loadPromoCodes();
                     this.loadOrders();
