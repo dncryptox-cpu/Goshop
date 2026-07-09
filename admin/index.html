@@ -1382,6 +1382,14 @@
                                     <i data-lucide="layers" class="w-4 h-4 text-emerald-300"></i>
                                     <span>Đồng Bộ Hàng Loạt (Bulk Paste)</span>
                                 </button>
+                                <button @click="dataGocActiveTab = 'diff_appdata'; calculateAppDataDiff()" :class="dataGocActiveTab === 'diff_appdata' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md font-extrabold' : 'text-gray-600 font-medium hover:text-gray-900'" class="px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2">
+                                    <i data-lucide="git-compare" class="w-4 h-4" :class="dataGocActiveTab === 'diff_appdata' ? 'text-white' : 'text-indigo-600'"></i>
+                                    <span>Đối Chiếu APP_DATA</span>
+                                    <span x-show="appDataDiffList.filter(i => i.status !== 'unchanged').length > 0"
+                                        class="px-2 py-0.5 rounded-full text-[11px] font-black"
+                                        :class="dataGocActiveTab === 'diff_appdata' ? 'bg-white text-indigo-700' : 'bg-indigo-100 text-indigo-700'"
+                                        x-text="appDataDiffList.filter(i => i.status !== 'unchanged').length"></span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1972,6 +1980,164 @@
                                                     <button @click="dataGocBulkList.splice(idx, 1)" class="text-gray-500 hover:text-red-400 p-1.5 transition-all rounded hover:bg-white/10">
                                                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                                                     </button>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: ĐỐI CHIẾU SỰ THAY ĐỔI APP_DATA VS DATAGOC -->
+                    <div x-show="dataGocActiveTab === 'diff_appdata'" class="space-y-6">
+                        <!-- Stats & Bulk Action Banner -->
+                        <div class="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden border border-white/10">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                                <div>
+                                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-indigo-200 text-xs font-bold mb-2">
+                                        <i data-lucide="git-compare" class="w-3.5 h-3.5"></i>
+                                        <span>ĐỐI CHIẾU DỮ LIỆU GỐC & CẬP NHẬT LIÊN TỤC</span>
+                                    </div>
+                                    <h3 class="text-xl font-black tracking-tight">Đối Chiếu Thay Đổi: APP_DATA vs DATAGoc</h3>
+                                    <p class="text-xs text-indigo-200 mt-1 max-w-xl">Hệ thống tự động so sánh dữ liệu mới cập nhật trong <span class="font-bold text-white">APP_DATA</span> với kho dữ liệu gốc <span class="font-bold text-white">DATAGoc</span>. Bạn (Admin DNC) kiểm tra và bấm xác nhận để cập nhật đồng bộ.</p>
+                                </div>
+
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <button @click="calculateAppDataDiff()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all border border-white/15">
+                                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                                        <span>Tính Toán Lại</span>
+                                    </button>
+                                    <button @click="syncBulkAppDataDiff()" :disabled="isSyncingAppDataToGoc || filteredAppDataDiffList.filter(i => i.status === 'new' || i.status === 'modified').length === 0"
+                                        class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all">
+                                        <i data-lucide="check-check" class="w-4 h-4" :class="isSyncingAppDataToGoc ? 'animate-spin' : ''"></i>
+                                        <span x-text="isSyncingAppDataToGoc ? 'Đang cập nhật lên DATAGoc...' : ('🚀 Duyệt Tất Cả (' + appDataDiffList.filter(i => i.status === 'new' || i.status === 'modified').length + ' thay đổi)')"></span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Stat Pill Cards -->
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 relative z-10">
+                                <div @click="appDataDiffFilter = 'all_changes'" class="bg-white/10 hover:bg-white/15 cursor-pointer transition-all p-3.5 rounded-2xl border border-white/10" :class="appDataDiffFilter === 'all_changes' ? 'ring-2 ring-white' : ''">
+                                    <div class="text-[11px] font-bold text-indigo-200 uppercase">Cần Cập Nhật</div>
+                                    <div class="text-2xl font-black mt-1 text-white" x-text="appDataDiffList.filter(i => i.status === 'new' || i.status === 'modified').length"></div>
+                                </div>
+                                <div @click="appDataDiffFilter = 'new'" class="bg-emerald-500/20 hover:bg-emerald-500/30 cursor-pointer transition-all p-3.5 rounded-2xl border border-emerald-400/30" :class="appDataDiffFilter === 'new' ? 'ring-2 ring-emerald-400' : ''">
+                                    <div class="text-[11px] font-bold text-emerald-300 uppercase">🆕 Khách Hàng Mới</div>
+                                    <div class="text-2xl font-black mt-1 text-emerald-200" x-text="appDataDiffList.filter(i => i.status === 'new').length"></div>
+                                </div>
+                                <div @click="appDataDiffFilter = 'modified'" class="bg-amber-500/20 hover:bg-amber-500/30 cursor-pointer transition-all p-3.5 rounded-2xl border border-amber-400/30" :class="appDataDiffFilter === 'modified' ? 'ring-2 ring-amber-400' : ''">
+                                    <div class="text-[11px] font-bold text-amber-300 uppercase">🔄 Có Thay Đổi (HSD/Gói)</div>
+                                    <div class="text-2xl font-black mt-1 text-amber-200" x-text="appDataDiffList.filter(i => i.status === 'modified').length"></div>
+                                </div>
+                                <div @click="appDataDiffFilter = 'unchanged'" class="bg-white/5 hover:bg-white/10 cursor-pointer transition-all p-3.5 rounded-2xl border border-white/10" :class="appDataDiffFilter === 'unchanged' ? 'ring-2 ring-white' : ''">
+                                    <div class="text-[11px] font-bold text-gray-300 uppercase">✅ Khớp Hoàn Toàn</div>
+                                    <div class="text-2xl font-black mt-1 text-gray-200" x-text="appDataDiffList.filter(i => i.status === 'unchanged').length"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Filter & Search Bar -->
+                        <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 card-shadow">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button @click="appDataDiffFilter = 'all_changes'" :class="appDataDiffFilter === 'all_changes' ? 'bg-indigo-600 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    Cần Cập Nhật (<span x-text="appDataDiffList.filter(i => i.status === 'new' || i.status === 'modified').length"></span>)
+                                </button>
+                                <button @click="appDataDiffFilter = 'new'" :class="appDataDiffFilter === 'new' ? 'bg-emerald-600 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    🆕 Khách Mới (<span x-text="appDataDiffList.filter(i => i.status === 'new').length"></span>)
+                                </button>
+                                <button @click="appDataDiffFilter = 'modified'" :class="appDataDiffFilter === 'modified' ? 'bg-amber-600 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    🔄 Thay Đổi (<span x-text="appDataDiffList.filter(i => i.status === 'modified').length"></span>)
+                                </button>
+                                <button @click="appDataDiffFilter = 'unchanged'" :class="appDataDiffFilter === 'unchanged' ? 'bg-gray-800 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    ✅ Đã Khớp (<span x-text="appDataDiffList.filter(i => i.status === 'unchanged').length"></span>)
+                                </button>
+                                <button @click="appDataDiffFilter = 'all'" :class="appDataDiffFilter === 'all' ? 'bg-purple-600 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    Tất Cả (<span x-text="appDataDiffList.length"></span>)
+                                </button>
+                            </div>
+
+                            <div class="relative w-full md:w-72">
+                                <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                <input type="text" x-model="appDataDiffSearch" placeholder="Tìm email hoặc mail phụ..."
+                                    class="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white font-medium">
+                            </div>
+                        </div>
+
+                        <!-- Diff Table -->
+                        <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                            <div class="overflow-x-auto max-h-[620px]">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="bg-gray-50/95 border-b border-gray-200/80 text-[11px] font-extrabold text-gray-500 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-md">
+                                            <th class="py-3.5 px-4 w-28">Trạng Thái</th>
+                                            <th class="py-3.5 px-4">Email Khách Hàng</th>
+                                            <th class="py-3.5 px-4">Thông tin DATAGoc (Hiện Tại)</th>
+                                            <th class="py-3.5 px-4">Thông tin APP_DATA (Mới Nhất)</th>
+                                            <th class="py-3.5 px-4">Chi Tiết Sự Khác Biệt</th>
+                                            <th class="py-3.5 px-4 text-center w-36">Thao Tác Duyệt</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 font-medium">
+                                        <template x-if="filteredAppDataDiffList.length === 0">
+                                            <tr>
+                                                <td colspan="6" class="py-16 text-center text-gray-400">
+                                                    <i data-lucide="check-circle" class="w-10 h-10 mx-auto mb-2 text-emerald-400"></i>
+                                                    <span>Không tìm thấy khách hàng nào trong nhóm bộ lọc này.</span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                        <template x-for="(item, idx) in filteredAppDataDiffList" :key="idx">
+                                            <tr class="hover:bg-indigo-50/30 transition-colors" :class="item.status === 'new' ? 'bg-emerald-50/30' : (item.status === 'modified' ? 'bg-amber-50/20' : '')">
+                                                <td class="py-3.5 px-4">
+                                                    <span x-show="item.status === 'new'" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
+                                                        🆕 MỚI THÊM
+                                                    </span>
+                                                    <span x-show="item.status === 'modified'" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200 uppercase">
+                                                        🔄 THAY ĐỔI
+                                                    </span>
+                                                    <span x-show="item.status === 'unchanged'" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200 uppercase">
+                                                        ✅ KHỚP
+                                                    </span>
+                                                </td>
+                                                <td class="py-3.5 px-4">
+                                                    <div class="font-extrabold text-gray-900 cursor-pointer hover:text-indigo-600 hover:underline select-all text-sm"
+                                                        @click="copyToClipboard(item.email, 'Email')" title="Bấm để copy Email" x-text="item.email"></div>
+                                                    <template x-if="item.subEmail && item.subEmail !== '-'">
+                                                        <div class="text-[11px] text-indigo-600 font-bold mt-0.5 cursor-pointer hover:underline"
+                                                            @click="copyToClipboard(item.subEmail, 'Mail phụ')" x-text="'Phụ: ' + item.subEmail"></div>
+                                                    </template>
+                                                </td>
+                                                <td class="py-3.5 px-4">
+                                                    <div class="space-y-1 text-gray-600">
+                                                        <div><span class="text-gray-400">HSD:</span> <span class="font-bold text-gray-800" x-text="item.oldExpiryDate || '--'"></span></div>
+                                                        <div><span class="text-gray-400">Gói:</span> <span class="font-bold text-gray-800" x-text="item.oldProduct || '--'"></span></div>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3.5 px-4">
+                                                    <div class="space-y-1">
+                                                        <div><span class="text-gray-400">HSD mới:</span> <span class="font-black text-indigo-700" x-text="item.expiryDate || '--'"></span></div>
+                                                        <div><span class="text-gray-400">Gói mới:</span> <span class="font-bold text-emerald-700" x-text="item.product || '--'"></span></div>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3.5 px-4">
+                                                    <div class="flex flex-wrap gap-1.5">
+                                                        <template x-for="(reason, rIdx) in item.diffReasons" :key="rIdx">
+                                                            <span class="px-2 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-100 inline-block" x-text="reason"></span>
+                                                        </template>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3.5 px-4 text-center">
+                                                    <template x-if="item.status !== 'unchanged'">
+                                                        <button @click="syncSingleAppDataDiff(item)" :disabled="isSyncingAppDataToGoc"
+                                                            class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 mx-auto">
+                                                            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                                            <span>Duyệt Cập Nhật</span>
+                                                        </button>
+                                                    </template>
+                                                    <template x-if="item.status === 'unchanged'">
+                                                        <span class="text-gray-400 font-medium italic">Đã đồng bộ</span>
+                                                    </template>
                                                 </td>
                                             </tr>
                                         </template>
@@ -5676,6 +5842,23 @@
                 dataGocBulkList: [],
                 isUpdatingBulk: false,
                 bulkAutoOverwrite: true,
+                appDataDiffList: [],
+                appDataDiffFilter: 'all_changes',
+                appDataDiffSearch: '',
+                isSyncingAppDataToGoc: false,
+                get filteredAppDataDiffList() {
+                    let list = this.appDataDiffList || [];
+                    if (this.appDataDiffFilter === 'all_changes') {
+                        list = list.filter(item => item.status === 'new' || item.status === 'modified');
+                    } else if (this.appDataDiffFilter !== 'all') {
+                        list = list.filter(item => item.status === this.appDataDiffFilter);
+                    }
+                    if (this.appDataDiffSearch.trim()) {
+                        const q = this.appDataDiffSearch.trim().toLowerCase();
+                        list = list.filter(item => (item.email && item.email.toLowerCase().includes(q)) || (item.subEmail && item.subEmail.toLowerCase().includes(q)));
+                    }
+                    return list;
+                },
                 dashboardCustomerSearch: '',
                 dashboardCustomerStatus: 'all',
                 get dashboardFilteredCustomers() {
@@ -7405,7 +7588,132 @@
                         console.error("Lỗi khi tải DATAGoc:", e);
                     } finally {
                         this.isFetchingDataGoc = false;
+                        this.calculateAppDataDiff();
                         this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+                    }
+                },
+
+                calculateAppDataDiff() {
+                    const gocMap = {};
+                    (this.dataGocList || []).forEach(g => {
+                        if (g.email) gocMap[g.email.toLowerCase().trim()] = g;
+                    });
+
+                    const appDataLatest = {};
+                    (this.db.APP_DATA || []).forEach(r => {
+                        const email = (r['Email khách'] || '').trim().toLowerCase();
+                        if (!email || !email.includes('@')) return;
+                        appDataLatest[email] = r;
+                    });
+
+                    const diffs = [];
+                    Object.keys(appDataLatest).forEach(emailKey => {
+                        const r = appDataLatest[emailKey];
+                        const g = gocMap[emailKey];
+                        const email = r['Email khách'] || emailKey;
+                        const newExpiry = String(r['HSD'] || '').trim();
+                        const newSubEmail = String(r['Mail phụ'] || '').trim();
+                        const newStaff = String(r['CTV'] || 'Dnc').trim();
+                        const newProduct = String(r['Phân loại'] || r['Gói'] || 'YTB').trim();
+                        const newDaysLeft = String(r['Số ngày còn lại'] || '').trim();
+                        const newPurchaseDate = String(r['Ngày mua'] || r['Ngày đăng ký'] || '').trim();
+                        const newOrderCode = String(r['Mã đơn'] || r['Mã đơn hàng'] || '').trim();
+
+                        if (!g) {
+                            diffs.push({
+                                email: email,
+                                status: 'new',
+                                product: newProduct,
+                                category: 'FULL',
+                                expiryDate: newExpiry,
+                                purchaseDate: newPurchaseDate,
+                                daysLeft: newDaysLeft,
+                                subEmail: newSubEmail,
+                                staff: newStaff,
+                                orderCode: newOrderCode,
+                                oldExpiryDate: '--',
+                                oldSubEmail: '--',
+                                oldStaff: '--',
+                                oldProduct: '--',
+                                diffReasons: ['🆕 Khách hàng mới có trong APP_DATA (chưa có trong DATAGoc)']
+                            });
+                        } else {
+                            const diffReasons = [];
+                            const cleanNewExp = newExpiry.replace(/\s+/g, '');
+                            const cleanOldExp = String(g.expiryDate || '').replace(/\s+/g, '');
+                            if (cleanNewExp && cleanOldExp && cleanNewExp !== cleanOldExp) {
+                                diffReasons.push(`📅 HSD: ${g.expiryDate || '--'} ➔ ${newExpiry}`);
+                            }
+                            if (newSubEmail && newSubEmail !== '-' && newSubEmail !== String(g.subEmail || '')) {
+                                diffReasons.push(`📧 Mail phụ: ${g.subEmail || '(trống)'} ➔ ${newSubEmail}`);
+                            }
+                            if (newProduct && newProduct !== String(g.product || '')) {
+                                diffReasons.push(`📦 Gói: ${g.product || '--'} ➔ ${newProduct}`);
+                            }
+
+                            const status = diffReasons.length > 0 ? 'modified' : 'unchanged';
+                            diffs.push({
+                                email: email,
+                                status: status,
+                                product: newProduct || g.product,
+                                category: g.category || 'FULL',
+                                expiryDate: newExpiry || g.expiryDate,
+                                purchaseDate: newPurchaseDate || g.purchaseDate,
+                                daysLeft: newDaysLeft || g.daysLeft,
+                                subEmail: newSubEmail || g.subEmail,
+                                staff: newStaff || g.staff,
+                                orderCode: newOrderCode || g.orderCode,
+                                oldExpiryDate: g.expiryDate || '--',
+                                oldSubEmail: g.subEmail || '--',
+                                oldStaff: g.staff || '--',
+                                oldProduct: g.product || '--',
+                                diffReasons: diffReasons
+                            });
+                        }
+                    });
+
+                    this.appDataDiffList = diffs;
+                },
+
+                async syncSingleAppDataDiff(item) {
+                    if (!confirm(`Xác nhận duyệt & cập nhật khách hàng "${item.email}" (HSD: ${item.expiryDate}) lên DATAGoc?`)) return;
+                    await this.executeSyncAppDataToGoc([item]);
+                },
+
+                async syncBulkAppDataDiff() {
+                    const list = (this.appDataDiffList || []).filter(i => i.status === 'new' || i.status === 'modified');
+                    if (list.length === 0) {
+                        alert("Không có thay đổi nào cần cập nhật lên DATAGoc.");
+                        return;
+                    }
+                    if (!confirm(`🚀 Xác nhận đồng bộ ${list.length} thay đổi từ APP_DATA lên DATAGoc và lưu nhật ký hệ thống?`)) return;
+                    await this.executeSyncAppDataToGoc(list);
+                },
+
+                async executeSyncAppDataToGoc(items) {
+                    this.isSyncingAppDataToGoc = true;
+                    try {
+                        const payload = {
+                            action: 'sync_appdata_to_datagoc',
+                            items: items,
+                            operator: 'Admin DNC'
+                        };
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify(payload)
+                        });
+                        const result = await res.json();
+                        if (result.status === 'success') {
+                            alert(`✅ ${result.message}`);
+                            await this.fetchDataGoc(true);
+                            this.calculateAppDataDiff();
+                        } else {
+                            alert(`❌ Lỗi đồng bộ: ${result.message}`);
+                        }
+                    } catch (error) {
+                        alert(`❌ Lỗi kết nối: ${error.message}`);
+                    } finally {
+                        this.isSyncingAppDataToGoc = false;
                     }
                 },
 
@@ -10698,6 +11006,7 @@
                             percent: totalStaffSales > 0 ? Math.round((sales / totalStaffSales) * 100) : 0
                         }))
                         .sort((a, b) => b.sales - a.sales);
+                    this.calculateAppDataDiff();
                 },
 
                 getStatus(row) {

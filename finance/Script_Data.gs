@@ -1618,6 +1618,91 @@ function doPost(e) {
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // 21.5. Đồng bộ đối chiếu từ APP_DATA sang DATAGoc (Duyệt thay đổi hàng loạt hoặc từng dòng)
+    if (action === 'sync_appdata_to_datagoc') {
+      var items = data.items || [];
+      var operator = standardizeStaffName(data.operator || 'Admin DNC');
+      if (!items || items.length === 0) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Không có dữ liệu thay đổi nào để cập nhật.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+      var sheet = ss.getSheetByName("DATAGoc") || ss.getSheetByName("DATAGOC") || ss.getSheetByName("DataGoc");
+      if (!sheet) {
+        return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Không tìm thấy tab DATAGoc.'})).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      var values = sheet.getDataRange().getValues();
+      var emailRowMap = {};
+      for (var i = 1; i < values.length; i++) {
+        var rowEmail = String(values[i][2] || '').trim().toLowerCase();
+        if (rowEmail) emailRowMap[rowEmail] = i + 1; // 1-indexed
+      }
+
+      var updatedCount = 0;
+      var newCount = 0;
+      var timestamp = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
+
+      for (var j = 0; j < items.length; j++) {
+        var item = items[j];
+        var email = String(item.email || '').trim().toLowerCase();
+        if (!email || !email.includes('@')) continue;
+
+        var product = String(item.product || 'YTB').trim();
+        var category = String(item.category || 'FULL').trim();
+        var purchaseDate = String(item.purchaseDate || '').trim();
+        var months = String(item.months || '0').trim();
+        var expiryDate = String(item.expiryDate || '').trim();
+        var subEmail = String(item.subEmail || '').trim();
+        var staff = standardizeStaffName(item.staff || operator);
+        var orderCode = String(item.orderCode || '').trim();
+
+        if (emailRowMap[email]) {
+          var rowIdx = emailRowMap[email];
+          if (product) sheet.getRange(rowIdx, 1).setValue(product);
+          if (category) sheet.getRange(rowIdx, 2).setValue(category);
+          sheet.getRange(rowIdx, 6).setValue(expiryDate);
+          sheet.getRange(rowIdx, 7).setValue(subEmail);
+          sheet.getRange(rowIdx, 8).setValue(staff);
+          if (orderCode) sheet.getRange(rowIdx, 10).setValue(orderCode);
+
+          try {
+            var expD = new Date(expiryDate.split('/').reverse().join('-'));
+            if (!isNaN(expD.getTime())) {
+              var diffDays = Math.ceil((expD.getTime() - Date.now()) / (1000 * 3600 * 24));
+              sheet.getRange(rowIdx, 9).setValue(diffDays);
+            }
+          } catch(e) {}
+          updatedCount++;
+        } else {
+          sheet.appendRow([product, category, email, purchaseDate, months, expiryDate, subEmail, staff, '', orderCode]);
+          newCount++;
+        }
+
+        try {
+          var nhatKySheet = ss.getSheetByName("NHAT_KY_XU_LY");
+          if (nhatKySheet) {
+            nhatKySheet.appendRow([timestamp, email, "Duyệt đối chiếu APP_DATA -> DATAGoc", operator, "HSD: " + expiryDate + " | Gói: " + product + " | CTV: " + staff]);
+          }
+        } catch(e) {}
+
+        try {
+          var frSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+          var statusHistorySheet = frSs.getSheetByName("STATUS_HISTORY");
+          if (statusHistorySheet) {
+            statusHistorySheet.appendRow([timestamp, "DATAGoc", email, "Duyệt từ APP_DATA (" + product + ")", operator, "HSD: " + expiryDate]);
+          }
+        } catch(e) {}
+      }
+
+      return ContentService.createTextOutput(JSON.stringify({
+        status: 'success',
+        message: 'Đã cập nhật ' + (updatedCount + newCount) + ' khách hàng vào DATAGoc thành công! (Cập nhật: ' + updatedCount + ', Thêm mới: ' + newCount + ')',
+        updatedCount: updatedCount,
+        newCount: newCount
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     // 22. Rebuild Kiem Soat RN (Đã vô hiệu hóa để tránh mất dữ liệu lịch sử)
     if (action === 'rebuild_kiem_soat_rn') {
       return ContentService.createTextOutput(JSON.stringify({status: 'error', message: 'Chức năng đồng bộ lại từ đầu (Rebuild) đã bị vô hiệu hóa để bảo vệ dữ liệu lịch sử.'})).setMimeType(ContentService.MimeType.JSON);
