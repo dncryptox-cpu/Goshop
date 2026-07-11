@@ -7588,7 +7588,9 @@
                         console.error("Lỗi khi tải DATAGoc:", e);
                     } finally {
                         this.isFetchingDataGoc = false;
-                        this.calculateAppDataDiff();
+                        if (this.currentUserRole === 'admin') {
+                            this.calculateAppDataDiff();
+                        }
                         this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
                     }
                 },
@@ -10368,30 +10370,32 @@
                     } catch(e) {}
                     this.isLoading = true;
                     try {
-                        await Promise.all(this.CONFIG.TABS.map(async tab => {
-                            const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
-                            const response = await fetch(url);
-                            const csvText = await response.text();
-                            this.db[tab] = this.parseCSV(csvText);
-                        }));
+                        if (this.currentUserRole === 'admin') {
+                            await Promise.all(this.CONFIG.TABS.map(async tab => {
+                                const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+                                const response = await fetch(url);
+                                const csvText = await response.text();
+                                this.db[tab] = this.parseCSV(csvText);
+                            }));
 
-                        // Fetch Transaction Log for Cash-flow PNL
-                        try {
-                            const [ytbRes, gccRes] = await Promise.all([
-                                fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`),
-                                fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(GCC)`)
-                            ]);
-                            
-                            const ytbText = await ytbRes.text();
-                            const gccText = await gccRes.text();
-                            
-                            const ytbData = this.parseCSV(ytbText);
-                            const gccData = this.parseCSV(gccText);
-                            
-                            this.db.DATA_YTB = [...ytbData, ...gccData];
-                        } catch(e) {
-                            console.error('Error fetching Transaction Data:', e);
-                            this.db.DATA_YTB = [];
+                            // Fetch Transaction Log for Cash-flow PNL
+                            try {
+                                const [ytbRes, gccRes] = await Promise.all([
+                                    fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`),
+                                    fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(GCC)`)
+                                ]);
+                                
+                                const ytbText = await ytbRes.text();
+                                const gccText = await gccRes.text();
+                                
+                                const ytbData = this.parseCSV(ytbText);
+                                const gccData = this.parseCSV(gccText);
+                                
+                                this.db.DATA_YTB = [...ytbData, ...gccData];
+                            } catch(e) {
+                                console.error('Error fetching Transaction Data:', e);
+                                this.db.DATA_YTB = [];
+                            }
                         }
 
                         // Fetch FamRenew Sheet (RENEW tab)
@@ -10609,7 +10613,9 @@
                             console.error('Error fetching 2FA Sheet:', e);
                         }
 
-                        this.mapData();
+                        if (this.currentUserRole === 'admin') {
+                            this.mapData();
+                        }
                         try {
                             localStorage.setItem('goshop_cached_db', JSON.stringify(this.db));
                         } catch(e) {}
