@@ -9939,10 +9939,10 @@
                         this.$nextTick(() => lucide.createIcons());
                     });
                     
-                    await this.initGitHub();
+                    this.ytbRenewalStatuses = JSON.parse(localStorage.getItem('goshop_ytb_renewal_statuses') || '{}');
+                    this.initGitHub();
                     await this.fetchSheetData();
                     this.updateExpiryDate();
-                    this.ytbRenewalStatuses = JSON.parse(localStorage.getItem('goshop_ytb_renewal_statuses') || '{}');
                 },
 
                 async fetchSystemConfig() {
@@ -10370,151 +10370,156 @@
                     } catch(e) {}
                     this.isLoading = true;
                     try {
+                        const tasks = [];
+
                         if (this.currentUserRole === 'admin') {
-                            await Promise.all(this.CONFIG.TABS.map(async tab => {
-                                const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
-                                const response = await fetch(url);
-                                const csvText = await response.text();
-                                this.db[tab] = this.parseCSV(csvText);
+                            tasks.push(...this.CONFIG.TABS.map(async tab => {
+                                try {
+                                    const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
+                                    const response = await fetch(url);
+                                    const csvText = await response.text();
+                                    this.db[tab] = this.parseCSV(csvText);
+                                } catch (e) {
+                                    console.error(`Error fetching tab ${tab}:`, e);
+                                }
                             }));
 
-                            // Fetch Transaction Log for Cash-flow PNL
-                            try {
-                                const [ytbRes, gccRes] = await Promise.all([
-                                    fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`),
-                                    fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(GCC)`)
-                                ]);
-                                
-                                const ytbText = await ytbRes.text();
-                                const gccText = await gccRes.text();
-                                
-                                const ytbData = this.parseCSV(ytbText);
-                                const gccData = this.parseCSV(gccText);
-                                
-                                this.db.DATA_YTB = [...ytbData, ...gccData];
-                            } catch(e) {
-                                console.error('Error fetching Transaction Data:', e);
-                                this.db.DATA_YTB = [];
-                            }
+                            tasks.push((async () => {
+                                try {
+                                    const [ytbRes, gccRes] = await Promise.all([
+                                        fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`),
+                                        fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(GCC)`)
+                                    ]);
+                                    const ytbText = await ytbRes.text();
+                                    const gccText = await gccRes.text();
+                                    const ytbData = this.parseCSV(ytbText);
+                                    const gccData = this.parseCSV(gccText);
+                                    this.db.DATA_YTB = [...ytbData, ...gccData];
+                                } catch (e) {
+                                    console.error('Error fetching Transaction Data:', e);
+                                    this.db.DATA_YTB = [];
+                                }
+                            })());
                         }
 
-                        // Fetch FamRenew Sheet (RENEW tab)
-                        try {
-                            const famRenewUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=RENEW&t=${Date.now()}`;
-                            const frRes = await fetch(famRenewUrl);
-                            const frText = await frRes.text();
-                            const frData = this.parseCSV(frText);
-                            
-                            this.famRenewList = frData.map((row, idx) => {
-                                const keys = Object.keys(row);
-                                
-                                // Đọc và khớp cột tự động dựa trên tên header (Fuzzy Header Matching)
-                                const kSlot     = keys.find(k => k.toLowerCase() === 'slot' || k.toLowerCase().includes('slot')) || keys[0];
-                                const kStt      = keys.find(k => k.toLowerCase().includes('stt') || k.toLowerCase().includes('fam')) || keys[1];
-                                const kStatus   = keys.find(k => k.toLowerCase().includes('trạng thái') || k.toLowerCase().includes('status')) || keys[2];
-                                const kEmail    = keys.find(k => k.toLowerCase().includes('stock') || k.toLowerCase().includes('mail') || k.toLowerCase().includes('email')) || keys[3];
-                                const kPass     = keys.find(k => k.toLowerCase() === 'pass' || k.toLowerCase().includes('mật khẩu')) || keys[4];
-                                const kRecovery = keys.find(k => k.toLowerCase() === 'mkp' || k.toLowerCase().includes('khôi phục') || k.toLowerCase().includes('phục')) || keys[5];
-                                const k2fa      = keys.find(k => k.toLowerCase() === '2fa' || k.toLowerCase().includes('2fa')) || keys[6];
-                                const kExpiry   = keys.find(k => k.toLowerCase().includes('ngày renew') || k.toLowerCase().includes('renew') || k.toLowerCase().includes('hết hạn')) || keys[7];
-                                const kNotes    = keys.find(k => k.toLowerCase().includes('thay thế') || k.toLowerCase().includes('thay the') || k.toLowerCase().includes('ghi chú')) || keys[8];
-
-                                const slotsVal    = String(row[kSlot] || '').trim();
-                                const sttVal      = String(row[kStt] || '').trim();
-                                const statusVal   = String(row[kStatus] || '').trim();
-                                const emailVal    = String(row[kEmail] || '').trim();
-                                const passVal     = String(row[kPass] || '').trim();
-                                const recoveryVal = String(row[kRecovery] || '').trim();
-                                const twofaVal    = String(row[k2fa] || '').trim();
-                                const expiryVal   = String(row[kExpiry] || '').trim();
-                                const notesVal    = String(row[kNotes] || '').trim();
-
-                                // Bỏ qua dòng tiêu đề nếu bị lọt vào dữ liệu
-                                if (emailVal.toLowerCase() === 'stockrenew' || statusVal.toLowerCase() === 'trạng thái') {
-                                    return null;
-                                }
-
-                                return {
-                                    rowIndex: idx + 2, // +2 vì row 1 là header, idx bắt đầu từ 0
-                                    id: 'fr_' + idx + '_' + Math.random().toString(36).substr(2, 5),
-                                    stt: sttVal,
-                                    status: statusVal,
-                                    slots: slotsVal,
-                                    buyDate: '', 
-                                    activationDate: '', 
-                                    email: emailVal,
-                                    pass: passVal,
-                                    recoveryEmail: recoveryVal, 
-                                    twofa: twofaVal,
-                                    expiryDate: expiryVal,
-                                    type: slotsVal ? `Slot: ${slotsVal}` : '',
-                                    source: notesVal
-                                };
-                            }).filter(item => item && item.email);
-
-                            // Fetch RENEW_MODIFIED Sheet and overlay overrides (to keep base RENEW sheet untouched)
+                        // Fetch FamRenew Sheet (RENEW & RENEW_MODIFIED)
+                        tasks.push((async () => {
                             try {
-                                const modRenewUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=RENEW_MODIFIED&t=${Date.now()}`;
-                                const modRes = await fetch(modRenewUrl);
-                                if (modRes.ok) {
-                                    const modText = await modRes.text();
-                                    if (modText && modText.trim()) {
-                                        const modData = this.parseCSV(modText);
-                                        const modMap = {};
-                                        modData.forEach(row => {
-                                            const keys = Object.keys(row);
-                                            const kStt = keys.find(k => k.toLowerCase().includes('stt') || k.toLowerCase().includes('fam')) || keys[1];
-                                            const kStatus = keys.find(k => k.toLowerCase().includes('trạng thái') || k.toLowerCase().includes('status')) || keys[2];
-                                            const kEmail = keys.find(k => k.toLowerCase().includes('stock') || k.toLowerCase().includes('mail') || k.toLowerCase().includes('email')) || keys[3];
-                                            const kPass = keys.find(k => k.toLowerCase() === 'pass' || k.toLowerCase().includes('mật khẩu')) || keys[4];
-                                            const kRecovery = keys.find(k => k.toLowerCase() === 'mkp' || k.toLowerCase().includes('khôi phục') || k.toLowerCase().includes('phục')) || keys[5];
-                                            const k2fa = keys.find(k => k.toLowerCase() === '2fa' || k.toLowerCase().includes('2fa')) || keys[6];
-                                            const kExpiry = keys.find(k => k.toLowerCase().includes('ngày renew') || k.toLowerCase().includes('renew') || k.toLowerCase().includes('hết hạn')) || keys[7];
-                                            const kNotes = keys.find(k => k.toLowerCase().includes('thay thế') || k.toLowerCase().includes('thay the') || k.toLowerCase().includes('ghi chú')) || keys[8];
+                                const famRenewUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=RENEW&t=${Date.now()}`;
+                                const frRes = await fetch(famRenewUrl);
+                                const frText = await frRes.text();
+                                const frData = this.parseCSV(frText);
+                                
+                                this.famRenewList = frData.map((row, idx) => {
+                                    const keys = Object.keys(row);
+                                    const kSlot     = keys.find(k => k.toLowerCase() === 'slot' || k.toLowerCase().includes('slot')) || keys[0];
+                                    const kStt      = keys.find(k => k.toLowerCase().includes('stt') || k.toLowerCase().includes('fam')) || keys[1];
+                                    const kStatus   = keys.find(k => k.toLowerCase().includes('trạng thái') || k.toLowerCase().includes('status')) || keys[2];
+                                    const kEmail    = keys.find(k => k.toLowerCase().includes('stock') || k.toLowerCase().includes('mail') || k.toLowerCase().includes('email')) || keys[3];
+                                    const kPass     = keys.find(k => k.toLowerCase() === 'pass' || k.toLowerCase().includes('mật khẩu')) || keys[4];
+                                    const kRecovery = keys.find(k => k.toLowerCase() === 'mkp' || k.toLowerCase().includes('khôi phục') || k.toLowerCase().includes('phục')) || keys[5];
+                                    const k2fa      = keys.find(k => k.toLowerCase() === '2fa' || k.toLowerCase().includes('2fa')) || keys[6];
+                                    const kExpiry   = keys.find(k => k.toLowerCase().includes('ngày renew') || k.toLowerCase().includes('renew') || k.toLowerCase().includes('hết hạn')) || keys[7];
+                                    const kNotes    = keys.find(k => k.toLowerCase().includes('thay thế') || k.toLowerCase().includes('thay the') || k.toLowerCase().includes('ghi chú')) || keys[8];
 
-                                            const sttVal = String(row[kStt] || '').trim();
-                                            if (sttVal) {
-                                                modMap[sttVal] = {
-                                                    status: String(row[kStatus] || '').trim(),
-                                                    email: String(row[kEmail] || '').trim(),
-                                                    pass: String(row[kPass] || '').trim(),
-                                                    recoveryEmail: String(row[kRecovery] || '').trim(),
-                                                    twofa: String(row[k2fa] || '').trim(),
-                                                    expiryDate: String(row[kExpiry] || '').trim(),
-                                                    source: String(row[kNotes] || '').trim()
-                                                };
-                                            }
-                                        });
+                                    const slotsVal    = String(row[kSlot] || '').trim();
+                                    const sttVal      = String(row[kStt] || '').trim();
+                                    const statusVal   = String(row[kStatus] || '').trim();
+                                    const emailVal    = String(row[kEmail] || '').trim();
+                                    const passVal     = String(row[kPass] || '').trim();
+                                    const recoveryVal = String(row[kRecovery] || '').trim();
+                                    const twofaVal    = String(row[k2fa] || '').trim();
+                                    const expiryVal   = String(row[kExpiry] || '').trim();
+                                    const notesVal    = String(row[kNotes] || '').trim();
 
-                                        // Merge overrides into famRenewList
-                                        this.famRenewList.forEach(item => {
-                                            const override = modMap[item.stt];
-                                            if (override) {
-                                                item.status = override.status;
-                                                item.email = override.email;
-                                                item.pass = override.pass;
-                                                item.recoveryEmail = override.recoveryEmail;
-                                                item.twofa = override.twofa;
-                                                item.expiryDate = override.expiryDate;
-                                                item.source = override.source;
-                                            }
-                                        });
+                                    if (emailVal.toLowerCase() === 'stockrenew' || statusVal.toLowerCase() === 'trạng thái') {
+                                        return null;
                                     }
-                                }
-                            } catch(eMod) {
-                                console.warn('Could not load RENEW_MODIFIED sheet (might not exist yet):', eMod);
-                            }
 
-                            await this.loadFamPairings();
-                            
-                            // Fetch KHO_RENEW Sheet
+                                    return {
+                                        rowIndex: idx + 2,
+                                        id: 'fr_' + idx + '_' + Math.random().toString(36).substr(2, 5),
+                                        stt: sttVal,
+                                        status: statusVal,
+                                        slots: slotsVal,
+                                        buyDate: '', 
+                                        activationDate: '', 
+                                        email: emailVal,
+                                        pass: passVal,
+                                        recoveryEmail: recoveryVal, 
+                                        twofa: twofaVal,
+                                        expiryDate: expiryVal,
+                                        type: slotsVal ? `Slot: ${slotsVal}` : '',
+                                        source: notesVal
+                                    };
+                                }).filter(item => item && item.email);
+
+                                try {
+                                    const modRenewUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=RENEW_MODIFIED&t=${Date.now()}`;
+                                    const modRes = await fetch(modRenewUrl);
+                                    if (modRes.ok) {
+                                        const modText = await modRes.text();
+                                        if (modText && modText.trim()) {
+                                            const modData = this.parseCSV(modText);
+                                            const modMap = {};
+                                            modData.forEach(row => {
+                                                const keys = Object.keys(row);
+                                                const kStt = keys.find(k => k.toLowerCase().includes('stt') || k.toLowerCase().includes('fam')) || keys[1];
+                                                const kStatus = keys.find(k => k.toLowerCase().includes('trạng thái') || k.toLowerCase().includes('status')) || keys[2];
+                                                const kEmail = keys.find(k => k.toLowerCase().includes('stock') || k.toLowerCase().includes('mail') || k.toLowerCase().includes('email')) || keys[3];
+                                                const kPass = keys.find(k => k.toLowerCase() === 'pass' || k.toLowerCase().includes('mật khẩu')) || keys[4];
+                                                const kRecovery = keys.find(k => k.toLowerCase() === 'mkp' || k.toLowerCase().includes('khôi phục') || k.toLowerCase().includes('phục')) || keys[5];
+                                                const k2fa = keys.find(k => k.toLowerCase() === '2fa' || k.toLowerCase().includes('2fa')) || keys[6];
+                                                const kExpiry = keys.find(k => k.toLowerCase().includes('ngày renew') || k.toLowerCase().includes('renew') || k.toLowerCase().includes('hết hạn')) || keys[7];
+                                                const kNotes = keys.find(k => k.toLowerCase().includes('thay thế') || k.toLowerCase().includes('thay the') || k.toLowerCase().includes('ghi chú')) || keys[8];
+
+                                                const sttVal = String(row[kStt] || '').trim();
+                                                if (sttVal) {
+                                                    modMap[sttVal] = {
+                                                        status: String(row[kStatus] || '').trim(),
+                                                        email: String(row[kEmail] || '').trim(),
+                                                        pass: String(row[kPass] || '').trim(),
+                                                        recoveryEmail: String(row[kRecovery] || '').trim(),
+                                                        twofa: String(row[k2fa] || '').trim(),
+                                                        expiryDate: String(row[kExpiry] || '').trim(),
+                                                        source: String(row[kNotes] || '').trim()
+                                                    };
+                                                }
+                                            });
+
+                                            this.famRenewList.forEach(item => {
+                                                const override = modMap[item.stt];
+                                                if (override) {
+                                                    item.status = override.status;
+                                                    item.email = override.email;
+                                                    item.pass = override.pass;
+                                                    item.recoveryEmail = override.recoveryEmail;
+                                                    item.twofa = override.twofa;
+                                                    item.expiryDate = override.expiryDate;
+                                                    item.source = override.source;
+                                                }
+                                            });
+                                        }
+                                    }
+                                } catch(eMod) {
+                                    console.warn('Could not load RENEW_MODIFIED sheet:', eMod);
+                                }
+                            } catch (e) {
+                                console.error('Error fetching FamRenew Sheet:', e);
+                                this.famRenewList = [];
+                            }
+                        })());
+
+                        tasks.push(this.loadFamPairings());
+
+                        tasks.push((async () => {
                             try {
                                 const khoRenewUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=KHO_RENEW&t=${Date.now()}`;
                                 const krRes = await fetch(khoRenewUrl);
                                 if (krRes.ok) {
                                     const krText = await krRes.text();
                                     const krData = this.parseCSV(krText);
-                                    this.khoRenewList = krData.map((row, idx) => {
+                                    this.khoRenewList = krData.map((row) => {
                                         const keys = Object.keys(row);
                                         const kEmail = keys.find(k => k.toLowerCase().includes('mail') || k.toLowerCase().includes('email')) || keys[0];
                                         const kPass = keys.find(k => k.toLowerCase() === 'pass' || k.toLowerCase().includes('mật khẩu')) || keys[1];
@@ -10545,13 +10550,13 @@
                                 console.error('Error fetching KHO_RENEW:', e);
                                 this.khoRenewList = [];
                             }
+                        })());
 
-                            // Fetch NHAT_KY_XU_LY from backend
-                            if (this.fetchNhatKyXuLy) {
-                                this.fetchNhatKyXuLy();
-                            }
+                        if (this.fetchNhatKyXuLy) {
+                            tasks.push(this.fetchNhatKyXuLy());
+                        }
 
-                            // Fetch SoluongRN Sheet
+                        tasks.push((async () => {
                             try {
                                 const soluongRNUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.FAM_RENEW_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=SoluongRN&t=${Date.now()}`;
                                 const srRes = await fetch(soluongRNUrl);
@@ -10562,56 +10567,50 @@
                                         const keys = Object.keys(row);
                                         const kDate = keys.find(k => k.toLowerCase().includes('date') || k.toLowerCase().includes('ngày')) || keys[0] || '';
                                         const kQty  = keys.find(k => k.toLowerCase().includes('lượng') || k.toLowerCase().includes('qty') || k.toLowerCase().includes('số')) || keys[1] || '';
-                                        
                                         const dateVal = String(row[kDate] || '').trim();
                                         const qtyVal  = parseInt(row[kQty]) || 0;
-                                        
                                         if (!dateVal || qtyVal <= 0) return null;
-                                        return {
-                                            date: dateVal,
-                                            quantity: qtyVal
-                                        };
+                                        return { date: dateVal, quantity: qtyVal };
                                     }).filter(Boolean);
                                 }
                             } catch (e) {
                                 console.error('Error fetching SoluongRN:', e);
                                 this.soluongRNList = [];
                             }
-                        } catch (e) {
-                            console.error('Error fetching FamRenew Sheet:', e);
-                            this.famRenewList = [];
-                        }
+                        })());
 
-                        // Fetch sheet 2FA (Mail | 2fa)
-                        try {
-                            const twofaSheetUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=2FA&t=${Date.now()}`;
-                            const tfRes = await fetch(twofaSheetUrl);
-                            const tfText = await tfRes.text();
-                            const tfData = this.parseCSV(tfText);
-                            if (tfData && tfData.length > 0) {
-                                const sheetItems = tfData.map((row, idx) => {
-                                    const keys = Object.keys(row);
-                                    const kMail   = keys.find(k => k.toLowerCase() === 'mail' || k.toLowerCase() === 'email') || keys[0] || '';
-                                    const kSecret = keys.find(k => k.toLowerCase() === '2fa' || k.toLowerCase().includes('secret')) || keys[1] || '';
-                                    const email  = String(row[kMail] || '').trim();
-                                    const secret = String(row[kSecret] || '').trim();
-                                    if (!email || !secret) return null;
-                                    return {
-                                        id: '2FA-SHEET-' + (idx + 1),
-                                        email,
-                                        secret,
-                                        lastUsed: 'Chưa sử dụng',
-                                        fromSheet: true
-                                    };
-                                }).filter(Boolean);
-                                // Merge: sheet items first, then any local-only items not in sheet
-                                const sheetEmails = new Set(sheetItems.map(i => i.email.toLowerCase()));
-                                const localOnly = this.twofaList.filter(i => !i.fromSheet && !sheetEmails.has(i.email.toLowerCase()));
-                                this.twofaList = [...sheetItems, ...localOnly];
+                        tasks.push((async () => {
+                            try {
+                                const twofaSheetUrl = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=2FA&t=${Date.now()}`;
+                                const tfRes = await fetch(twofaSheetUrl);
+                                const tfText = await tfRes.text();
+                                const tfData = this.parseCSV(tfText);
+                                if (tfData && tfData.length > 0) {
+                                    const sheetItems = tfData.map((row, idx) => {
+                                        const keys = Object.keys(row);
+                                        const kMail   = keys.find(k => k.toLowerCase() === 'mail' || k.toLowerCase() === 'email') || keys[0] || '';
+                                        const kSecret = keys.find(k => k.toLowerCase() === '2fa' || k.toLowerCase().includes('secret')) || keys[1] || '';
+                                        const email  = String(row[kMail] || '').trim();
+                                        const secret = String(row[kSecret] || '').trim();
+                                        if (!email || !secret) return null;
+                                        return {
+                                            id: '2FA-SHEET-' + (idx + 1),
+                                            email,
+                                            secret,
+                                            lastUsed: 'Chưa sử dụng',
+                                            fromSheet: true
+                                        };
+                                    }).filter(Boolean);
+                                    const sheetEmails = new Set(sheetItems.map(i => i.email.toLowerCase()));
+                                    const localOnly = this.twofaList.filter(i => !i.fromSheet && !sheetEmails.has(i.email.toLowerCase()));
+                                    this.twofaList = [...sheetItems, ...localOnly];
+                                }
+                            } catch (e) {
+                                console.error('Error fetching 2FA Sheet:', e);
                             }
-                        } catch (e) {
-                            console.error('Error fetching 2FA Sheet:', e);
-                        }
+                        })());
+
+                        await Promise.all(tasks);
 
                         if (this.currentUserRole === 'admin') {
                             this.mapData();
@@ -10619,8 +10618,12 @@
                         try {
                             localStorage.setItem('goshop_cached_db', JSON.stringify(this.db));
                         } catch(e) {}
-                        await this.fetchReplaceHistory();
-                        await this.fetchStatusHistory();
+
+                        Promise.all([
+                            this.fetchReplaceHistory(),
+                            this.fetchStatusHistory()
+                        ]).catch(e => console.warn('History fetch error:', e));
+
                     } catch (error) {
                         console.error('Error fetching sheet data:', error);
                     } finally {
@@ -10631,22 +10634,58 @@
 
                 parseCSV(csv) {
                     if (!csv || csv.includes('html')) return [];
-                    const lines = csv.split('\n').filter(line => line.trim() !== '');
-                    if(lines.length < 2) return [];
+                    const lines = csv.split(/\r?\n/);
+                    if (lines.length < 2) return [];
                     
-                    const parsedLines = lines.map(line => {
-                        return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
-                    });
+                    const parseLine = (str) => {
+                        const res = [];
+                        let cell = '';
+                        let inQuote = false;
+                        const len = str.length;
+                        for (let i = 0; i < len; i++) {
+                            const c = str[i];
+                            if (c === '"') {
+                                if (inQuote && i + 1 < len && str[i + 1] === '"') {
+                                    cell += '"';
+                                    i++;
+                                } else {
+                                    inQuote = !inQuote;
+                                }
+                            } else if (c === ',' && !inQuote) {
+                                res.push(cell.trim());
+                                cell = '';
+                            } else {
+                                cell += c;
+                            }
+                        }
+                        res.push(cell.trim());
+                        return res;
+                    };
 
-                    // Tự động phát hiện dòng chứa header thực sự bằng cách chấm điểm từ khóa
+                    const parsedLines = [];
+                    for (let i = 0; i < lines.length; i++) {
+                        const l = lines[i].trim();
+                        if (l !== '') {
+                            parsedLines.push(parseLine(l));
+                        }
+                    }
+                    if (parsedLines.length < 2) return [];
+
                     let headerIndex = 0;
                     if (parsedLines.length > 1) {
                         const keywords = ['slot', 'stt', 'trạng thái', 'status', 'mail', 'email', 'pass', '2fa', 'hạn', 'date', 'renew'];
                         const getHeaderScore = (rowVals) => {
-                            return rowVals.filter(v => {
-                                const valLower = String(v).toLowerCase();
-                                return keywords.some(k => valLower.includes(k));
-                            }).length;
+                            let score = 0;
+                            for (let j = 0; j < rowVals.length; j++) {
+                                const valLower = String(rowVals[j]).toLowerCase();
+                                for (let k = 0; k < keywords.length; k++) {
+                                    if (valLower.includes(keywords[k])) {
+                                        score++;
+                                        break;
+                                    }
+                                }
+                            }
+                            return score;
                         };
                         const score0 = getHeaderScore(parsedLines[0]);
                         const score1 = getHeaderScore(parsedLines[1]);
@@ -10656,28 +10695,40 @@
                     }
 
                     let maxCols = 0;
-                    parsedLines.forEach(vals => {
-                        if (vals.length > maxCols) maxCols = vals.length;
-                    });
+                    for (let i = 0; i < parsedLines.length; i++) {
+                        if (parsedLines[i].length > maxCols) maxCols = parsedLines[i].length;
+                    }
                     
                     const headerVals = parsedLines[headerIndex];
                     const headers = [];
-                    for(let i = 0; i < maxCols; i++) {
+                    const headerSeen = new Set();
+                    for (let i = 0; i < maxCols; i++) {
                         let h = headerVals[i] || '';
                         h = h === '' ? `Col_${i}` : h;
-                        if (headers.includes(h)) {
+                        if (headerSeen.has(h)) {
                             h = `${h}_${i}`;
                         }
+                        headerSeen.add(h);
                         headers.push(h);
                     }
                     
-                    return parsedLines.slice(headerIndex + 1).map(values => {
+                    const result = [];
+                    for (let r = headerIndex + 1; r < parsedLines.length; r++) {
+                        const values = parsedLines[r];
+                        let hasData = false;
                         const obj = {};
-                        headers.forEach((header, i) => {
-                            obj[header] = values[i] || '';
-                        });
-                        return obj;
-                    }).filter(row => Object.values(row).some(v => v !== '' && !v.startsWith('Col_')));
+                        for (let i = 0; i < headers.length; i++) {
+                            const v = values[i] || '';
+                            obj[headers[i]] = v;
+                            if (v !== '' && !headers[i].startsWith('Col_')) {
+                                hasData = true;
+                            }
+                        }
+                        if (hasData) {
+                            result.push(obj);
+                        }
+                    }
+                    return result;
                 },
                 mapData() {
                     // Reset global costs to prevent accumulation bug (from KI)
@@ -10761,6 +10812,11 @@
 
                         // Process the last 100 transactions from sheet (newest first)
                         const recentLogs = this.db.DATA_YTB.slice(-100).reverse();
+                        const existingSignatures = new Set(
+                            this.notifications.map(n => 
+                                n.message.replace(/vừa ghi nhận đơn/g, '').replace(/đã ghi nhận đơn/g, '').replace(/\s/g, '') + '_' + (n.timestamp || 0)
+                            )
+                        );
                         
                         recentLogs.forEach(row => {
                             const dateStr = String(row[keys[0]] || '').trim();
@@ -10799,23 +10855,13 @@
                             // Standardized message content with product name and styled span
                             const msgContent = `CTV <b class="text-indigo-600">${staff}</b> vừa ghi nhận đơn <b class="text-emerald-600">${typeText}</b> - <span class="text-orange-600 font-bold">${pName}</span> - <b>${email}</b> (${months} tháng)`;
                             
-                            // Check for duplicates in existing notifications list
-                            const isDuplicate = this.notifications.some(n => {
-                                const cleanExisting = n.message.replace(/vừa ghi nhận đơn/g, '').replace(/đã ghi nhận đơn/g, '').replace(/\s/g, '');
-                                const cleanNew = msgContent.replace(/vừa ghi nhận đơn/g, '').replace(/đã ghi nhận đơn/g, '').replace(/\s/g, '');
-                                if (cleanExisting !== cleanNew) return false;
-                                
-                                // Check if same calendar day
-                                const ts = parseSheetDate(dateStr);
-                                if (n.timestamp && ts) {
-                                    return this.isSameDay(n.timestamp, ts);
-                                }
-                                return true;
-                            });
+                            const cleanNew = msgContent.replace(/vừa ghi nhận đơn/g, '').replace(/đã ghi nhận đơn/g, '').replace(/\s/g, '');
+                            const ts = parseSheetDate(dateStr);
+                            const sigKey = cleanNew + '_' + (ts || 0);
                             
-                            if (!isDuplicate) {
+                            if (!existingSignatures.has(sigKey)) {
+                                existingSignatures.add(sigKey);
                                 const timeLabel = getRelativeDateStr(dateStr);
-                                const ts = parseSheetDate(dateStr);
                                 this.notifications.push({
                                     message: msgContent,
                                     time: timeLabel,
@@ -10945,13 +10991,18 @@
                     }, 100);
 
                     // 1. Map APP_DATA to Customers
+                    const upsaleMap = new Map();
+                    upsaleData.forEach(u => {
+                        const em = (u['Email khách'] || '').trim().toLowerCase();
+                        if (em) upsaleMap.set(em, u);
+                    });
                     const customerMap = {};
                     appData.forEach((r, index) => {
                         const email = r['Email khách'];
                         if(!email) return;
                         
                         // Find matching ID from UPSALE
-                        const matchingUpsale = upsaleData.find(u => (u['Email khách'] || '').toLowerCase() === email.toLowerCase());
+                        const matchingUpsale = upsaleMap.get(email.toLowerCase());
                         const customerId = matchingUpsale ? (matchingUpsale['ID Khách'] || matchingUpsale['ID Khach'] || matchingUpsale['ID'] || `CUS-${1000 + index}`) : `CUS-${1000 + index}`;
                         
                         const days = parseInt(r['Số ngày còn lại']) || 0;
@@ -10990,8 +11041,14 @@
                     }));
 
                     // Map Upsales back to Customers for the modal
+                    const mappedUpsaleMap = new Map();
+                    this.upsales.forEach(u => {
+                        if (u.email && u.email !== 'No Email') {
+                            mappedUpsaleMap.set(u.email.toLowerCase(), u);
+                        }
+                    });
                     this.customers.forEach(c => {
-                        c.upsale = this.upsales.find(u => u.email === c.email) || null;
+                        c.upsale = mappedUpsaleMap.get((c.email || '').toLowerCase()) || null;
                     });
 
                     // Update Stats
