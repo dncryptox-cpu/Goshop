@@ -1382,7 +1382,7 @@
                                     <i data-lucide="layers" class="w-4 h-4 text-emerald-300"></i>
                                     <span>Đồng Bộ Hàng Loạt (Bulk Paste)</span>
                                 </button>
-                                <button @click="dataGocActiveTab = 'diff_appdata'; calculateAppDataDiff()" :class="dataGocActiveTab === 'diff_appdata' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md font-extrabold' : 'text-gray-600 font-medium hover:text-gray-900'" class="px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2">
+                                <button x-show="currentUserRole === 'admin'" x-cloak @click="dataGocActiveTab = 'diff_appdata'; calculateAppDataDiff()" :class="dataGocActiveTab === 'diff_appdata' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md font-extrabold' : 'text-gray-600 font-medium hover:text-gray-900'" class="px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2">
                                     <i data-lucide="git-compare" class="w-4 h-4" :class="dataGocActiveTab === 'diff_appdata' ? 'text-white' : 'text-indigo-600'"></i>
                                     <span>Đối Chiếu APP_DATA</span>
                                     <span x-show="appDataDiffList.filter(i => i.status !== 'unchanged').length > 0"
@@ -1990,7 +1990,7 @@
                     </div>
 
                     <!-- TAB 4: ĐỐI CHIẾU SỰ THAY ĐỔI APP_DATA VS DATAGOC -->
-                    <div x-show="dataGocActiveTab === 'diff_appdata'" class="space-y-6">
+                    <div x-show="dataGocActiveTab === 'diff_appdata' && currentUserRole === 'admin'" class="space-y-6" x-cloak>
                         <!-- Stats & Bulk Action Banner -->
                         <div class="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden border border-white/10">
                             <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
@@ -2027,7 +2027,7 @@
                                     <div class="text-2xl font-black mt-1 text-emerald-200" x-text="appDataDiffList.filter(i => i.status === 'new').length"></div>
                                 </div>
                                 <div @click="appDataDiffFilter = 'modified'" class="bg-amber-500/20 hover:bg-amber-500/30 cursor-pointer transition-all p-3.5 rounded-2xl border border-amber-400/30" :class="appDataDiffFilter === 'modified' ? 'ring-2 ring-amber-400' : ''">
-                                    <div class="text-[11px] font-bold text-amber-300 uppercase">🔄 Có Thay Đổi (HSD/Gói)</div>
+                                    <div class="text-[11px] font-bold text-amber-300 uppercase">🔄 Có Thay Đổi (HSD/Tháng)</div>
                                     <div class="text-2xl font-black mt-1 text-amber-200" x-text="appDataDiffList.filter(i => i.status === 'modified').length"></div>
                                 </div>
                                 <div @click="appDataDiffFilter = 'unchanged'" class="bg-white/5 hover:bg-white/10 cursor-pointer transition-all p-3.5 rounded-2xl border border-white/10" :class="appDataDiffFilter === 'unchanged' ? 'ring-2 ring-white' : ''">
@@ -7649,12 +7649,7 @@
                             if (newMonths && String(g.months || '').trim() !== newMonths) {
                                 diffReasons.push(`⏳ Số tháng: ${g.months || '--'} ➔ ${newMonths}`);
                             }
-                            if (newSubEmail && newSubEmail !== '-' && newSubEmail !== String(g.subEmail || '')) {
-                                diffReasons.push(`📧 Mail phụ: ${g.subEmail || '(trống)'} ➔ ${newSubEmail}`);
-                            }
-                            if (newProduct && newProduct !== String(g.product || '')) {
-                                diffReasons.push(`📦 Gói: ${g.product || '--'} ➔ ${newProduct}`);
-                            }
+                            // Không đưa thay đổi Gói hay Mail phụ vào danh sách khác biệt theo yêu cầu (chỉ theo dõi thay đổi tháng/HSD & khách mới)
 
                             const status = diffReasons.length > 0 ? 'modified' : 'unchanged';
                             diffs.push({
@@ -9874,6 +9869,13 @@
                 async initApp() {
                     this.isLoggedIn = localStorage.getItem('goshop_admin_logged_in') === 'true';
                     this.currentUserRole = localStorage.getItem('goshop_admin_user_role') || 'admin';
+                    const loggedUsername = (localStorage.getItem('goshop_admin_logged_username') || '').toLowerCase();
+                    if (loggedUsername === 'goshop1' || loggedUsername.includes('staff')) {
+                        this.currentUserRole = 'staff';
+                    }
+                    if (this.currentUserRole === 'staff' && this.dataGocActiveTab === 'diff_appdata') {
+                        this.dataGocActiveTab = 'list';
+                    }
                     const savedCreds = localStorage.getItem('goshop_admin_creds');
                     if (savedCreds) {
                         try {
