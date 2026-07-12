@@ -569,8 +569,8 @@
                                 <span class="font-mono font-black text-base text-white" x-text="calcStopLossDistance().toFixed(2)"></span>
                             </div>
                             <div class="p-3 rounded-xl bg-blue-500/15 border border-blue-500/30">
-                                <span class="text-[10px] uppercase font-extrabold text-blue-300 block">Khối Lượng Chuẩn</span>
-                                <span class="font-mono font-black text-lg text-blue-400" x-text="calcRecommendedLot() + ' Lot'"></span>
+                                <span class="text-[10px] uppercase font-extrabold text-blue-300 block">Khối Lượng Chuẩn ($ / Lots)</span>
+                                <span class="font-mono font-black text-sm text-blue-400" x-text="formatCurrency(calcRecommendedLot() * (calcForm.entry || 1)) + ' (' + calcRecommendedLot() + ' Lot)'"></span>
                             </div>
                             <div class="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30">
                                 <span class="text-[10px] uppercase font-extrabold text-emerald-300 block">Mục Tiêu TP (2 R)</span>
@@ -1287,22 +1287,23 @@
                     }
 
                     this.aiLoading = true;
+                    let geminiSuccess = false;
+
                     try {
-                        // 1. Nếu có Google Gemini API Key -> Dùng Gemini 1.5 Flash Vision (siêu chính xác)
+                        // 1. Thử dùng Google Gemini API nếu có cấu hình Key
                         if (this.googleApiKey) {
                             const base64Data = activeImage.split(',')[1];
-                            const prompt = `You are a professional trading chart assistant. Look at this TradingView or chart image. 
-Extract the following information if visible on the chart (like the Long/Short position tool or prices):
-- symbol (e.g. ETHUSDT, XAUUSD, BTCUSDT)
-- direction ('LONG' or 'SHORT')
-- entryPrice (number)
-- stopLoss (number)
-- takeProfit (number)
-- rrRatio (number, Risk/Reward ratio)
-- note (short analysis of the pattern)
+                            const prompt = `You are a professional trading chart assistant. Look at this TradingView or chart image carefully.
+Extract the exact numeric price levels visible on the chart or position tool:
+- symbol: trading pair (e.g. "ETHUSDT", "BTCUSDT", "XAUUSD")
+- direction: "LONG" or "SHORT"
+- entryPrice: numeric entry price level
+- stopLoss: numeric stop loss price level
+- takeProfit: numeric take profit target price level
+- rrRatio: numeric risk reward ratio
 
-Return ONLY a valid JSON object in this format without markdown code fences:
-{"symbol": "ETHUSDT", "direction": "LONG", "entryPrice": 1780.16, "stopLoss": 1763.31, "takeProfit": 1819.86, "rrRatio": 2.36, "note": "Breakout setup"}`;
+Return ONLY a valid JSON object without markdown fences, example:
+{"symbol": "ETHUSDT", "direction": "LONG", "entryPrice": 1780.16, "stopLoss": 1763.31, "takeProfit": 1819.86, "rrRatio": 2.36}`;
 
                             const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.googleApiKey}`, {
                                 method: 'POST',
@@ -1317,27 +1318,32 @@ Return ONLY a valid JSON object in this format without markdown code fences:
                                 })
                             });
 
-                            const data = await res.json();
-                            const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                            const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-                            const aiParsed = JSON.parse(cleaned);
+                            if (res.ok) {
+                                const data = await res.json();
+                                const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                                const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                                const aiParsed = JSON.parse(cleaned);
 
-                            if (aiParsed.symbol) this.formTrade.pair = aiParsed.symbol.toUpperCase();
-                            if (aiParsed.direction) this.formTrade.direction = aiParsed.direction.toUpperCase();
-                            if (aiParsed.entryPrice) this.formTrade.entryPrice = Number(aiParsed.entryPrice);
-                            if (aiParsed.stopLoss) this.formTrade.stopLoss = Number(aiParsed.stopLoss);
-                            if (aiParsed.takeProfit) this.formTrade.takeProfit = Number(aiParsed.takeProfit);
-                            if (aiParsed.rrRatio) this.formTrade.rrRatio = aiParsed.rrRatio;
-                            if (aiParsed.note) this.formTrade.note = aiParsed.note;
+                                if (aiParsed.entryPrice && aiParsed.stopLoss && Number(aiParsed.entryPrice) > 0 && Number(aiParsed.stopLoss) > 0) {
+                                    if (aiParsed.symbol) this.formTrade.pair = aiParsed.symbol.toUpperCase();
+                                    if (aiParsed.direction) this.formTrade.direction = aiParsed.direction.toUpperCase();
+                                    this.formTrade.entryPrice = Number(aiParsed.entryPrice);
+                                    this.formTrade.stopLoss = Number(aiParsed.stopLoss);
+                                    if (aiParsed.takeProfit) this.formTrade.takeProfit = Number(aiParsed.takeProfit);
+                                    if (aiParsed.rrRatio) this.formTrade.rrRatio = aiParsed.rrRatio;
+                                    if (aiParsed.note) this.formTrade.note = aiParsed.note;
 
-                            this.recalcFormVolume();
-                            alert('🤖 AI Gemini đã đọc thành công Entry, Stop Loss, Take Profit và R:R từ ảnh chart!');
-                            return;
+                                    this.recalcFormVolume();
+                                    geminiSuccess = true;
+                                    alert(`🤖 AI Gemini đã đọc thành công ảnh chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}\n• Take Profit: ${this.formTrade.takeProfit || '--'}\n• R:R: 1:${this.formTrade.rrRatio}`);
+                                    return;
+                                }
+                            }
                         }
 
-                        // 2. Nếu KHÔNG CÓ API Key -> Dùng Client-Side AI OCR (Tesseract.js) quét trực tiếp trên trình duyệt!
+                        // 2. Nếu chưa có API Key hoặc Gemini chưa đọc được rõ số -> Chạy AI OCR Client-Side Vision (Tesseract.js)
                         if (typeof Tesseract === 'undefined') {
-                            alert('Đang tải thư viện AI OCR trình duyệt... Vui lòng thử lại sau 2 giây.');
+                            alert('⚠️ Chưa nhận diện được số liệu rõ ràng. Bạn vui lòng kiểm tra lại ảnh hoặc nhập trực tiếp.');
                             return;
                         }
 
@@ -1353,15 +1359,15 @@ Return ONLY a valid JSON object in this format without markdown code fences:
                         // Quét vị thế
                         if (text.includes('SHORT') || text.includes('SELL')) {
                             this.formTrade.direction = 'SHORT';
-                        } else {
+                        } else if (text.includes('LONG') || text.includes('BUY')) {
                             this.formTrade.direction = 'LONG';
                         }
 
-                        // Quét tất cả các số thập phân có trong ảnh (VD: 1819.86, 1780.16, 1763.31)
-                        const numberRegex = /\b\d{2,6}\.\d{1,5}\b/g;
+                        // Quét tất cả các số thập phân có trong ảnh (chấp nhận cả dấu chấm và dấu phẩy)
+                        const numberRegex = /\b\d{1,6}[.,]\d{1,5}\b/g;
                         const matchedNums = text.match(numberRegex);
-                        if (matchedNums && matchedNums.length >= 3) {
-                            const nums = [...new Set(matchedNums.map(n => parseFloat(n)))].filter(n => n > 0).sort((a, b) => a - b);
+                        if (matchedNums && matchedNums.length >= 2) {
+                            const nums = [...new Set(matchedNums.map(n => parseFloat(n.replace(',', '.')))))].filter(n => n > 0).sort((a, b) => a - b);
                             if (nums.length >= 3) {
                                 if (this.formTrade.direction === 'LONG') {
                                     this.formTrade.stopLoss = nums[0];
@@ -1373,16 +1379,26 @@ Return ONLY a valid JSON object in this format without markdown code fences:
                                     this.formTrade.stopLoss = nums[nums.length - 1];
                                 }
                                 this.recalcFormVolume();
-                                alert('🤖 AI OCR đã đọc thành công các mốc giá từ ảnh chart: Entry ' + this.formTrade.entryPrice + ' / SL ' + this.formTrade.stopLoss + ' / TP ' + this.formTrade.takeProfit);
+                                alert(`🤖 AI OCR đã nhận diện thành công mốc giá từ ảnh chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}\n• Take Profit: ${this.formTrade.takeProfit}`);
+                                return;
+                            } else if (nums.length === 2) {
+                                if (this.formTrade.direction === 'LONG') {
+                                    this.formTrade.stopLoss = nums[0];
+                                    this.formTrade.entryPrice = nums[1];
+                                } else {
+                                    this.formTrade.entryPrice = nums[0];
+                                    this.formTrade.stopLoss = nums[1];
+                                }
+                                this.recalcFormVolume();
+                                alert(`🤖 AI OCR đã trích xuất mốc giá từ ảnh chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}`);
                                 return;
                             }
                         }
 
-                        // Nếu ảnh chữ nhỏ OCR chưa đọc hết, nhắc nhẹ hoặc tự động bật chế độ hỗ trợ
-                        alert('AI OCR đã quét ảnh chart. Để AI đọc cực kỳ chính xác 100% mọi loại font chữ trên TradingView, bạn có thể nhập Gemini API Key miễn phí trong nút Cài Đặt ở góc trái Topbar nhé!');
+                        alert('⚠️ AI chưa nhận diện được rõ 3 mốc giá (Entry/SL/TP) trong ảnh chart này. Bạn hãy kiểm tra lại độ nét ảnh hoặc dán Text tín hiệu nhé!');
                     } catch (err) {
                         console.error(err);
-                        alert('Lỗi khi quét ảnh chart: ' + (err.message || err));
+                        alert('⚠️ Không thể phân tích ảnh chart: ' + (err.message || err));
                     } finally {
                         this.aiLoading = false;
                         this.$nextTick(() => lucide.createIcons());
@@ -1391,7 +1407,7 @@ Return ONLY a valid JSON object in this format without markdown code fences:
 
                 // Text Signal Parser (Regex & Smart Extraction)
                 parseSignalText() {
-                    const text = this.signalText.toUpperCase();
+                    const text = (this.signalText || '').toUpperCase();
                     if (!text) return;
 
                     // Extract Symbol
@@ -1405,17 +1421,37 @@ Return ONLY a valid JSON object in this format without markdown code fences:
                         this.formTrade.direction = 'LONG';
                     }
 
-                    // Entry
-                    const entryMatch = text.match(/(?:ENTRY|E|E1|BUY AT|SELL AT)[\s:=]*([0-9.]+)/) || text.match(/([0-9]{3,6}\.[0-9]+)/);
-                    if (entryMatch) this.formTrade.entryPrice = Number(entryMatch[1]);
+                    // Extract all numeric tokens
+                    const matches = text.match(/\b\d{1,6}[.,]\d{1,5}\b/g);
+                    if (matches && matches.length >= 2) {
+                        const nums = matches.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 0);
+                        if (nums.length >= 3) {
+                            // First number after LONG/ENTRY is usually Entry, second SL, third TP
+                            const entryMatch = text.match(/(?:ENTRY|E|BUY|SELL)[\s:=]*([0-9.]+)/);
+                            const slMatch = text.match(/(?:SL|STOPLOSS|STL)[\s:=]*([0-9.]+)/);
+                            const tpMatch = text.match(/(?:TP|TAKEPROFIT|TARGET)[\s:=]*([0-9.]+)/);
 
-                    // SL
-                    const slMatch = text.match(/(?:SL|STOPLOSS|STOP LOSS|STL)[\s:=]*([0-9.]+)/);
-                    if (slMatch) this.formTrade.stopLoss = Number(slMatch[1]);
-
-                    // TP
-                    const tpMatch = text.match(/(?:TP|TAKEPROFIT|TAKE PROFIT|TARGET)[\s:=]*([0-9.]+)/);
-                    if (tpMatch) this.formTrade.takeProfit = Number(tpMatch[1]);
+                            if (entryMatch && slMatch) {
+                                this.formTrade.entryPrice = Number(entryMatch[1]);
+                                this.formTrade.stopLoss = Number(slMatch[1]);
+                                if (tpMatch) this.formTrade.takeProfit = Number(tpMatch[1]);
+                            } else {
+                                const sorted = [...nums].sort((a, b) => a - b);
+                                if (this.formTrade.direction === 'LONG') {
+                                    this.formTrade.stopLoss = sorted[0];
+                                    this.formTrade.entryPrice = sorted[Math.floor(sorted.length / 2)];
+                                    this.formTrade.takeProfit = sorted[sorted.length - 1];
+                                } else {
+                                    this.formTrade.takeProfit = sorted[0];
+                                    this.formTrade.entryPrice = sorted[Math.floor(sorted.length / 2)];
+                                    this.formTrade.stopLoss = sorted[sorted.length - 1];
+                                }
+                            }
+                        } else if (nums.length === 2) {
+                            this.formTrade.entryPrice = nums[0];
+                            this.formTrade.stopLoss = nums[1];
+                        }
+                    }
 
                     this.recalcFormVolume();
                     this.signalText = '';
