@@ -1351,10 +1351,18 @@ Return ONLY valid JSON without markdown formatting:
                         const workerRes = await Tesseract.recognize(activeImage, 'eng');
                         const text = (workerRes.data.text || '').toUpperCase();
 
-                        // Quét cặp tiền
-                        const symbolMatch = text.match(/(ETH|BTC|XAU|EUR|GBP|USD|SOL|BNB)[A-Z0-9]*/);
-                        if (symbolMatch) {
-                            this.formTrade.pair = symbolMatch[0].includes('USDT') ? symbolMatch[0] : symbolMatch[0] + 'USDT';
+                        // Quét cặp tiền chuẩn xác (tránh nhầm TetherUS thành ETHERUSUSDT)
+                        if (text.includes('BITCOIN') || text.includes('BTC')) {
+                            this.formTrade.pair = 'BTCUSDT';
+                        } else if ((text.includes('ETHEREUM') || text.includes('ETH')) && !text.includes('TETHER')) {
+                            this.formTrade.pair = 'ETHUSDT';
+                        } else if (text.includes('GOLD') || text.includes('XAU')) {
+                            this.formTrade.pair = 'XAUUSD';
+                        } else if (text.includes('SOLANA') || text.includes('SOL')) {
+                            this.formTrade.pair = 'SOLUSDT';
+                        } else {
+                            const match = text.match(/\b(BTC|ETH|XAU|SOL|BNB|EUR|GBP)USD[T]?\b/);
+                            if (match) this.formTrade.pair = match[0];
                         }
 
                         // Quét vị thế
@@ -1364,14 +1372,17 @@ Return ONLY valid JSON without markdown formatting:
                             this.formTrade.direction = 'LONG';
                         }
 
-                        // Quét tất cả các số thập phân có trong ảnh (chấp nhận cả dấu chấm và dấu phẩy)
+                        // Quét tất cả số liệu có trong ảnh và lọc bỏ các con số điểm/% nhỏ trong hộp Position Tool
                         const numberRegex = /\b\d{1,6}[.,]\d{1,5}\b/g;
                         const matchedNums = text.match(numberRegex);
                         if (matchedNums && matchedNums.length >= 2) {
-                            let rawNums = [...new Set(matchedNums.map(n => parseFloat(n.replace(',', '.'))))].filter(n => n > 0);
-                            // Ưu tiên lọc bỏ các số lưới chẵn (VD: 1800.00) nếu có các mốc giá lẻ thập phân từ Position Tool
-                            const decimals = rawNums.filter(n => n % 1 !== 0);
-                            const nums = (decimals.length >= 2 ? decimals : rawNums).sort((a, b) => a - b);
+                            const rawNums = [...new Set(matchedNums.map(n => parseFloat(n.replace(',', '.'))))].filter(n => n > 0);
+                            const maxPrice = Math.max(...rawNums);
+                            // Lọc bỏ số nhỏ (điểm chênh lệch, tỷ lệ % như 257.5, 0.401) - chỉ lấy số giá trị tài sản (> 10% maxPrice)
+                            const assetPrices = rawNums.filter(n => n > maxPrice * 0.1);
+                            // Ưu tiên lọc bỏ các số lưới chẵn (VD: 64000, 64400) nếu có các mốc giá lẻ từ Position Tool
+                            const exactPrices = assetPrices.filter(n => n % 100 !== 0);
+                            const nums = (exactPrices.length >= 2 ? exactPrices : assetPrices).sort((a, b) => a - b);
 
                             if (nums.length >= 3) {
                                 if (this.formTrade.direction === 'LONG') {
@@ -1384,7 +1395,7 @@ Return ONLY valid JSON without markdown formatting:
                                     this.formTrade.stopLoss = nums[nums.length - 1];
                                 }
                                 this.recalcFormVolume();
-                                alert(`🤖 AI OCR đã nhận diện thành công mốc giá từ ảnh chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}\n• Take Profit: ${this.formTrade.takeProfit}`);
+                                alert(`🤖 AI OCR đã nhận diện thành công mốc giá từ cột Y trên chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}\n• Take Profit: ${this.formTrade.takeProfit}`);
                                 return;
                             } else if (nums.length === 2) {
                                 if (this.formTrade.direction === 'LONG') {
@@ -1395,7 +1406,7 @@ Return ONLY valid JSON without markdown formatting:
                                     this.formTrade.stopLoss = nums[1];
                                 }
                                 this.recalcFormVolume();
-                                alert(`🤖 AI OCR đã trích xuất mốc giá từ ảnh chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}`);
+                                alert(`🤖 AI OCR đã trích xuất mốc giá từ cột Y trên chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}`);
                                 return;
                             }
                         }
