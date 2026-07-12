@@ -1316,17 +1316,39 @@ Also identify:
 Return ONLY a raw JSON object, no markdown, no explanation:
 {"symbol":"BTCUSDT","direction":"LONG","entryPrice":64200,"stopLoss":63714.7,"takeProfit":64502.4}`;
 
-                        const candidateModels = [
-                            'gemini-1.5-flash-latest',
-                            'gemini-1.5-flash',
-                            'gemini-2.0-flash-exp',
-                            'gemini-1.5-pro-latest'
-                        ];
+                        // Bước 1: Lấy danh sách model thực tế khả dụng với API key này
+                        let availableModels = [];
+                        try {
+                            const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${this.googleApiKey}`);
+                            if (listRes.ok) {
+                                const listData = await listRes.json();
+                                // Lọc các model hỗ trợ generateContent và có khả năng xử lý ảnh (vision)
+                                availableModels = (listData.models || [])
+                                    .filter(m => {
+                                        const methods = m.supportedGenerationMethods || [];
+                                        const name = m.name || '';
+                                        return methods.includes('generateContent') &&
+                                               (name.includes('flash') || name.includes('pro') || name.includes('vision'));
+                                    })
+                                    .map(m => m.name.replace('models/', ''))
+                                    // Ưu tiên flash trước (nhanh + có vision)
+                                    .sort((a, b) => {
+                                        const priority = (s) => s.includes('flash') ? 0 : s.includes('pro') ? 1 : 2;
+                                        return priority(a) - priority(b);
+                                    });
+                            }
+                        } catch(e) { /* nếu không lấy được list thì dùng fallback */ }
 
+                        // Fallback nếu ListModels không trả về kết quả
+                        if (!availableModels.length) {
+                            availableModels = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro', 'gemini-pro-vision'];
+                        }
+
+                        // Bước 2: Thử lần lượt từng model khả dụng
                         let res = null;
                         let lastErrorMsg = '';
 
-                        for (const modelName of candidateModels) {
+                        for (const modelName of availableModels) {
                             try {
                                 const tryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.googleApiKey}`, {
                                     method: 'POST',
@@ -1343,11 +1365,14 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                                 if (tryRes.ok) {
                                     res = tryRes;
+                                    console.log(`✅ Gemini model thành công: ${modelName}`);
                                     break;
                                 } else {
                                     const errData = await tryRes.json();
                                     lastErrorMsg = errData?.error?.message || `HTTP ${tryRes.status}`;
-                                    console.warn(`Model ${modelName} failed:`, lastErrorMsg);
+                                    console.warn(`❌ Model ${modelName} thất bại:`, lastErrorMsg);
+                                    // Nếu lỗi quota thì bỏ qua thử tiếp, nếu lỗi khác thì dừng
+                                    if (!lastErrorMsg.includes('quota') && !lastErrorMsg.includes('not found') && !lastErrorMsg.includes('not supported')) break;
                                 }
                             } catch (e) {
                                 lastErrorMsg = e.message;
@@ -1355,7 +1380,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         }
 
                         if (!res) {
-                            throw new Error(lastErrorMsg || 'Không kết nối được tới Google Gemini API');
+                            throw new Error('Tất cả model Gemini đều không khả dụng với API Key này.\n\nLý do cuối: ' + lastErrorMsg);
                         }
 
                         const data = await res.json();
