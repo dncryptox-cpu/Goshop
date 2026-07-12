@@ -155,15 +155,22 @@ function getOrCreateDriveFolder() {
 }
 
 function uploadBase64Image(base64DataUrl, filename) {
-  if (!base64DataUrl || base64DataUrl.length < 100) return '';
+  if (!base64DataUrl || typeof base64DataUrl !== 'string' || base64DataUrl.length < 100) return '';
   try {
-    const match = base64DataUrl.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/);
-    if (!match) return '';
-    const blob = Utilities.newBlob(Utilities.base64Decode(match[2]), 'image/' + match[1], filename);
-    const file = getOrCreateDriveFolder().createFile(blob);
+    let contentType = 'image/png';
+    let base64Data = base64DataUrl;
+    const match = base64DataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+    if (match) {
+      contentType = match[1];
+      base64Data = match[2];
+    }
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), contentType, filename);
+    const folder = getOrCreateDriveFolder();
+    const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     return file.getUrl();
   } catch (e) {
+    Logger.log('Upload error: ' + e.toString());
     return '';
   }
 }
