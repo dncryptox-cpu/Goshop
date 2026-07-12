@@ -715,7 +715,7 @@
                 <p class="text-[11px] text-slate-400">Mặc định ban đầu mật khẩu là <code class="text-amber-400 font-bold">2026</code>.</p>
             </div>
 
-            <!-- SECTION 3: DATA BACKUP & RESTORE JSON -->
+                <!-- SECTION 3: DATA BACKUP & RESTORE JSON -->
             <div class="bg-card/60 p-5 rounded-2xl border border-white/10 space-y-4">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
                     <i data-lucide="hard-drive" class="w-4 h-4"></i>
@@ -733,6 +733,50 @@
                         <span>Nhập Lại File Backup JSON</span>
                         <input type="file" accept=".json" @change="importJsonBackup($event)" class="hidden">
                     </label>
+                </div>
+            </div>
+
+            <!-- SECTION 4: GOOGLE SHEET SYNC -->
+            <div class="bg-gradient-to-r from-emerald-900/30 to-teal-900/20 p-5 rounded-2xl border border-emerald-500/30 space-y-4">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                    <i data-lucide="table-2" class="w-4 h-4"></i>
+                    <span>Đồng Bộ Google Sheet (Cloud Backup)</span>
+                </h4>
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    Mỗi khi bấm <strong class="text-white">Lưu Lệnh</strong>, hệ thống tự động ghi dữ liệu lên Google Sheet. Chia sẻ link Sheet cho bạn bè hoặc học viên cùng dùng — mỗi người chỉ cần nhập URL webhook + tên của họ.
+                </p>
+
+                <div class="space-y-3">
+                    <!-- Username -->
+                    <div>
+                        <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Tên Trader (hiển thị trên Sheet)</label>
+                        <input type="text" x-model="traderUsername" placeholder="VD: DNC, Trader A, Minh..."
+                            class="w-full bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono">
+                    </div>
+
+                    <!-- Webhook URL -->
+                    <div>
+                        <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Apps Script Webhook URL</label>
+                        <input type="url" x-model="sheetWebhookUrl" placeholder="https://script.google.com/macros/s/AKfyc.../exec"
+                            class="w-full bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono">
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <button @click="saveSheetSettings()"
+                            class="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shrink-0">
+                            <i data-lucide="save" class="w-4 h-4"></i>
+                            Lưu Cài Đặt Sheet
+                        </button>
+                        <a href="https://docs.google.com/spreadsheets/d/1-ulfvVBeKvNb-K-k_ntjJGF4-n6hVcUgqITLwEytg3s/edit" target="_blank"
+                            class="text-xs text-emerald-400 underline hover:text-emerald-300">
+                            → Mở Google Sheet
+                        </a>
+                    </div>
+
+                    <div x-show="sheetWebhookUrl" class="flex items-center gap-2 text-xs text-emerald-400">
+                        <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+                        Sheet đã được kết nối • Tự động sync khi Lưu Lệnh
+                    </div>
                 </div>
             </div>
 
@@ -1183,6 +1227,8 @@
                 showPassword: false,
                 settingsOpen: false,
                 googleApiKey: '',
+                sheetWebhookUrl: '',
+                traderUsername: '',
                 aiLoading: false,
                 signalText: '',
 
@@ -1213,6 +1259,11 @@
 
                     const savedKey = localStorage.getItem('dnc_trading_ai_key');
                     if (savedKey) this.googleApiKey = savedKey;
+
+                    const savedSheetUrl = localStorage.getItem('dnc_trading_sheet_url');
+                    if (savedSheetUrl) this.sheetWebhookUrl = savedSheetUrl;
+                    const savedUsername = localStorage.getItem('dnc_trading_username');
+                    if (savedUsername) this.traderUsername = savedUsername;
 
                     const unlocked = sessionStorage.getItem('dnc_trading_unlocked');
                     if (unlocked === 'true') {
@@ -1283,6 +1334,43 @@
                 saveApiKey() {
                     localStorage.setItem('dnc_trading_ai_key', this.googleApiKey);
                     alert('Đã lưu khóa AI Gemini thành công!');
+                },
+
+                saveSheetSettings() {
+                    localStorage.setItem('dnc_trading_sheet_url', this.sheetWebhookUrl);
+                    localStorage.setItem('dnc_trading_username', this.traderUsername);
+                    alert('✅ Đã lưu cài đặt Google Sheet thành công!');
+                },
+
+                async syncToGoogleSheet(trade) {
+                    if (!this.sheetWebhookUrl) return;
+                    try {
+                        await fetch(this.sheetWebhookUrl, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                username: this.traderUsername || 'Anonymous',
+                                date: trade.date,
+                                pair: trade.pair,
+                                direction: trade.direction,
+                                entryPrice: trade.entryPrice,
+                                stopLoss: trade.stopLoss,
+                                takeProfit: trade.takeProfit,
+                                lots: trade.lots || trade.volume,
+                                dollarValue: trade.dollarValue,
+                                riskUsd: trade.riskUsd,
+                                rrRatio: trade.rrRatio,
+                                pnl: trade.pnl,
+                                status: trade.status,
+                                note: trade.note,
+                                setupTag: trade.setupTag
+                            })
+                        });
+                        console.log('✅ Đã sync lên Google Sheet');
+                    } catch (err) {
+                        console.warn('⚠️ Sheet sync lỗi:', err.message);
+                    }
                 },
 
                 changePasscode() {
@@ -1768,6 +1856,13 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     }
 
                     this.saveTradesToStorage();
+
+                    // Tự động ghi lên Google Sheet (nếu đã cấu hình)
+                    const savedTrade = this.formTrade.id
+                        ? this.trades.find(t => t.id === this.formTrade.id)
+                        : this.trades[0];
+                    if (savedTrade) this.syncToGoogleSheet(savedTrade);
+
                     this.modalOpen = false;
                 },
 
