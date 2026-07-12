@@ -785,15 +785,15 @@
                     </button>
                 </div>
 
-                <!-- Text / Signal quick parse box -->
+                <!-- Super Fast Quick Price Entry Box -->
                 <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <input type="text" x-model="signalText"
-                        placeholder="Hoặc dán text tín hiệu (VD: ETH LONG Entry 1780.16 SL 1763.31 TP 1819.86)..."
-                        class="flex-1 bg-black/40 border border-white/15 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 font-mono">
+                    <input type="text" x-model="signalText" @keydown.enter.prevent="parseSignalText()"
+                        placeholder="⚡ GÕ NHANH 3 SỐ (VD: 1780  1763  1819 -> Entry • SL • TP) hoặc dán text -> Nhấn Enter"
+                        class="flex-1 bg-black/60 border border-cyan-500/40 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 font-bold placeholder-slate-400 focus:outline-none focus:border-cyan-400 font-mono shadow-inner">
                     <button type="button" @click="parseSignalText()"
-                        class="bg-white/10 hover:bg-white/20 text-cyan-300 px-4 py-2 rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 border border-white/10">
-                        <i data-lucide="zap" class="w-3.5 h-3.5"></i>
-                        <span>Đọc Tín Hiệu Text</span>
+                        class="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white px-5 py-2.5 rounded-xl text-xs font-extrabold shrink-0 flex items-center gap-1.5 shadow-lg shadow-cyan-500/20">
+                        <i data-lucide="zap" class="w-4 h-4"></i>
+                        <span>Điền Nhanh Siêu Tốc</span>
                     </button>
                 </div>
             </div>
@@ -1405,51 +1405,46 @@ Return ONLY a valid JSON object without markdown fences, example:
                     }
                 },
 
-                // Text Signal Parser (Regex & Smart Extraction)
+                // Text Signal Parser (Regex & Smart Sequential Extraction)
                 parseSignalText() {
                     const text = (this.signalText || '').toUpperCase();
                     if (!text) return;
 
-                    // Extract Symbol
+                    // Extract Symbol if present
                     const symbolMatch = text.match(/(ETH|BTC|XAU|EUR|GBP|USD|SOL|BNB)[A-Z]*/);
                     if (symbolMatch) this.formTrade.pair = symbolMatch[0];
 
-                    // Direction
-                    if (text.includes('SHORT') || text.includes('SELL')) {
-                        this.formTrade.direction = 'SHORT';
-                    } else if (text.includes('LONG') || text.includes('BUY')) {
-                        this.formTrade.direction = 'LONG';
+                    // Check explicit keywords first
+                    const entryMatch = text.match(/(?:ENTRY|E|BUY AT|SELL AT)[\s:=]*([0-9.]+)/);
+                    const slMatch = text.match(/(?:SL|STOPLOSS|STL)[\s:=]*([0-9.]+)/);
+                    const tpMatch = text.match(/(?:TP|TAKEPROFIT|TARGET)[\s:=]*([0-9.]+)/);
+
+                    if (entryMatch && slMatch) {
+                        this.formTrade.entryPrice = Number(entryMatch[1]);
+                        this.formTrade.stopLoss = Number(slMatch[1]);
+                        if (tpMatch) this.formTrade.takeProfit = Number(tpMatch[1]);
+                    } else {
+                        // Sequential smart parsing: 1st number = Entry, 2nd = SL, 3rd = TP
+                        const matches = text.match(/\b\d{1,6}[.,]\d{1,5}\b|\b\d{2,6}\b/g);
+                        if (matches && matches.length >= 2) {
+                            const nums = matches.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 0);
+                            if (nums.length >= 3) {
+                                this.formTrade.entryPrice = nums[0];
+                                this.formTrade.stopLoss = nums[1];
+                                this.formTrade.takeProfit = nums[2];
+                            } else if (nums.length === 2) {
+                                this.formTrade.entryPrice = nums[0];
+                                this.formTrade.stopLoss = nums[1];
+                            }
+                        }
                     }
 
-                    // Extract all numeric tokens
-                    const matches = text.match(/\b\d{1,6}[.,]\d{1,5}\b/g);
-                    if (matches && matches.length >= 2) {
-                        const nums = matches.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 0);
-                        if (nums.length >= 3) {
-                            // First number after LONG/ENTRY is usually Entry, second SL, third TP
-                            const entryMatch = text.match(/(?:ENTRY|E|BUY|SELL)[\s:=]*([0-9.]+)/);
-                            const slMatch = text.match(/(?:SL|STOPLOSS|STL)[\s:=]*([0-9.]+)/);
-                            const tpMatch = text.match(/(?:TP|TAKEPROFIT|TARGET)[\s:=]*([0-9.]+)/);
-
-                            if (entryMatch && slMatch) {
-                                this.formTrade.entryPrice = Number(entryMatch[1]);
-                                this.formTrade.stopLoss = Number(slMatch[1]);
-                                if (tpMatch) this.formTrade.takeProfit = Number(tpMatch[1]);
-                            } else {
-                                const sorted = [...nums].sort((a, b) => a - b);
-                                if (this.formTrade.direction === 'LONG') {
-                                    this.formTrade.stopLoss = sorted[0];
-                                    this.formTrade.entryPrice = sorted[Math.floor(sorted.length / 2)];
-                                    this.formTrade.takeProfit = sorted[sorted.length - 1];
-                                } else {
-                                    this.formTrade.takeProfit = sorted[0];
-                                    this.formTrade.entryPrice = sorted[Math.floor(sorted.length / 2)];
-                                    this.formTrade.stopLoss = sorted[sorted.length - 1];
-                                }
-                            }
-                        } else if (nums.length === 2) {
-                            this.formTrade.entryPrice = nums[0];
-                            this.formTrade.stopLoss = nums[1];
+                    // Auto-detect direction from Entry vs Stop Loss
+                    if (this.formTrade.entryPrice && this.formTrade.stopLoss) {
+                        if (this.formTrade.entryPrice > this.formTrade.stopLoss) {
+                            this.formTrade.direction = 'LONG';
+                        } else if (this.formTrade.entryPrice < this.formTrade.stopLoss) {
+                            this.formTrade.direction = 'SHORT';
                         }
                     }
 
