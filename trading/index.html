@@ -1372,8 +1372,8 @@ Return ONLY valid JSON without markdown formatting:
                             this.formTrade.direction = 'LONG';
                         }
 
-                        // Quét tất cả số liệu có trong ảnh và lọc bỏ các con số điểm/% nhỏ trong hộp Position Tool
-                        const numberRegex = /\b\d{1,6}[.,]\d{1,5}\b/g;
+                        // Quét tất cả số liệu có trong ảnh (hỗ trợ cả dạng 64,502.4 có phẩy nghìn và chấm thập phân)
+                        const numberRegex = /\b\d{1,6}(?:[.,]\d{3})*(?:[.,]\d{1,5})?\b/g;
                         const matchedNums = text.match(numberRegex);
                         if (matchedNums && matchedNums.length >= 2) {
                             const cleanChartPrice = (str) => {
@@ -1393,8 +1393,9 @@ Return ONLY valid JSON without markdown formatting:
                             const maxPrice = Math.max(...rawNums);
                             // Lọc bỏ số nhỏ (điểm chênh lệch, tỷ lệ % như 257.5, 0.401) - chỉ lấy số giá trị tài sản (> 10% maxPrice)
                             const assetPrices = rawNums.filter(n => n > maxPrice * 0.1);
-                            // Ưu tiên lọc bỏ các số lưới chẵn (VD: 64000, 64400) nếu có các mốc giá lẻ từ Position Tool
-                            const exactPrices = assetPrices.filter(n => n % 100 !== 0);
+                            // Ưu tiên số lẻ thập phân của Position Tool (VD: 64502.4, 64091.6) loại bỏ số chẵn lưới Y (64100, 64200)
+                            const decimals = assetPrices.filter(n => n % 1 !== 0);
+                            const exactPrices = decimals.length >= 2 ? decimals : assetPrices.filter(n => n % 10 !== 0);
                             const nums = (exactPrices.length >= 2 ? exactPrices : assetPrices).sort((a, b) => a - b);
 
                             if (nums.length >= 3) {
