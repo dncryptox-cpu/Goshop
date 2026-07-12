@@ -1278,7 +1278,7 @@
                     return (Math.abs(tp - e) / Math.abs(e - s)).toFixed(2);
                 },
 
-                // AI Chart Scanning using Gemini Vision API or Local OCR
+                // AI Chart Scanning — Gemini Vision Only (Tesseract removed: too inaccurate for TradingView charts)
                 async scanChartWithAI() {
                     const activeImage = this.formTrade.imgLtf || this.formTrade.imgMtf || this.formTrade.imgHtf;
                     if (!activeImage) {
@@ -1286,149 +1286,80 @@
                         return;
                     }
 
+                    if (!this.googleApiKey) {
+                        const proceed = confirm(
+                            '🔑 Bạn chưa cấu hình Google Gemini API Key.\n\n' +
+                            'AI đọc ảnh chính xác 100% cần dùng Gemini Vision API.\n\n' +
+                            '→ Nhấn OK để đến phần cài đặt API Key.\n' +
+                            '→ Nhấn Cancel để dùng tính năng Nhập Nhanh 3 Số (Entry · SL · TP) thay thế.'
+                        );
+                        if (proceed) this.showSettings = true;
+                        return;
+                    }
+
                     this.aiLoading = true;
-                    let geminiSuccess = false;
 
                     try {
-                        // 1. Thử dùng Google Gemini API nếu có cấu hình Key
-                        if (this.googleApiKey) {
-                            const base64Data = activeImage.split(',')[1];
-                            const prompt = `You are an expert trading chart analyst. Look at this TradingView chart screenshot carefully.
-Focus specifically on the RIGHT-HAND Y-AXIS (PRICE SCALE) where TradingView highlights exact price tags/labels for Entry, Stop Loss (SL), and Take Profit (TP).
+                        const base64Data = activeImage.split(',')[1];
+                        const mimeType = activeImage.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
 
-Extract exact numeric values for:
-- symbol: trading pair ticker (e.g. "ETHUSDT", "BTCUSDT", "XAUUSD")
-- direction: "LONG" or "SHORT"
-- entryPrice: numeric entry price level on the Y-axis
-- stopLoss: numeric stop loss price level on the Y-axis
-- takeProfit: numeric take profit price level on the Y-axis
+                        const prompt = `You are an expert TradingView chart analyst.
+Look at this TradingView screenshot and identify the 3 price levels highlighted on the RIGHT-HAND Y-AXIS (price scale) corresponding to:
+- The colored price tag for ENTRY (open position price)
+- The colored price tag for STOP LOSS (SL)
+- The colored price tag for TAKE PROFIT (TP)
 
-Return ONLY valid JSON without markdown formatting:
-{"symbol": "ETHUSDT", "direction": "LONG", "entryPrice": 1780.16, "stopLoss": 1763.31, "takeProfit": 1819.86}`;
+Also identify:
+- symbol: the trading pair (e.g. "BTCUSDT", "ETHUSDT", "XAUUSD") — look at the top-left header
+- direction: "LONG" or "SHORT" based on position tool color (green=LONG, red=SHORT)
 
-                            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.googleApiKey}`, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    contents: [{
-                                        parts: [
-                                            { text: prompt },
-                                            { inline_data: { mime_type: "image/png", data: base64Data } }
-                                        ]
-                                    }]
-                                })
-                            });
+Return ONLY a raw JSON object, no markdown, no explanation:
+{"symbol":"BTCUSDT","direction":"LONG","entryPrice":64200,"stopLoss":63714.7,"takeProfit":64502.4}`;
 
-                            if (res.ok) {
-                                const data = await res.json();
-                                const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-                                const cleaned = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-                                const aiParsed = JSON.parse(cleaned);
+                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.googleApiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{
+                                    parts: [
+                                        { text: prompt },
+                                        { inline_data: { mime_type: mimeType, data: base64Data } }
+                                    ]
+                                }]
+                            })
+                        });
 
-                                if (aiParsed.entryPrice && aiParsed.stopLoss && Number(aiParsed.entryPrice) > 0 && Number(aiParsed.stopLoss) > 0) {
-                                    if (aiParsed.symbol) this.formTrade.pair = aiParsed.symbol.toUpperCase();
-                                    if (aiParsed.direction) this.formTrade.direction = aiParsed.direction.toUpperCase();
-                                    this.formTrade.entryPrice = Number(aiParsed.entryPrice);
-                                    this.formTrade.stopLoss = Number(aiParsed.stopLoss);
-                                    if (aiParsed.takeProfit) this.formTrade.takeProfit = Number(aiParsed.takeProfit);
-                                    if (aiParsed.rrRatio) this.formTrade.rrRatio = aiParsed.rrRatio;
-                                    if (aiParsed.note) this.formTrade.note = aiParsed.note;
-
-                                    this.recalcFormVolume();
-                                    geminiSuccess = true;
-                                    alert(`🤖 AI Gemini đã đọc thành công ảnh chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}\n• Take Profit: ${this.formTrade.takeProfit || '--'}\n• R:R: 1:${this.formTrade.rrRatio}`);
-                                    return;
-                                }
-                            }
+                        if (!res.ok) {
+                            const errData = await res.json();
+                            throw new Error(errData?.error?.message || `HTTP ${res.status}`);
                         }
 
-                        // 2. Nếu chưa có API Key hoặc Gemini chưa đọc được rõ số -> Chạy AI OCR Client-Side Vision (Tesseract.js)
-                        if (typeof Tesseract === 'undefined') {
-                            alert('⚠️ Chưa nhận diện được số liệu rõ ràng. Bạn vui lòng kiểm tra lại ảnh hoặc nhập trực tiếp.');
+                        const data = await res.json();
+                        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+                        const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                        const aiParsed = JSON.parse(cleaned);
+
+                        const entry = Number(aiParsed.entryPrice);
+                        const sl = Number(aiParsed.stopLoss);
+                        const tp = Number(aiParsed.takeProfit);
+
+                        if (!entry || entry <= 0 || !sl || sl <= 0) {
+                            alert('⚠️ Gemini không đọc được mốc giá rõ ràng từ ảnh này.\n\nTip: Hãy dùng ⚡ Nhập Nhanh 3 Số ở ô phía trên — gõ "64200 63714 64502" rồi nhấn Enter!');
                             return;
                         }
 
-                        const workerRes = await Tesseract.recognize(activeImage, 'eng');
-                        const text = (workerRes.data.text || '').toUpperCase();
+                        if (aiParsed.symbol) this.formTrade.pair = aiParsed.symbol.toUpperCase();
+                        if (aiParsed.direction) this.formTrade.direction = aiParsed.direction.toUpperCase();
+                        this.formTrade.entryPrice = entry;
+                        this.formTrade.stopLoss = sl;
+                        if (tp > 0) this.formTrade.takeProfit = tp;
 
-                        // Quét cặp tiền chuẩn xác (tránh nhầm TetherUS thành ETHERUSUSDT)
-                        if (text.includes('BITCOIN') || text.includes('BTC')) {
-                            this.formTrade.pair = 'BTCUSDT';
-                        } else if ((text.includes('ETHEREUM') || text.includes('ETH')) && !text.includes('TETHER')) {
-                            this.formTrade.pair = 'ETHUSDT';
-                        } else if (text.includes('GOLD') || text.includes('XAU')) {
-                            this.formTrade.pair = 'XAUUSD';
-                        } else if (text.includes('SOLANA') || text.includes('SOL')) {
-                            this.formTrade.pair = 'SOLUSDT';
-                        } else {
-                            const match = text.match(/\b(BTC|ETH|XAU|SOL|BNB|EUR|GBP)USD[T]?\b/);
-                            if (match) this.formTrade.pair = match[0];
-                        }
+                        this.recalcFormVolume();
+                        alert(`✅ AI Gemini đọc thành công!\n• Cặp: ${this.formTrade.pair} ${this.formTrade.direction}\n• Entry: ${entry}\n• Stop Loss: ${sl}\n• Take Profit: ${tp || '--'}`);
 
-                        // Quét vị thế
-                        if (text.includes('SHORT') || text.includes('SELL')) {
-                            this.formTrade.direction = 'SHORT';
-                        } else if (text.includes('LONG') || text.includes('BUY')) {
-                            this.formTrade.direction = 'LONG';
-                        }
-
-                        // Quét tất cả số liệu có trong ảnh (hỗ trợ cả dạng 64,502.4 có phẩy nghìn và chấm thập phân)
-                        const numberRegex = /\b\d{1,6}(?:[.,]\d{3})*(?:[.,]\d{1,5})?\b/g;
-                        const matchedNums = text.match(numberRegex);
-                        if (matchedNums && matchedNums.length >= 2) {
-                            const cleanChartPrice = (str) => {
-                                if (!str) return 0;
-                                if (str.includes(',') && str.includes('.')) {
-                                    str = str.replace(/,/g, '');
-                                } else if (str.includes(',')) {
-                                    if (/,(\d{3})\b/.test(str)) {
-                                        str = str.replace(/,/g, '');
-                                    } else {
-                                        str = str.replace(/,/g, '.');
-                                    }
-                                }
-                                return parseFloat(str) || 0;
-                            };
-                            const rawNums = [...new Set(matchedNums.map(n => cleanChartPrice(n)))].filter(n => n > 0);
-                            const maxPrice = Math.max(...rawNums);
-                            // Lọc bỏ số nhỏ (điểm chênh lệch, tỷ lệ % như 257.5, 0.401) - chỉ lấy số giá trị tài sản (> 10% maxPrice)
-                            const assetPrices = rawNums.filter(n => n > maxPrice * 0.1);
-                            // Ưu tiên số lẻ thập phân của Position Tool (VD: 64502.4, 64091.6) loại bỏ số chẵn lưới Y (64100, 64200)
-                            const decimals = assetPrices.filter(n => n % 1 !== 0);
-                            const exactPrices = decimals.length >= 2 ? decimals : assetPrices.filter(n => n % 10 !== 0);
-                            const nums = (exactPrices.length >= 2 ? exactPrices : assetPrices).sort((a, b) => a - b);
-
-                            if (nums.length >= 3) {
-                                if (this.formTrade.direction === 'LONG') {
-                                    this.formTrade.stopLoss = nums[0];
-                                    this.formTrade.entryPrice = nums[Math.floor(nums.length / 2)];
-                                    this.formTrade.takeProfit = nums[nums.length - 1];
-                                } else {
-                                    this.formTrade.takeProfit = nums[0];
-                                    this.formTrade.entryPrice = nums[Math.floor(nums.length / 2)];
-                                    this.formTrade.stopLoss = nums[nums.length - 1];
-                                }
-                                this.recalcFormVolume();
-                                alert(`🤖 AI OCR đã nhận diện thành công mốc giá từ cột Y trên chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}\n• Take Profit: ${this.formTrade.takeProfit}`);
-                                return;
-                            } else if (nums.length === 2) {
-                                if (this.formTrade.direction === 'LONG') {
-                                    this.formTrade.stopLoss = nums[0];
-                                    this.formTrade.entryPrice = nums[1];
-                                } else {
-                                    this.formTrade.entryPrice = nums[0];
-                                    this.formTrade.stopLoss = nums[1];
-                                }
-                                this.recalcFormVolume();
-                                alert(`🤖 AI OCR đã trích xuất mốc giá từ cột Y trên chart:\n• Entry: ${this.formTrade.entryPrice}\n• Stop Loss: ${this.formTrade.stopLoss}`);
-                                return;
-                            }
-                        }
-
-                        alert('⚠️ AI chưa nhận diện được rõ 3 mốc giá (Entry/SL/TP) trong ảnh chart này. Bạn hãy kiểm tra lại độ nét ảnh hoặc dán Text tín hiệu nhé!');
                     } catch (err) {
                         console.error(err);
-                        alert('⚠️ Không thể phân tích ảnh chart: ' + (err.message || err));
+                        alert('⚠️ Lỗi khi gọi Gemini API: ' + (err.message || err) + '\n\nBạn có thể dùng ⚡ Nhập Nhanh 3 Số thay thế!');
                     } finally {
                         this.aiLoading = false;
                         this.$nextTick(() => lucide.createIcons());
