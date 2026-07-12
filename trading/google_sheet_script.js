@@ -180,3 +180,21 @@ function jsonResponse(obj) {
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+// ───────────────────────────────────────────────
+// HÀM CHẠY TEST TRỰC TIẾP TRONG APPS SCRIPT
+// Bấm chọn hàm này -> bấm Run (Chạy) để tự động tạo thư mục trên Drive ngay lập tức
+// ───────────────────────────────────────────────
+function testCreateFolderAndUpload() {
+  const folder = getOrCreateDriveFolder();
+  Logger.log('✅ Đã tìm thấy hoặc tạo thành công thư mục Drive: ' + folder.getName());
+  Logger.log('🔗 Link thư mục Drive: ' + folder.getUrl());
+
+  const sampleBase64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const fileUrl = uploadBase64Image(sampleBase64, 'test_connection.png');
+  Logger.log('✅ Đã tạo ảnh test thành công: ' + fileUrl);
+  
+  const sheet = getOrCreateLogSheet();
+  ensureHeader(sheet);
+  Logger.log('✅ Đã kiểm tra Sheet Trading Log thành công.');
+}
