@@ -806,6 +806,22 @@
                 </div>
             </div>
 
+            <!-- CORE CAPITAL CHECK & 5% RULE BANNER -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-gradient-to-r from-blue-900/40 via-card to-amber-900/30 p-4 rounded-2xl border border-amber-500/30">
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold uppercase text-slate-400 tracking-wider">1. Vốn Tài Khoản Hiện Tại</span>
+                    <span class="font-outfit font-black text-lg text-white" x-text="formatCurrency(totalCapital)"></span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold uppercase text-amber-400 tracking-wider">2. Khóa Rủi Ro 5% Lệnh Này</span>
+                    <span class="font-outfit font-black text-lg text-amber-400" x-text="formatCurrency(riskAmount5Percent)"></span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[10px] font-bold uppercase text-cyan-300 tracking-wider">3. Khối Lượng Nên Đi (Đúng 5%)</span>
+                    <span class="font-outfit font-black text-lg text-cyan-400" x-text="(formTrade.volume || 0) + ' Units / Lot'"></span>
+                </div>
+            </div>
+
             <!-- LIVE DYNAMIC R:R RATIO BANNER -->
             <div class="flex flex-wrap items-center justify-between gap-3 bg-card p-4 rounded-2xl border border-white/10">
                 <div class="flex items-center gap-3">
@@ -813,7 +829,7 @@
                         R:R
                     </div>
                     <div>
-                        <span class="text-[10px] uppercase font-bold text-slate-400 block">Tỷ Lệ Lợi Nhuận / Rủi Ro (R:R Ratio)</span>
+                        <span class="text-[10px] uppercase font-bold text-slate-400 block">Tỷ Lệ Lợi Nhuận / Rủi Ro (R:R Ratio • Linh Động 1.5R - 3R)</span>
                         <div class="text-lg font-outfit font-black text-white flex items-center gap-2">
                             <span class="text-cyan-400" x-text="`1 : ${formRRRatio}`"></span>
                             <span class="text-xs font-medium text-slate-400" x-text="`(+${formRRRatio} R ~ +${formatCurrency(riskAmount5Percent * formRRRatio)})`"></span>
@@ -823,7 +839,7 @@
 
                 <div class="px-3 py-1.5 rounded-xl text-xs font-bold"
                     :class="(formRRRatio >= 2) ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : ((formRRRatio >= 1.5) ? 'bg-blue-500/20 text-blue-300' : 'bg-amber-500/20 text-amber-300')">
-                    <span x-text="(formRRRatio >= 2) ? '✅ Chuẩn R:R Kỷ Luật (>= 1:2.0)' : ((formRRRatio >= 1.5) ? '👍 R:R Ổn (>= 1:1.5)' : '⚠️ R:R Thấp (< 1:1.5)')"></span>
+                    <span x-text="(formRRRatio >= 2) ? '✅ Chuẩn R:R Kỷ Luật (>= 1:2.0)' : ((formRRRatio >= 1.5) ? '👍 R:R Ổn (Linh Động >= 1:1.5)' : '⚠️ R:R Thấp (< 1:1.5)')"></span>
                 </div>
             </div>
 
@@ -837,7 +853,7 @@
 
                 <div>
                     <label class="block text-xs font-bold text-slate-300 mb-1.5">Vị Thế *</label>
-                    <select x-model="formTrade.direction"
+                    <select x-model="formTrade.direction" @change="recalcFormVolume()"
                         class="w-full bg-card border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white">
                         <option value="LONG">🟢 LONG / BUY</option>
                         <option value="SHORT">🔴 SHORT / SELL</option>
@@ -863,15 +879,26 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-slate-300 mb-1.5">Giá Take Profit (TP)</label>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-slate-300">Giá Take Profit (TP)</label>
+                        <!-- Quick flexible R:R buttons 1.5R - 3R -->
+                        <div class="flex items-center gap-1">
+                            <button type="button" @click="applyFormTP(1.5)" title="Chốt lời 1.5R"
+                                class="px-1.5 py-0.5 rounded bg-blue-500/15 hover:bg-blue-500/30 text-blue-300 text-[10px] font-bold">1.5R</button>
+                            <button type="button" @click="applyFormTP(2.0)" title="Chốt lời 2.0R (Chuẩn)"
+                                class="px-1.5 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-bold">2R</button>
+                            <button type="button" @click="applyFormTP(3.0)" title="Chốt lời 3.0R"
+                                class="px-1.5 py-0.5 rounded bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-300 text-[10px] font-bold">3R</button>
+                        </div>
+                    </div>
                     <input type="number" step="any" x-model.number="formTrade.takeProfit" @input="recalcFormVolume()"
                         class="w-full bg-card border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-emerald-400">
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-slate-300 mb-1.5">Khối Lượng (Lots - Khóa 5%)</label>
+                    <label class="block text-xs font-bold text-cyan-300 mb-1.5">Khối Lượng (Khóa Rủi Ro 5% = <span x-text="formatCurrency(riskAmount5Percent)"></span>)</label>
                     <input type="number" step="any" x-model.number="formTrade.volume"
-                        class="w-full bg-card border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-cyan-400">
+                        class="w-full bg-cyan-500/10 border border-cyan-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono font-extrabold text-cyan-400">
                 </div>
 
                 <div>
@@ -1595,13 +1622,31 @@ Return ONLY a valid JSON object in this format without markdown code fences:
                     }
                 },
 
+                applyFormTP(rr) {
+                    const e = Number(this.formTrade.entryPrice);
+                    const s = Number(this.formTrade.stopLoss);
+                    if (!e || !s || e === s) {
+                        alert('Vui lòng nhập Giá Entry và Stop Loss trước!');
+                        return;
+                    }
+                    const dist = Math.abs(e - s);
+                    if (this.formTrade.direction === 'LONG') {
+                        this.formTrade.takeProfit = Number((e + dist * rr).toFixed(2));
+                    } else {
+                        this.formTrade.takeProfit = Number((e - dist * rr).toFixed(2));
+                    }
+                    this.recalcFormVolume();
+                },
+
                 recalcFormVolume() {
                     const e = Number(this.formTrade.entryPrice);
                     const s = Number(this.formTrade.stopLoss);
                     const tp = Number(this.formTrade.takeProfit);
                     if (e && s && e !== s) {
                         const dist = Math.abs(e - s);
-                        this.formTrade.volume = Number((this.riskAmount5Percent / (dist * 100)).toFixed(2)) || 0.1;
+                        // Số lượng nên đi để rủi ro đúng 5% vốn (Khóa 5%)
+                        const units = (this.riskAmount5Percent / dist).toFixed(2);
+                        this.formTrade.volume = Number(units) > 0 ? Number(units) : 0.01;
                     }
                     if (e && s && tp && e !== s) {
                         this.formTrade.rrRatio = (Math.abs(tp - e) / Math.abs(e - s)).toFixed(2);
