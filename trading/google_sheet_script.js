@@ -14,12 +14,26 @@ const USERS_SHEET_NAME = 'Nguoidung';
 const DRIVE_FOLDER_NAME = 'DNC Trading Charts';
 
 // ───────────────────────────────────────────────
-// ROUTER: phân loại request theo action
+// GET HANDLER: Dùng cho LOGIN (tránh CORS preflight)
+// URL: ?action=login&username=Dnc&password=2026
+// ───────────────────────────────────────────────
+function doGet(e) {
+  const params = e ? (e.parameter || {}) : {};
+
+  if (params.action === 'login') {
+    return handleLogin({ username: params.username, password: params.password });
+  }
+
+  // Health check
+  return jsonResponse({ status: '✅ DNC Trading OS Auth API is running' });
+}
+
+// ───────────────────────────────────────────────
+// POST HANDLER: Dùng cho SAVE TRADE
 // ───────────────────────────────────────────────
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    if (data.action === 'login') return handleLogin(data);
     if (data.action === 'saveTrade') return handleSaveTrade(data);
     return jsonResponse({ success: false, error: 'Unknown action' });
   } catch (err) {
@@ -27,16 +41,13 @@ function doPost(e) {
   }
 }
 
-// Test kết nối
-function doGet(e) {
-  return jsonResponse({ status: '✅ DNC Trading OS Auth API is running' });
-}
-
 // ───────────────────────────────────────────────
-// ACTION: LOGIN — kiểm tra username/password
+// ACTION: LOGIN — kiểm tra username/password từ tab Nguoidung
 // ───────────────────────────────────────────────
 function handleLogin(data) {
-  const { username, password } = data;
+  const username = (data.username || '').trim();
+  const password = (data.password || '').trim();
+
   if (!username || !password) {
     return jsonResponse({ success: false, error: 'Thiếu username hoặc password' });
   }
@@ -48,11 +59,12 @@ function handleLogin(data) {
   }
 
   const rows = userSheet.getDataRange().getValues();
-  // Bỏ qua dòng header (dòng 1)
+  // Bỏ qua dòng header (dòng 1 — Username / Pass)
   for (let i = 1; i < rows.length; i++) {
     const rowUser = String(rows[i][0] || '').trim().toLowerCase();
     const rowPass = String(rows[i][1] || '').trim();
-    if (rowUser === username.trim().toLowerCase() && rowPass === password.trim()) {
+    if (rowUser === username.toLowerCase() && rowPass === password) {
+      // Trả về displayName đúng chuẩn (giữ nguyên casing từ Sheet)
       return jsonResponse({ success: true, username: rows[i][0] });
     }
   }
