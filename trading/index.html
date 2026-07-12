@@ -1316,22 +1316,46 @@ Also identify:
 Return ONLY a raw JSON object, no markdown, no explanation:
 {"symbol":"BTCUSDT","direction":"LONG","entryPrice":64200,"stopLoss":63714.7,"takeProfit":64502.4}`;
 
-                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${this.googleApiKey}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                contents: [{
-                                    parts: [
-                                        { text: prompt },
-                                        { inline_data: { mime_type: mimeType, data: base64Data } }
-                                    ]
-                                }]
-                            })
-                        });
+                        const candidateModels = [
+                            'gemini-1.5-flash-latest',
+                            'gemini-1.5-flash',
+                            'gemini-2.0-flash-exp',
+                            'gemini-1.5-pro-latest'
+                        ];
 
-                        if (!res.ok) {
-                            const errData = await res.json();
-                            throw new Error(errData?.error?.message || `HTTP ${res.status}`);
+                        let res = null;
+                        let lastErrorMsg = '';
+
+                        for (const modelName of candidateModels) {
+                            try {
+                                const tryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.googleApiKey}`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                        contents: [{
+                                            parts: [
+                                                { text: prompt },
+                                                { inline_data: { mime_type: mimeType, data: base64Data } }
+                                            ]
+                                        }]
+                                    })
+                                });
+
+                                if (tryRes.ok) {
+                                    res = tryRes;
+                                    break;
+                                } else {
+                                    const errData = await tryRes.json();
+                                    lastErrorMsg = errData?.error?.message || `HTTP ${tryRes.status}`;
+                                    console.warn(`Model ${modelName} failed:`, lastErrorMsg);
+                                }
+                            } catch (e) {
+                                lastErrorMsg = e.message;
+                            }
+                        }
+
+                        if (!res) {
+                            throw new Error(lastErrorMsg || 'Không kết nối được tới Google Gemini API');
                         }
 
                         const data = await res.json();
