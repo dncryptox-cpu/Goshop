@@ -1376,7 +1376,20 @@ Return ONLY valid JSON without markdown formatting:
                         const numberRegex = /\b\d{1,6}[.,]\d{1,5}\b/g;
                         const matchedNums = text.match(numberRegex);
                         if (matchedNums && matchedNums.length >= 2) {
-                            const rawNums = [...new Set(matchedNums.map(n => parseFloat(n.replace(',', '.'))))].filter(n => n > 0);
+                            const cleanChartPrice = (str) => {
+                                if (!str) return 0;
+                                if (str.includes(',') && str.includes('.')) {
+                                    str = str.replace(/,/g, '');
+                                } else if (str.includes(',')) {
+                                    if (/,(\d{3})\b/.test(str)) {
+                                        str = str.replace(/,/g, '');
+                                    } else {
+                                        str = str.replace(/,/g, '.');
+                                    }
+                                }
+                                return parseFloat(str) || 0;
+                            };
+                            const rawNums = [...new Set(matchedNums.map(n => cleanChartPrice(n)))].filter(n => n > 0);
                             const maxPrice = Math.max(...rawNums);
                             // Lọc bỏ số nhỏ (điểm chênh lệch, tỷ lệ % như 257.5, 0.401) - chỉ lấy số giá trị tài sản (> 10% maxPrice)
                             const assetPrices = rawNums.filter(n => n > maxPrice * 0.1);
@@ -1443,7 +1456,14 @@ Return ONLY valid JSON without markdown formatting:
                         // Sequential smart parsing: 1st number = Entry, 2nd = SL, 3rd = TP
                         const matches = text.match(/\b\d{1,6}[.,]\d{1,5}\b|\b\d{2,6}\b/g);
                         if (matches && matches.length >= 2) {
-                            const nums = matches.map(n => parseFloat(n.replace(',', '.'))).filter(n => n > 0);
+                            const cleanNumber = (str) => {
+                                if (!str) return 0;
+                                if (str.includes(',') && str.includes('.')) str = str.replace(/,/g, '');
+                                else if (/,(\d{3})\b/.test(str)) str = str.replace(/,/g, '');
+                                else str = str.replace(/,/g, '.');
+                                return parseFloat(str) || 0;
+                            };
+                            const nums = matches.map(n => cleanNumber(n)).filter(n => n > 0);
                             if (nums.length >= 3) {
                                 this.formTrade.entryPrice = nums[0];
                                 this.formTrade.stopLoss = nums[1];
