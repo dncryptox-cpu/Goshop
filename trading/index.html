@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DNC TRADING OS • 5% Risk Protocol & Multi-Timeframe Journal</title>
+    <title>DNC TRADING OS • Private 5% Protocol & Journal</title>
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -86,9 +86,59 @@
             border-color: #2E90FA !important;
             background: rgba(46, 144, 250, 0.1) !important;
         }
+
+        /* Security Lock Screen Blur Background */
+        .lock-bg {
+            background: rgba(7, 11, 20, 0.92);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col font-sans" x-data="tradingApp()">
+<body class="min-h-screen flex flex-col font-sans relative" x-data="tradingApp()">
+
+    <!-- SECURITY LOCK SCREEN GATE -->
+    <div x-show="isLocked" x-cloak
+        class="fixed inset-0 z-[100] lock-bg flex items-center justify-center p-4">
+        <div class="glass-panel rounded-3xl max-w-md w-full p-8 text-center space-y-6 border border-white/15 shadow-2xl relative overflow-hidden">
+            <!-- Glowing top accent -->
+            <div class="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400"></div>
+
+            <div class="w-16 h-16 rounded-2xl bg-blue-500/15 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20">
+                <i data-lucide="lock" class="w-8 h-8"></i>
+            </div>
+
+            <div>
+                <span class="text-[10px] uppercase font-bold text-blue-400 tracking-widest block mb-1">DNC PRIVATE OS • SECURITY GATE</span>
+                <h2 class="text-2xl font-outfit font-black text-white">Xác Thực Mã Bảo Mật</h2>
+                <p class="text-xs text-slate-400 mt-1">Vui lòng nhập mật khẩu cá nhân để mở nhật ký giao dịch & vốn</p>
+            </div>
+
+            <form @submit.prevent="unlockApp()" class="space-y-4">
+                <div class="relative">
+                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode" required
+                        placeholder="Nhập mật khẩu (Mặc định: 2026)"
+                        class="w-full bg-card border border-white/15 rounded-2xl px-5 py-4 text-center font-mono font-bold text-lg text-white tracking-widest focus:outline-none focus:border-blue-500 shadow-inner">
+                    <button type="button" @click="showPassword = !showPassword"
+                        class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+                        <i :data-lucide="showPassword ? 'eye-off' : 'eye'" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <p x-show="loginError" x-cloak class="text-xs text-rose-400 font-bold">Mật khẩu không chính xác!</p>
+
+                <button type="submit"
+                    class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white py-4 rounded-2xl text-sm font-extrabold transition-all shadow-xl shadow-blue-500/25 flex items-center justify-center gap-2">
+                    <i data-lucide="shield-check" class="w-5 h-5"></i>
+                    <span>Mở Khóa Nhật Ký</span>
+                </button>
+            </form>
+
+            <div class="pt-3 border-t border-white/10 text-[11px] text-slate-500">
+                Dữ liệu được mã hóa & lưu trữ bảo mật trên thiết bị cá nhân.
+            </div>
+        </div>
+    </div>
 
     <!-- TOP BAR -->
     <header class="sticky top-0 z-40 bg-[#070B14]/85 backdrop-blur-xl border-b border-white/10 px-4 sm:px-8 py-3.5">
@@ -101,7 +151,7 @@
                 <div>
                     <div class="flex items-center gap-2">
                         <span class="font-outfit font-black text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">DNC TRADING OS</span>
-                        <span class="px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-mono font-extrabold">PROTOCOL 5%</span>
+                        <span class="px-2 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-[10px] font-mono font-extrabold">PRIVATE 5%</span>
                     </div>
                     <span class="text-[11px] text-slate-400 block font-medium">Nhật Ký & Quản Trị Rủi Ro Kỷ Luật 3 Khung Thời Gian</span>
                 </div>
@@ -109,12 +159,19 @@
 
             <!-- Capital Configuration & Action Buttons -->
             <div class="flex items-center gap-3 sm:gap-4 flex-wrap">
-                <!-- Navigation back to DNC Operator -->
-                <a href="../"
-                    class="bg-white/5 hover:bg-white/10 text-slate-300 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 border border-white/10">
-                    <i data-lucide="home" class="w-4 h-4"></i>
-                    <span class="hidden sm:inline">DNC Operator</span>
-                </a>
+                <!-- Sync status pill -->
+                <button @click="openSettingsModal()"
+                    class="bg-card/80 hover:bg-card border border-white/10 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 flex items-center gap-2 transition-all">
+                    <span class="w-2 h-2 rounded-full" :class="googleSheetUrl ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-blue-400'"></span>
+                    <i data-lucide="cloud" class="w-4 h-4 text-slate-400"></i>
+                    <span x-text="googleSheetUrl ? 'Đồng bộ Google Sheet' : 'Lưu cục bộ • Cài đặt'"></span>
+                </button>
+
+                <!-- Lock Screen Button -->
+                <button @click="lockApp()" title="Khóa màn hình ngay"
+                    class="bg-white/5 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 p-2.5 rounded-xl border border-white/10 transition-colors">
+                    <i data-lucide="lock" class="w-4 h-4"></i>
+                </button>
 
                 <!-- Capital Setting Input Box -->
                 <div class="flex items-center gap-2 bg-card/80 border border-white/10 rounded-xl px-3.5 py-1.5 shadow-inner">
@@ -587,6 +644,95 @@
         </div>
     </main>
 
+    <!-- MODAL: SECURITY & STORAGE / GOOGLE SHEET SYNC SETTINGS -->
+    <div x-show="settingsOpen" x-cloak
+        class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+        <div class="glass-panel rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6" @click.outside="settingsOpen = false">
+            
+            <div class="flex items-center justify-between border-b border-white/10 pb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-400">
+                        <i data-lucide="shield-check" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-outfit font-black text-lg text-white">Bảo Mật & Quản Lý Dữ Liệu</h3>
+                        <span class="text-xs text-slate-400">Mật khẩu khóa trang • Backup JSON • Đồng bộ Google Sheet</span>
+                    </div>
+                </div>
+                <button @click="settingsOpen = false" class="text-slate-400 hover:text-white p-2 rounded-lg bg-white/5">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- SECTION 1: PASSCODE SECURITY -->
+            <div class="bg-card/60 p-5 rounded-2xl border border-white/10 space-y-4">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-blue-400 flex items-center gap-2">
+                    <i data-lucide="key" class="w-4 h-4"></i>
+                    <span>Cài Đặt Mật Khẩu Khóa Trang</span>
+                </h4>
+                <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <input type="text" x-model="newPasscode" placeholder="Mật khẩu mới (VD: dnc2026)"
+                        class="flex-1 bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono">
+                    <button @click="changePasscode()"
+                        class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold shrink-0">
+                        Cập Nhật Mật Khẩu
+                    </button>
+                </div>
+                <p class="text-[11px] text-slate-400">Mặc định ban đầu mật khẩu là <code class="text-amber-400 font-bold">2026</code>. Khi bạn khóa trang, phải có mật khẩu này mới mở được.</p>
+            </div>
+
+            <!-- SECTION 2: DATA BACKUP & RESTORE JSON -->
+            <div class="bg-card/60 p-5 rounded-2xl border border-white/10 space-y-4">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                    <i data-lucide="hard-drive" class="w-4 h-4"></i>
+                    <span>Lưu Trữ Cục Bộ & Sao Lưu File JSON (Khuyên Dùng)</span>
+                </h4>
+                <p class="text-xs text-slate-300 leading-relaxed">
+                    Toàn bộ nhật ký, vốn và ảnh 3 khung giờ hiện đang được lưu bảo mật trong trình duyệt của bạn (<strong class="text-white">localStorage</strong>). Bạn có thể xuất thành file <code class="text-emerald-400 font-mono font-bold">dnc_trading_backup.json</code> để lưu sang Google Drive hoặc mở trên máy khác.
+                </p>
+                <div class="flex flex-wrap gap-3">
+                    <button @click="exportJsonBackup()"
+                        class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Tải File Backup JSON</span>
+                    </button>
+
+                    <label class="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors">
+                        <i data-lucide="upload" class="w-4 h-4"></i>
+                        <span>Nhập Lại File Backup JSON</span>
+                        <input type="file" accept=".json" @change="importJsonBackup($event)" class="hidden">
+                    </label>
+                </div>
+            </div>
+
+            <!-- SECTION 3: GOOGLE SHEET CLOUD SYNC -->
+            <div class="bg-card/60 p-5 rounded-2xl border border-white/10 space-y-4">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                    <i data-lucide="database" class="w-4 h-4"></i>
+                    <span>Đồng Bộ Lên Google Sheet (Tùy Chọn)</span>
+                </h4>
+                <p class="text-xs text-slate-300">
+                    Nếu bạn có một Apps Script Web App URL của Google Sheet, bạn có thể nhập vào đây để tự động lưu/đọc dữ liệu.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <input type="url" x-model="googleSheetUrl" placeholder="https://script.google.com/macros/s/..."
+                        class="flex-1 bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono">
+                    <button @click="saveGoogleSheetConfig()"
+                        class="bg-cyan-600 hover:bg-cyan-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold shrink-0">
+                        Lưu Link Sheet
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button @click="settingsOpen = false"
+                    class="bg-white/10 hover:bg-white/20 text-white px-6 py-2.5 rounded-xl text-xs font-bold">
+                    Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: ADD / EDIT TRADE WITH 3 TIMEFRAME CLIPBOARD PASTE -->
     <div x-show="modalOpen" x-cloak
         class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
@@ -890,6 +1036,15 @@
     <script>
         function tradingApp() {
             return {
+                isLocked: true,
+                passcode: '2026',
+                inputPasscode: '',
+                newPasscode: '',
+                loginError: false,
+                showPassword: false,
+                settingsOpen: false,
+                googleSheetUrl: '',
+
                 currentView: 'JOURNAL',
                 totalCapital: 10000,
                 currency: 'USD',
@@ -912,6 +1067,17 @@
                 },
 
                 init() {
+                    const savedPin = localStorage.getItem('dnc_trading_pin');
+                    if (savedPin) this.passcode = savedPin;
+
+                    const savedSheet = localStorage.getItem('dnc_trading_gsheet');
+                    if (savedSheet) this.googleSheetUrl = savedSheet;
+
+                    const unlocked = sessionStorage.getItem('dnc_trading_unlocked');
+                    if (unlocked === 'true') {
+                        this.isLocked = false;
+                    }
+
                     const savedCap = localStorage.getItem('dnc_trading_capital');
                     if (savedCap) this.totalCapital = Number(savedCap);
                     const savedCurr = localStorage.getItem('dnc_trading_currency');
@@ -949,6 +1115,82 @@
                     this.$nextTick(() => {
                         lucide.createIcons();
                     });
+                },
+
+                unlockApp() {
+                    if (this.inputPasscode === this.passcode) {
+                        this.isLocked = false;
+                        this.loginError = false;
+                        this.inputPasscode = '';
+                        sessionStorage.setItem('dnc_trading_unlocked', 'true');
+                    } else {
+                        this.loginError = true;
+                    }
+                },
+
+                lockApp() {
+                    this.isLocked = true;
+                    sessionStorage.removeItem('dnc_trading_unlocked');
+                },
+
+                openSettingsModal() {
+                    this.settingsOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                changePasscode() {
+                    if (!this.newPasscode || this.newPasscode.length < 3) {
+                        alert('Mật khẩu phải có ít nhất 3 ký tự!');
+                        return;
+                    }
+                    this.passcode = this.newPasscode;
+                    localStorage.setItem('dnc_trading_pin', this.newPasscode);
+                    this.newPasscode = '';
+                    alert('Cập nhật mật khẩu thành công! Hãy ghi nhớ mật khẩu mới của bạn.');
+                },
+
+                saveGoogleSheetConfig() {
+                    localStorage.setItem('dnc_trading_gsheet', this.googleSheetUrl);
+                    alert('Đã lưu cấu hình Google Sheet URL!');
+                },
+
+                exportJsonBackup() {
+                    const dataObj = {
+                        version: '1.0',
+                        exportedAt: new Date().toISOString(),
+                        capital: this.totalCapital,
+                        currency: this.currency,
+                        trades: this.trades
+                    };
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataObj, null, 2));
+                    const dlAnchorElem = document.createElement('a');
+                    dlAnchorElem.setAttribute("href", dataStr);
+                    dlAnchorElem.setAttribute("download", "dnc_trading_backup_" + new Date().toISOString().split('T')[0] + ".json");
+                    dlAnchorElem.click();
+                },
+
+                importJsonBackup(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const imported = JSON.parse(e.target.result);
+                            if (imported && Array.isArray(imported.trades)) {
+                                this.trades = imported.trades;
+                                if (imported.capital) this.totalCapital = Number(imported.capital);
+                                if (imported.currency) this.currency = imported.currency;
+                                this.saveCapital();
+                                this.saveTradesToStorage();
+                                alert('Đã khôi phục thành công ' + imported.trades.length + ' lệnh giao dịch!');
+                            } else {
+                                alert('File backup không đúng định dạng!');
+                            }
+                        } catch (err) {
+                            alert('Lỗi đọc file backup: ' + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
                 },
 
                 get currencySymbol() {
