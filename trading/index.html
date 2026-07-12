@@ -306,6 +306,11 @@
                     <i data-lucide="settings" class="w-4 h-4"></i>
                     <span>Cài Đặt</span>
                 </button>
+                <button @click="pullTradesFromCloud()"
+                    class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-500/30">
+                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': cloudSyncing}"></i>
+                    <span>Đồng Bộ Cloud</span>
+                </button>
             </div>
 
             <!-- Search & Filter Options (Only in JOURNAL view) -->
@@ -1347,6 +1352,7 @@
                 loginError: false,
                 loginErrorMsg: '',
                 loginLoading: false,
+                cloudSyncing: false,
                 showPassword: false,
                 settingsOpen: false,
                 // AUTH_URL: URL Apps Script của DNC dùng để xác thực user
@@ -1405,6 +1411,8 @@
                         this.saveTradesToStorage();
                     }
                     this.$nextTick(() => lucide.createIcons());
+                    // Tự động tải lệnh mới nhất từ Google Sheet về thiết bị này
+                    this.pullTradesFromCloud();
                 },
 
                 init() {
@@ -1497,6 +1505,26 @@
                 saveSheetSettings() {
                     localStorage.setItem(`dnc_sheet_url_${this.traderUsername}`, this.sheetWebhookUrl);
                     alert('✅ Đã lưu cài đặt Google Sheet cho ' + this.traderUsername);
+                },
+
+                async pullTradesFromCloud() {
+                    const targetUrl = this.sheetWebhookUrl || this.authWebhookUrl;
+                    if (!targetUrl || !this.traderUsername) return;
+                    this.cloudSyncing = true;
+                    try {
+                        const url = targetUrl + '?action=getTrades&username=' + encodeURIComponent(this.traderUsername);
+                        const res = await fetch(url);
+                        const result = await res.json();
+                        if (result.success && Array.isArray(result.trades) && result.trades.length > 0) {
+                            this.trades = result.trades;
+                            this.saveTradesToStorage();
+                            console.log('✅ Đã đồng bộ ' + result.trades.length + ' lệnh từ Google Sheet về máy!');
+                        }
+                    } catch (err) {
+                        console.warn('⚠️ Không thể tải dữ liệu cloud:', err.message);
+                    } finally {
+                        this.cloudSyncing = false;
+                    }
                 },
 
                 async syncToGoogleSheet(trade) {

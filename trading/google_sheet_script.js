@@ -23,6 +23,9 @@ function doGet(e) {
   if (params.action === 'login') {
     return handleLogin({ username: params.username, password: params.password });
   }
+  if (params.action === 'getTrades') {
+    return handleGetTrades({ username: params.username });
+  }
 
   // Health check
   return jsonResponse({ status: '✅ DNC Trading OS Auth API is running' });
@@ -70,6 +73,44 @@ function handleLogin(data) {
   }
 
   return jsonResponse({ success: false, error: 'Sai username hoặc mật khẩu' });
+}
+
+// ───────────────────────────────────────────────
+// ACTION: GET TRADES — Tải toàn bộ lệnh từ Cloud về máy
+// ───────────────────────────────────────────────
+function handleGetTrades(data) {
+  const username = (data.username || '').trim().toLowerCase();
+  const sheet = getOrCreateLogSheet();
+  const rows = sheet.getDataRange().getValues();
+  const trades = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const rowUser = String(rows[i][1] || '').trim().toLowerCase();
+    if (!username || rowUser === username) {
+      trades.push({
+        id: 'cloud_' + i,
+        date: String(rows[i][2] || '').split('T')[0],
+        pair: String(rows[i][3] || ''),
+        direction: String(rows[i][4] || 'LONG'),
+        entryPrice: Number(rows[i][5]) || 0,
+        stopLoss: Number(rows[i][6]) || 0,
+        takeProfit: Number(rows[i][7]) || 0,
+        volume: Number(rows[i][8]) || 0,
+        dollarValue: Number(rows[i][9]) || 0,
+        riskUsd: Number(rows[i][10]) || 0,
+        rrRatio: String(rows[i][11] || '2.00').replace('1:', ''),
+        pnl: Number(rows[i][12]) || 0,
+        status: String(rows[i][13] || 'RUNNING'),
+        note: String(rows[i][14] || ''),
+        setupTag: String(rows[i][15] || ''),
+        imgHtf: String(rows[i][16] || ''),
+        imgMtf: String(rows[i][17] || ''),
+        imgLtf: String(rows[i][18] || '')
+      });
+    }
+  }
+  trades.reverse();
+  return jsonResponse({ success: true, trades: trades });
 }
 
 // ───────────────────────────────────────────────
