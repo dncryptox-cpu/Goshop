@@ -231,3 +231,23 @@ function jsonResponse(obj) {
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+// ───────────────────────────────────────────────
+// HÀM CHỌN CHẠY 1 LẦN (SETUP & CLEAN SHEET KHÁCH)
+// Bấm chọn hàm này -> bấm Run (Chạy) để tự động chuẩn hóa Sheet Trading Log sạch 100%
+// và xóa bỏ tab Nguoidung (nếu copy nhầm từ Admin)
+// ───────────────────────────────────────────────
+function setupAndCleanCustomerSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1. Xóa tab Nguoidung nếu tồn tại (khách hàng không cần tab quản lý user của Admin)
+  const adminUserSheet = ss.getSheetByName('Nguoidung');
+  if (adminUserSheet && ss.getSheets().length > 1) {
+    ss.deleteSheet(adminUserSheet);
+    Logger.log('✅ Đã xóa tab Nguoidung (không cần thiết cho sheet riêng của khách).');
+  }
+
+  // 2. Đảm bảo tab Trading Log chuẩn sạch
+  const logSheet = getOrCreateLogSheet();
+  Logger.log('✅ Sheet Trading Log đã sẵn sàng cho khách hàng: ' + logSheet.getName());
+}
