@@ -24,7 +24,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    if (data.action === 'saveTrade')   return handleSaveTrade(data);
+    if (data.action === 'saveTrade') return handleSaveTrade(data);
     if (data.action === 'deleteTrade') return handleDeleteTrade(data);
     if (data.action === 'saveCapital') return handleSaveCapital(data);
     return jsonResponse({ success: false, error: 'Unknown action' });
