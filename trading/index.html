@@ -1650,6 +1650,15 @@
                                 sessionStorage.setItem('dnc_trading_loggedin_user', this.traderUsername);
                                 // Load cài đặt riêng của user này
                                 this.loadUserSettings();
+                                // Ưu tiên áp dụng vốn và tiền tệ cá nhân hóa từ server khi đăng nhập máy mới
+                                if (result.capital !== null && result.capital !== undefined && Number(result.capital) > 0) {
+                                    this.totalCapital = Number(result.capital);
+                                    localStorage.setItem(`dnc_capital_${this.traderUsername}`, this.totalCapital);
+                                }
+                                if (result.currency) {
+                                    this.currency = result.currency;
+                                    localStorage.setItem(`dnc_currency_${this.traderUsername}`, this.currency);
+                                }
                             } else {
                                 this.loginError = true;
                                 this.loginErrorMsg = result.error || 'Sai tài khoản hoặc mật khẩu!';
@@ -1751,9 +1760,34 @@
                 },
 
                 async pullTradesFromCloud() {
-                    const targetUrl = this.sheetWebhookUrl;
-                    if (!targetUrl || !this.traderUsername) return;
+                    if (!this.traderUsername) return;
                     this.cloudSyncing = true;
+
+                    // 1. Đồng bộ Vốn cá nhân hóa từ sheet Nguoidung về máy mới
+                    if (this.authWebhookUrl) {
+                        try {
+                            const infoUrl = this.authWebhookUrl + '?action=getUserInfo&username=' + encodeURIComponent(this.traderUsername);
+                            const resInfo = await fetch(infoUrl);
+                            const resJson = await resInfo.json();
+                            if (resJson.success) {
+                                if (resJson.capital !== null && resJson.capital !== undefined && Number(resJson.capital) > 0) {
+                                    this.totalCapital = Number(resJson.capital);
+                                    localStorage.setItem(`dnc_capital_${this.traderUsername}`, this.totalCapital);
+                                }
+                                if (resJson.currency) {
+                                    this.currency = resJson.currency;
+                                    localStorage.setItem(`dnc_currency_${this.traderUsername}`, this.currency);
+                                }
+                            }
+                        } catch(e) {}
+                    }
+
+                    // 2. Đồng bộ lịch sử lệnh từ Sheet riêng của khách (nếu có)
+                    const targetUrl = this.sheetWebhookUrl;
+                    if (!targetUrl) {
+                        this.cloudSyncing = false;
+                        return;
+                    }
                     try {
                         const url = targetUrl + '?action=getTrades&username=' + encodeURIComponent(this.traderUsername);
                         const res = await fetch(url);

@@ -23,6 +23,9 @@ function doGet(e) {
   if (params.action === 'login') {
     return handleLogin({ username: params.username, password: params.password });
   }
+  if (params.action === 'getUserInfo') {
+    return handleGetUserInfo({ username: params.username });
+  }
   if (params.action === 'getTrades') {
     return handleGetTrades({ username: params.username });
   }
@@ -82,6 +85,26 @@ function handleLogin(data) {
   }
 
   return jsonResponse({ success: false, error: 'Sai username hoặc mật khẩu' });
+}
+
+function handleGetUserInfo(data) {
+  const username = (data.username || '').trim();
+  if (!username) return jsonResponse({ success: false });
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const userSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!userSheet) return jsonResponse({ success: false });
+  const rows = userSheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0] || '').trim().toLowerCase() === username.toLowerCase()) {
+      return jsonResponse({
+        success: true,
+        username: rows[i][0],
+        capital: Number(rows[i][2]) || null,
+        currency: String(rows[i][3] || 'USD')
+      });
+    }
+  }
+  return jsonResponse({ success: false });
 }
 
 // ───────────────────────────────────────────────
