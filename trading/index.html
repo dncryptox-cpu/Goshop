@@ -195,7 +195,7 @@
                     </div>
                     <div class="h-6 w-px bg-white/10"></div>
                     <div class="flex flex-col text-right">
-                        <span class="text-[10px] uppercase font-bold text-slate-400">Risk 5% Lệnh Tiếp</span>
+                        <span class="text-[10px] uppercase font-bold text-slate-400">Risk <span x-text="riskPercent + '%'"></span> Lệnh Tiếp</span>
                         <span class="font-mono font-extrabold text-sm text-amber-400" x-text="formatCurrency(riskAmount5Percent)"></span>
                     </div>
                 </div>
@@ -248,7 +248,7 @@
                     <span class="px-2 py-0.5 rounded text-[10px] font-extrabold bg-blue-500/20 text-blue-300 border border-blue-500/30">CỘNG DỒN LÃI/LỖ</span>
                 </div>
                 <div class="text-2xl font-outfit font-black text-white" x-text="formatCurrency(currentDynamicCapital)"></div>
-                <p class="text-xs text-slate-400 mt-1">Vốn gốc: <span class="text-slate-200" x-text="formatCurrency(totalCapital)"></span> • Risk 5% lệnh tiếp: <strong class="text-amber-400" x-text="formatCurrency(riskAmount5Percent)"></strong></p>
+                <p class="text-xs text-slate-400 mt-1">Vốn gốc: <span class="text-slate-200" x-text="formatCurrency(totalCapital)"></span> • Risk <span x-text="riskPercent + '%'"></span> lệnh tiếp: <strong class="text-amber-400" x-text="formatCurrency(riskAmount5Percent)"></strong></p>
             </div>
 
             <!-- Card 2: Win Rate -->
@@ -744,6 +744,34 @@
                 </div>
             </div>
 
+            <!-- Risk Management Settings -->
+            <div class="glass-panel rounded-2xl p-5 border border-amber-500/20 space-y-3">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                    <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                    Quản Lý Kỷ Luật Rủi Ro (Risk % & R:R Tùy Ý)
+                </h4>
+                <p class="text-xs text-slate-300">
+                    Mặc định gợi ý rủi ro theo % Vốn hiện tại. Bạn có thể chỉnh sửa tỷ lệ % kỷ luật, hoặc nhập số $ rủi ro & R:R tùy ý cho từng lệnh.
+                </p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-300 mb-1.5">Tỷ Lệ Risk Kỷ Luật (% Vốn / Lệnh)</label>
+                        <div class="flex gap-2">
+                            <input type="number" step="0.5" min="0.1" max="50" x-model.number="riskPercent"
+                                class="w-full bg-card border border-white/15 rounded-xl px-4 py-2 text-xs text-amber-400 font-mono font-bold">
+                            <button @click="saveRiskSettings()"
+                                class="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-bold shrink-0">
+                                Lưu Risk %
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
+                        <i data-lucide="info" class="w-5 h-5 shrink-0"></i>
+                        <span>Hiện tại: <strong class="font-mono" x-text="riskPercent + '%'"></strong> vốn ~ <strong class="font-mono" x-text="formatCurrency(riskAmount5Percent)"></strong> / lệnh</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- AI API Key -->
             <div class="glass-panel rounded-2xl p-5 border border-cyan-500/20 space-y-3">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-2">
@@ -1104,8 +1132,8 @@
                     <span class="font-outfit font-black text-lg text-white" x-text="formatCurrency(currentDynamicCapital)"></span>
                 </div>
                 <div class="flex flex-col">
-                    <span class="text-[10px] font-bold uppercase text-amber-400 tracking-wider">2. Khóa Rủi Ro 5% Lệnh Này</span>
-                    <span class="font-outfit font-black text-lg text-amber-400" x-text="formatCurrency(riskAmount5Percent)"></span>
+                    <span class="text-[10px] font-bold uppercase text-amber-400 tracking-wider">2. Khóa Rủi Ro (<span x-text="riskPercent + '%'"></span> hoặc Tùy Chỉnh $)</span>
+                    <span class="font-outfit font-black text-lg text-amber-400" x-text="formatCurrency(formTrade.riskUsd || riskAmount5Percent)"></span>
                 </div>
                 <div class="flex flex-col">
                     <span class="text-[10px] font-bold uppercase text-cyan-300 tracking-wider">3. Khối Lượng Nên Đi ($ & Lots)</span>
@@ -1187,7 +1215,14 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-cyan-300 mb-1.5">Khối Lượng (Lots / Units • Risk <span x-text="formatCurrency(riskAmount5Percent)"></span>)</label>
+                    <label class="block text-xs font-bold text-amber-400 mb-1.5">Rủi Ro Lệnh Này ($ Risk • Mặc định <span x-text="riskPercent + '%'"></span>)</label>
+                    <input type="number" step="any" x-model.number="formTrade.riskUsd" @input="recalcFormVolume()"
+                        placeholder="Số tiền $ rủi ro tùy chỉnh"
+                        class="w-full bg-amber-500/10 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-amber-400">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-cyan-300 mb-1.5">Khối Lượng (Lots / Units)</label>
                     <input type="number" step="any" x-model.number="formTrade.volume" @input="formTrade.volumeUsd = Number((formTrade.volume * (formTrade.entryPrice || 1)).toFixed(2))"
                         class="w-full bg-cyan-500/10 border border-cyan-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono font-extrabold text-cyan-400">
                 </div>
@@ -1518,6 +1553,7 @@
                 currentView: 'JOURNAL',
                 totalCapital: 10000,
                 currency: 'USD',
+                riskPercent: 5,
                 searchQuery: '',
                 filterStatus: 'ALL',
 
@@ -1554,6 +1590,8 @@
                     if (cap) this.totalCapital = Number(cap);
                     const curr = localStorage.getItem(`dnc_currency_${u}`) || localStorage.getItem('dnc_trading_currency');
                     if (curr) this.currency = curr;
+                    const rp = localStorage.getItem(`dnc_risk_pct_${u}`);
+                    if (rp) this.riskPercent = Number(rp);
                     const tradesKey = `dnc_trades_${u}`;
                     const savedTrades = localStorage.getItem(tradesKey) || localStorage.getItem('dnc_trading_journal_v1');
                     if (savedTrades) {
@@ -2057,7 +2095,8 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 get riskAmount5Percent() {
-                    return Math.round((this.currentDynamicCapital * 0.05) * 100) / 100;
+                    const pct = Number(this.riskPercent) || 5;
+                    return Math.round((this.currentDynamicCapital * (pct / 100)) * 100) / 100;
                 },
 
                 get winCount() {
@@ -2106,6 +2145,12 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         return new Intl.NumberFormat('vi-VN').format(Math.round(num)) + ' ₫';
                     }
                     return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+                },
+
+                saveRiskSettings() {
+                    const u = this.traderUsername || 'default';
+                    localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
+                    alert('✅ Đã lưu cấu hình rủi ro: ' + this.riskPercent + '% / lệnh');
                 },
 
                 saveCapital() {
@@ -2208,6 +2253,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                             stopLoss: '',
                             takeProfit: '',
                             volume: '',
+                            riskUsd: this.riskAmount5Percent,
                             rrRatio: '2.00',
                             status: 'RUNNING',
                             pnl: 0,
@@ -2270,8 +2316,8 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     const tp = Number(this.formTrade.takeProfit);
                     if (e && s && e !== s) {
                         const dist = Math.abs(e - s);
-                        // Số lượng nên đi để rủi ro đúng 5% vốn tích lũy hiện tại
-                        const units = (this.riskAmount5Percent / dist).toFixed(4);
+                        const riskToUse = Number(this.formTrade.riskUsd) > 0 ? Number(this.formTrade.riskUsd) : this.riskAmount5Percent;
+                        const units = (riskToUse / dist).toFixed(4);
                         this.formTrade.volume = Number(units) > 0 ? Number(units) : 0.01;
                         this.formTrade.volumeUsd = Number((this.formTrade.volume * e).toFixed(2));
                     }
@@ -2350,10 +2396,17 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         this.autoFillFormPnL();
                     }
 
-                    // Compute R Achieved
-                    const risk = this.riskAmount5Percent;
+                    // Compute R Achieved & Custom Risk
+                    const risk = Number(this.formTrade.riskUsd) > 0 ? Number(this.formTrade.riskUsd) : this.riskAmount5Percent;
                     this.formTrade.riskUsd = risk;
-                    this.formTrade.rrRatio = this.formRRRatio;
+                    const tp = Number(this.formTrade.takeProfit);
+                    const e = Number(this.formTrade.entryPrice);
+                    const s = Number(this.formTrade.stopLoss);
+                    if (tp && e && s && e !== s) {
+                        this.formTrade.rrRatio = (Math.abs(tp - e) / Math.abs(e - s)).toFixed(2);
+                    } else {
+                        this.formTrade.rrRatio = this.formTrade.rrRatio || this.formRRRatio || 2;
+                    }
 
                     if (this.formTrade.pnl && risk > 0) {
                         this.formTrade.rAchieved = Number((this.formTrade.pnl / risk).toFixed(2));
