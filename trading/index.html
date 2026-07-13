@@ -395,16 +395,20 @@
                             </div>
 
                             <div class="flex items-center gap-3">
-                                <!-- Status Badge -->
-                                <span class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border"
+                                <!-- Interactive Status Dropdown -->
+                                <select :value="trade.status" @change="quickUpdateTradeStatus(trade, $event.target.value)"
+                                    class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border cursor-pointer focus:outline-none transition-all"
                                     :class="{
                                         'bg-emerald-500/15 text-emerald-400 border-emerald-500/30': trade.status === 'WIN',
                                         'bg-rose-500/15 text-rose-400 border-rose-500/30': trade.status === 'LOSS',
                                         'bg-amber-500/15 text-amber-400 border-amber-500/30': trade.status === 'RUNNING',
                                         'bg-slate-500/15 text-slate-300 border-slate-500/30': trade.status === 'BE'
-                                    }"
-                                    x-text="trade.status === 'WIN' ? '✅ WIN' : (trade.status === 'LOSS' ? '❌ LOSS' : (trade.status === 'RUNNING' ? '⏳ RUNNING' : '⚖️ BREAK-EVEN'))">
-                                </span>
+                                    }">
+                                    <option value="RUNNING" class="bg-card text-amber-400">⏳ Đang chạy</option>
+                                    <option value="WIN" class="bg-card text-emerald-400">✅ Thắng (Win)</option>
+                                    <option value="LOSS" class="bg-card text-rose-400">❌ Thua (Loss)</option>
+                                    <option value="BE" class="bg-card text-slate-300">⚖️ Hòa vốn</option>
+                                </select>
 
                                 <!-- PnL & R Display -->
                                 <div class="text-right">
@@ -1145,7 +1149,7 @@
 
                 <div>
                     <label class="block text-xs font-bold text-slate-300 mb-1.5">Trạng Thái Lệnh</label>
-                    <select x-model="formTrade.status"
+                    <select x-model="formTrade.status" @change="autoFillFormPnL()"
                         class="w-full bg-card border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white">
                         <option value="RUNNING">⏳ Đang chạy (Running)</option>
                         <option value="WIN">✅ Thắng (Win)</option>
@@ -1155,7 +1159,13 @@
                 </div>
 
                 <div class="col-span-full">
-                    <label class="block text-xs font-bold text-slate-300 mb-1.5">Kết quả PnL (<span x-text="currencySymbol"></span>)</label>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-slate-300">Kết quả PnL (<span x-text="currencySymbol"></span>)</label>
+                        <button type="button" @click="autoFillFormPnL()"
+                            class="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1">
+                            <i data-lucide="zap" class="w-3.5 h-3.5"></i> Tự động tính theo SL/TP
+                        </button>
+                    </div>
 
                     <!-- Auto PnL Preview khi lệnh đang chạy -->
                     <template x-if="formTrade.status === 'RUNNING' && formTrade.entryPrice && formTrade.stopLoss">
@@ -2204,10 +2214,74 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     }
                 },
 
+                autoFillFormPnL() {
+                    const st = this.formTrade.status;
+                    const risk = Number(this.formTrade.riskUsd) || this.riskAmount5Percent || 500;
+                    const entry = Number(this.formTrade.entryPrice) || 0;
+                    const sl = Number(this.formTrade.stopLoss) || 0;
+                    const tp = Number(this.formTrade.takeProfit) || 0;
+                    const lots = Number(this.formTrade.volume) || 0;
+
+                    if (st === 'WIN') {
+                        if (entry && tp && lots) {
+                            this.formTrade.pnl = Number((Math.abs(tp - entry) * lots).toFixed(2));
+                        } else {
+                            const rr = Number(this.formTrade.rrRatio || this.formRRRatio || 2);
+                            this.formTrade.pnl = Number((risk * rr).toFixed(2));
+                        }
+                    } else if (st === 'LOSS') {
+                        if (entry && sl && lots) {
+                            this.formTrade.pnl = -Number((Math.abs(entry - sl) * lots).toFixed(2));
+                        } else {
+                            this.formTrade.pnl = -Number(risk.toFixed(2));
+                        }
+                    } else if (st === 'BE' || st === 'RUNNING') {
+                        this.formTrade.pnl = 0;
+                    }
+                },
+
+                quickUpdateTradeStatus(trade, newStatus) {
+                    trade.status = newStatus;
+                    const risk = Number(trade.riskUsd) || this.riskAmount5Percent || 500;
+                    const entry = Number(trade.entryPrice) || 0;
+                    const sl = Number(trade.stopLoss) || 0;
+                    const tp = Number(trade.takeProfit) || 0;
+                    const lots = Number(trade.volume) || 0;
+
+                    if (newStatus === 'WIN') {
+                        if (entry && tp && lots) {
+                            trade.pnl = Number((Math.abs(tp - entry) * lots).toFixed(2));
+                        } else {
+                            const rr = Number(trade.rrRatio || 2);
+                            trade.pnl = Number((risk * rr).toFixed(2));
+                        }
+                        trade.rAchieved = Number((trade.pnl / risk).toFixed(2));
+                    } else if (newStatus === 'LOSS') {
+                        if (entry && sl && lots) {
+                            trade.pnl = -Number((Math.abs(entry - sl) * lots).toFixed(2));
+                        } else {
+                            trade.pnl = -Number(risk.toFixed(2));
+                        }
+                        trade.rAchieved = -1;
+                    } else {
+                        trade.pnl = 0;
+                        trade.rAchieved = 0;
+                    }
+
+                    this.saveTradesToStorage();
+                    this.saveCapital();
+                    this.syncToGoogleSheet(trade);
+                },
+
                 saveTrade() {
                     if (!this.formTrade.pair || !this.formTrade.entryPrice || !this.formTrade.stopLoss) {
                         alert('Vui lòng nhập đầy đủ Cặp Giao Dịch, Giá Entry và Stop Loss!');
                         return;
+                    }
+
+                    // Tự động tính PnL nếu chưa nhập số mà đã chọn WIN/LOSS
+                    if (!this.formTrade.pnl && (this.formTrade.status === 'WIN' || this.formTrade.status === 'LOSS')) {
+                        this.autoFillFormPnL();
                     }
 
                     // Compute R Achieved
@@ -2230,6 +2304,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     }
 
                     this.saveTradesToStorage();
+                    this.saveCapital();
 
                     // Tự động ghi lên Google Sheet (nếu đã cấu hình)
                     const savedTrade = this.formTrade.id
