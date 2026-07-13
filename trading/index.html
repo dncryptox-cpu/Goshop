@@ -1697,6 +1697,7 @@
                 },
 
                 saveApiKey() {
+                    this.googleApiKey = (this.googleApiKey || '').trim();
                     localStorage.setItem(`dnc_ai_key_${this.traderUsername}`, this.googleApiKey);
                     alert('✅ Đã lưu API Key cho tài khoản ' + this.traderUsername);
                 },
@@ -1925,18 +1926,21 @@ Also identify:
 Return ONLY a raw JSON object, no markdown, no explanation:
 {"symbol":"BTCUSDT","direction":"LONG","entryPrice":64200,"stopLoss":63714.7,"takeProfit":64502.4}`;
 
+                        const cleanKey = (this.googleApiKey || '').trim();
+
                         // Bước 1: Lấy danh sách model thực tế khả dụng với API key này
-                        // Danh sách model ưu tiên ổn định nhất cho Vision
+                        // Danh sách model ưu tiên ổn định nhất cho Vision hiện nay
                         let availableModels = [
                             'gemini-1.5-flash',
+                            'gemini-2.0-flash',
                             'gemini-1.5-flash-latest',
+                            'gemini-1.5-flash-8b',
                             'gemini-1.5-pro',
-                            'gemini-1.5-pro-latest',
-                            'gemini-pro-vision'
+                            'gemini-1.5-pro-latest'
                         ];
 
                         try {
-                            const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${this.googleApiKey}`);
+                            const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${cleanKey}`);
                             if (listRes.ok) {
                                 const listData = await listRes.json();
                                 const fetchedModels = (listData.models || [])
@@ -1944,12 +1948,13 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                                         const methods = m.supportedGenerationMethods || [];
                                         const name = (m.name || '').toLowerCase();
                                         return methods.includes('generateContent') &&
-                                               (name.includes('1.5-flash') || name.includes('1.5-pro')) &&
-                                               !name.includes('experimental') && !name.includes('2.5');
+                                               name.includes('gemini') &&
+                                               !name.includes('embedding') &&
+                                               !name.includes('aqa');
                                     })
                                     .map(m => m.name.replace('models/', ''));
                                 if (fetchedModels.length > 0) {
-                                    // Gộp và loại bỏ trùng lặp
+                                    // Gộp và loại bỏ trùng lặp, đưa model API key hỗ trợ lên đầu
                                     availableModels = [...new Set([...fetchedModels, ...availableModels])];
                                 }
                             }
@@ -1961,7 +1966,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                         for (const modelName of availableModels) {
                             try {
-                                const tryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.googleApiKey}`, {
+                                const tryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${cleanKey}`, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({
