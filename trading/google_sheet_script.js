@@ -256,10 +256,15 @@ function handleSaveTrade(data) {
 
   const status = (data.status || '').toUpperCase();
   const rowRange = sheet.getRange(targetRow, 1, 1, row.length);
-  if (status === 'WIN')       rowRange.setBackground('#0D2B1D');
-  else if (status === 'LOSS') rowRange.setBackground('#2B0D15');
-  else if (status === 'BE')   rowRange.setBackground('#1A1A0D');
-  else                        rowRange.setBackground('#0D1322');
+  if (status === 'WIN') {
+    rowRange.setBackground('#E6F4EA').setFontColor('#137333');
+  } else if (status === 'LOSS') {
+    rowRange.setBackground('#FCE8E6').setFontColor('#C5221F');
+  } else if (status === 'BE') {
+    rowRange.setBackground('#FEF7E0').setFontColor('#B06000');
+  } else {
+    rowRange.setBackground('#FFFFFF').setFontColor('#202124');
+  }
 
   return jsonResponse({ success: true, row: targetRow, htfUrl, mtfUrl, ltfUrl, updated: !!existingRowNumber });
 }
