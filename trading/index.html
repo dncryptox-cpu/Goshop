@@ -1847,32 +1847,34 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 {"symbol":"BTCUSDT","direction":"LONG","entryPrice":64200,"stopLoss":63714.7,"takeProfit":64502.4}`;
 
                         // Bước 1: Lấy danh sách model thực tế khả dụng với API key này
-                        let availableModels = [];
+                        // Danh sách model ưu tiên ổn định nhất cho Vision
+                        let availableModels = [
+                            'gemini-1.5-flash',
+                            'gemini-1.5-flash-latest',
+                            'gemini-1.5-pro',
+                            'gemini-1.5-pro-latest',
+                            'gemini-pro-vision'
+                        ];
+
                         try {
                             const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${this.googleApiKey}`);
                             if (listRes.ok) {
                                 const listData = await listRes.json();
-                                // Lọc các model hỗ trợ generateContent và có khả năng xử lý ảnh (vision)
-                                availableModels = (listData.models || [])
+                                const fetchedModels = (listData.models || [])
                                     .filter(m => {
                                         const methods = m.supportedGenerationMethods || [];
-                                        const name = m.name || '';
+                                        const name = (m.name || '').toLowerCase();
                                         return methods.includes('generateContent') &&
-                                               (name.includes('flash') || name.includes('pro') || name.includes('vision'));
+                                               (name.includes('1.5-flash') || name.includes('1.5-pro')) &&
+                                               !name.includes('experimental') && !name.includes('2.5');
                                     })
-                                    .map(m => m.name.replace('models/', ''))
-                                    // Ưu tiên flash trước (nhanh + có vision)
-                                    .sort((a, b) => {
-                                        const priority = (s) => s.includes('flash') ? 0 : s.includes('pro') ? 1 : 2;
-                                        return priority(a) - priority(b);
-                                    });
+                                    .map(m => m.name.replace('models/', ''));
+                                if (fetchedModels.length > 0) {
+                                    // Gộp và loại bỏ trùng lặp
+                                    availableModels = [...new Set([...fetchedModels, ...availableModels])];
+                                }
                             }
-                        } catch(e) { /* nếu không lấy được list thì dùng fallback */ }
-
-                        // Fallback nếu ListModels không trả về kết quả
-                        if (!availableModels.length) {
-                            availableModels = ['gemini-1.5-flash', 'gemini-1.5-flash-8b', 'gemini-1.5-pro', 'gemini-pro-vision'];
-                        }
+                        } catch(e) { /* fallback dùng availableModels mặc định */ }
 
                         // Bước 2: Thử lần lượt từng model khả dụng
                         let res = null;
@@ -1901,11 +1903,12 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                                     const errData = await tryRes.json();
                                     lastErrorMsg = errData?.error?.message || `HTTP ${tryRes.status}`;
                                     console.warn(`❌ Model ${modelName} thất bại:`, lastErrorMsg);
-                                    // Nếu lỗi quota thì bỏ qua thử tiếp, nếu lỗi khác thì dừng
-                                    if (!lastErrorMsg.includes('quota') && !lastErrorMsg.includes('not found') && !lastErrorMsg.includes('not supported')) break;
+                                    // Luôn tiếp tục thử model tiếp theo trong danh sách, không dừng lại!
+                                    continue;
                                 }
                             } catch (e) {
                                 lastErrorMsg = e.message;
+                                continue;
                             }
                         }
 
