@@ -38,6 +38,7 @@ function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
     if (data.action === 'saveTrade')      return handleSaveTrade(data);
+    if (data.action === 'deleteTrade')    return handleDeleteTrade(data);
     if (data.action === 'saveCapital')    return handleSaveCapital(data);
     if (data.action === 'changePassword') return handleChangePassword(data);
     return jsonResponse({ success: false, error: 'Unknown action' });
@@ -167,8 +168,9 @@ function handleGetTrades(data) {
   for (let i = 1; i < rows.length; i++) {
     const rowUser = String(rows[i][1] || '').trim().toLowerCase();
     if (!username || rowUser === username) {
+      const storedId = String(rows[i][19] || '').trim();
       trades.push({
-        id: 'cloud_' + i,
+        id: storedId || ('cloud_' + (i + 1)),
         date: String(rows[i][2] || '').split('T')[0],
         pair: String(rows[i][3] || ''),
         direction: String(rows[i][4] || 'LONG'),
@@ -200,7 +202,7 @@ function handleSaveTrade(data) {
   const sheet = getOrCreateLogSheet();
   ensureHeader(sheet);
 
-  const tradeId = data.id || ('trade_' + Date.now());
+  const tradeId = String(data.id || ('trade_' + Date.now())).trim();
   const dateTag = (data.date || new Date().toISOString().split('T')[0]).replace(/-/g, '');
   const pairTag = (data.pair || 'PAIR').toUpperCase();
 
@@ -227,18 +229,58 @@ function handleSaveTrade(data) {
     data.setupTag || '',
     htfUrl,
     mtfUrl,
-    ltfUrl
+    ltfUrl,
+    tradeId
   ];
-  sheet.appendRow(row);
 
-  const lastRow = sheet.getLastRow();
+  // Tìm dòng có sẵn để cập nhật (tránh trùng lặp)
+  const allRows = sheet.getDataRange().getValues();
+  let existingRowNumber = null;
+  for (let i = 1; i < allRows.length; i++) {
+    const rowId = String(allRows[i][19] || '').trim();
+    const cloudId = 'cloud_' + (i + 1);
+    if (tradeId && (tradeId === rowId || tradeId === cloudId)) {
+      existingRowNumber = i + 1;
+      break;
+    }
+  }
+
+  let targetRow;
+  if (existingRowNumber) {
+    targetRow = existingRowNumber;
+    sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
+  } else {
+    sheet.appendRow(row);
+    targetRow = sheet.getLastRow();
+  }
+
   const status = (data.status || '').toUpperCase();
-  const rowRange = sheet.getRange(lastRow, 1, 1, row.length);
+  const rowRange = sheet.getRange(targetRow, 1, 1, row.length);
   if (status === 'WIN')       rowRange.setBackground('#0D2B1D');
   else if (status === 'LOSS') rowRange.setBackground('#2B0D15');
   else if (status === 'BE')   rowRange.setBackground('#1A1A0D');
+  else                        rowRange.setBackground('#0D1322');
 
-  return jsonResponse({ success: true, row: lastRow, htfUrl, mtfUrl, ltfUrl });
+  return jsonResponse({ success: true, row: targetRow, htfUrl, mtfUrl, ltfUrl, updated: !!existingRowNumber });
+}
+
+// ───────────────────────────────────────────────
+// ACTION: DELETE TRADE — Xoá lệnh khỏi Google Sheet
+// ───────────────────────────────────────────────
+function handleDeleteTrade(data) {
+  const tradeId = String(data.id || '').trim();
+  if (!tradeId) return jsonResponse({ success: false, error: 'Thiếu ID lệnh cần xoá' });
+  const sheet = getOrCreateLogSheet();
+  const allRows = sheet.getDataRange().getValues();
+  for (let i = 1; i < allRows.length; i++) {
+    const rowId = String(allRows[i][19] || '').trim();
+    const cloudId = 'cloud_' + (i + 1);
+    if (tradeId === rowId || tradeId === cloudId) {
+      sheet.deleteRow(i + 1);
+      return jsonResponse({ success: true, message: 'Đã xoá lệnh khỏi Google Sheet' });
+    }
+  }
+  return jsonResponse({ success: false, error: 'Không tìm thấy lệnh cần xoá' });
 }
 
 // ───────────────────────────────────────────────
@@ -258,7 +300,7 @@ function ensureHeader(sheet) {
     'Cặp', 'Vị Thế', 'Entry', 'Stop Loss', 'Take Profit',
     'Lots', '$ Value', 'Risk $', 'R:R', 'PnL ($)',
     'Trạng Thái', 'Ghi Chú', 'Setup Tag',
-    'Ảnh HTF', 'Ảnh MTF', 'Ảnh LTF'
+    'Ảnh HTF', 'Ảnh MTF', 'Ảnh LTF', 'Trade ID'
   ];
   sheet.appendRow(headers);
   const r = sheet.getRange(1, 1, 1, headers.length);
