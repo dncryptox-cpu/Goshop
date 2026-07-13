@@ -37,7 +37,8 @@ function doGet(e) {
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    if (data.action === 'saveTrade') return handleSaveTrade(data);
+    if (data.action === 'saveTrade')  return handleSaveTrade(data);
+    if (data.action === 'saveCapital') return handleSaveCapital(data);
     return jsonResponse({ success: false, error: 'Unknown action' });
   } catch (err) {
     return jsonResponse({ success: false, error: err.message });
@@ -62,13 +63,19 @@ function handleLogin(data) {
   }
 
   const rows = userSheet.getDataRange().getValues();
-  // Bỏ qua dòng header (dòng 1 — Username / Pass)
   for (let i = 1; i < rows.length; i++) {
     const rowUser = String(rows[i][0] || '').trim().toLowerCase();
     const rowPass = String(rows[i][1] || '').trim();
     if (rowUser === username.toLowerCase() && rowPass === password) {
-      // Trả về displayName đúng chuẩn (giữ nguyên casing từ Sheet)
-      return jsonResponse({ success: true, username: rows[i][0] });
+      // Cột C = Capital, Cột D = Currency (tuỳ chọn)
+      const capital  = Number(rows[i][2]) || null;
+      const currency = String(rows[i][3] || 'USD');
+      return jsonResponse({
+        success: true,
+        username: rows[i][0],
+        capital:  capital,
+        currency: currency
+      });
     }
   }
 
@@ -76,10 +83,45 @@ function handleLogin(data) {
 }
 
 // ───────────────────────────────────────────────
+// ACTION: SAVE CAPITAL — Lưu vốn + currency vào sheet Nguoidung
+// ───────────────────────────────────────────────
+function handleSaveCapital(data) {
+  const username = (data.username || '').trim().toLowerCase();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const userSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!userSheet) return jsonResponse({ success: false, error: 'Sheet Nguoidung không tồn tại' });
+  const rows = userSheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0] || '').trim().toLowerCase() === username) {
+      userSheet.getRange(i + 1, 3).setValue(Number(data.capital) || 0);
+      userSheet.getRange(i + 1, 4).setValue(data.currency || 'USD');
+      return jsonResponse({ success: true });
+    }
+  }
+  return jsonResponse({ success: false, error: 'Không tìm thấy user: ' + data.username });
+}
+
+// ───────────────────────────────────────────────
 // ACTION: GET TRADES — Tải toàn bộ lệnh từ Cloud về máy
 // ───────────────────────────────────────────────
 function handleGetTrades(data) {
   const username = (data.username || '').trim().toLowerCase();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // Lấy capital + currency của user từ sheet Nguoidung
+  let capital = null, currency = 'USD';
+  const userSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (userSheet) {
+    const userRows = userSheet.getDataRange().getValues();
+    for (let i = 1; i < userRows.length; i++) {
+      if (String(userRows[i][0] || '').trim().toLowerCase() === username) {
+        capital  = Number(userRows[i][2]) || null;
+        currency = String(userRows[i][3] || 'USD');
+        break;
+      }
+    }
+  }
+
   const sheet = getOrCreateLogSheet();
   const rows = sheet.getDataRange().getValues();
   const trades = [];
@@ -110,7 +152,7 @@ function handleGetTrades(data) {
     }
   }
   trades.reverse();
-  return jsonResponse({ success: true, trades: trades });
+  return jsonResponse({ success: true, trades, capital, currency });
 }
 
 // ───────────────────────────────────────────────
@@ -197,6 +239,8 @@ function getOrCreateDriveFolder() {
 
 function uploadBase64Image(base64DataUrl, filename) {
   if (!base64DataUrl || typeof base64DataUrl !== 'string' || base64DataUrl.length < 100) return '';
+  // Skip nếu đã là URL (drive hoặc http)
+  if (base64DataUrl.startsWith('http')) return base64DataUrl;
   try {
     let contentType = 'image/png';
     let base64Data = base64DataUrl;
@@ -209,7 +253,9 @@ function uploadBase64Image(base64DataUrl, filename) {
     const folder = getOrCreateDriveFolder();
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return file.getUrl();
+    // Trả về URL thumbnail trực tiếp — hiển thị được trong <img src> không cần đăng nhập
+    const fileId = file.getId();
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1200`;
   } catch (e) {
     Logger.log('Upload error: ' + e.toString());
     return '';

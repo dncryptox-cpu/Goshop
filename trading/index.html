@@ -1571,10 +1571,24 @@
                         const url = targetUrl + '?action=getTrades&username=' + encodeURIComponent(this.traderUsername);
                         const res = await fetch(url);
                         const result = await res.json();
-                        if (result.success && Array.isArray(result.trades) && result.trades.length > 0) {
-                            this.trades = result.trades;
+                        if (result.success) {
+                            // Áp dụng capital + currency từ cloud nếu có
+                            if (result.capital && Number(result.capital) > 0) {
+                                this.totalCapital = Number(result.capital);
+                            }
+                            if (result.currency) {
+                                this.currency = result.currency;
+                            }
+                            // Áp dụng trades nếu có
+                            if (Array.isArray(result.trades) && result.trades.length > 0) {
+                                this.trades = result.trades;
+                            }
+                            // Cập nhật localStorage
+                            const u = this.traderUsername;
+                            localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
+                            localStorage.setItem(`dnc_currency_${u}`, this.currency);
                             this.saveTradesToStorage();
-                            console.log('✅ Đã đồng bộ ' + result.trades.length + ' lệnh từ Google Sheet về máy!');
+                            console.log('✅ Cloud sync: ' + (result.trades || []).length + ' lệnh, vốn: ' + this.totalCapital);
                         }
                     } catch (err) {
                         console.warn('⚠️ Không thể tải dữ liệu cloud:', err.message);
@@ -1946,6 +1960,21 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     const u = this.traderUsername || 'default';
                     localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
                     localStorage.setItem(`dnc_currency_${u}`, this.currency);
+                    // Sync lên cloud (fire-and-forget)
+                    const targetUrl = this.sheetWebhookUrl || this.authWebhookUrl;
+                    if (targetUrl && this.traderUsername) {
+                        fetch(targetUrl, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({
+                                action: 'saveCapital',
+                                username: this.traderUsername,
+                                capital: this.totalCapital,
+                                currency: this.currency
+                            })
+                        }).catch(() => {});
+                    }
                 },
 
                 saveTradesToStorage() {
