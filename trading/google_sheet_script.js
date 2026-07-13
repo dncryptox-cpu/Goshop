@@ -37,8 +37,9 @@ function doGet(e) {
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    if (data.action === 'saveTrade')  return handleSaveTrade(data);
-    if (data.action === 'saveCapital') return handleSaveCapital(data);
+    if (data.action === 'saveTrade')      return handleSaveTrade(data);
+    if (data.action === 'saveCapital')    return handleSaveCapital(data);
+    if (data.action === 'changePassword') return handleChangePassword(data);
     return jsonResponse({ success: false, error: 'Unknown action' });
   } catch (err) {
     return jsonResponse({ success: false, error: err.message });
@@ -99,6 +100,43 @@ function handleSaveCapital(data) {
     }
   }
   return jsonResponse({ success: false, error: 'Không tìm thấy user: ' + data.username });
+}
+
+// ───────────────────────────────────────────────
+// ACTION: CHANGE PASSWORD — đổi mật khẩu, lưu vào Sheet cột B
+// ───────────────────────────────────────────────
+function handleChangePassword(data) {
+  const username    = (data.username    || '').trim().toLowerCase();
+  const oldPassword = (data.oldPassword || '').trim();
+  const newPassword = (data.newPassword || '').trim();
+
+  if (!username || !oldPassword || !newPassword) {
+    return jsonResponse({ success: false, error: 'Thiếu thông tin đổi mật khẩu' });
+  }
+  if (newPassword.length < 4) {
+    return jsonResponse({ success: false, error: 'Mật khẩu mới phải có ít nhất 4 ký tự' });
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const userSheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!userSheet) return jsonResponse({ success: false, error: 'Sheet Nguoidung không tồn tại' });
+
+  const rows = userSheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    const rowUser = String(rows[i][0] || '').trim().toLowerCase();
+    const rowPass = String(rows[i][1] || '').trim();
+    if (rowUser === username) {
+      // Xác minh mật khẩu cũ
+      if (rowPass !== oldPassword) {
+        return jsonResponse({ success: false, error: 'Mật khẩu cũ không đúng' });
+      }
+      // Ghi mật khẩu mới vào cột B
+      userSheet.getRange(i + 1, 2).setValue(newPassword);
+      Logger.log(`✅ User ${rows[i][0]} đã đổi mật khẩu thành công`);
+      return jsonResponse({ success: true, message: 'Đổi mật khẩu thành công!' });
+    }
+  }
+  return jsonResponse({ success: false, error: 'Không tìm thấy tài khoản: ' + username });
 }
 
 // ───────────────────────────────────────────────

@@ -781,6 +781,36 @@
                 </div>
             </div>
 
+            <!-- Change Password -->
+            <div class="glass-panel rounded-2xl p-5 border border-amber-500/20 space-y-3">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
+                    <i data-lucide="key-round" class="w-4 h-4"></i>
+                    Đổi Mật Khẩu
+                </h4>
+                <p class="text-xs text-slate-400">Mật khẩu mới sẽ được lưu lên hệ thống ngay lập tức. Nếu quên mật khẩu, liên hệ DNC để reset.</p>
+
+                <div class="space-y-2">
+                    <input type="password" x-model="pwOld" placeholder="Mật khẩu hiện tại..."
+                        class="w-full bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+                    <input type="password" x-model="pwNew" placeholder="Mật khẩu mới (ít nhất 4 ký tự)..."
+                        class="w-full bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+                    <input type="password" x-model="pwConfirm" placeholder="Xác nhận mật khẩu mới..."
+                        class="w-full bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button @click="changePasswordOnline()"
+                        :disabled="changePwLoading"
+                        class="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all">
+                        <i data-lucide="save" class="w-4 h-4" :class="{'animate-spin': changePwLoading}"></i>
+                        <span x-text="changePwLoading ? 'Đang lưu...' : 'Đổi Mật Khẩu'"></span>
+                    </button>
+                    <span x-show="changePwMsg" x-text="changePwMsg"
+                        :class="changePwOk ? 'text-emerald-400' : 'text-rose-400'"
+                        class="text-xs font-bold"></span>
+                </div>
+            </div>
+
             <!-- Logout -->
             <div class="flex items-center gap-3 pt-2">
                 <button @click="lockApp()"
@@ -1409,6 +1439,10 @@
                 loginErrorMsg: '',
                 loginLoading: false,
                 cloudSyncing: false,
+                // Đổi mật khẩu
+                pwOld: '', pwNew: '', pwConfirm: '',
+                changePwLoading: false,
+                changePwMsg: '', changePwOk: false,
                 showPassword: false,
                 settingsOpen: false,
                 // AUTH_URL: URL Apps Script của DNC dùng để xác thực user
@@ -1561,6 +1595,59 @@
                 saveSheetSettings() {
                     localStorage.setItem(`dnc_sheet_url_${this.traderUsername}`, this.sheetWebhookUrl);
                     alert('✅ Đã lưu cài đặt Google Sheet cho ' + this.traderUsername);
+                },
+
+                async changePasswordOnline() {
+                    this.changePwMsg = '';
+                    if (!this.pwOld || !this.pwNew || !this.pwConfirm) {
+                        this.changePwOk = false;
+                        this.changePwMsg = '⚠️ Vui lòng điền đầy đủ 3 ô mật khẩu!';
+                        return;
+                    }
+                    if (this.pwNew !== this.pwConfirm) {
+                        this.changePwOk = false;
+                        this.changePwMsg = '❌ Mật khẩu mới và xác nhận không khớp!';
+                        return;
+                    }
+                    if (this.pwNew.length < 4) {
+                        this.changePwOk = false;
+                        this.changePwMsg = '❌ Mật khẩu mới phải có ít nhất 4 ký tự!';
+                        return;
+                    }
+                    const targetUrl = this.sheetWebhookUrl || this.authWebhookUrl;
+                    if (!targetUrl) {
+                        this.changePwOk = false;
+                        this.changePwMsg = '❌ Chưa cấu hình Apps Script URL!';
+                        return;
+                    }
+                    this.changePwLoading = true;
+                    try {
+                        const res = await fetch(targetUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({
+                                action: 'changePassword',
+                                username: this.traderUsername,
+                                oldPassword: this.pwOld,
+                                newPassword: this.pwNew
+                            })
+                        });
+                        const result = await res.json();
+                        if (result.success) {
+                            this.changePwOk = true;
+                            this.changePwMsg = '✅ Đổi mật khẩu thành công!';
+                            this.pwOld = ''; this.pwNew = ''; this.pwConfirm = '';
+                        } else {
+                            this.changePwOk = false;
+                            this.changePwMsg = '❌ ' + (result.error || 'Lỗi không xác định');
+                        }
+                    } catch(err) {
+                        this.changePwOk = false;
+                        this.changePwMsg = '❌ Lỗi kết nối: ' + err.message;
+                    } finally {
+                        this.changePwLoading = false;
+                        setTimeout(() => { this.changePwMsg = ''; }, 4000);
+                    }
                 },
 
                 async pullTradesFromCloud() {
