@@ -218,6 +218,8 @@ function getOrCreateSettingSheet() {
   let sheet = ss.getSheetByName('Setting') || ss.getSheetByName('Settings');
   if (!sheet) {
     sheet = ss.insertSheet('Setting');
+  }
+  if (sheet.getLastRow() === 0) {
     const headers = ['Cài Đặt (Key)', 'Giá Trị (Value)', 'Ghi Chú'];
     sheet.appendRow(headers);
     const r = sheet.getRange(1, 1, 1, headers.length);
