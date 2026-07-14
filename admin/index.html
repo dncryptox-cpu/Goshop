@@ -9274,64 +9274,23 @@
 
                 getChatgptSharedList() {
                     try {
-                        const data = (this.db && this.db.DATA_YTB) ? this.db.DATA_YTB : [];
-                        if (!Array.isArray(data) || data.length === 0) return [];
-
                         const list = [];
-                        data.forEach(row => {
-                            if (!row || typeof row !== 'object') return;
-                            const vals = Object.values(row);
-                            if (vals.length < 5) return;
-
-                            // Column E is index 4, Column G is index 6
-                            const product = String(vals[4] || vals[6] || row['Sản phẩm'] || row['Gói'] || '').trim();
-                            // Filter for GPT / ChatGPT / GPTshare
-                            if (product.toLowerCase().includes('gpt') || product.toLowerCase().includes('chatgpt')) {
-                                const dateStr = String(vals[0] || row['Ngày'] || '').trim();
-                                const orderId = String(vals[1] || row['Mã Đơn'] || '').trim();
-                                const email = String(vals[3] || row['Email'] || '').trim();
-                                const duration = parseInt(vals[5] || row['Số tháng']) || 0;
-                                const ctv = String(vals[7] || row['CTV'] || '').trim();
-                                const note = String(vals[15] || vals[vals.length - 1] || row['Ghi chú'] || '').trim();
-
-                                // Calculate Expiry Date
-                                let expiryDate = '--';
-                                let daysLeft = null;
-                                if (dateStr && duration > 0) {
-                                    let pDate;
-                                    if (dateStr.includes('/')) {
-                                        const parts = dateStr.split('/');
-                                        if (parts.length === 3) {
-                                            pDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
-                                        }
-                                    } else {
-                                        pDate = new Date(dateStr);
-                                    }
-                                    
-                                    if (pDate && !isNaN(pDate.getTime())) {
-                                        pDate.setMonth(pDate.getMonth() + duration);
-                                        const dd = String(pDate.getDate()).padStart(2, '0');
-                                        const mm = String(pDate.getMonth() + 1).padStart(2, '0');
-                                        const yyyy = pDate.getFullYear();
-                                        expiryDate = `${dd}/${mm}/${yyyy}`;
-                                        
-                                        const today = new Date();
-                                        today.setHours(0,0,0,0);
-                                        const diffTime = pDate.getTime() - today.getTime();
-                                        daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                    }
-                                }
-
+                        const data = this.dataGocList || [];
+                        data.forEach(item => {
+                            if (!item) return;
+                            const product = String(item.product || '').trim();
+                            // Filter for GPT / ChatGPT / GPTshare / AI
+                            if (product.toLowerCase().includes('gpt') || product.toLowerCase().includes('chatgpt') || product.toLowerCase().includes('trợ lý')) {
                                 list.push({
-                                    date: dateStr,
-                                    orderId: orderId,
-                                    email: email,
+                                    date: item.purchaseDate || '--',
+                                    orderId: '',
+                                    email: item.email || '--',
                                     product: product,
-                                    duration: duration,
-                                    expiryDate: expiryDate,
-                                    daysLeft: daysLeft,
-                                    ctv: ctv,
-                                    note: note
+                                    duration: parseInt(item.months) || 0,
+                                    expiryDate: item.expiryDate || '--',
+                                    daysLeft: item.daysLeft,
+                                    ctv: item.staff || 'Dnc',
+                                    note: item.subEmail || 'Chưa ghi chú thiết bị'
                                 });
                             }
                         });
@@ -10074,7 +10033,7 @@
                     this.loadTwofaData();
                     this.fetchDataGoc();
                     this.$watch('activeModule', (val) => {
-                        if (val === 'data_goc' || val === 'dashboard') {
+                        if (val === 'data_goc' || val === 'dashboard' || val === 'chatgpt_shared') {
                             this.fetchDataGoc();
                         }
                         if (val === 'dashboard') {
