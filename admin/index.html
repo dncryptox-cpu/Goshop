@@ -9275,22 +9275,79 @@
                 getChatgptSharedList() {
                     try {
                         const list = [];
-                        const data = this.dataGocList || [];
-                        data.forEach(item => {
-                            if (!item) return;
-                            const product = String(item.product || '').trim();
-                            // Filter for GPT / ChatGPT / GPTshare / AI
-                            if (product.toLowerCase().includes('gpt') || product.toLowerCase().includes('chatgpt') || product.toLowerCase().includes('trợ lý')) {
+                        const data = (this.db && this.db.DATA_YTB) ? this.db.DATA_YTB : [];
+                        if (!Array.isArray(data) || data.length === 0) return [];
+
+                        data.forEach(row => {
+                            if (!row || typeof row !== 'object') return;
+                            const vals = Object.values(row);
+                            if (vals.length < 5) return;
+
+                            const keys = Object.keys(row).map(k => String(k || '').toLowerCase().trim());
+                            
+                            // Find product column index dynamically or default to Column E/G
+                            const productIdx = keys.findIndex(k => k.includes('sản phẩm') || k.includes('gói') || k.includes('sku') || k.includes('dịch vụ'));
+                            const product = String(productIdx !== -1 ? vals[productIdx] : (vals[4] || row['Sản phẩm'] || '')).trim();
+
+                            // Filter for GPT / ChatGPT / GPTshare
+                            if (product.toLowerCase().includes('gpt') || product.toLowerCase().includes('chatgpt')) {
+                                const emailIdx = keys.findIndex(k => k.includes('email') || k.includes('thư'));
+                                const ctvIdx = keys.findIndex(k => k.includes('ctv') || k.includes('người giới thiệu') || k.includes('nhân viên'));
+                                const durationIdx = keys.findIndex(k => k.includes('thời gian') || k.includes('tháng') || k.includes('duration'));
+                                const orderIdIdx = keys.findIndex(k => k.includes('mã đơn') || k.includes('order id'));
+
+                                const dateStr = String(vals[0] || row['Ngày'] || '').trim();
+                                const orderId = String(orderIdIdx !== -1 ? vals[orderIdIdx] : (vals[1] || row['Mã Đơn'] || '')).trim();
+                                const email = String(emailIdx !== -1 ? vals[emailIdx] : (vals[3] || row['Email'] || '')).trim();
+                                const duration = parseInt(durationIdx !== -1 ? vals[durationIdx] : (vals[5] || row['Số tháng'] || '0')) || 0;
+                                const ctv = String(ctvIdx !== -1 ? vals[ctvIdx] : (vals[7] || row['CTV'] || '')).trim();
+
+                                // HSD (Expiry Date) is in Column N (index 13)
+                                const hsdIdx = keys.findIndex(k => k === 'hsd' || k.includes('hạn sử dụng') || k.includes('expiry'));
+                                let expiryDate = String(hsdIdx !== -1 ? vals[hsdIdx] : (vals[13] || row['HSD'] || '--')).trim();
+                                if (expiryDate && expiryDate.includes('T')) {
+                                    expiryDate = expiryDate.split('T')[0];
+                                }
+
+                                // Mã thiết bị (Device note) is in Column P (index 15)
+                                const noteIdx = keys.findIndex(k => k.includes('thiết bị') || k.includes('ghi chú') || k.includes('note') || k.includes('device'));
+                                const note = String(noteIdx !== -1 ? vals[noteIdx] : (vals[15] || row['Ghi chú'] || 'Chưa ghi chú thiết bị')).trim();
+
+                                // Calculate Days Left based on expiryDate (Column N)
+                                let daysLeft = null;
+                                if (expiryDate && expiryDate !== '--' && expiryDate !== '') {
+                                    try {
+                                        let expDate;
+                                        if (expiryDate.includes('/')) {
+                                            const parts = expiryDate.split('/');
+                                            if (parts.length === 3) {
+                                                expDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                                            }
+                                        } else {
+                                            expDate = new Date(expiryDate);
+                                        }
+
+                                        if (expDate && !isNaN(expDate.getTime())) {
+                                            const today = new Date();
+                                            today.setHours(0,0,0,0);
+                                            const diffTime = expDate.getTime() - today.getTime();
+                                            daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                        }
+                                    } catch (e) {
+                                        console.error('Error calculating days left for expiryDate:', expiryDate, e);
+                                    }
+                                }
+
                                 list.push({
-                                    date: item.purchaseDate || '--',
-                                    orderId: '',
-                                    email: item.email || '--',
+                                    date: dateStr,
+                                    orderId: orderId,
+                                    email: email,
                                     product: product,
-                                    duration: parseInt(item.months) || 0,
-                                    expiryDate: item.expiryDate || '--',
-                                    daysLeft: item.daysLeft,
-                                    ctv: item.staff || 'Dnc',
-                                    note: item.subEmail || 'Chưa ghi chú thiết bị'
+                                    duration: duration,
+                                    expiryDate: expiryDate || '--',
+                                    daysLeft: daysLeft,
+                                    ctv: ctv,
+                                    note: note
                                 });
                             }
                         });
