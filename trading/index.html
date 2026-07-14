@@ -1665,22 +1665,37 @@
                             const result = await res.json();
                             if (result.success) {
                                 this.traderUsername = result.username || this.inputUsername;
+                                const u = this.traderUsername;
                                 this.isLocked = false;
                                 this.loginError = false;
                                 this.inputPasscode = '';
                                 sessionStorage.setItem('dnc_trading_unlocked', 'true');
-                                sessionStorage.setItem('dnc_trading_loggedin_user', this.traderUsername);
-                                // Load cài đặt riêng của user này
-                                this.loadUserSettings();
-                                // Ưu tiên áp dụng vốn và tiền tệ cá nhân hóa từ server khi đăng nhập máy mới
+                                sessionStorage.setItem('dnc_trading_loggedin_user', u);
+                                // Ưu tiên áp dụng vốn, tiền tệ, AI Key và Webhook URL từ server khi đăng nhập thiết bị mới
                                 if (result.capital !== null && result.capital !== undefined && Number(result.capital) > 0) {
                                     this.totalCapital = Number(result.capital);
-                                    localStorage.setItem(`dnc_capital_${this.traderUsername}`, this.totalCapital);
+                                    localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
                                 }
                                 if (result.currency) {
                                     this.currency = result.currency;
-                                    localStorage.setItem(`dnc_currency_${this.traderUsername}`, this.currency);
+                                    localStorage.setItem(`dnc_currency_${u}`, this.currency);
                                 }
+                                if (result.geminiApiKey && String(result.geminiApiKey).trim() !== '') {
+                                    this.googleApiKey = String(result.geminiApiKey).trim();
+                                    localStorage.setItem(`dnc_ai_key_${u}`, this.googleApiKey);
+                                    localStorage.setItem('dnc_trading_ai_key', this.googleApiKey);
+                                }
+                                if (result.webhookUrl && String(result.webhookUrl).trim() !== '') {
+                                    this.sheetWebhookUrl = String(result.webhookUrl).trim();
+                                    localStorage.setItem(`dnc_sheet_url_${u}`, this.sheetWebhookUrl);
+                                    localStorage.setItem('dnc_trading_sheet_url', this.sheetWebhookUrl);
+                                }
+                                if (result.riskPercent !== null && result.riskPercent !== undefined && Number(result.riskPercent) > 0) {
+                                    this.riskPercent = Number(result.riskPercent);
+                                    localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
+                                }
+                                // Load cài đặt và kéo lệnh từ sheet cá nhân
+                                this.loadUserSettings();
                             } else {
                                 this.loginError = true;
                                 this.loginErrorMsg = result.error || 'Sai tài khoản hoặc mật khẩu!';
@@ -1732,15 +1747,57 @@
                     this.$nextTick(() => lucide.createIcons());
                 },
 
+                async syncSettingsToCloud() {
+                    const payload = {
+                        action: 'saveSettings',
+                        username: this.traderUsername || 'Anonymous',
+                        geminiApiKey: (this.googleApiKey || '').trim(),
+                        webhookUrl: (this.sheetWebhookUrl || '').trim(),
+                        riskPercent: Number(this.riskPercent) || 5,
+                        capital: Number(this.totalCapital) || 10000,
+                        currency: this.currency || 'USD'
+                    };
+
+                    // Gửi lên Webhook riêng của khách hàng (nếu có)
+                    if (this.sheetWebhookUrl) {
+                        try {
+                            await fetch(this.sheetWebhookUrl, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify(payload)
+                            });
+                        } catch(e) {}
+                    }
+
+                    // Gửi lên Webhook Master DNC (nếu có và khác sheetWebhookUrl)
+                    if (this.authWebhookUrl && this.authWebhookUrl !== this.sheetWebhookUrl) {
+                        try {
+                            await fetch(this.authWebhookUrl, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify(payload)
+                            });
+                        } catch(e) {}
+                    }
+                },
+
                 saveApiKey() {
                     this.googleApiKey = (this.googleApiKey || '').trim();
                     localStorage.setItem(`dnc_ai_key_${this.traderUsername}`, this.googleApiKey);
-                    alert('✅ Đã lưu API Key cho tài khoản ' + this.traderUsername);
+                    localStorage.setItem('dnc_trading_ai_key', this.googleApiKey);
+                    this.syncSettingsToCloud();
+                    alert('✅ Đã lưu AI Gemini API Key và đồng bộ lên Google Sheet (Tab Setting) cho tài khoản ' + this.traderUsername);
                 },
 
-                saveSheetSettings() {
+                async saveSheetSettings() {
+                    this.sheetWebhookUrl = (this.sheetWebhookUrl || '').trim();
                     localStorage.setItem(`dnc_sheet_url_${this.traderUsername}`, this.sheetWebhookUrl);
-                    alert('✅ Đã lưu cài đặt Google Sheet cho ' + this.traderUsername);
+                    localStorage.setItem('dnc_trading_sheet_url', this.sheetWebhookUrl);
+                    this.syncSettingsToCloud();
+                    alert('✅ Đã kết nối Webhook Google Sheet cá nhân!\n\nĐang tự động tải cấu hình (AI Key, Vốn, Risk) và Lệnh về thiết bị này...');
+                    await this.pullTradesFromCloud();
                 },
 
                 async changePasswordOnline() {
@@ -1799,8 +1856,9 @@
                 async pullTradesFromCloud() {
                     if (!this.traderUsername) return;
                     this.cloudSyncing = true;
+                    const u = this.traderUsername;
 
-                    // 1. Đồng bộ Vốn cá nhân hóa từ sheet Nguoidung về máy mới
+                    // 1. Đồng bộ Vốn và Cài đặt cá nhân từ sheet Nguoidung / Setting Master về máy mới
                     if (this.authWebhookUrl) {
                         try {
                             const infoUrl = this.authWebhookUrl + '?action=getUserInfo&username=' + encodeURIComponent(this.traderUsername);
@@ -1809,21 +1867,35 @@
                             if (resJson.success) {
                                 if (resJson.capital !== null && resJson.capital !== undefined && Number(resJson.capital) > 0) {
                                     this.totalCapital = Number(resJson.capital);
-                                    localStorage.setItem(`dnc_capital_${this.traderUsername}`, this.totalCapital);
+                                    localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
                                 }
                                 if (resJson.currency) {
                                     this.currency = resJson.currency;
-                                    localStorage.setItem(`dnc_currency_${this.traderUsername}`, this.currency);
+                                    localStorage.setItem(`dnc_currency_${u}`, this.currency);
+                                }
+                                if (resJson.geminiApiKey && String(resJson.geminiApiKey).trim() !== '') {
+                                    this.googleApiKey = String(resJson.geminiApiKey).trim();
+                                    localStorage.setItem(`dnc_ai_key_${u}`, this.googleApiKey);
+                                    localStorage.setItem('dnc_trading_ai_key', this.googleApiKey);
+                                }
+                                if (resJson.webhookUrl && String(resJson.webhookUrl).trim() !== '' && !this.sheetWebhookUrl) {
+                                    this.sheetWebhookUrl = String(resJson.webhookUrl).trim();
+                                    localStorage.setItem(`dnc_sheet_url_${u}`, this.sheetWebhookUrl);
+                                    localStorage.setItem('dnc_trading_sheet_url', this.sheetWebhookUrl);
+                                }
+                                if (resJson.riskPercent !== null && resJson.riskPercent !== undefined && Number(resJson.riskPercent) > 0) {
+                                    this.riskPercent = Number(resJson.riskPercent);
+                                    localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
                                 }
                             }
                         } catch(e) {}
                     }
 
-                    // 2. Đồng bộ lịch sử lệnh từ Sheet riêng của khách (nếu có)
+                    // 2. Đồng bộ lịch sử lệnh và Cài đặt từ Sheet riêng của khách (Tab Setting)
                     const targetUrl = this.sheetWebhookUrl;
                     if (!targetUrl) {
                         this.cloudSyncing = false;
-                        alert('💡 Bạn chưa kết nối Google Sheet cá nhân!\n\nHệ thống sẽ chuyển bạn đến Cài Đặt và Hướng Dẫn 3 Bước (không cần code) để tự động lưu lệnh và ảnh chart lên Google Drive của bạn.');
+                        alert('💡 Bạn chưa kết nối Google Sheet cá nhân!\n\nHệ thống sẽ chuyển bạn đến Cài Đặt và Hướng Dẫn 3 Bước (không cần code) để tự động lưu lệnh và cấu hình lên Google Drive của bạn.');
                         this.openCloudGuide();
                         return;
                     }
@@ -1839,12 +1911,25 @@
                             if (result.currency) {
                                 this.currency = result.currency;
                             }
+                            if (result.geminiApiKey && String(result.geminiApiKey).trim() !== '') {
+                                this.googleApiKey = String(result.geminiApiKey).trim();
+                                localStorage.setItem(`dnc_ai_key_${u}`, this.googleApiKey);
+                                localStorage.setItem('dnc_trading_ai_key', this.googleApiKey);
+                            }
+                            if (result.webhookUrl && String(result.webhookUrl).trim() !== '') {
+                                this.sheetWebhookUrl = String(result.webhookUrl).trim();
+                                localStorage.setItem(`dnc_sheet_url_${u}`, this.sheetWebhookUrl);
+                                localStorage.setItem('dnc_trading_sheet_url', this.sheetWebhookUrl);
+                            }
+                            if (result.riskPercent !== null && result.riskPercent !== undefined && Number(result.riskPercent) > 0) {
+                                this.riskPercent = Number(result.riskPercent);
+                                localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
+                            }
                             // Áp dụng trades nếu có
                             if (Array.isArray(result.trades) && result.trades.length > 0) {
                                 this.trades = result.trades;
                             }
                             // Cập nhật localStorage
-                            const u = this.traderUsername;
                             localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
                             localStorage.setItem(`dnc_currency_${u}`, this.currency);
                             this.saveTradesToStorage();
@@ -2227,13 +2312,16 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 saveRiskSettings() {
                     const u = this.traderUsername || 'default';
                     localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
-                    alert('✅ Đã lưu cấu hình rủi ro: ' + this.riskPercent + '% / lệnh');
+                    this.syncSettingsToCloud();
+                    alert('✅ Đã lưu cấu hình rủi ro: ' + this.riskPercent + '% / lệnh và đồng bộ lên Google Sheet (Tab Setting)');
                 },
 
                 saveCapital() {
                     const u = this.traderUsername || 'default';
                     localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
                     localStorage.setItem(`dnc_currency_${u}`, this.currency);
+                    localStorage.setItem('dnc_trading_currency', this.currency);
+                    this.syncSettingsToCloud();
                     // Sync lên cloud (fire-and-forget)
                     const targetUrl = this.sheetWebhookUrl || this.authWebhookUrl;
                     if (targetUrl && this.traderUsername) {

@@ -18,6 +18,9 @@ function doGet(e) {
   if (params.action === 'getTrades') {
     return handleGetTrades({ username: params.username });
   }
+  if (params.action === 'getSettings') {
+    return handleGetSettings({ username: params.username });
+  }
   return jsonResponse({ status: '✅ DNC Customer Trading Sheet Script is running' });
 }
 
@@ -27,6 +30,7 @@ function doPost(e) {
     if (data.action === 'saveTrade') return handleSaveTrade(data);
     if (data.action === 'deleteTrade') return handleDeleteTrade(data);
     if (data.action === 'saveCapital') return handleSaveCapital(data);
+    if (data.action === 'saveSettings') return handleSaveSettings(data);
     return jsonResponse({ success: false, error: 'Unknown action' });
   } catch (err) {
     return jsonResponse({ success: false, error: err.message });
@@ -131,9 +135,20 @@ function handleDeleteTrade(data) {
 // ───────────────────────────────────────────────
 function handleGetTrades(data) {
   const username = (data.username || '').trim();
+  const settings = readSettingsFromSheet(username);
   const sheet = getOrCreateLogSheet();
   const rows = sheet.getDataRange().getValues();
-  if (rows.length <= 1) return jsonResponse({ success: true, trades: [] });
+  if (rows.length <= 1) {
+    return jsonResponse({ 
+      success: true, 
+      trades: [],
+      capital: settings.capital,
+      currency: settings.currency,
+      geminiApiKey: settings.geminiApiKey,
+      webhookUrl: settings.webhookUrl,
+      riskPercent: settings.riskPercent
+    });
+  }
 
   const trades = [];
   for (let i = 1; i < rows.length; i++) {
@@ -164,16 +179,204 @@ function handleGetTrades(data) {
     });
   }
 
-  return jsonResponse({ success: true, trades });
+  return jsonResponse({ 
+    success: true, 
+    trades,
+    capital: settings.capital,
+    currency: settings.currency,
+    geminiApiKey: settings.geminiApiKey,
+    webhookUrl: settings.webhookUrl,
+    riskPercent: settings.riskPercent
+  });
 }
 
 // ───────────────────────────────────────────────
-// SAVE CAPITAL — Lưu vốn của khách vào Property Service hoặc Sheet
+// SAVE CAPITAL — Lưu vốn của khách vào Property Service và tab Setting
 // ───────────────────────────────────────────────
 function handleSaveCapital(data) {
   PropertiesService.getUserProperties().setProperty('DNC_CAPITAL', String(data.capital || 0));
   PropertiesService.getUserProperties().setProperty('DNC_CURRENCY', String(data.currency || 'USD'));
+  writeSettingsToSheet(data || {});
   return jsonResponse({ success: true });
+}
+
+// ───────────────────────────────────────────────
+// SETTINGS HANDLERS — Quản lý AI Gemini API Key & Webhook URL & Risk trong tab Setting
+// ───────────────────────────────────────────────
+function handleGetSettings(data) {
+  const settings = readSettingsFromSheet((data && data.username) || '');
+  return jsonResponse({ success: true, ...settings });
+}
+
+function handleSaveSettings(data) {
+  writeSettingsToSheet(data || {});
+  return jsonResponse({ success: true, message: '✅ Đã lưu cấu hình vào tab Setting' });
+}
+
+function getOrCreateSettingSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName('Setting') || ss.getSheetByName('Settings');
+  if (!sheet) {
+    sheet = ss.insertSheet('Setting');
+    const headers = ['Cài Đặt (Key)', 'Giá Trị (Value)', 'Ghi Chú'];
+    sheet.appendRow(headers);
+    const r = sheet.getRange(1, 1, 1, headers.length);
+    r.setBackground('#0D1322').setFontColor('#FFFFFF').setFontWeight('bold');
+    sheet.setFrozenRows(1);
+    sheet.appendRow(['AI Gemini API Key', '', 'Dùng cho AI đọc ảnh TradingView tự động']);
+    sheet.appendRow(['Webhook URL Google Sheet', '', 'URL Apps Script để đồng bộ thiết bị']);
+    sheet.appendRow(['Risk Percent (%)', '5', 'Tỷ lệ rủi ro kỷ luật / lệnh']);
+    sheet.appendRow(['Capital', '10000', 'Vốn gốc khởi điểm']);
+    sheet.appendRow(['Currency', 'USD', 'Đơn vị tiền tệ (USD/VND)']);
+    sheet.autoResizeColumns(1, headers.length);
+  }
+  return sheet;
+}
+
+function readSettingsFromSheet(username) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Setting') || ss.getSheetByName('Settings');
+  let settings = {
+    geminiApiKey: '',
+    webhookUrl: '',
+    riskPercent: null,
+    capital: null,
+    currency: 'USD'
+  };
+
+  if (!sheet) return settings;
+
+  const rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1 && (!rows[0] || rows[0].length === 0)) return settings;
+
+  let isHorizontalTable = false;
+  const headerRow = rows[0] ? rows[0].map(h => String(h || '').toLowerCase().trim()) : [];
+  if (headerRow.includes('username') || headerRow.includes('tài khoản') || (headerRow.includes('ai gemini api key') && headerRow.indexOf('ai gemini api key') > 0)) {
+    isHorizontalTable = true;
+  }
+
+  if (isHorizontalTable) {
+    const u = String(username || '').toLowerCase().trim();
+    const userColIdx = headerRow.findIndex(h => h.includes('username') || h.includes('tài khoản') || h === 'user');
+    const geminiColIdx = headerRow.findIndex(h => h.includes('gemini') || h.includes('api key'));
+    const webhookColIdx = headerRow.findIndex(h => h.includes('webhook') || h.includes('url'));
+    const riskColIdx = headerRow.findIndex(h => h.includes('risk') || h.includes('rủi ro'));
+    const capitalColIdx = headerRow.findIndex(h => h.includes('capital') || h.includes('vốn'));
+    const currencyColIdx = headerRow.findIndex(h => h.includes('currency') || h.includes('tiền tệ'));
+
+    for (let i = 1; i < rows.length; i++) {
+      const rowUser = userColIdx !== -1 ? String(rows[i][userColIdx] || '').toLowerCase().trim() : '';
+      if (!u || rowUser === u || rows.length === 2) {
+        if (geminiColIdx !== -1 && rows[i][geminiColIdx] !== undefined && rows[i][geminiColIdx] !== '') settings.geminiApiKey = String(rows[i][geminiColIdx]).trim();
+        if (webhookColIdx !== -1 && rows[i][webhookColIdx] !== undefined && rows[i][webhookColIdx] !== '') settings.webhookUrl = String(rows[i][webhookColIdx]).trim();
+        if (riskColIdx !== -1 && rows[i][riskColIdx] !== '' && rows[i][riskColIdx] !== undefined) settings.riskPercent = Number(rows[i][riskColIdx]);
+        if (capitalColIdx !== -1 && rows[i][capitalColIdx] !== '' && rows[i][capitalColIdx] !== undefined) settings.capital = Number(rows[i][capitalColIdx]);
+        if (currencyColIdx !== -1 && rows[i][currencyColIdx] !== undefined && rows[i][currencyColIdx] !== '') settings.currency = String(rows[i][currencyColIdx]).trim();
+        break;
+      }
+    }
+  } else {
+    for (let i = 0; i < rows.length; i++) {
+      const key = String(rows[i][0] || '').toLowerCase().trim();
+      const val = rows[i][1] !== undefined && rows[i][1] !== null ? String(rows[i][1]).trim() : '';
+      if (!key || (i === 0 && (key.includes('cài đặt') || key === 'key' || key === 'setting'))) continue;
+
+      if (key.includes('gemini') || key.includes('api key')) {
+        if (val) settings.geminiApiKey = val;
+      } else if (key.includes('webhook') || key.includes('url google sheet')) {
+        if (val) settings.webhookUrl = val;
+      } else if (key.includes('risk') || key.includes('rủi ro')) {
+        if (val !== '') settings.riskPercent = Number(val);
+      } else if (key === 'capital' || key.includes('vốn gốc') || key.includes('vốn ban đầu')) {
+        if (val !== '') settings.capital = Number(val);
+      } else if (key.includes('currency') || key.includes('tiền tệ')) {
+        if (val) settings.currency = val;
+      }
+    }
+  }
+
+  return settings;
+}
+
+function writeSettingsToSheet(data) {
+  const sheet = getOrCreateSettingSheet();
+  const rows = sheet.getDataRange().getValues();
+
+  let isHorizontalTable = false;
+  const headerRow = rows[0] ? rows[0].map(h => String(h || '').toLowerCase().trim()) : [];
+  if (headerRow.includes('username') || headerRow.includes('tài khoản') || (headerRow.includes('ai gemini api key') && headerRow.indexOf('ai gemini api key') > 0)) {
+    isHorizontalTable = true;
+  }
+
+  if (isHorizontalTable) {
+    const u = String(data.username || 'MyAccount').trim();
+    const userColIdx = headerRow.findIndex(h => h.includes('username') || h.includes('tài khoản') || h === 'user');
+    const geminiColIdx = headerRow.findIndex(h => h.includes('gemini') || h.includes('api key'));
+    const webhookColIdx = headerRow.findIndex(h => h.includes('webhook') || h.includes('url'));
+    const riskColIdx = headerRow.findIndex(h => h.includes('risk') || h.includes('rủi ro'));
+    const capitalColIdx = headerRow.findIndex(h => h.includes('capital') || h.includes('vốn'));
+    const currencyColIdx = headerRow.findIndex(h => h.includes('currency') || h.includes('tiền tệ'));
+
+    let targetRowNumber = null;
+    for (let i = 1; i < rows.length; i++) {
+      const rowUser = userColIdx !== -1 ? String(rows[i][userColIdx] || '').toLowerCase().trim() : '';
+      if (rowUser === u.toLowerCase() || (rows.length === 2 && !rowUser)) {
+        targetRowNumber = i + 1;
+        break;
+      }
+    }
+
+    if (!targetRowNumber) {
+      const newRow = new Array(headerRow.length).fill('');
+      if (userColIdx !== -1) newRow[userColIdx] = u;
+      if (geminiColIdx !== -1 && data.geminiApiKey !== undefined) newRow[geminiColIdx] = data.geminiApiKey;
+      if (webhookColIdx !== -1 && data.webhookUrl !== undefined) newRow[webhookColIdx] = data.webhookUrl;
+      if (riskColIdx !== -1 && data.riskPercent !== undefined) newRow[riskColIdx] = data.riskPercent;
+      if (capitalColIdx !== -1 && data.capital !== undefined) newRow[capitalColIdx] = data.capital;
+      if (currencyColIdx !== -1 && data.currency !== undefined) newRow[currencyColIdx] = data.currency;
+      sheet.appendRow(newRow);
+    } else {
+      if (geminiColIdx !== -1 && data.geminiApiKey !== undefined && data.geminiApiKey !== null) sheet.getRange(targetRowNumber, geminiColIdx + 1).setValue(data.geminiApiKey);
+      if (webhookColIdx !== -1 && data.webhookUrl !== undefined && data.webhookUrl !== null) sheet.getRange(targetRowNumber, webhookColIdx + 1).setValue(data.webhookUrl);
+      if (riskColIdx !== -1 && data.riskPercent !== undefined && data.riskPercent !== null) sheet.getRange(targetRowNumber, riskColIdx + 1).setValue(data.riskPercent);
+      if (capitalColIdx !== -1 && data.capital !== undefined && data.capital !== null) sheet.getRange(targetRowNumber, capitalColIdx + 1).setValue(data.capital);
+      if (currencyColIdx !== -1 && data.currency !== undefined && data.currency !== null) sheet.getRange(targetRowNumber, currencyColIdx + 1).setValue(data.currency);
+    }
+  } else {
+    const mapKeys = {
+      'geminiApiKey': ['ai gemini api key', 'gemini api key', 'gemini'],
+      'webhookUrl': ['webhook url google sheet', 'webhook url', 'webhook'],
+      'riskPercent': ['risk percent (%)', 'risk percent', 'tỷ lệ risk'],
+      'capital': ['capital', 'vốn gốc', 'vốn ban đầu'],
+      'currency': ['currency', 'tiền tệ']
+    };
+
+    const keysToUpdate = ['geminiApiKey', 'webhookUrl', 'riskPercent', 'capital', 'currency'].filter(k => data[k] !== undefined && data[k] !== null && String(data[k]).trim() !== '');
+
+    for (const k of keysToUpdate) {
+      let foundRow = null;
+      const aliases = mapKeys[k];
+      for (let i = 0; i < rows.length; i++) {
+        const rowKey = String(rows[i][0] || '').toLowerCase().trim();
+        if (aliases.some(alias => rowKey.includes(alias))) {
+          foundRow = i + 1;
+          break;
+        }
+      }
+
+      if (foundRow) {
+        sheet.getRange(foundRow, 2).setValue(data[k]);
+      } else {
+        let label = aliases[0].toUpperCase();
+        if (k === 'geminiApiKey') label = 'AI Gemini API Key';
+        if (k === 'webhookUrl') label = 'Webhook URL Google Sheet';
+        if (k === 'riskPercent') label = 'Risk Percent (%)';
+        if (k === 'capital') label = 'Capital';
+        if (k === 'currency') label = 'Currency';
+        sheet.appendRow([label, data[k], '']);
+      }
+    }
+  }
 }
 
 // ───────────────────────────────────────────────
