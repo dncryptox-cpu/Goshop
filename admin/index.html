@@ -117,7 +117,7 @@
                         class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-2" x-cloak>
                         Navigation</p>
                     <template x-for="item in menuItems">
-                        <a href="#" x-show="isModuleAllowed(item.id)" @click="activeModule = item.id; if (window.innerWidth < 768) sidebarOpen = false;"
+                        <a href="#" x-show="isModuleAllowed(item.id)" @click.prevent="activeModule = item.id; if (window.innerWidth < 768) sidebarOpen = false;"
                             :class="activeModule === item.id ? 'sidebar-item-active' : 'text-gray-500 hover:bg-gray-50'"
                             class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group mb-1">
                             <i :data-lucide="item.icon" class="w-5 h-5"></i>
@@ -131,7 +131,7 @@
                         class="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2 mb-2" x-cloak>
                         Management</p>
                     <template x-for="item in managementItems">
-                        <a href="#" x-show="isModuleAllowed(item.id)" @click="activeModule = item.id; if (window.innerWidth < 768) sidebarOpen = false;"
+                        <a href="#" x-show="isModuleAllowed(item.id)" @click.prevent="activeModule = item.id; if (window.innerWidth < 768) sidebarOpen = false;"
                             :class="activeModule === item.id ? 'sidebar-item-active' : 'text-gray-500 hover:bg-gray-50'"
                             class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all group mb-1">
                             <i :data-lucide="item.icon" class="w-5 h-5"></i>
@@ -9274,129 +9274,143 @@
                 },
 
                 getChatgptSharedList() {
-                    const data = this.db.DATA_YTB || [];
-                    if (data.length === 0) return [];
-                    
-                    const keys = Object.keys(data[0] || {});
-                    if (keys.length < 5) return [];
+                    try {
+                        const data = (this.db && this.db.DATA_YTB) ? this.db.DATA_YTB : [];
+                        if (!Array.isArray(data) || data.length === 0) return [];
 
-                    const list = [];
-                    data.forEach(row => {
-                        const product = String(row[keys[4]] || row[keys[6]] || '').trim();
-                        // Filter for GPT / ChatGPT / GPTshare
-                        if (product.toLowerCase().includes('gpt') || product.toLowerCase().includes('chatgpt')) {
-                            const dateStr = String(row[keys[0]] || '').trim();
-                            const orderId = String(row[keys[1]] || '').trim(); // Get order ID from Column B
-                            const email = String(row[keys[3]] || '').trim();
-                            const duration = parseInt(row[keys[5]]) || 0;
-                            const ctv = String(row[keys[7]] || '').trim();
-                            const note = String(row[keys[15]] || '').trim();
+                        const list = [];
+                        data.forEach(row => {
+                            if (!row || typeof row !== 'object') return;
+                            const vals = Object.values(row);
+                            if (vals.length < 5) return;
 
-                            // Calculate Expiry Date
-                            let expiryDate = '--';
-                            let daysLeft = null;
-                            if (dateStr && duration > 0) {
-                                let pDate;
-                                if (dateStr.includes('/')) {
-                                    const parts = dateStr.split('/');
-                                    if (parts.length === 3) {
-                                        pDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                            // Column E is index 4, Column G is index 6
+                            const product = String(vals[4] || vals[6] || row['Sản phẩm'] || row['Gói'] || '').trim();
+                            // Filter for GPT / ChatGPT / GPTshare
+                            if (product.toLowerCase().includes('gpt') || product.toLowerCase().includes('chatgpt')) {
+                                const dateStr = String(vals[0] || row['Ngày'] || '').trim();
+                                const orderId = String(vals[1] || row['Mã Đơn'] || '').trim();
+                                const email = String(vals[3] || row['Email'] || '').trim();
+                                const duration = parseInt(vals[5] || row['Số tháng']) || 0;
+                                const ctv = String(vals[7] || row['CTV'] || '').trim();
+                                const note = String(vals[15] || vals[vals.length - 1] || row['Ghi chú'] || '').trim();
+
+                                // Calculate Expiry Date
+                                let expiryDate = '--';
+                                let daysLeft = null;
+                                if (dateStr && duration > 0) {
+                                    let pDate;
+                                    if (dateStr.includes('/')) {
+                                        const parts = dateStr.split('/');
+                                        if (parts.length === 3) {
+                                            pDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                                        }
+                                    } else {
+                                        pDate = new Date(dateStr);
                                     }
-                                } else {
-                                    pDate = new Date(dateStr);
-                                }
-                                
-                                if (pDate && !isNaN(pDate.getTime())) {
-                                    pDate.setMonth(pDate.getMonth() + duration);
-                                    const dd = String(pDate.getDate()).padStart(2, '0');
-                                    const mm = String(pDate.getMonth() + 1).padStart(2, '0');
-                                    const yyyy = pDate.getFullYear();
-                                    expiryDate = `${dd}/${mm}/${yyyy}`;
                                     
-                                    const today = new Date();
-                                    today.setHours(0,0,0,0);
-                                    const diffTime = pDate.getTime() - today.getTime();
-                                    daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                    if (pDate && !isNaN(pDate.getTime())) {
+                                        pDate.setMonth(pDate.getMonth() + duration);
+                                        const dd = String(pDate.getDate()).padStart(2, '0');
+                                        const mm = String(pDate.getMonth() + 1).padStart(2, '0');
+                                        const yyyy = pDate.getFullYear();
+                                        expiryDate = `${dd}/${mm}/${yyyy}`;
+                                        
+                                        const today = new Date();
+                                        today.setHours(0,0,0,0);
+                                        const diffTime = pDate.getTime() - today.getTime();
+                                        daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                    }
                                 }
-                            }
 
-                            list.push({
-                                date: dateStr,
-                                orderId: orderId,
-                                email: email,
-                                product: product,
-                                duration: duration,
-                                expiryDate: expiryDate,
-                                daysLeft: daysLeft,
-                                ctv: ctv,
-                                note: note
-                            });
-                        }
-                    });
-                    
-                    return list;
+                                list.push({
+                                    date: dateStr,
+                                    orderId: orderId,
+                                    email: email,
+                                    product: product,
+                                    duration: duration,
+                                    expiryDate: expiryDate,
+                                    daysLeft: daysLeft,
+                                    ctv: ctv,
+                                    note: note
+                                });
+                            }
+                        });
+                        return list;
+                    } catch (e) {
+                        console.error('getChatgptSharedList error:', e);
+                        return [];
+                    }
                 },
 
                 get filteredChatgptSharedList() {
-                    const list = this.getChatgptSharedList();
-                    // Process filters
-                    const filtered = list.filter(item => {
-                        // 1. Search Query filter (email, orderId, product, ctv, note)
-                        const search = this.chatgptSharedSearch.toLowerCase().trim();
-                        if (search) {
-                            const matchSearch = item.email.toLowerCase().includes(search) || 
-                                                item.orderId.toLowerCase().includes(search) || 
-                                                item.product.toLowerCase().includes(search) || 
-                                                item.ctv.toLowerCase().includes(search) || 
-                                                item.note.toLowerCase().includes(search);
-                            if (!matchSearch) return false;
-                        }
+                    try {
+                        const list = this.getChatgptSharedList();
+                        const filtered = list.filter(item => {
+                            const search = String(this.chatgptSharedSearch || '').toLowerCase().trim();
+                            if (search) {
+                                const matchSearch = String(item.email || '').toLowerCase().includes(search) || 
+                                                    String(item.orderId || '').toLowerCase().includes(search) || 
+                                                    String(item.product || '').toLowerCase().includes(search) || 
+                                                    String(item.ctv || '').toLowerCase().includes(search) || 
+                                                    String(item.note || '').toLowerCase().includes(search);
+                                if (!matchSearch) return false;
+                            }
+                            
+                            if (this.chatgptFilterStatus !== 'all') {
+                                const isExp = this.isExpired(item.expiryDate);
+                                if (this.chatgptFilterStatus === 'active' && isExp) return false;
+                                if (this.chatgptFilterStatus === 'expired' && !isExp) return false;
+                            }
+                            
+                            if (this.chatgptFilterCTV !== 'all') {
+                                if (String(item.ctv || '').toLowerCase() !== String(this.chatgptFilterCTV || '').toLowerCase()) return false;
+                            }
+                            
+                            return true;
+                        });
                         
-                        // 2. Status filter
-                        if (this.chatgptFilterStatus !== 'all') {
-                            const isExp = this.isExpired(item.expiryDate);
-                            if (this.chatgptFilterStatus === 'active' && isExp) return false;
-                            if (this.chatgptFilterStatus === 'expired' && !isExp) return false;
-                        }
-                        
-                        // 3. CTV filter
-                        if (this.chatgptFilterCTV !== 'all') {
-                            if (item.ctv.toLowerCase() !== this.chatgptFilterCTV.toLowerCase()) return false;
-                        }
-                        
-                        return true;
-                    });
-                    
-                    // Sort descending by date (newest purchase first)
-                    return filtered.sort((a, b) => {
-                        const dateA = this.parseDateStr(a.date);
-                        const dateB = this.parseDateStr(b.date);
-                        return dateB - dateA;
-                    });
+                        return filtered.sort((a, b) => {
+                            const dateA = this.parseDateStr(a.date);
+                            const dateB = this.parseDateStr(b.date);
+                            return dateB - dateA;
+                        });
+                    } catch (e) {
+                        console.error('filteredChatgptSharedList error:', e);
+                        return [];
+                    }
                 },
 
                 get chatgptCTVList() {
-                    const list = this.getChatgptSharedList();
-                    const ctvs = new Set();
-                    list.forEach(item => {
-                        if (item.ctv) ctvs.add(item.ctv);
-                    });
-                    return Array.from(ctvs);
+                    try {
+                        const list = this.getChatgptSharedList();
+                        const ctvs = new Set();
+                        list.forEach(item => {
+                            if (item.ctv) ctvs.add(item.ctv);
+                        });
+                        return Array.from(ctvs);
+                    } catch (e) {
+                        return [];
+                    }
                 },
 
                 get chatgptStats() {
-                    const list = this.getChatgptSharedList();
-                    let total = list.length;
-                    let active = 0;
-                    let expired = 0;
-                    list.forEach(item => {
-                        if (this.isExpired(item.expiryDate)) {
-                            expired++;
-                        } else {
-                            active++;
-                        }
-                    });
-                    return { total, active, expired };
+                    try {
+                        const list = this.getChatgptSharedList();
+                        let total = list.length;
+                        let active = 0;
+                        let expired = 0;
+                        list.forEach(item => {
+                            if (this.isExpired(item.expiryDate)) {
+                                expired++;
+                            } else {
+                                active++;
+                            }
+                        });
+                        return { total, active, expired };
+                    } catch (e) {
+                        return { total: 0, active: 0, expired: 0 };
+                    }
                 },
 
                 isExpired(expiryStr) {
@@ -10525,24 +10539,24 @@
                                     console.error(`Error fetching tab ${tab}:`, e);
                                 }
                             }));
-
-                            tasks.push((async () => {
-                                try {
-                                    const [ytbRes, gccRes] = await Promise.all([
-                                        fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`),
-                                        fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(GCC)`)
-                                    ]);
-                                    const ytbText = await ytbRes.text();
-                                    const gccText = await gccRes.text();
-                                    const ytbData = this.parseCSV(ytbText);
-                                    const gccData = this.parseCSV(gccText);
-                                    this.db.DATA_YTB = [...ytbData, ...gccData];
-                                } catch (e) {
-                                    console.error('Error fetching Transaction Data:', e);
-                                    this.db.DATA_YTB = [];
-                                }
-                            })());
                         }
+
+                        tasks.push((async () => {
+                            try {
+                                const [ytbRes, gccRes] = await Promise.all([
+                                    fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(YTB)`),
+                                    fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.TRANSACTION_SHEET_ID}/gviz/tq?tqx=out:csv&sheet=DATA(GCC)`)
+                                ]);
+                                const ytbText = await ytbRes.text();
+                                const gccText = await gccRes.text();
+                                const ytbData = this.parseCSV(ytbText);
+                                const gccData = this.parseCSV(gccText);
+                                this.db.DATA_YTB = [...ytbData, ...gccData];
+                            } catch (e) {
+                                console.error('Error fetching Transaction Data:', e);
+                                this.db.DATA_YTB = [];
+                            }
+                        })());
 
                         // Fetch FamRenew Sheet (RENEW & RENEW_MODIFIED)
                         tasks.push((async () => {
