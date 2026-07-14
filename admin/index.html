@@ -6138,7 +6138,8 @@
                     APP_DATA: [],
                     UPSALE: [],
                     STOCK: [],
-                    PNL: []
+                    PNL: [],
+                    DATA_YTB: []
                 },
                 menuItems: [
                     { id: 'dashboard', name: 'Dashboard', icon: 'layout-grid' },
@@ -9287,7 +9288,7 @@
                             
                             // Find product column index dynamically or default to Column E/G
                             const productIdx = keys.findIndex(k => k.includes('sản phẩm') || k.includes('gói') || k.includes('sku') || k.includes('dịch vụ'));
-                            const product = String(productIdx !== -1 ? vals[productIdx] : (vals[4] || row['Sản phẩm'] || '')).trim();
+                            const product = String((productIdx !== -1 && vals[productIdx] !== undefined) ? vals[productIdx] : (vals[4] || row['Sản phẩm'] || '')).trim();
 
                             // Filter for GPT / ChatGPT / GPTshare
                             if (product.toLowerCase().includes('gpt') || product.toLowerCase().includes('chatgpt')) {
@@ -9297,21 +9298,31 @@
                                 const orderIdIdx = keys.findIndex(k => k.includes('mã đơn') || k.includes('order id'));
 
                                 const dateStr = String(vals[0] || row['Ngày'] || '').trim();
-                                const orderId = String(orderIdIdx !== -1 ? vals[orderIdIdx] : (vals[1] || row['Mã Đơn'] || '')).trim();
-                                const email = String(emailIdx !== -1 ? vals[emailIdx] : (vals[3] || row['Email'] || '')).trim();
-                                const duration = parseInt(durationIdx !== -1 ? vals[durationIdx] : (vals[5] || row['Số tháng'] || '0')) || 0;
-                                const ctv = String(ctvIdx !== -1 ? vals[ctvIdx] : (vals[7] || row['CTV'] || '')).trim();
+                                const orderId = String((orderIdIdx !== -1 && vals[orderIdIdx] !== undefined) ? vals[orderIdIdx] : (vals[1] || row['Mã Đơn'] || '')).trim();
+                                const email = String((emailIdx !== -1 && vals[emailIdx] !== undefined) ? vals[emailIdx] : (vals[3] || row['Email'] || '')).trim();
+                                const duration = parseInt((durationIdx !== -1 && vals[durationIdx] !== undefined) ? vals[durationIdx] : (vals[5] || row['Số tháng'] || '0')) || 0;
+                                const ctv = String((ctvIdx !== -1 && vals[ctvIdx] !== undefined) ? vals[ctvIdx] : (vals[7] || row['CTV'] || '')).trim();
 
                                 // HSD (Expiry Date) is in Column N (index 13)
-                                const hsdIdx = keys.findIndex(k => k === 'hsd' || k.includes('hạn sử dụng') || k.includes('expiry'));
-                                let expiryDate = String(hsdIdx !== -1 ? vals[hsdIdx] : (vals[13] || row['HSD'] || '--')).trim();
+                                let expiryDate = '';
+                                if (vals[13] !== undefined && String(vals[13]).trim() !== '') {
+                                    expiryDate = String(vals[13]).trim();
+                                } else {
+                                    const hsdIdx = keys.findIndex(k => k === 'hsd' || k.includes('hạn sử dụng') || k.includes('expiry'));
+                                    expiryDate = (hsdIdx !== -1 && vals[hsdIdx] !== undefined) ? String(vals[hsdIdx]).trim() : String(row['HSD'] || '--').trim();
+                                }
                                 if (expiryDate && expiryDate.includes('T')) {
                                     expiryDate = expiryDate.split('T')[0];
                                 }
 
                                 // Mã thiết bị (Device note) is in Column P (index 15)
-                                const noteIdx = keys.findIndex(k => k.includes('thiết bị') || k.includes('ghi chú') || k.includes('note') || k.includes('device'));
-                                const note = String(noteIdx !== -1 ? vals[noteIdx] : (vals[15] || row['Ghi chú'] || 'Chưa ghi chú thiết bị')).trim();
+                                let note = '';
+                                if (vals[15] !== undefined && String(vals[15]).trim() !== '') {
+                                    note = String(vals[15]).trim();
+                                } else {
+                                    const noteIdx = keys.findIndex(k => k.includes('thiết bị') || k.includes('ghi chú') || k.includes('note') || k.includes('device'));
+                                    note = (noteIdx !== -1 && vals[noteIdx] !== undefined) ? String(vals[noteIdx]).trim() : String(row['Mã thiết bị'] || row['Thiết bị'] || row['Ghi chú'] || 'Chưa ghi chú thiết bị').trim();
+                                }
 
                                 // Calculate Days Left based on expiryDate (Column N)
                                 let daysLeft = null;
@@ -9385,10 +9396,10 @@
                             return true;
                         });
                         
-                        return filtered.sort((a, b) => {
+                        return [...filtered].sort((a, b) => {
                             const dateA = this.parseDateStr(a.date);
                             const dateB = this.parseDateStr(b.date);
-                            return dateB - dateA;
+                            return (dateB.getTime() || 0) - (dateA.getTime() || 0);
                         });
                     } catch (e) {
                         console.error('filteredChatgptSharedList error:', e);
@@ -10108,10 +10119,14 @@
                     this.fetchSystemConfig();
                     this.fetchLoginAccounts();
                     this.$nextTick(() => {
-                        lucide.createIcons();
+                        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+                        else if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
                     });
                     this.$watch('sidebarOpen', () => {
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => {
+                            if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+                            else if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+                        });
                     });
                     this.$watch('activeModule', (val) => {
                         if (!this.isModuleAllowed(val)) {
@@ -10121,7 +10136,10 @@
                         if (window.location.hash.replace('#', '') !== val) {
                             window.location.hash = val;
                         }
-                        this.$nextTick(() => lucide.createIcons());
+                        this.$nextTick(() => {
+                            if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+                            else if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+                        });
                     });
                     
                     this.ytbRenewalStatuses = JSON.parse(localStorage.getItem('goshop_ytb_renewal_statuses') || '{}');
