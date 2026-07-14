@@ -156,6 +156,10 @@ function handleGetTrades(data) {
     const rowUser = String(row[1] || '').trim();
     if (username && rowUser.toLowerCase() !== username.toLowerCase()) continue;
 
+    const riskUsd = Number(row[10]) || 0;
+    const pnl = Number(row[12]) || 0;
+    const rAchieved = riskUsd > 0 ? Number((pnl / riskUsd).toFixed(2)) : (Number(row[12]) ? Number((pnl / (settings.capital * 0.05 || 1)).toFixed(2)) : 0);
+
     trades.push({
       id: String(row[19] || `cloud_${i + 1}`),
       date: String(row[2] || ''),
@@ -166,9 +170,10 @@ function handleGetTrades(data) {
       takeProfit: Number(row[7]) || 0,
       lots: Number(row[8]) || 0,
       dollarValue: Number(row[9]) || 0,
-      riskUsd: Number(row[10]) || 0,
+      riskUsd: riskUsd,
       rrRatio: String(row[11] || ''),
-      pnl: Number(row[12]) || 0,
+      pnl: pnl,
+      rAchieved: rAchieved,
       status: String(row[13] || 'Running'),
       note: String(row[14] || ''),
       setupTag: String(row[15] || ''),

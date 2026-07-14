@@ -437,17 +437,37 @@
                                 </div>
 
                                 <!-- Action Buttons -->
-                                <div class="flex items-center gap-1.5 ml-2">
+                                <div class="flex items-center gap-1.5 ml-2 flex-wrap justify-end">
+                                    <template x-if="trade.status === 'RUNNING'">
+                                        <div class="flex items-center gap-1 mr-1 bg-black/40 p-1 rounded-lg border border-white/10">
+                                            <button @click.stop="quickCloseTrade(trade, 'WIN')" title="Chốt Lời Nhanh (+2R)"
+                                                class="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/30 transition-all text-[10px] font-black font-mono">
+                                                WIN
+                                            </button>
+                                            <button @click.stop="quickCloseTrade(trade, 'BE')" title="Chốt Hòa (BE $0)"
+                                                class="px-1.5 py-1 rounded bg-slate-500/20 hover:bg-slate-500 text-slate-300 hover:text-white border border-slate-500/30 transition-all text-[10px] font-black font-mono">
+                                                BE
+                                            </button>
+                                            <button @click.stop="quickCloseTrade(trade, 'LOSS')" title="Cắt Lỗ Nhanh (-1R)"
+                                                class="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-400 hover:text-white border border-rose-500/30 transition-all text-[10px] font-black font-mono">
+                                                LOSS
+                                            </button>
+                                        </div>
+                                    </template>
                                     <button @click="inspectTrade(trade)" title="Xem trọn bộ 3 khung & phân tích"
-                                        class="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-colors">
+                                        class="p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-colors shrink-0">
                                         <i data-lucide="eye" class="w-4 h-4"></i>
                                     </button>
+                                    <button @click="duplicateTrade(trade)" title="Nhân bản lệnh (Tạo lệnh mới cùng Setup)"
+                                        class="p-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 transition-colors shrink-0">
+                                        <i data-lucide="copy" class="w-4 h-4"></i>
+                                    </button>
                                     <button @click="editTrade(trade)" title="Sửa lệnh / Dán thêm chart"
-                                        class="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition-colors">
+                                        class="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition-colors shrink-0">
                                         <i data-lucide="edit-3" class="w-4 h-4"></i>
                                     </button>
                                     <button @click="deleteTrade(trade.id)" title="Xóa lệnh"
-                                        class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-colors">
+                                        class="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-colors shrink-0">
                                         <i data-lucide="trash-2" class="w-4 h-4"></i>
                                     </button>
                                 </div>
@@ -702,18 +722,179 @@
 
         <!-- VIEW 3: PERFORMANCE ANALYTICS -->
         <div x-show="currentView === 'ANALYTICS'" class="space-y-6" x-cloak>
+            
+            <!-- Analytics Header & Action Toolbar -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card/60 p-4 sm:p-5 rounded-3xl border border-white/10">
+                <div class="flex items-center gap-3">
+                    <div class="w-11 h-11 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-cyan-500/20">
+                        <i data-lucide="bar-chart-2" class="w-6 h-6"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-outfit font-black text-lg sm:text-xl text-white">Báo Cáo Hiệu Suất & AI Chuyên Gia</h3>
+                        <p class="text-xs text-slate-400">Phân tích dòng tiền, kiểm toán kỷ luật R:R và hiệu suất chiến lược</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap sm:justify-end">
+                    <button @click="runAiDiagnosis()"
+                        class="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i>
+                        <span>AI Chuẩn Đoán Kỷ Luật</span>
+                    </button>
+                    <button @click="exportJournalCSV()"
+                        class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 border border-white/10">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Xuất Excel/CSV</span>
+                    </button>
+                    <button @click="printExecutiveReport()"
+                        class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 border border-white/10">
+                        <i data-lucide="printer" class="w-4 h-4"></i>
+                        <span>In Báo Cáo PDF</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Executive Scorecard (4 Cards) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+                <!-- Card 1: Max Drawdown -->
+                <div class="glass-panel rounded-2xl p-5 border-l-4 border-l-rose-500">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Sụt Giảm Tối Đa (Drawdown)</span>
+                        <i data-lucide="trending-down" class="w-4 h-4 text-rose-400"></i>
+                    </div>
+                    <div class="text-xl sm:text-2xl font-outfit font-black font-mono text-rose-400" x-text="maxDrawdown.percent + ' (' + formatCurrency(maxDrawdown.amount) + ')'"></div>
+                    <p class="text-[11px] text-slate-400 mt-1">Đỉnh vốn cao nhất: <strong class="text-slate-200" x-text="formatCurrency(maxDrawdown.peak)"></strong></p>
+                </div>
+
+                <!-- Card 2: Long vs Short Win Rate -->
+                <div class="glass-panel rounded-2xl p-5 border-l-4 border-l-blue-500">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Hiệu Suất Long vs Short</span>
+                        <i data-lucide="compass" class="w-4 h-4 text-blue-400"></i>
+                    </div>
+                    <div class="text-lg sm:text-xl font-outfit font-black text-white" x-text="`LONG: ${longShortStats.longWinRate}% • SHORT: ${longShortStats.shortWinRate}%`"></div>
+                    <p class="text-[11px] text-slate-400 mt-1" x-text="`${longShortStats.longWins}W/${longShortStats.longTotal - longShortStats.longWins}L LONG | ${longShortStats.shortWins}W/${longShortStats.shortTotal - longShortStats.shortWins}L SHORT`"></p>
+                </div>
+
+                <!-- Card 3: Streaks -->
+                <div class="glass-panel rounded-2xl p-5 border-l-4 border-l-amber-500">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Chuỗi Thắng / Thua Liên Tiếp</span>
+                        <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+                    </div>
+                    <div class="text-lg sm:text-xl font-outfit font-black text-white" x-text="`🔥 +${streakStats.bestWinStreak}W | ❄️ -${streakStats.worstLossStreak}L`"></div>
+                    <p class="text-[11px] text-slate-400 mt-1">Chuỗi lệnh liên tiếp tốt nhất & xấu nhất</p>
+                </div>
+
+                <!-- Card 4: Expected Value -->
+                <div class="glass-panel rounded-2xl p-5 border-l-4 border-l-emerald-500">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Kỳ Vọng Lợi Nhuận (EV / Lệnh)</span>
+                        <i data-lucide="target" class="w-4 h-4 text-emerald-400"></i>
+                    </div>
+                    <div class="text-xl sm:text-2xl font-outfit font-black font-mono" :class="expectedValue.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'" x-text="(expectedValue.pnl >= 0 ? '+' : '') + formatCurrency(expectedValue.pnl) + ' / lệnh'"></div>
+                    <p class="text-[11px] text-slate-400 mt-1" x-text="`Trung bình: ${(expectedValue.r >= 0 ? '+' : '') + expectedValue.r + ' R'} mỗi lệnh`"></p>
+                </div>
+            </div>
+
+            <!-- AI Discipline & Strategy Coach Panel -->
+            <div class="bg-gradient-to-r from-blue-950/60 via-indigo-950/50 to-cyan-950/50 rounded-3xl p-6 border border-cyan-500/30 space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                    <div class="flex items-center gap-3">
+                        <span class="w-3 h-3 rounded-full bg-cyan-400 animate-pulse shrink-0"></span>
+                        <div>
+                            <h4 class="font-outfit font-black text-base sm:text-lg text-white flex items-center gap-2">
+                                <i data-lucide="bot" class="w-5 h-5 text-cyan-400"></i>
+                                <span>AI Chuyên Gia Nhận Xét & Kiểm Toán Kỷ Luật</span>
+                            </h4>
+                            <span class="text-xs text-slate-400">Tự động kiểm tra tuân thủ rủi ro 5% & tối ưu hóa R:R</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3 self-start sm:self-center">
+                        <span class="px-3.5 py-1.5 rounded-xl text-xs font-black uppercase font-mono tracking-wider flex items-center gap-1.5"
+                            :class="disciplineScore.score >= 80 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'">
+                            <span>Điểm Kỷ Luật:</span>
+                            <strong class="text-sm" x-text="disciplineScore.score + '/100'"></strong>
+                        </span>
+                    </div>
+                </div>
+                <div class="text-xs sm:text-sm text-slate-200 leading-relaxed bg-black/30 p-4 rounded-2xl border border-white/5 font-mono space-y-2"
+                    x-html="aiDiagnosisReport || generateInstantDiagnosis()">
+                </div>
+            </div>
+
+            <!-- Two Interactive Charts -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="glass-panel rounded-3xl p-6">
-                    <h3 class="text-base font-bold text-white mb-4">Biểu Đồ Tăng Trưởng Tài Khoản (Equity Curve)</h3>
-                    <div class="h-64">
+                    <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="activity" class="w-5 h-5 text-blue-400"></i>
+                        <span>Biểu Đồ Tăng Trưởng Tài Khoản (Equity Curve)</span>
+                    </h3>
+                    <div class="h-64 sm:h-72">
                         <canvas id="equityChart"></canvas>
                     </div>
                 </div>
                 <div class="glass-panel rounded-3xl p-6">
-                    <h3 class="text-base font-bold text-white mb-4">Thống Kê Thắng / Thua Theo Cặp Giao Dịch</h3>
-                    <div class="h-64">
+                    <h3 class="text-base font-bold text-white mb-4 flex items-center gap-2">
+                        <i data-lucide="pie-chart" class="w-5 h-5 text-cyan-400"></i>
+                        <span>Thống Kê Hiệu Suất Theo Cặp Giao Dịch</span>
+                    </h3>
+                    <div class="h-64 sm:h-72">
                         <canvas id="pairChart"></canvas>
                     </div>
+                </div>
+            </div>
+
+            <!-- Setup & Strategy Breakdown Table -->
+            <div class="glass-panel rounded-3xl p-6 space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-base font-bold text-white flex items-center gap-2">
+                        <i data-lucide="layers" class="w-5 h-5 text-indigo-400"></i>
+                        <span>Hiệu Suất Theo Setup / Thẻ Chiến Lược (Setup Tags)</span>
+                    </h3>
+                    <span class="text-xs text-slate-400">Tự động phân nhóm theo tag khi vào lệnh</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-white/10 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                <th class="pb-3 pr-4">Setup / Chiến Lược</th>
+                                <th class="pb-3 px-4 text-center">Số Lệnh</th>
+                                <th class="pb-3 px-4 text-center">Tỷ Lệ Thắng</th>
+                                <th class="pb-3 px-4 text-right">Lợi Nhuận (PnL)</th>
+                                <th class="pb-3 px-4 text-right">Net R</th>
+                                <th class="pb-3 pl-4 text-center">Đánh Giá</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5 text-xs">
+                            <template x-for="stat in setupStats" :key="stat.setup">
+                                <tr class="hover:bg-white/5 transition-colors font-mono">
+                                    <td class="py-3.5 pr-4 font-bold text-white font-outfit" x-text="stat.setup"></td>
+                                    <td class="py-3.5 px-4 text-center text-slate-300" x-text="stat.total + ' (' + stat.wins + 'W/' + stat.losses + 'L)'"></td>
+                                    <td class="py-3.5 px-4 text-center font-bold"
+                                        :class="stat.winRate >= 50 ? 'text-emerald-400' : 'text-amber-400'"
+                                        x-text="stat.winRate + '%'"></td>
+                                    <td class="py-3.5 px-4 text-right font-black"
+                                        :class="stat.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+                                        x-text="(stat.pnl >= 0 ? '+' : '') + formatCurrency(stat.pnl)"></td>
+                                    <td class="py-3.5 px-4 text-right font-black text-cyan-400"
+                                        x-text="(stat.r >= 0 ? '+' : '') + stat.r + ' R'"></td>
+                                    <td class="py-3.5 pl-4 text-center">
+                                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase"
+                                            :class="{
+                                                'bg-emerald-500/20 text-emerald-300': stat.r >= 2 && stat.winRate >= 50,
+                                                'bg-blue-500/20 text-blue-300': stat.r > 0 && stat.r < 2,
+                                                'bg-rose-500/20 text-rose-300': stat.r <= 0
+                                            }"
+                                            x-text="stat.r >= 2 ? '🔥 Chủ Lực' : (stat.r > 0 ? '⚡ Ổn Định' : '⚠️ Cần Tối Ưu')">
+                                        </span>
+                                    </td>
+                                </tr>
+                            </template>
+                            <tr x-show="setupStats.length === 0">
+                                <td colspan="6" class="py-8 text-center text-slate-500">Chưa có dữ liệu thống kê setup. Hãy nhập tag (VD: SMC, Breakout) khi ghi nhận lệnh!</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -2312,12 +2493,22 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     return (this.winCount / this.closedTradesCount) * 100;
                 },
 
+                calcTradeRAchieved(trade) {
+                    if (trade.rAchieved !== undefined && trade.rAchieved !== null && !isNaN(Number(trade.rAchieved)) && Number(trade.rAchieved) !== 0) {
+                        return Number(trade.rAchieved);
+                    }
+                    const pnl = Number(trade.pnl) || 0;
+                    if (pnl === 0) return 0;
+                    const risk = (trade.riskUsd && Number(trade.riskUsd) > 0) ? Number(trade.riskUsd) : (Number(this.riskAmount5Percent) || 1);
+                    return Number((pnl / risk).toFixed(2));
+                },
+
                 get totalNetPnL() {
                     return this.trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
                 },
 
                 get totalR() {
-                    return this.trades.reduce((sum, t) => sum + (Number(t.rAchieved) || 0), 0);
+                    return this.trades.reduce((sum, t) => sum + this.calcTradeRAchieved(t), 0);
                 },
 
                 get profitFactor() {
@@ -2326,6 +2517,129 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     if (grossLoss === 0) return grossWin > 0 ? 'MAX' : '0.0';
                     return (grossWin / grossLoss).toFixed(2);
                 },
+
+                get maxDrawdown() {
+                    const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || t.pnl !== 0).slice().reverse();
+                    let peak = Number(this.totalCapital) || 100;
+                    let equity = peak;
+                    let maxDdAmount = 0;
+                    let maxDdPeak = peak;
+
+                    closed.forEach(t => {
+                        equity += (Number(t.pnl) || 0);
+                        if (equity > peak) {
+                            peak = equity;
+                        } else {
+                            const dd = peak - equity;
+                            if (dd > maxDdAmount) {
+                                maxDdAmount = dd;
+                                maxDdPeak = peak;
+                            }
+                        }
+                    });
+
+                    const pct = maxDdPeak > 0 ? ((maxDdAmount / maxDdPeak) * 100).toFixed(1) : '0.0';
+                    return {
+                        amount: maxDdAmount,
+                        peak: maxDdPeak,
+                        percent: '-' + pct + '%'
+                    };
+                },
+
+                get longShortStats() {
+                    const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || t.pnl !== 0);
+                    const longs = closed.filter(t => t.direction === 'LONG');
+                    const shorts = closed.filter(t => t.direction === 'SHORT');
+                    const longWins = longs.filter(t => t.pnl > 0).length;
+                    const shortWins = shorts.filter(t => t.pnl > 0).length;
+
+                    return {
+                        longWins,
+                        longTotal: longs.length,
+                        longWinRate: longs.length > 0 ? ((longWins / longs.length) * 100).toFixed(0) : '0',
+                        shortWins,
+                        shortTotal: shorts.length,
+                        shortWinRate: shorts.length > 0 ? ((shortWins / shorts.length) * 100).toFixed(0) : '0'
+                    };
+                },
+
+                get streakStats() {
+                    const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.pnl !== 0).slice().reverse();
+                    let curWin = 0, maxWin = 0;
+                    let curLoss = 0, maxLoss = 0;
+
+                    closed.forEach(t => {
+                        if (t.pnl > 0 || t.status === 'WIN') {
+                            curWin++;
+                            curLoss = 0;
+                            if (curWin > maxWin) maxWin = curWin;
+                        } else if (t.pnl < 0 || t.status === 'LOSS') {
+                            curLoss++;
+                            curWin = 0;
+                            if (curLoss > maxLoss) maxLoss = curLoss;
+                        } else {
+                            curWin = 0;
+                            curLoss = 0;
+                        }
+                    });
+
+                    return { bestWinStreak: maxWin, worstLossStreak: maxLoss };
+                },
+
+                get expectedValue() {
+                    const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || t.pnl !== 0);
+                    if (closed.length === 0) return { pnl: 0, r: '0.00' };
+                    const totalP = closed.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
+                    const totalRVal = closed.reduce((s, t) => s + this.calcTradeRAchieved(t), 0);
+                    return {
+                        pnl: Number((totalP / closed.length).toFixed(2)),
+                        r: (totalRVal / closed.length).toFixed(2)
+                    };
+                },
+
+                get setupStats() {
+                    const map = {};
+                    this.trades.forEach(t => {
+                        const tag = (t.setupTag && t.setupTag.trim()) ? t.setupTag.trim() : 'Chưa phân loại';
+                        if (!map[tag]) {
+                            map[tag] = { setup: tag, total: 0, wins: 0, losses: 0, pnl: 0, r: 0 };
+                        }
+                        map[tag].total++;
+                        const p = Number(t.pnl) || 0;
+                        const rVal = this.calcTradeRAchieved(t);
+                        map[tag].pnl += p;
+                        map[tag].r += rVal;
+                        if (t.status === 'WIN' || p > 0) map[tag].wins++;
+                        else if (t.status === 'LOSS' || p < 0) map[tag].losses++;
+                    });
+
+                    return Object.values(map).map(item => ({
+                        setup: item.setup,
+                        total: item.total,
+                        wins: item.wins,
+                        losses: item.losses,
+                        pnl: Number(item.pnl.toFixed(2)),
+                        r: Number(item.r.toFixed(2)),
+                        winRate: item.total > 0 ? Number(((item.wins / item.total) * 100).toFixed(0)) : 0
+                    })).sort((a, b) => b.pnl - a.pnl);
+                },
+
+                get disciplineScore() {
+                    if (this.trades.length === 0) return { score: 100, violations: 0 };
+                    let violations = 0;
+                    this.trades.forEach(t => {
+                        const riskVal = Number(t.riskUsd) || 0;
+                        const cap = Number(this.totalCapital) || 100;
+                        const riskPct = cap > 0 ? (riskVal / cap) * 100 : 0;
+                        if (riskPct > (Number(this.riskPercent) + 0.5) || !t.stopLoss) {
+                            violations++;
+                        }
+                    });
+                    const score = Math.max(0, 100 - (violations * 10));
+                    return { score, violations };
+                },
+
+                aiDiagnosisReport: '',
 
                 get filteredTrades() {
                     return this.trades.filter(t => {
@@ -2681,44 +2995,240 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 renderAnalyticsChart() {
-                    const ctx = document.getElementById('equityChart');
-                    if (!ctx) return;
-                    let runningEquity = this.totalCapital;
-                    const labels = ['Bắt đầu'];
-                    const dataPoints = [runningEquity];
+                    if (typeof Chart === 'undefined') {
+                        setTimeout(() => this.renderAnalyticsChart(), 300);
+                        return;
+                    }
 
-                    const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS').reverse();
-                    closed.forEach((t, i) => {
-                        runningEquity += Number(t.pnl) || 0;
-                        labels.push(`Lệnh #${i + 1} (${t.pair})`);
-                        dataPoints.push(runningEquity);
-                    });
+                    // 1. Render Equity Chart
+                    const eqCtx = document.getElementById('equityChart');
+                    if (eqCtx) {
+                        let runningEquity = Number(this.totalCapital) || 100;
+                        const labels = ['Bắt đầu'];
+                        const dataPoints = [runningEquity];
 
-                    if (window.equityChartObj) window.equityChartObj.destroy();
-                    window.equityChartObj = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [{
-                                label: 'Tăng Trưởng Vốn (' + this.currency + ')',
-                                data: dataPoints,
-                                borderColor: '#2E90FA',
-                                backgroundColor: 'rgba(46, 144, 250, 0.1)',
-                                borderWidth: 3,
-                                fill: true,
-                                tension: 0.3
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: { legend: { labels: { color: '#F8FAFC' } } },
-                            scales: {
-                                x: { ticks: { color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                                y: { ticks: { color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                        const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || (Number(t.pnl) !== 0)).slice().reverse();
+                        closed.forEach((t, i) => {
+                            runningEquity += Number(t.pnl) || 0;
+                            labels.push(`Lệnh #${i + 1} (${t.pair})`);
+                            dataPoints.push(runningEquity);
+                        });
+
+                        if (window.equityChartObj) window.equityChartObj.destroy();
+                        window.equityChartObj = new Chart(eqCtx, {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    label: 'Tăng Trưởng Vốn (' + this.currency + ')',
+                                    data: dataPoints,
+                                    borderColor: '#06B6D4',
+                                    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+                                    borderWidth: 3,
+                                    fill: true,
+                                    tension: 0.35,
+                                    pointBackgroundColor: '#06B6D4',
+                                    pointRadius: 4
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { labels: { color: '#F8FAFC', font: { family: 'Outfit', weight: 'bold' } } } },
+                                scales: {
+                                    x: { ticks: { color: '#94A3B8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                    y: { ticks: { color: '#94A3B8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                                }
                             }
+                        });
+                    }
+
+                    // 2. Render Pair Breakdown Chart
+                    const pairCtx = document.getElementById('pairChart');
+                    if (pairCtx) {
+                        const pairMap = {};
+                        const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || (Number(t.pnl) !== 0));
+                        closed.forEach(t => {
+                            const p = t.pair || 'Khác';
+                            if (!pairMap[p]) pairMap[p] = { pair: p, pnl: 0, wins: 0, total: 0 };
+                            pairMap[p].pnl += (Number(t.pnl) || 0);
+                            pairMap[p].total += 1;
+                            if (t.status === 'WIN' || t.pnl > 0) pairMap[p].wins += 1;
+                        });
+
+                        const pairs = Object.values(pairMap);
+                        const labels = pairs.map(item => `${item.pair} (${item.wins}W/${item.total - item.wins}L)`);
+                        const pnlData = pairs.map(item => Number(item.pnl.toFixed(2)));
+                        const colors = pairs.map(item => item.pnl >= 0 ? '#10B981' : '#F43F5E');
+
+                        if (window.pairChartObj) window.pairChartObj.destroy();
+                        window.pairChartObj = new Chart(pairCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: labels.length > 0 ? labels : ['Chưa có lệnh closed'],
+                                datasets: [{
+                                    label: 'Lợi Nhuận Ròng (' + this.currency + ')',
+                                    data: pnlData.length > 0 ? pnlData : [0],
+                                    backgroundColor: colors.length > 0 ? colors : ['#3B82F6'],
+                                    borderRadius: 8
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false } },
+                                scales: {
+                                    x: { ticks: { color: '#F8FAFC', font: { weight: 'bold', size: 11 } }, grid: { display: false } },
+                                    y: { ticks: { color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                                }
+                            }
+                        });
+                    }
+                },
+
+                generateInstantDiagnosis() {
+                    const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || t.pnl !== 0);
+                    if (closed.length === 0) {
+                        return `<div class="p-3 bg-white/5 rounded-xl border border-white/10 text-slate-400">
+                            💡 Chưa có dữ liệu lệnh đã đóng. Hãy vào lệnh hoặc chốt lệnh để AI chuyên gia phân tích dòng tiền và kỷ luật của bạn!
+                        </div>`;
+                    }
+
+                    const scoreObj = this.disciplineScore;
+                    const pf = this.profitFactor;
+                    const ev = this.expectedValue;
+                    const topSetup = this.setupStats.length > 0 ? this.setupStats[0] : null;
+
+                    let advice = '';
+                    if (scoreObj.score === 100) {
+                        advice = `🏆 <strong class="text-emerald-400">Kỷ Luật Tuyệt Đối (100/100):</strong> Bạn đang tuân thủ hoàn hảo mức rủi ro < 5% cho mỗi lệnh giao dịch và luôn đặt Stop Loss bảo vệ tài khoản.`;
+                    } else if (scoreObj.score >= 80) {
+                        advice = `⚡ <strong class="text-blue-400">Kỷ Luật Tốt (${scoreObj.score}/100):</strong> Bạn duy trì được sự ổn định. Phát hiện ${scoreObj.violations} lệnh vượt mức rủi ro cho phép hoặc thiếu Stop Loss. Hãy kiểm soát chặt chẽ lot size!`;
+                    } else {
+                        advice = `⚠️ <strong class="text-amber-400">Cảnh Báo Kỷ Luật (${scoreObj.score}/100):</strong> Bạn đang vi phạm quản lý vốn trên ${scoreObj.violations} lệnh (Vượt quá 5% rủi ro hoặc không đặt Stop Loss). Hãy hạ volume xuống ngay để tránh nguy cơ cháy tài khoản!`;
+                    }
+
+                    let setupAdvice = topSetup ? `• Setup hiệu quả nhất hiện tại là <strong class="text-cyan-300 font-outfit">${topSetup.setup}</strong> với tỷ lệ thắng <strong class="text-emerald-400">${topSetup.winRate}%</strong> (mang lại <strong class="text-cyan-400">+${topSetup.r} R</strong>).` : '';
+
+                    return `<div class="space-y-3 font-outfit text-sm">
+                        <div class="p-3.5 bg-card/80 rounded-xl border border-white/10 space-y-2">
+                            <div>${advice}</div>
+                            <div class="text-slate-300">
+                                • Kỳ vọng lợi nhuận (EV): <strong class="${ev.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(ev.pnl >= 0 ? '+' : '') + formatCurrency(ev.pnl)} / lệnh (${(ev.r >= 0 ? '+' : '') + ev.r + ' R'})</strong>.<br>
+                                • Profit Factor (Hệ số lợi nhuận): <strong class="text-cyan-400">${pf}</strong>.<br>
+                                ${setupAdvice}
+                            </div>
+                        </div>
+                    </div>`;
+                },
+
+                async runAiDiagnosis() {
+                    const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || t.pnl !== 0);
+                    if (closed.length === 0) {
+                        alert('⚠️ Bạn cần ít nhất 1 lệnh đã đóng để chạy chuẩn đoán AI!');
+                        return;
+                    }
+
+                    if (!this.googleApiKey) {
+                        this.aiDiagnosisReport = this.generateInstantDiagnosis();
+                        alert('💡 Hiện đang hiển thị phân tích tức thì của hệ thống. Nếu muốn AI Gemini Vision viết bài kiểm toán tâm lý sâu hơn, hãy nhập API Key trong mục Cài đặt!');
+                        return;
+                    }
+
+                    this.aiDiagnosisReport = `<div class="flex items-center gap-2 py-4 text-cyan-400 animate-pulse font-mono">
+                        <i data-lucide="loader" class="w-5 h-5 animate-spin"></i>
+                        <span>AI Gemini đang phân tích sâu dữ liệu dòng tiền, R:R và tâm lý giao dịch của bạn...</span>
+                    </div>`;
+                    this.$nextTick(() => lucide.createIcons());
+
+                    try {
+                        const summaryData = closed.slice(0, 20).map(t => ({
+                            pair: t.pair,
+                            dir: t.direction,
+                            rr: t.rrRatio,
+                            pnl: t.pnl,
+                            r: this.calcTradeRAchieved(t),
+                            setup: t.setupTag || 'Khác',
+                            note: t.note
+                        }));
+
+                        const prompt = `Bạn là một chuyên gia quản lý quỹ (Head Trader) và huấn luyện viên tâm lý giao dịch đẳng cấp quốc tế.
+                        Hãy phân tích lịch sử giao dịch sau đây của trader (Tên: ${this.traderUsername || 'Trader'}, Vốn gốc: ${this.totalCapital} ${this.currency}, Điểm kỷ luật: ${this.disciplineScore.score}/100):
+                        ${JSON.stringify(summaryData, null, 2)}
+                        
+                        Hãy đưa ra một bài nhận xét kiểm toán cực kỳ sắc bén, ngắn gọn, súc tích bằng tiếng Việt (định dạng HTML đẹp mắt, dùng thẻ <strong>, <ul class="list-disc pl-5 space-y-1 mt-2">, <li>) gồm 3 phần:
+                        1. 🎯 Đánh giá tổng quan dòng tiền & chất lượng lệnh (R:R đạt được, setup nào đang thắng lớn).
+                        2. 🔍 Phát hiện lỗi tâm lý hoặc rủi ro tiềm ẩn (có gồng lỗ hay chốt lời non dưới 1R không).
+                        3. 💡 Lời khuyên hành động cụ thể cho tuần tới để x2 tài khoản bền vững.`;
+
+                        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.googleApiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: prompt }] }],
+                                generationConfig: { temperature: 0.3 }
+                            })
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                            text = text.replace(/```html/gi, '').replace(/```/g, '').trim();
+                            this.aiDiagnosisReport = text;
+                        } else {
+                            this.aiDiagnosisReport = this.generateInstantDiagnosis();
                         }
-                    });
+                    } catch (err) {
+                        console.warn('AI Diagnosis fallback:', err);
+                        this.aiDiagnosisReport = this.generateInstantDiagnosis();
+                    } finally {
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                exportJournalCSV() {
+                    if (this.trades.length === 0) {
+                        alert('⚠️ Bạn chưa có lệnh nào trong nhật ký để xuất!');
+                        return;
+                    }
+
+                    const headers = ['ID', 'Ngày (Date)', 'Cặp (Pair)', 'Lệnh (Direction)', 'Entry Price', 'Stop Loss', 'Take Profit', 'Lots', 'Value ($)', 'Risk USD ($)', 'R:R Target', 'PnL ($)', 'Net R Achieved', 'Trạng Thái (Status)', 'Setup Tag', 'Ghi Chú (Note)'];
+                    const rows = this.trades.map(t => [
+                        t.id,
+                        t.date,
+                        t.pair,
+                        t.direction,
+                        t.entryPrice,
+                        t.stopLoss,
+                        t.takeProfit,
+                        t.lots,
+                        t.dollarValue,
+                        t.riskUsd,
+                        t.rrRatio,
+                        t.pnl,
+                        this.calcTradeRAchieved(t),
+                        t.status,
+                        t.setupTag || '',
+                        (t.note || '').replace(/\"/g, '""')
+                    ]);
+
+                    let csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `DNC_Trading_OS_Journal_${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                },
+
+                printExecutiveReport() {
+                    const originalTitle = document.title;
+                    document.title = `Báo Cáo Kiểm Toán Giao Dịch DNC Trading OS - ${this.traderUsername || 'VIP'}`;
+                    window.print();
+                    document.title = originalTitle;
                 }
             };
         }
