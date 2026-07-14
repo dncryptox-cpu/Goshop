@@ -1600,6 +1600,20 @@
                     return `dnc_${u}_${key}`;
                 },
 
+                // Chuyển đổi link Google Drive sang định dạng thumbnail trực tiếp hiển thị 100% trong <img src>
+                formatDriveImgUrl(url) {
+                    if (!url || typeof url !== 'string') return '';
+                    if (url.startsWith('data:image')) return url;
+                    if (url.includes('drive.google.com')) {
+                        let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                        if (!match) match = url.match(/id=([a-zA-Z0-9_-]+)/);
+                        if (match && match[1]) {
+                            return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1200`;
+                        }
+                    }
+                    return url;
+                },
+
                 // Load cài đặt theo user đang đăng nhập
                 loadUserSettings() {
                     const u = this.traderUsername;
@@ -1617,7 +1631,17 @@
                     const tradesKey = `dnc_trades_${u}`;
                     const savedTrades = localStorage.getItem(tradesKey) || localStorage.getItem('dnc_trading_journal_v1');
                     if (savedTrades) {
-                        this.trades = JSON.parse(savedTrades);
+                        try {
+                            const parsed = JSON.parse(savedTrades);
+                            this.trades = (Array.isArray(parsed) ? parsed : []).map(t => ({
+                                ...t,
+                                imgHtf: this.formatDriveImgUrl(t.imgHtf),
+                                imgMtf: this.formatDriveImgUrl(t.imgMtf),
+                                imgLtf: this.formatDriveImgUrl(t.imgLtf)
+                            }));
+                        } catch(e) {
+                            this.trades = [];
+                        }
                     } else {
                         this.trades = [];
                         this.saveTradesToStorage();
@@ -1927,7 +1951,12 @@
                             }
                             // Áp dụng trades nếu có
                             if (Array.isArray(result.trades) && result.trades.length > 0) {
-                                this.trades = result.trades;
+                                this.trades = result.trades.map(t => ({
+                                    ...t,
+                                    imgHtf: this.formatDriveImgUrl(t.imgHtf),
+                                    imgMtf: this.formatDriveImgUrl(t.imgMtf),
+                                    imgLtf: this.formatDriveImgUrl(t.imgLtf)
+                                }));
                             }
                             // Cập nhật localStorage
                             localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);

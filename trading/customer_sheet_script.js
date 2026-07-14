@@ -139,8 +139,8 @@ function handleGetTrades(data) {
   const sheet = getOrCreateLogSheet();
   const rows = sheet.getDataRange().getValues();
   if (rows.length <= 1) {
-    return jsonResponse({ 
-      success: true, 
+    return jsonResponse({
+      success: true,
       trades: [],
       capital: settings.capital,
       currency: settings.currency,
@@ -179,8 +179,8 @@ function handleGetTrades(data) {
     });
   }
 
-  return jsonResponse({ 
-    success: true, 
+  return jsonResponse({
+    success: true,
     trades,
     capital: settings.capital,
     currency: settings.currency,
@@ -253,7 +253,16 @@ function readSettingsFromSheet(username) {
 
   let isHorizontalTable = false;
   const headerRow = rows[0] ? rows[0].map(h => String(h || '').toLowerCase().trim()) : [];
-  if (headerRow.includes('username') || headerRow.includes('tài khoản') || (headerRow.includes('ai gemini api key') && headerRow.indexOf('ai gemini api key') > 0)) {
+  const settingKeywordsCount = headerRow.filter(h =>
+    h.includes('username') || h.includes('tài khoản') || h === 'user' ||
+    h.includes('gemini') || h.includes('api key') ||
+    h.includes('webhook') || (h.includes('url') && !h.includes('cài đặt')) ||
+    h.includes('risk') || h.includes('rủi ro') ||
+    h === 'capital' || h.includes('vốn') ||
+    h.includes('currency') || h.includes('tiền tệ')
+  ).length;
+
+  if (headerRow.includes('username') || headerRow.includes('tài khoản') || settingKeywordsCount >= 2) {
     isHorizontalTable = true;
   }
 
@@ -268,7 +277,7 @@ function readSettingsFromSheet(username) {
 
     for (let i = 1; i < rows.length; i++) {
       const rowUser = userColIdx !== -1 ? String(rows[i][userColIdx] || '').toLowerCase().trim() : '';
-      if (!u || rowUser === u || rows.length === 2) {
+      if (!u || rowUser === u || userColIdx === -1 || rows.length === 2) {
         if (geminiColIdx !== -1 && rows[i][geminiColIdx] !== undefined && rows[i][geminiColIdx] !== '') settings.geminiApiKey = String(rows[i][geminiColIdx]).trim();
         if (webhookColIdx !== -1 && rows[i][webhookColIdx] !== undefined && rows[i][webhookColIdx] !== '') settings.webhookUrl = String(rows[i][webhookColIdx]).trim();
         if (riskColIdx !== -1 && rows[i][riskColIdx] !== '' && rows[i][riskColIdx] !== undefined) settings.riskPercent = Number(rows[i][riskColIdx]);
@@ -306,7 +315,16 @@ function writeSettingsToSheet(data) {
 
   let isHorizontalTable = false;
   const headerRow = rows[0] ? rows[0].map(h => String(h || '').toLowerCase().trim()) : [];
-  if (headerRow.includes('username') || headerRow.includes('tài khoản') || (headerRow.includes('ai gemini api key') && headerRow.indexOf('ai gemini api key') > 0)) {
+  const settingKeywordsCount = headerRow.filter(h =>
+    h.includes('username') || h.includes('tài khoản') || h === 'user' ||
+    h.includes('gemini') || h.includes('api key') ||
+    h.includes('webhook') || (h.includes('url') && !h.includes('cài đặt')) ||
+    h.includes('risk') || h.includes('rủi ro') ||
+    h === 'capital' || h.includes('vốn') ||
+    h.includes('currency') || h.includes('tiền tệ')
+  ).length;
+
+  if (headerRow.includes('username') || headerRow.includes('tài khoản') || settingKeywordsCount >= 2) {
     isHorizontalTable = true;
   }
 
@@ -322,7 +340,7 @@ function writeSettingsToSheet(data) {
     let targetRowNumber = null;
     for (let i = 1; i < rows.length; i++) {
       const rowUser = userColIdx !== -1 ? String(rows[i][userColIdx] || '').toLowerCase().trim() : '';
-      if (rowUser === u.toLowerCase() || (rows.length === 2 && !rowUser)) {
+      if (rowUser === u.toLowerCase() || userColIdx === -1 || (rows.length === 2 && !rowUser)) {
         targetRowNumber = i + 1;
         break;
       }
@@ -419,7 +437,7 @@ function uploadBase64Image(base64DataUrl, filename) {
     const folder = getOrCreateDriveFolder();
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    return `https://drive.google.com/uc?export=view&id=${file.getId()}`;
+    return `https://drive.google.com/thumbnail?id=${file.getId()}&sz=w1200`;
   } catch (err) {
     return '';
   }
