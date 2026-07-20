@@ -1087,8 +1087,47 @@
                         </button>
                         <a x-show="sheetWebhookUrl" :href="sheetWebhookUrl" target="_blank"
                             class="text-xs text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1">
-                            <span>→ Mở Sheet Dữ Liệu Của Bạn</span>
+                            <span>→ Mở Webhook URL (Kiểm tra kết nối)</span>
                         </a>
+                    </div>
+
+                    <!-- Các Link Dữ Liệu Đang Chạy Ngầm (Sheet & Drive) -->
+                    <div x-show="sheetWebhookUrl || userSheetUrl || userDriveUrl" class="mt-4 pt-3.5 border-t border-white/10 space-y-2.5">
+                        <label class="text-xs font-bold text-slate-300 flex items-center gap-2">
+                            <i data-lucide="link" class="w-4 h-4 text-emerald-400"></i>
+                            <span>Link Chạy Ngầm Dữ Liệu Của Bạn (Dễ Dàng Xem & Mở Trực Tiếp):</span>
+                        </label>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <!-- Link Google Sheet -->
+                            <a :href="userSheetUrl || sheetWebhookUrl" target="_blank"
+                                class="flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/40 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 transition-all group">
+                                <div class="flex items-center gap-3 overflow-hidden">
+                                    <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                                        <i data-lucide="table" class="w-4 h-4"></i>
+                                    </div>
+                                    <div class="truncate pr-2">
+                                        <div class="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors" x-text="userSheetName || 'Google Sheet Nhật Ký'"></div>
+                                        <div class="text-[11px] text-emerald-400/80 truncate font-mono" x-text="userSheetUrl ? 'Bảng lưu toàn bộ lệnh (Trading Log)' : 'Nhấn để mở / xem dữ liệu Sheet'"></div>
+                                    </div>
+                                </div>
+                                <i data-lucide="external-link" class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0 ml-1"></i>
+                            </a>
+
+                            <!-- Link Google Drive Folder -->
+                            <a :href="userDriveUrl || 'https://drive.google.com'" target="_blank"
+                                class="flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-blue-950/40 to-slate-900 border border-blue-500/30 hover:border-blue-400 transition-all group">
+                                <div class="flex items-center gap-3 overflow-hidden">
+                                    <div class="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                                        <i data-lucide="folder" class="w-4 h-4"></i>
+                                    </div>
+                                    <div class="truncate pr-2">
+                                        <div class="text-xs font-bold text-white group-hover:text-blue-300 transition-colors" x-text="userDriveName || 'Thư Mục Ảnh Chart (Drive)'"></div>
+                                        <div class="text-[11px] text-blue-400/80 truncate font-mono" x-text="userDriveUrl ? 'Nơi lưu tự động ảnh HTF/MTF/LTF' : 'Mở Google Drive cá nhân'"></div>
+                                    </div>
+                                </div>
+                                <i data-lucide="external-link" class="w-4 h-4 text-slate-400 group-hover:text-white shrink-0 ml-1"></i>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2108,6 +2147,10 @@
                 googleApiKey: '',
                 sheetWebhookUrl: '',
                 traderUsername: '',
+                userSheetUrl: '',
+                userDriveUrl: '',
+                userSheetName: '',
+                userDriveName: '',
                 aiLoading: false,
                 signalText: '',
 
@@ -2164,6 +2207,10 @@
                     this.googleApiKey = key;
                     const sheet = localStorage.getItem(`dnc_sheet_url_${u}`) || localStorage.getItem('dnc_trading_sheet_url') || '';
                     this.sheetWebhookUrl = sheet;
+                    this.userSheetUrl = localStorage.getItem(`dnc_sheet_view_url_${u}`) || '';
+                    this.userDriveUrl = localStorage.getItem(`dnc_drive_view_url_${u}`) || '';
+                    this.userSheetName = localStorage.getItem(`dnc_sheet_view_name_${u}`) || '';
+                    this.userDriveName = localStorage.getItem(`dnc_drive_view_name_${u}`) || '';
                     const curr = localStorage.getItem(`dnc_currency_${u}`) || localStorage.getItem('dnc_trading_currency');
                     if (curr) this.currency = curr;
                     const rp = localStorage.getItem(`dnc_risk_pct_${u}`);
@@ -2456,6 +2503,32 @@
                     }
                 },
 
+                async fetchCloudViewLinks() {
+                    const u = this.traderUsername || 'default';
+                    const targetUrl = this.sheetWebhookUrl || this.authWebhookUrl;
+                    if (!targetUrl) return;
+                    try {
+                        const res = await fetch(targetUrl + '?action=getSettings&username=' + encodeURIComponent(u));
+                        const data = await res.json();
+                        if (data && data.sheetUrl) {
+                            this.userSheetUrl = data.sheetUrl;
+                            localStorage.setItem(`dnc_sheet_view_url_${u}`, data.sheetUrl);
+                        }
+                        if (data && data.driveUrl) {
+                            this.userDriveUrl = data.driveUrl;
+                            localStorage.setItem(`dnc_drive_view_url_${u}`, data.driveUrl);
+                        }
+                        if (data && data.sheetName) {
+                            this.userSheetName = data.sheetName;
+                            localStorage.setItem(`dnc_sheet_view_name_${u}`, data.sheetName);
+                        }
+                        if (data && data.driveName) {
+                            this.userDriveName = data.driveName;
+                            localStorage.setItem(`dnc_drive_view_name_${u}`, data.driveName);
+                        }
+                    } catch(e) {}
+                },
+
                 async pullTradesFromCloud() {
                     if (!this.traderUsername || this.tradingMode === 'BACKTEST') return;
                     this.cloudSyncing = true;
@@ -2489,6 +2562,22 @@
                                 if (resJson.riskPercent !== null && resJson.riskPercent !== undefined && Number(resJson.riskPercent) > 0) {
                                     this.riskPercent = Number(resJson.riskPercent);
                                     localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
+                                }
+                                if (resJson.sheetUrl) {
+                                    this.userSheetUrl = resJson.sheetUrl;
+                                    localStorage.setItem(`dnc_sheet_view_url_${u}`, resJson.sheetUrl);
+                                }
+                                if (resJson.driveUrl) {
+                                    this.userDriveUrl = resJson.driveUrl;
+                                    localStorage.setItem(`dnc_drive_view_url_${u}`, resJson.driveUrl);
+                                }
+                                if (resJson.sheetName) {
+                                    this.userSheetName = resJson.sheetName;
+                                    localStorage.setItem(`dnc_sheet_view_name_${u}`, resJson.sheetName);
+                                }
+                                if (resJson.driveName) {
+                                    this.userDriveName = resJson.driveName;
+                                    localStorage.setItem(`dnc_drive_view_name_${u}`, resJson.driveName);
                                 }
                             }
                         } catch(e) {}
@@ -2527,6 +2616,22 @@
                             if (result.riskPercent !== null && result.riskPercent !== undefined && Number(result.riskPercent) > 0) {
                                 this.riskPercent = Number(result.riskPercent);
                                 localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
+                            }
+                            if (result.sheetUrl) {
+                                this.userSheetUrl = result.sheetUrl;
+                                localStorage.setItem(`dnc_sheet_view_url_${u}`, result.sheetUrl);
+                            }
+                            if (result.driveUrl) {
+                                this.userDriveUrl = result.driveUrl;
+                                localStorage.setItem(`dnc_drive_view_url_${u}`, result.driveUrl);
+                            }
+                            if (result.sheetName) {
+                                this.userSheetName = result.sheetName;
+                                localStorage.setItem(`dnc_sheet_view_name_${u}`, result.sheetName);
+                            }
+                            if (result.driveName) {
+                                this.userDriveName = result.driveName;
+                                localStorage.setItem(`dnc_drive_view_name_${u}`, result.driveName);
                             }
                             // Áp dụng trades (Hợp nhất thông minh: giữ lại lệnh local chưa lên cloud, không xóa mất lệnh cũ)
                             if (Array.isArray(result.trades)) {
@@ -3251,6 +3356,9 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         this.currentView = viewName;
                         if (viewName === 'ANALYTICS') {
                             setTimeout(() => this.renderAnalyticsChart(), 100);
+                        }
+                        if (viewName === 'SETTINGS') {
+                            this.fetchCloudViewLinks();
                         }
                     }
                     this.$nextTick(() => lucide.createIcons());
