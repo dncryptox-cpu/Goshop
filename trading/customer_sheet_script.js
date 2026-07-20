@@ -14,14 +14,53 @@ const LOG_SHEET_NAME = 'Trading Log';
 const DRIVE_FOLDER_NAME = 'DNC Trading OS - Chart Images';
 
 function doGet(e) {
-  const params = e.parameter || {};
+  const params = (e && e.parameter) ? e.parameter : {};
   if (params.action === 'getTrades') {
     return handleGetTrades({ username: params.username });
   }
   if (params.action === 'getSettings') {
     return handleGetSettings({ username: params.username });
   }
-  return jsonResponse({ status: '✅ DNC Customer Trading Sheet Script is running' });
+  if (params.action === 'getCloudLinks') {
+    return jsonResponse({ success: true, ...getCloudLinks() });
+  }
+  // Khi khách mở Webhook URL trực tiếp trên trình duyệt, tự động chuyển hướng / hiển thị link đến thẳng Google Sheet cá nhân của họ
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss && ss.getUrl()) {
+      const sheetUrl = ss.getUrl();
+      const sheetName = ss.getName();
+      return HtmlService.createHtmlOutput(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Kết nối DNC Trading Sheet</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+            .card { background: #1e293b; padding: 36px; border-radius: 20px; border: 1px solid #334155; max-width: 460px; text-align: center; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+            .title { color: #34d399; font-size: 20px; font-weight: bold; margin-bottom: 12px; }
+            .desc { color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+            .btn { display: inline-block; background: #10b981; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 12px; font-weight: bold; font-size: 14px; box-shadow: 0 10px 15px -3px rgba(16,185,129,0.3); transition: all 0.2s; }
+            .btn:hover { background: #059669; }
+            .link-text { margin-top: 16px; font-size: 12px; color: #64748b; word-break: break-all; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="title">✅ Webhook DNC Trading OS Hoạt Động!</div>
+            <div class="desc">Kết nối tự động giữa giao diện DNC Trading OS và bảng dữ liệu <b>${sheetName}</b> của bạn đã sẵn sàng.<br><br>Đang chuyển hướng bạn tới Google Sheet...</div>
+            <a href="${sheetUrl}" class="btn">→ Mở Google Sheet Ngay</a>
+            <div class="link-text">${sheetUrl}</div>
+          </div>
+          <script>setTimeout(function() { window.location.href = "${sheetUrl}"; }, 1200);</script>
+        </body>
+        </html>
+      `);
+    }
+  } catch(err) {}
+
+  return jsonResponse({ status: '✅ DNC Customer Trading Sheet Script is running', ...getCloudLinks() });
 }
 
 function doPost(e) {

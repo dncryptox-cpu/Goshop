@@ -2403,6 +2403,7 @@
 
                 openSettingsModal() {
                     this.settingsOpen = true;
+                    this.fetchCloudViewLinks();
                     this.$nextTick(() => lucide.createIcons());
                 },
 
@@ -2456,6 +2457,7 @@
                     localStorage.setItem(`dnc_sheet_url_${this.traderUsername}`, this.sheetWebhookUrl);
                     localStorage.setItem('dnc_trading_sheet_url', this.sheetWebhookUrl);
                     this.syncSettingsToCloud();
+                    await this.fetchCloudViewLinks();
                     alert('✅ Đã kết nối Webhook Google Sheet cá nhân!\n\nĐang tự động tải cấu hình (AI Key, Vốn, Risk) và Lệnh về thiết bị này...');
                     await this.pullTradesFromCloud();
                 },
@@ -2528,8 +2530,12 @@
                         if (!targetUrl) return;
                     }
                     try {
-                        const res = await fetch(targetUrl + '?action=getSettings&username=' + encodeURIComponent(u));
-                        const data = await res.json();
+                        const res = await fetch(targetUrl + '?action=getCloudLinks&username=' + encodeURIComponent(u));
+                        let data = await res.json();
+                        if (!data || !data.sheetUrl) {
+                            const resSettings = await fetch(targetUrl + '?action=getSettings&username=' + encodeURIComponent(u));
+                            data = await resSettings.json();
+                        }
                         if (data && data.sheetUrl && data.sheetName !== 'Trading Admin') {
                             this.userSheetUrl = data.sheetUrl;
                             localStorage.setItem(`dnc_sheet_view_url_${u}`, data.sheetUrl);
