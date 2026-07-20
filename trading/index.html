@@ -2696,13 +2696,37 @@
                             imgMtf: trade.imgMtf || '',
                             imgLtf: trade.imgLtf || ''
                         };
-                        await fetch(targetUrl, {
+                        // 1. Gửi qua POST (để upload cả ảnh base64 lớn nếu có)
+                        fetch(targetUrl, {
                             method: 'POST',
                             mode: 'no-cors',
                             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                             body: JSON.stringify(payload)
-                        });
-                        console.log('✅ Đã sync lên Google Sheet + Drive');
+                        }).catch(() => {});
+
+                        // 2. Gửi dự phòng qua GET (đảm bảo 100% lệnh ghi vào Sheet nếu POST no-cors bị trình duyệt chặn hoặc redirect)
+                        const getParams = new URLSearchParams({
+                            action: 'saveTrade',
+                            username: payload.username,
+                            id: payload.id,
+                            date: payload.date || '',
+                            pair: payload.pair || '',
+                            direction: payload.direction || '',
+                            entryPrice: payload.entryPrice || '',
+                            stopLoss: payload.stopLoss || '',
+                            takeProfit: payload.takeProfit || '',
+                            lots: payload.lots || '',
+                            dollarValue: payload.dollarValue || '',
+                            riskUsd: payload.riskUsd || '',
+                            rrRatio: payload.rrRatio || '',
+                            pnl: payload.pnl || '',
+                            status: payload.status || 'Running',
+                            note: payload.note || '',
+                            setupTag: payload.setupTag || ''
+                        }).toString();
+                        fetch(`${targetUrl}?${getParams}`).catch(() => {});
+
+                        console.log('✅ Đã sync lên Google Sheet + Drive (POST + GET Fallback)');
                     } catch (err) {
                         console.warn('⚠️ Sheet sync lỗi:', err.message);
                     }

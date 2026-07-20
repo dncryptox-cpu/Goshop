@@ -24,6 +24,24 @@ function doGet(e) {
   if (params.action === 'getCloudLinks') {
     return jsonResponse({ success: true, ...getCloudLinks() });
   }
+  if (params.action === 'saveTrade') {
+    return handleSaveTrade(params);
+  }
+  if (params.action === 'testSave') {
+    return handleSaveTrade({
+      username: params.username || 'TestUser',
+      date: new Date().toISOString().split('T')[0],
+      pair: 'BTCUSDT',
+      direction: 'LONG',
+      entryPrice: 95000,
+      stopLoss: 94000,
+      takeProfit: 98000,
+      lots: 0.5,
+      pnl: 1500,
+      status: 'WIN',
+      note: '✅ Kiểm tra lưu lệnh thành công từ Webhook!'
+    });
+  }
   // Khi khách mở Webhook URL trực tiếp trên trình duyệt, tự động chuyển hướng / hiển thị link đến thẳng Google Sheet cá nhân của họ
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -129,6 +147,10 @@ function handleSaveTrade(data) {
   let targetRow;
   if (existingRowNumber) {
     targetRow = existingRowNumber;
+    const oldRow = allRows[existingRowNumber - 1] || [];
+    if (!htfUrl && !data.imgHtf && oldRow[16]) row[16] = oldRow[16];
+    if (!mtfUrl && !data.imgMtf && oldRow[17]) row[17] = oldRow[17];
+    if (!ltfUrl && !data.imgLtf && oldRow[18]) row[18] = oldRow[18];
     sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
   } else {
     sheet.appendRow(row);
