@@ -361,12 +361,6 @@
                     <i data-lucide="settings" class="w-4 h-4"></i>
                     <span>Cài Đặt</span>
                 </button>
-                <button @click="pullTradesFromCloud()"
-                    x-show="currentView !== 'BACKTEST'"
-                    class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border border-emerald-500/30">
-                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': cloudSyncing}"></i>
-                    <span>Đồng Bộ Cloud</span>
-                </button>
             </div>
 
             <!-- Search & Filter Options (Only in JOURNAL view) -->
@@ -1629,9 +1623,9 @@
 
     <!-- MODAL: ADD / EDIT TRADE -->
     <div x-show="modalOpen" x-cloak
-        @keydown.escape.window="closeModal()"
+        @keydown.escape.window="closeModal(true)"
         class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
-        @click.self="closeModal()">
+        @click.self="closeModal(true)">
         <div class="glass-panel rounded-3xl max-w-4xl w-full p-6 sm:p-8 max-h-[94vh] overflow-y-auto space-y-6">
             
             <div class="flex items-center justify-between border-b border-white/10 pb-4">
@@ -2128,6 +2122,7 @@
 
                 trades: [],
                 modalOpen: false,
+                initialFormTradeSnapshot: null,
                 inspectorOpen: false,
                 selectedTrade: {},
                 activeTFIndex: 3, // 3 = Side by Side
@@ -2229,12 +2224,14 @@
                     const savedPin = localStorage.getItem('dnc_trading_pin');
                     if (savedPin) this.passcode = savedPin;
 
-                    // Khôi phục session nếu đã login trước đó
-                    const unlocked = sessionStorage.getItem('dnc_trading_unlocked');
-                    const sessionUser = sessionStorage.getItem('dnc_trading_loggedin_user');
+                    // Khôi phục session nếu đã login trước đó (cả sessionStorage và localStorage để không bị đăng xuất khi reload)
+                    const unlocked = sessionStorage.getItem('dnc_trading_unlocked') || localStorage.getItem('dnc_trading_unlocked');
+                    const sessionUser = sessionStorage.getItem('dnc_trading_loggedin_user') || localStorage.getItem('dnc_trading_loggedin_user');
                     if (unlocked === 'true' && sessionUser) {
                         this.isLocked = false;
                         this.traderUsername = sessionUser;
+                        sessionStorage.setItem('dnc_trading_unlocked', 'true');
+                        sessionStorage.setItem('dnc_trading_loggedin_user', sessionUser);
                         this.loadUserSettings();
                         return;
                     }
@@ -2269,6 +2266,8 @@
                                 this.inputPasscode = '';
                                 sessionStorage.setItem('dnc_trading_unlocked', 'true');
                                 sessionStorage.setItem('dnc_trading_loggedin_user', u);
+                                localStorage.setItem('dnc_trading_unlocked', 'true');
+                                localStorage.setItem('dnc_trading_loggedin_user', u);
                                 // Ưu tiên áp dụng vốn, tiền tệ, AI Key và Webhook URL từ server khi đăng nhập thiết bị mới
                                 if (result.capital !== null && result.capital !== undefined && Number(result.capital) > 0) {
                                     this.totalCapital = Number(result.capital);
@@ -2314,6 +2313,8 @@
                         this.inputPasscode = '';
                         sessionStorage.setItem('dnc_trading_unlocked', 'true');
                         sessionStorage.setItem('dnc_trading_loggedin_user', this.traderUsername);
+                        localStorage.setItem('dnc_trading_unlocked', 'true');
+                        localStorage.setItem('dnc_trading_loggedin_user', this.traderUsername);
                         this.loadUserSettings();
                     } else {
                         this.loginError = true;
@@ -2324,6 +2325,9 @@
                 lockApp() {
                     this.isLocked = true;
                     sessionStorage.removeItem('dnc_trading_unlocked');
+                    sessionStorage.removeItem('dnc_trading_loggedin_user');
+                    localStorage.removeItem('dnc_trading_unlocked');
+                    localStorage.removeItem('dnc_trading_loggedin_user');
                 },
 
                 openCloudGuide() {
@@ -2524,14 +2528,17 @@
                                 this.riskPercent = Number(result.riskPercent);
                                 localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
                             }
-                            // Áp dụng trades nếu có
-                            if (Array.isArray(result.trades) && result.trades.length > 0) {
-                                this.trades = result.trades.map(t => ({
+                            // Áp dụng trades (Hợp nhất thông minh: giữ lại lệnh local chưa lên cloud, không xóa mất lệnh cũ)
+                            if (Array.isArray(result.trades)) {
+                                const cloudTrades = result.trades.map(t => ({
                                     ...t,
                                     imgHtf: this.formatDriveImgUrl(t.imgHtf),
                                     imgMtf: this.formatDriveImgUrl(t.imgMtf),
                                     imgLtf: this.formatDriveImgUrl(t.imgLtf)
                                 }));
+                                const cloudMap = new Map(cloudTrades.map(t => [t.id, t]));
+                                const localOnlyTrades = (this.trades || []).filter(t => t && t.id && !cloudMap.has(t.id));
+                                this.trades = [...localOnlyTrades, ...cloudTrades];
                             }
                             // Cập nhật localStorage
                             localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
@@ -3145,10 +3152,27 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         imgLtf: null
                     };
                     this.activePasteSlot = 'LTF';
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
                     this.modalOpen = true;
                 },
 
-                closeModal() {
+                isFormModified() {
+                    if (!this.formTrade || !this.initialFormTradeSnapshot) return false;
+                    return JSON.stringify(this.formTrade) !== this.initialFormTradeSnapshot;
+                },
+
+                closeModal(fromBackdrop = false) {
+                    if (fromBackdrop && this.isFormModified()) {
+                        // Khi bấm nhầm vào phía bên ngoài (hoặc phím ESC) khi đang có thông tin nhập dở:
+                        // KHÔNG tự động thoát để bảo vệ toàn bộ dữ liệu đang nhập.
+                        return;
+                    }
+                    if (!fromBackdrop && this.isFormModified()) {
+                        // Khi bấm nút Hủy hoặc X để đóng bảng trong khi đang nhập dở
+                        if (!confirm('⚠️ Bạn đang có thông tin lệnh chưa lưu.\n\nBạn có chắc chắn muốn thoát và hủy bỏ những gì đã nhập không?')) {
+                            return;
+                        }
+                    }
                     this.modalOpen = false;
                 },
 
@@ -3176,12 +3200,14 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         };
                     }
                     this.activePasteSlot = 'LTF';
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
                     this.modalOpen = true;
                     this.$nextTick(() => lucide.createIcons());
                 },
 
                 editTrade(t) {
                     this.formTrade = JSON.parse(JSON.stringify(t));
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
                     this.modalOpen = true;
                     this.$nextTick(() => lucide.createIcons());
                 },
@@ -3249,6 +3275,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     copy.pnl = 0;
                     copy.rAchieved = 0;
                     this.formTrade = copy;
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
                     this.modalOpen = true;
                     this.$nextTick(() => lucide.createIcons());
                 },
