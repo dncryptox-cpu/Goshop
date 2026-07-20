@@ -589,28 +589,9 @@ function uploadBase64Image(base64DataUrl, filename) {
   }
 }
 
-function getCloudLinks() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const folder = getOrCreateDriveFolder();
-    return {
-      sheetUrl: ss ? ss.getUrl() : '',
-      driveUrl: folder ? folder.getUrl() : '',
-      sheetName: ss ? ss.getName() : '',
-      driveName: folder ? folder.getName() : ''
-    };
-  } catch (e) {
-    return { sheetUrl: '', driveUrl: '', sheetName: '', driveName: '' };
-  }
-}
-
 function jsonResponse(obj) {
-  let finalObj = obj;
-  if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-    finalObj = { ...obj, ...getCloudLinks() };
-  }
   return ContentService
-    .createTextOutput(JSON.stringify(finalObj))
+    .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
 

@@ -1092,21 +1092,21 @@
                     </div>
 
                     <!-- Các Link Dữ Liệu Đang Chạy Ngầm (Sheet & Drive) -->
-                    <div x-show="sheetWebhookUrl || userSheetUrl || userDriveUrl" class="mt-4 pt-3.5 border-t border-white/10 space-y-2.5">
+                    <div x-show="sheetWebhookUrl" class="mt-4 pt-3.5 border-t border-white/10 space-y-2.5">
                         <label class="text-xs font-bold text-slate-300 flex items-center gap-2">
                             <i data-lucide="link" class="w-4 h-4 text-emerald-400"></i>
-                            <span>Link Chạy Ngầm Dữ Liệu Của Bạn (Dễ Dàng Xem & Mở Trực Tiếp):</span>
+                            <span>Link Chạy Ngầm Dữ Liệu Của Riêng Bạn (Sheet & Drive Cá Nhân):</span>
                         </label>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                             <!-- Link Google Sheet -->
-                            <a :href="userSheetUrl || sheetWebhookUrl" target="_blank"
+                            <a :href="(userSheetUrl && userSheetName !== 'Trading Admin') ? userSheetUrl : sheetWebhookUrl" target="_blank"
                                 class="flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/40 to-slate-900 border border-emerald-500/30 hover:border-emerald-400 transition-all group">
                                 <div class="flex items-center gap-3 overflow-hidden">
                                     <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
                                         <i data-lucide="table" class="w-4 h-4"></i>
                                     </div>
                                     <div class="truncate pr-2">
-                                        <div class="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors" x-text="userSheetName || 'Google Sheet Nhật Ký'"></div>
+                                        <div class="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors" x-text="(userSheetName && userSheetName !== 'Trading Admin') ? userSheetName : 'Google Sheet Cá Nhân'"></div>
                                         <div class="text-[11px] text-emerald-400/80 truncate font-mono" x-text="userSheetUrl ? 'Bảng lưu toàn bộ lệnh (Trading Log)' : 'Nhấn để mở / xem dữ liệu Sheet'"></div>
                                     </div>
                                 </div>
@@ -1114,14 +1114,14 @@
                             </a>
 
                             <!-- Link Google Drive Folder -->
-                            <a :href="userDriveUrl || 'https://drive.google.com'" target="_blank"
+                            <a :href="(userDriveUrl && userDriveName !== 'DNC Trading Charts') ? userDriveUrl : 'https://drive.google.com'" target="_blank"
                                 class="flex items-center justify-between p-3.5 rounded-xl bg-gradient-to-r from-blue-950/40 to-slate-900 border border-blue-500/30 hover:border-blue-400 transition-all group">
                                 <div class="flex items-center gap-3 overflow-hidden">
                                     <div class="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
                                         <i data-lucide="folder" class="w-4 h-4"></i>
                                     </div>
                                     <div class="truncate pr-2">
-                                        <div class="text-xs font-bold text-white group-hover:text-blue-300 transition-colors" x-text="userDriveName || 'Thư Mục Ảnh Chart (Drive)'"></div>
+                                        <div class="text-xs font-bold text-white group-hover:text-blue-300 transition-colors" x-text="(userDriveName && userDriveName !== 'DNC Trading Charts') ? userDriveName : 'Thư Mục Drive Cá Nhân'"></div>
                                         <div class="text-[11px] text-blue-400/80 truncate font-mono" x-text="userDriveUrl ? 'Nơi lưu tự động ảnh HTF/MTF/LTF' : 'Mở Google Drive cá nhân'"></div>
                                     </div>
                                 </div>
@@ -2211,6 +2211,16 @@
                     this.userDriveUrl = localStorage.getItem(`dnc_drive_view_url_${u}`) || '';
                     this.userSheetName = localStorage.getItem(`dnc_sheet_view_name_${u}`) || '';
                     this.userDriveName = localStorage.getItem(`dnc_drive_view_name_${u}`) || '';
+                    if (this.userSheetName === 'Trading Admin' || this.userDriveName === 'DNC Trading Charts' || !this.sheetWebhookUrl) {
+                        this.userSheetUrl = '';
+                        this.userDriveUrl = '';
+                        this.userSheetName = '';
+                        this.userDriveName = '';
+                        localStorage.removeItem(`dnc_sheet_view_url_${u}`);
+                        localStorage.removeItem(`dnc_drive_view_url_${u}`);
+                        localStorage.removeItem(`dnc_sheet_view_name_${u}`);
+                        localStorage.removeItem(`dnc_drive_view_name_${u}`);
+                    }
                     const curr = localStorage.getItem(`dnc_currency_${u}`) || localStorage.getItem('dnc_trading_currency');
                     if (curr) this.currency = curr;
                     const rp = localStorage.getItem(`dnc_risk_pct_${u}`);
@@ -2505,24 +2515,34 @@
 
                 async fetchCloudViewLinks() {
                     const u = this.traderUsername || 'default';
-                    const targetUrl = this.sheetWebhookUrl || this.authWebhookUrl;
-                    if (!targetUrl) return;
+                    const targetUrl = this.sheetWebhookUrl;
+                    if (!targetUrl || this.userSheetName === 'Trading Admin' || this.userDriveName === 'DNC Trading Charts') {
+                        this.userSheetUrl = '';
+                        this.userDriveUrl = '';
+                        this.userSheetName = '';
+                        this.userDriveName = '';
+                        localStorage.removeItem(`dnc_sheet_view_url_${u}`);
+                        localStorage.removeItem(`dnc_drive_view_url_${u}`);
+                        localStorage.removeItem(`dnc_sheet_view_name_${u}`);
+                        localStorage.removeItem(`dnc_drive_view_name_${u}`);
+                        if (!targetUrl) return;
+                    }
                     try {
                         const res = await fetch(targetUrl + '?action=getSettings&username=' + encodeURIComponent(u));
                         const data = await res.json();
-                        if (data && data.sheetUrl) {
+                        if (data && data.sheetUrl && data.sheetName !== 'Trading Admin') {
                             this.userSheetUrl = data.sheetUrl;
                             localStorage.setItem(`dnc_sheet_view_url_${u}`, data.sheetUrl);
                         }
-                        if (data && data.driveUrl) {
+                        if (data && data.driveUrl && data.driveName !== 'DNC Trading Charts') {
                             this.userDriveUrl = data.driveUrl;
                             localStorage.setItem(`dnc_drive_view_url_${u}`, data.driveUrl);
                         }
-                        if (data && data.sheetName) {
+                        if (data && data.sheetName && data.sheetName !== 'Trading Admin') {
                             this.userSheetName = data.sheetName;
                             localStorage.setItem(`dnc_sheet_view_name_${u}`, data.sheetName);
                         }
-                        if (data && data.driveName) {
+                        if (data && data.driveName && data.driveName !== 'DNC Trading Charts') {
                             this.userDriveName = data.driveName;
                             localStorage.setItem(`dnc_drive_view_name_${u}`, data.driveName);
                         }
@@ -2563,22 +2583,6 @@
                                     this.riskPercent = Number(resJson.riskPercent);
                                     localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
                                 }
-                                if (resJson.sheetUrl) {
-                                    this.userSheetUrl = resJson.sheetUrl;
-                                    localStorage.setItem(`dnc_sheet_view_url_${u}`, resJson.sheetUrl);
-                                }
-                                if (resJson.driveUrl) {
-                                    this.userDriveUrl = resJson.driveUrl;
-                                    localStorage.setItem(`dnc_drive_view_url_${u}`, resJson.driveUrl);
-                                }
-                                if (resJson.sheetName) {
-                                    this.userSheetName = resJson.sheetName;
-                                    localStorage.setItem(`dnc_sheet_view_name_${u}`, resJson.sheetName);
-                                }
-                                if (resJson.driveName) {
-                                    this.userDriveName = resJson.driveName;
-                                    localStorage.setItem(`dnc_drive_view_name_${u}`, resJson.driveName);
-                                }
                             }
                         } catch(e) {}
                     }
@@ -2617,19 +2621,19 @@
                                 this.riskPercent = Number(result.riskPercent);
                                 localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
                             }
-                            if (result.sheetUrl) {
+                            if (result.sheetUrl && result.sheetName !== 'Trading Admin') {
                                 this.userSheetUrl = result.sheetUrl;
                                 localStorage.setItem(`dnc_sheet_view_url_${u}`, result.sheetUrl);
                             }
-                            if (result.driveUrl) {
+                            if (result.driveUrl && result.driveName !== 'DNC Trading Charts') {
                                 this.userDriveUrl = result.driveUrl;
                                 localStorage.setItem(`dnc_drive_view_url_${u}`, result.driveUrl);
                             }
-                            if (result.sheetName) {
+                            if (result.sheetName && result.sheetName !== 'Trading Admin') {
                                 this.userSheetName = result.sheetName;
                                 localStorage.setItem(`dnc_sheet_view_name_${u}`, result.sheetName);
                             }
-                            if (result.driveName) {
+                            if (result.driveName && result.driveName !== 'DNC Trading Charts') {
                                 this.userDriveName = result.driveName;
                                 localStorage.setItem(`dnc_drive_view_name_${u}`, result.driveName);
                             }
