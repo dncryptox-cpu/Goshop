@@ -1,0 +1,1398 @@
+<script>
+        function tradingApp() {
+            return {
+                // Security & Authentication State
+                isLocked: true,
+                passcode: '2026',
+                inputUsername: '',
+                inputPasscode: '',
+                newPasscode: '',
+                pwOld: '',
+                pwNew: '',
+                pwConfirm: '',
+                changePwLoading: false,
+                changePwMsg: '',
+                changePwOk: false,
+                showPassword: false,
+                loginError: false,
+                loginErrorMsg: '',
+                loginLoading: false,
+                cloudSyncing: false,
+                isLoadingCloud: false,
+
+                // Application & Navigation State
+                currentView: 'TRADES', // TRADES, ANALYTICS, CALCULATOR, SETTINGS, BACKTEST
+                backtestSubTab: 'JOURNAL',
+                tradingMode: 'LIVE',   // LIVE vs BACKTEST
+                settingsOpen: false,
+                backendModalOpen: false,
+
+                // User & Connectivity Configuration
+                traderUsername: '',
+                backendUrl: '',
+                inputBackendUrl: '',
+                authWebhookUrl: '',
+                sheetWebhookUrl: '',
+                googleApiKey: '',
+                userSheetUrl: '',
+                userDriveUrl: '',
+                userSheetName: '',
+                userDriveName: '',
+                cloudViewLinks: null,
+
+                // Authoritative Financial State (Server-Authoritative in LIVE mode)
+                totalCapital: 10000,
+                currency: 'USD',
+                riskPercent: 5,
+                trades: [],
+                cloudSummary: null,
+
+                // Search & Filter State
+                searchQuery: '',
+                filterStatus: 'ALL',
+
+                // Modal & Inspector State
+                modalOpen: false,
+                inspectorOpen: false,
+                activeTFIndex: 3, // 3 = Side by Side
+                selectedTrade: {},
+                activePasteSlot: 'LTF',
+                initialFormTradeSnapshot: null,
+                formRRRatio: 2.0,
+                signalText: '',
+                aiLoading: false,
+                aiDiagnosisReport: '',
+
+                formTrade: {
+                    id: '',
+                    pair: 'BTCUSDT',
+                    direction: 'LONG',
+                    date: new Date().toISOString().split('T')[0],
+                    entryPrice: '',
+                    stopLoss: '',
+                    takeProfit: '',
+                    volume: '',
+                    riskUsd: '',
+                    rrRatio: '2.00',
+                    status: 'RUNNING',
+                    pnl: 0,
+                    rAchieved: 0,
+                    note: '',
+                    setupTag: 'Price Action',
+                    imgHtf: null,
+                    imgMtf: null,
+                    imgLtf: null
+                },
+
+                calcForm: {
+                    pair: 'BTCUSDT',
+                    direction: 'LONG',
+                    entry: '',
+                    sl: ''
+                },
+
+                // ============================================================
+                // 1. API BRIDGE ROUTER (`google.script.run` + `fetch` hybrid)
+                // ============================================================
+                apiCall(action, payload = {}) {
+                    return new Promise((resolve, reject) => {
+                        if (typeof google !== 'undefined' && google.script && google.script.run) {
+                            google.script.run
+                                .withSuccessHandler(res => resolve(res))
+                                .withFailureHandler(err => reject(err))
+                                .api(action, payload);
+                        } else {
+                            const targetUrl = this.backendUrl || localStorage.getItem('backend_apps_script_url') || this.sheetWebhookUrl || this.authWebhookUrl;
+                            if (!targetUrl) {
+                                console.warn('Không tìm thấy Backend Apps Script URL -> Tự động bật modal cấu hình.');
+                                this.backendModalOpen = true;
+                                reject(new Error('Chưa cấu hình Backend Apps Script Web App URL!'));
+                                return;
+                            }
+                            fetch(targetUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify({ action, ...payload })
+                            })
+                            .then(res => {
+                                if (!res.ok) throw new Error(`HTTP error ${res.status}`);
+                                return res.json();
+                            })
+                            .then(data => resolve(data))
+                            .catch(err => {
+                                console.warn('apiCall lỗi kết nối / 404 / network -> Tự động bật modal cấu hình Backend URL:', err);
+                                if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                                    this.backendModalOpen = true;
+                                }
+                                reject(err);
+                            });
+                        }
+                    });
+                },
+
+                // ============================================================
+                // 2. INITIALIZATION & LOGIN VERIFICATION
+                // ============================================================
+                init() {
+                    const savedBackendUrl = localStorage.getItem('backend_apps_script_url');
+                    if (savedBackendUrl && savedBackendUrl.trim().startsWith('https://script.google.com/')) {
+                        this.backendUrl = savedBackendUrl.trim();
+                        this.inputBackendUrl = this.backendUrl;
+                        this.sheetWebhookUrl = this.backendUrl;
+                        this.authWebhookUrl = this.backendUrl;
+                    } else if (typeof google === 'undefined' || !google.script || !google.script.run) {
+                        this.backendModalOpen = true;
+                    }
+
+                    const savedPin = localStorage.getItem('dnc_trading_pin');
+                    if (savedPin) this.passcode = savedPin;
+
+                    const unlocked = sessionStorage.getItem('dnc_trading_unlocked') || localStorage.getItem('dnc_trading_unlocked');
+                    const sessionUser = sessionStorage.getItem('dnc_trading_loggedin_user') || localStorage.getItem('dnc_trading_loggedin_user');
+                    if (unlocked === 'true' && sessionUser) {
+                        this.isLocked = false;
+                        this.traderUsername = sessionUser;
+                        sessionStorage.setItem('dnc_trading_unlocked', 'true');
+                        sessionStorage.setItem('dnc_trading_loggedin_user', sessionUser);
+                        this.loadUserSettings();
+                        return;
+                    }
+
+                    const savedCurr = localStorage.getItem('dnc_trading_currency');
+                    if (savedCurr) this.currency = savedCurr;
+
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async unlockApp() {
+                    if (!this.inputUsername || !this.inputPasscode) return;
+                    this.loginLoading = true;
+                    this.loginError = false;
+
+                    try {
+                        const res = await this.apiCall('authenticate', {
+                            username: this.inputUsername,
+                            pin: this.inputPasscode,
+                            password: this.inputPasscode
+                        });
+
+                        if (res && res.success) {
+                            this.isLocked = false;
+                            this.traderUsername = res.username || this.inputUsername;
+                            sessionStorage.setItem('dnc_trading_unlocked', 'true');
+                            sessionStorage.setItem('dnc_trading_loggedin_user', this.traderUsername);
+                            localStorage.setItem('dnc_trader_username', this.traderUsername);
+
+                            if (res.capital !== undefined) this.totalCapital = Number(res.capital);
+                            if (res.currency) this.currency = res.currency;
+                            if (res.riskPercent !== undefined) this.riskPercent = Number(res.riskPercent);
+                            if (res.geminiApiKey) this.googleApiKey = res.geminiApiKey;
+                            if (res.webhookUrl) this.sheetWebhookUrl = res.webhookUrl;
+
+                            this.loadUserSettings();
+                        } else {
+                            this.loginError = true;
+                            this.loginErrorMsg = res?.error || 'Sai tài khoản hoặc mật khẩu!';
+                        }
+                    } catch (err) {
+                        console.warn('Authentication fallback / offline preview:', err);
+                        // Offline testing fallback if server unreachable
+                        if (this.inputPasscode === '2026' || this.inputPasscode === 'admin') {
+                            this.isLocked = false;
+                            this.traderUsername = this.inputUsername || 'VIP Trader';
+                            sessionStorage.setItem('dnc_trading_unlocked', 'true');
+                            sessionStorage.setItem('dnc_trading_loggedin_user', this.traderUsername);
+                            this.loadUserSettings();
+                        } else {
+                            this.loginError = true;
+                            this.loginErrorMsg = 'Lỗi kết nối Server: ' + err.message;
+                        }
+                    } finally {
+                        this.loginLoading = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                logout() {
+                    this.isLocked = true;
+                    this.inputPasscode = '';
+                    sessionStorage.removeItem('dnc_trading_unlocked');
+                    sessionStorage.removeItem('dnc_trading_loggedin_user');
+                    localStorage.removeItem('dnc_trading_unlocked');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                saveBackendUrl() {
+                    if (!this.inputBackendUrl || !this.inputBackendUrl.trim().startsWith('https://script.google.com/macros/s/')) {
+                        alert('⚠️ Vui lòng nhập URL Web App hợp lệ từ Google Apps Script (bắt đầu bằng https://script.google.com/macros/s/.../exec)');
+                        return;
+                    }
+                    const cleanUrl = this.inputBackendUrl.trim();
+                    localStorage.setItem('backend_apps_script_url', cleanUrl);
+                    this.backendUrl = cleanUrl;
+                    this.sheetWebhookUrl = cleanUrl;
+                    this.authWebhookUrl = cleanUrl;
+                    this.backendModalOpen = false;
+                    alert('✅ Đã kết nối Backend Apps Script thành công!');
+
+                    if (!this.isLocked) {
+                        this.pullTradesFromCloud(true);
+                    }
+                },
+
+                closeBackendModal() {
+                    if (!this.backendUrl && !localStorage.getItem('backend_apps_script_url') && (typeof google === 'undefined' || !google.script || !google.script.run)) {
+                        alert('⚠️ Bạn chưa cấu hình Backend Apps Script Web App URL. Ứng dụng sẽ không thể lấy hoặc lưu dữ liệu nếu không có kết nối này.');
+                    }
+                    this.backendModalOpen = false;
+                },
+
+                loadUserSettings() {
+                    const u = this.traderUsername || 'default';
+                    this.googleApiKey = localStorage.getItem(`dnc_ai_key_${u}`) || localStorage.getItem('dnc_trading_ai_key') || this.googleApiKey || '';
+                    const savedBackend = localStorage.getItem('backend_apps_script_url');
+                    if (savedBackend) {
+                        this.backendUrl = savedBackend.trim();
+                        this.inputBackendUrl = this.backendUrl;
+                        this.sheetWebhookUrl = this.backendUrl;
+                        this.authWebhookUrl = this.backendUrl;
+                    } else {
+                        this.sheetWebhookUrl = localStorage.getItem(`dnc_sheet_url_${u}`) || localStorage.getItem('dnc_trading_sheet_url') || this.sheetWebhookUrl || '';
+                    }
+                    this.userSheetUrl = localStorage.getItem(`dnc_sheet_view_url_${u}`) || '';
+                    this.userDriveUrl = localStorage.getItem(`dnc_drive_view_url_${u}`) || '';
+                    this.userSheetName = localStorage.getItem(`dnc_sheet_view_name_${u}`) || '';
+                    this.userDriveName = localStorage.getItem(`dnc_drive_view_name_${u}`) || '';
+
+                    const curr = localStorage.getItem(`dnc_currency_${u}`) || localStorage.getItem('dnc_trading_currency');
+                    if (curr) this.currency = curr;
+                    const rp = localStorage.getItem(`dnc_risk_pct_${u}`);
+                    if (rp) this.riskPercent = Number(rp);
+
+                    const savedMode = localStorage.getItem(`dnc_mode_${u}`) || 'LIVE';
+                    this.tradingMode = savedMode;
+                    if (savedMode === 'BACKTEST') this.currentView = 'BACKTEST';
+
+                    if (savedMode === 'BACKTEST') {
+                        this.loadBacktestState();
+                        return;
+                    }
+
+                    // For LIVE mode, pull authoritative data directly from Server
+                    this.pullTradesFromCloud(false);
+                },
+
+                async pullTradesFromCloud(force = false) {
+                    if (this.tradingMode === 'BACKTEST') {
+                        this.loadBacktestState();
+                        return;
+                    }
+
+                    this.isLoadingCloud = true;
+                    this.cloudSyncing = true;
+                    try {
+                        const res = await this.apiCall('getAppData', { username: this.traderUsername });
+                        if (res && res.success) {
+                            if (res.capital !== undefined) this.totalCapital = Number(res.capital);
+                            if (res.currency) this.currency = res.currency;
+                            if (res.riskPercent !== undefined) this.riskPercent = Number(res.riskPercent);
+                            if (res.geminiApiKey && !this.googleApiKey) this.googleApiKey = res.geminiApiKey;
+
+                            this.trades = (res.trades || []).map(t => this.sanitizeTradeData(t));
+                            if (res.summary) {
+                                this.cloudSummary = res.summary;
+                            }
+                        }
+                    } catch (err) {
+                        console.warn('pullTradesFromCloud error:', err);
+                        if (force) alert('Không thể kết nối đến Google Sheet Cloud: ' + err.message);
+                        this.loadOfflineFallback();
+                    } finally {
+                        this.isLoadingCloud = false;
+                        this.cloudSyncing = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                loadBacktestState() {
+                    const u = this.traderUsername || 'default';
+                    const savedCap = localStorage.getItem(`dnc_backtest_capital_${u}`);
+                    const savedTrades = localStorage.getItem(`dnc_backtest_trades_${u}`);
+                    const savedCurr = localStorage.getItem(`dnc_currency_${u}`) || 'USD';
+
+                    this.totalCapital = savedCap ? Number(savedCap) : 10000;
+                    this.currency = savedCurr;
+                    this.trades = savedTrades ? JSON.parse(savedTrades).map(t => this.sanitizeTradeData(t)) : [];
+                    this.cloudSummary = null;
+                },
+
+                loadOfflineFallback() {
+                    const u = this.traderUsername || 'default';
+                    const savedTrades = localStorage.getItem(`dnc_trades_${u}`);
+                    if (savedTrades) {
+                        try {
+                            this.trades = JSON.parse(savedTrades).map(t => this.sanitizeTradeData(t));
+                        } catch(e) {
+                            this.trades = [];
+                        }
+                    } else {
+                        this.trades = [];
+                    }
+                },
+
+                async fetchCloudViewLinks() {
+                    try {
+                        const res = await this.apiCall('getCloudLinks', {});
+                        if (res && res.success) {
+                            this.cloudViewLinks = res;
+                            if (res.sheetUrl) { this.userSheetUrl = res.sheetUrl; this.userSheetName = res.sheetName; }
+                            if (res.driveUrl) { this.userDriveUrl = res.driveUrl; this.userDriveName = res.driveName; }
+                        }
+                    } catch (e) {
+                        console.warn('fetchCloudViewLinks error:', e);
+                    }
+                },
+
+                async triggerMigration() {
+                    if (!confirm('⚠️ Bạn có chắc chắn muốn chạy công cụ di chuyển dữ liệu (Migration) từ bảng cũ sang chuẩn Factory OS v1 không?')) return;
+                    this.isLoadingCloud = true;
+                    try {
+                        const res = await this.apiCall('migrateLegacy', {});
+                        if (res && res.success) {
+                            alert(res.message);
+                            await this.pullTradesFromCloud(true);
+                        } else {
+                            alert('Lỗi Migration: ' + (res?.error || 'Unknown'));
+                        }
+                    } catch (err) {
+                        alert('Lỗi kết nối Migration: ' + err.message);
+                    } finally {
+                        this.isLoadingCloud = false;
+                    }
+                },
+
+                formatDriveImgUrl(url) {
+                    if (!url || typeof url !== 'string') return '';
+                    if (url.startsWith('data:image')) return url;
+                    if (url.includes('drive.google.com')) {
+                        let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+                        if (!match) match = url.match(/id=([a-zA-Z0-9_-]+)/);
+                        if (match && match[1]) {
+                            return `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1200`;
+                        }
+                    }
+                    return url;
+                },
+
+                // ============================================================
+                // 3. COMPUTED METRICS & STATS
+                // ============================================================
+                get currencySymbol() {
+                    return this.currency === 'USD' ? '$' : '₫';
+                },
+
+                get currentDynamicCapital() {
+                    if (this.cloudSummary && this.cloudSummary.currentDynamicCapital !== undefined && this.tradingMode === 'LIVE') {
+                        return Number(this.cloudSummary.currentDynamicCapital);
+                    }
+                    return Number(this.totalCapital) + Number(this.totalNetPnL);
+                },
+
+                get riskAmount5Percent() {
+                    const pct = Number(this.riskPercent) || 5;
+                    return Math.round((this.currentDynamicCapital * (pct / 100)) * 100) / 100;
+                },
+
+                get winCount() {
+                    if (this.cloudSummary && this.cloudSummary.winCount !== undefined && this.tradingMode === 'LIVE') return this.cloudSummary.winCount;
+                    return this.trades.filter(t => String(t.status).toUpperCase() === 'WIN' || Number(t.pnl) > 0).length;
+                },
+
+                get lossCount() {
+                    if (this.cloudSummary && this.cloudSummary.lossCount !== undefined && this.tradingMode === 'LIVE') return this.cloudSummary.lossCount;
+                    return this.trades.filter(t => String(t.status).toUpperCase() === 'LOSS' || Number(t.pnl) < 0).length;
+                },
+
+                get closedTradesCount() {
+                    if (this.cloudSummary && this.cloudSummary.closedCount !== undefined && this.tradingMode === 'LIVE') return this.cloudSummary.closedCount;
+                    return this.trades.filter(t => {
+                        const st = String(t.status).toUpperCase();
+                        return st === 'WIN' || st === 'LOSS' || st === 'BE' || Number(t.pnl) !== 0;
+                    }).length;
+                },
+
+                get winRate() {
+                    if (this.cloudSummary && this.cloudSummary.winRate !== undefined && this.tradingMode === 'LIVE') return this.cloudSummary.winRate;
+                    if (this.closedTradesCount === 0) return 0;
+                    return Number(((this.winCount / this.closedTradesCount) * 100).toFixed(1));
+                },
+
+                get totalNetPnL() {
+                    if (this.cloudSummary && this.cloudSummary.totalNetPnL !== undefined && this.tradingMode === 'LIVE') return Number(this.cloudSummary.totalNetPnL);
+                    return this.trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+                },
+
+                get totalR() {
+                    if (this.cloudSummary && this.cloudSummary.totalR !== undefined && this.tradingMode === 'LIVE') return Number(this.cloudSummary.totalR);
+                    return this.trades.reduce((sum, t) => sum + this.calcTradeRAchieved(t), 0);
+                },
+
+                get profitFactor() {
+                    if (this.cloudSummary && this.cloudSummary.profitFactor !== undefined && this.tradingMode === 'LIVE') return this.cloudSummary.profitFactor;
+                    const grossWin = this.trades.filter(t => Number(t.pnl) > 0).reduce((s, t) => s + Number(t.pnl), 0);
+                    const grossLoss = Math.abs(this.trades.filter(t => Number(t.pnl) < 0).reduce((s, t) => s + Number(t.pnl), 0));
+                    if (grossLoss === 0) return grossWin > 0 ? 'MAX' : '0.00';
+                    return (grossWin / grossLoss).toFixed(2);
+                },
+
+                get maxDrawdown() {
+                    if (this.cloudSummary && this.cloudSummary.maxDrawdown && this.tradingMode === 'LIVE') return this.cloudSummary.maxDrawdown;
+                    const closed = this.trades.filter(t => {
+                        const st = String(t.status).toUpperCase();
+                        return st === 'WIN' || st === 'LOSS' || st === 'BE' || Number(t.pnl) !== 0;
+                    }).slice().reverse();
+                    let peak = Number(this.totalCapital) || 100;
+                    let equity = peak;
+                    let maxDdAmount = 0;
+                    let maxDdPeak = peak;
+
+                    closed.forEach(t => {
+                        equity += (Number(t.pnl) || 0);
+                        if (equity > peak) {
+                            peak = equity;
+                        } else {
+                            const dd = peak - equity;
+                            if (dd > maxDdAmount) {
+                                maxDdAmount = dd;
+                                maxDdPeak = peak;
+                            }
+                        }
+                    });
+
+                    const pct = maxDdPeak > 0 ? ((maxDdAmount / maxDdPeak) * 100).toFixed(1) : '0.0';
+                    return {
+                        amount: Number(maxDdAmount.toFixed(2)),
+                        peak: Number(maxDdPeak.toFixed(2)),
+                        percent: '-' + pct + '%'
+                    };
+                },
+
+                get expectedValue() {
+                    if (this.cloudSummary && this.cloudSummary.expectedValue && this.tradingMode === 'LIVE') return this.cloudSummary.expectedValue;
+                    if (this.closedTradesCount === 0) return { pnl: 0, r: '0.00' };
+                    return {
+                        pnl: Number((this.totalNetPnL / this.closedTradesCount).toFixed(2)),
+                        r: (this.totalR / this.closedTradesCount).toFixed(2)
+                    };
+                },
+
+                get setupStats() {
+                    if (this.cloudSummary && this.cloudSummary.setupStats && this.tradingMode === 'LIVE') return this.cloudSummary.setupStats;
+                    const map = {};
+                    this.trades.forEach(t => {
+                        const tag = (t.setupTag && String(t.setupTag).trim()) ? String(t.setupTag).trim() : 'Chưa phân loại';
+                        if (!map[tag]) map[tag] = { setup: tag, total: 0, wins: 0, losses: 0, pnl: 0, r: 0 };
+                        map[tag].total++;
+                        const p = Number(t.pnl) || 0;
+                        const rVal = this.calcTradeRAchieved(t);
+                        map[tag].pnl += p;
+                        map[tag].r += rVal;
+                        if (String(t.status).toUpperCase() === 'WIN' || p > 0) map[tag].wins++;
+                        else if (String(t.status).toUpperCase() === 'LOSS' || p < 0) map[tag].losses++;
+                    });
+
+                    return Object.values(map).map(item => ({
+                        setup: item.setup,
+                        total: item.total,
+                        wins: item.wins,
+                        losses: item.losses,
+                        pnl: Number(item.pnl.toFixed(2)),
+                        r: Number(item.r.toFixed(2)),
+                        winRate: item.total > 0 ? Number(((item.wins / item.total) * 100).toFixed(0)) : 0
+                    })).sort((a, b) => b.pnl - a.pnl);
+                },
+
+                get disciplineScore() {
+                    if (this.cloudSummary && this.cloudSummary.disciplineScore && this.tradingMode === 'LIVE') return this.cloudSummary.disciplineScore;
+                    if (this.trades.length === 0) return { score: 100, violations: 0, color: 'text-emerald-400', grade: 'Kỷ Luật Tốt' };
+                    let violations = 0;
+                    this.trades.forEach(t => {
+                        const riskVal = Number(t.riskUsd) || 0;
+                        const cap = Number(this.totalCapital) || 100;
+                        const riskPct = cap > 0 ? (riskVal / cap) * 100 : 0;
+                        if (riskPct > (Number(this.riskPercent) + 0.5) || !t.stopLoss) {
+                            violations++;
+                        }
+                    });
+                    const score = Math.max(0, 100 - (violations * 10));
+                    return {
+                        score,
+                        violations,
+                        color: score >= 80 ? 'text-emerald-400' : 'text-amber-400',
+                        grade: score >= 80 ? 'Kỷ Luật Tốt' : 'Cần Chấn Chỉnh'
+                    };
+                },
+
+                get filteredTrades() {
+                    return (this.trades || []).filter(t => {
+                        if (!t) return false;
+                        const pairStr = String(t.pair || '').toLowerCase();
+                        const queryStr = String(this.searchQuery || '').toLowerCase();
+                        const matchesQuery = pairStr.includes(queryStr);
+                        const statusStr = String(t.status || '').toUpperCase();
+                        const filterStr = String(this.filterStatus || 'ALL').toUpperCase();
+                        const matchesStatus = filterStr === 'ALL' || statusStr === filterStr;
+                        return matchesQuery && matchesStatus;
+                    });
+                },
+
+                sanitizeTradeData(trade) {
+                    if (!trade) return trade;
+                    const cap = Number(this.totalCapital) || 10000;
+                    let lots = Number(trade.lots !== undefined ? trade.lots : trade.volume) || 0;
+                    const entry = Number(trade.entryPrice) || 0;
+                    const sl = Number(trade.stopLoss) || 0;
+                    const tp = Number(trade.takeProfit) || 0;
+                    const risk = Number(trade.riskUsd) || (cap * (Number(this.riskPercent) || 5) / 100);
+                    const rr = Number(trade.rrRatio) || 2;
+                    let pnl = Number(trade.pnl) || 0;
+                    const status = String(trade.status || 'RUNNING').toUpperCase();
+
+                    if (Math.abs(pnl) > 100000 && Math.abs(pnl) > cap * 50) {
+                        let actualLots = lots;
+                        if (actualLots > 100 && (entry > 100 || sl > 100 || tp > 100)) {
+                            actualLots = actualLots / 1000;
+                            lots = actualLots;
+                        }
+                        if (status === 'WIN') {
+                            pnl = (entry && tp && actualLots) ? Number((Math.abs(tp - entry) * actualLots).toFixed(2)) : Number((risk * rr).toFixed(2));
+                        } else if (status === 'LOSS') {
+                            pnl = (entry && sl && actualLots) ? -Number((Math.abs(entry - sl) * actualLots).toFixed(2)) : -Number(risk.toFixed(2));
+                        } else {
+                            pnl = 0;
+                        }
+                    }
+
+                    trade.lots = lots;
+                    trade.volume = lots;
+                    trade.pnl = pnl;
+                    trade.rAchieved = (trade.rAchieved !== undefined && trade.rAchieved !== null && trade.rAchieved !== '')
+                        ? Number(trade.rAchieved)
+                        : (risk > 0 && pnl !== 0 ? Number((pnl / risk).toFixed(2)) : 0);
+                    trade.id = trade.id || ('trade_' + Math.random().toString(36).substring(2, 9));
+                    return trade;
+                },
+
+                calcTradeRAchieved(trade) {
+                    if (!trade) return 0;
+                    if (trade.rAchieved !== undefined && trade.rAchieved !== null && !isNaN(Number(trade.rAchieved))) {
+                        return Number(trade.rAchieved);
+                    }
+                    const pnl = Number(trade.pnl) || 0;
+                    if (pnl === 0) return 0;
+                    const risk = (trade.riskUsd && Number(trade.riskUsd) > 0) ? Number(trade.riskUsd) : (Number(this.riskAmount5Percent) || 1);
+                    return Number((pnl / risk).toFixed(2));
+                },
+
+                formatCurrency(val) {
+                    const num = Number(val) || 0;
+                    if (this.currency === 'VND') {
+                        return new Intl.NumberFormat('vi-VN').format(Math.round(num)) + ' ₫';
+                    }
+                    return '$' + new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
+                },
+
+                // ============================================================
+                // 4. SETTINGS & CAPITAL SAVING
+                // ============================================================
+                async saveRiskSettings() {
+                    const u = this.traderUsername || 'default';
+                    localStorage.setItem(`dnc_risk_pct_${u}`, this.riskPercent);
+                    if (this.tradingMode === 'LIVE') {
+                        try {
+                            await this.apiCall('saveSettings', { riskPercent: this.riskPercent, username: this.traderUsername });
+                        } catch(e) {}
+                    }
+                    alert('✅ Đã lưu cấu hình rủi ro: ' + this.riskPercent + '% / lệnh và đồng bộ lên Google Sheet');
+                },
+
+                async saveCapital() {
+                    const u = this.traderUsername || 'default';
+                    if (this.tradingMode === 'BACKTEST') {
+                        localStorage.setItem(`dnc_backtest_capital_${u}`, this.totalCapital);
+                        localStorage.setItem(`dnc_currency_${u}`, this.currency);
+                        return;
+                    }
+
+                    try {
+                        await this.apiCall('saveSettings', {
+                            capital: this.totalCapital,
+                            currency: this.currency,
+                            riskPercent: this.riskPercent,
+                            username: this.traderUsername
+                        });
+                        await this.pullTradesFromCloud(false);
+                    } catch (err) {
+                        localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
+                        localStorage.setItem(`dnc_currency_${u}`, this.currency);
+                    }
+                },
+
+                async saveApiKey() {
+                    const u = this.traderUsername || 'default';
+                    localStorage.setItem(`dnc_ai_key_${u}`, this.googleApiKey);
+                    if (this.sheetWebhookUrl) localStorage.setItem(`dnc_sheet_url_${u}`, this.sheetWebhookUrl);
+                    if (this.tradingMode === 'LIVE') {
+                        try {
+                            await this.apiCall('saveSettings', { geminiApiKey: this.googleApiKey, username: this.traderUsername });
+                        } catch(e) {}
+                    }
+                    alert('✅ Đã lưu cấu hình API Key & Webhook thành công!');
+                },
+
+                async changePassword() {
+                    if (!this.pwOld || !this.pwNew || !this.pwConfirm) {
+                        this.changePwMsg = 'Vui lòng nhập đầy đủ thông tin mật khẩu!';
+                        this.changePwOk = false;
+                        return;
+                    }
+                    if (this.pwNew !== this.pwConfirm) {
+                        this.changePwMsg = 'Mật khẩu mới không khớp!';
+                        this.changePwOk = false;
+                        return;
+                    }
+                    this.changePwLoading = true;
+                    try {
+                        const res = await this.apiCall('changePassword', {
+                            username: this.traderUsername,
+                            oldPassword: this.pwOld,
+                            newPassword: this.pwNew
+                        });
+                        if (res && res.success) {
+                            this.changePwOk = true;
+                            this.changePwMsg = 'Đổi mật khẩu thành công!';
+                            this.pwOld = ''; this.pwNew = ''; this.pwConfirm = '';
+                        } else {
+                            this.changePwOk = false;
+                            this.changePwMsg = res?.error || 'Không thể đổi mật khẩu.';
+                        }
+                    } catch (err) {
+                        this.changePwOk = false;
+                        this.changePwMsg = 'Lỗi kết nối: ' + err.message;
+                    } finally {
+                        this.changePwLoading = false;
+                    }
+                },
+
+                // ============================================================
+                // 5. TRADE ACTIONS (CRUD via API Gateway)
+                // ============================================================
+                async saveTrade() {
+                    if (!this.formTrade.pair || !this.formTrade.entryPrice || !this.formTrade.stopLoss) {
+                        alert('Vui lòng nhập đầy đủ Cặp Giao Dịch, Giá Entry và Stop Loss!');
+                        return;
+                    }
+
+                    if (!this.formTrade.pnl && (this.formTrade.status === 'WIN' || this.formTrade.status === 'LOSS')) {
+                        this.autoFillFormPnL();
+                    }
+
+                    const risk = Number(this.formTrade.riskUsd) > 0 ? Number(this.formTrade.riskUsd) : this.riskAmount5Percent;
+                    this.formTrade.riskUsd = risk;
+                    const tp = Number(this.formTrade.takeProfit);
+                    const e = Number(this.formTrade.entryPrice);
+                    const s = Number(this.formTrade.stopLoss);
+                    if (tp && e && s && e !== s) {
+                        this.formTrade.rrRatio = (Math.abs(tp - e) / Math.abs(e - s)).toFixed(2);
+                    } else {
+                        this.formTrade.rrRatio = this.formTrade.rrRatio || this.formRRRatio || 2;
+                    }
+
+                    if (this.formTrade.pnl && risk > 0) {
+                        this.formTrade.rAchieved = Number((this.formTrade.pnl / risk).toFixed(2));
+                    } else {
+                        this.formTrade.rAchieved = 0;
+                    }
+
+                    if (!this.formTrade.id) {
+                        this.formTrade.id = 'trade_' + Date.now();
+                    }
+
+                    const u = this.traderUsername || 'default';
+                    if (this.tradingMode === 'BACKTEST') {
+                        const idx = this.trades.findIndex(t => t.id === this.formTrade.id);
+                        if (idx !== -1) this.trades[idx] = { ...this.formTrade };
+                        else this.trades.unshift({ ...this.formTrade });
+                        localStorage.setItem(`dnc_backtest_trades_${u}`, JSON.stringify(this.trades));
+                        this.modalOpen = false;
+                        return;
+                    }
+
+                    this.isLoadingCloud = true;
+                    try {
+                        const res = await this.apiCall('saveTrade', { ...this.formTrade, username: this.traderUsername });
+                        if (res && res.success) {
+                            this.modalOpen = false;
+                            await this.pullTradesFromCloud(true);
+                        } else {
+                            alert('Lỗi lưu lệnh lên Cloud: ' + (res?.error || 'Unknown error'));
+                        }
+                    } catch (err) {
+                        alert('Lỗi kết nối khi lưu lệnh: ' + err.message);
+                        const idx = this.trades.findIndex(t => t.id === this.formTrade.id);
+                        if (idx !== -1) this.trades[idx] = { ...this.formTrade };
+                        else this.trades.unshift({ ...this.formTrade });
+                        localStorage.setItem(`dnc_trades_${u}`, JSON.stringify(this.trades));
+                        this.modalOpen = false;
+                    } finally {
+                        this.isLoadingCloud = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async deleteTrade(id) {
+                    if (!confirm('Bạn có chắc chắn muốn xóa lệnh này khỏi nhật ký?')) return;
+                    const u = this.traderUsername || 'default';
+
+                    if (this.tradingMode === 'BACKTEST') {
+                        this.trades = this.trades.filter(t => t.id !== id);
+                        localStorage.setItem(`dnc_backtest_trades_${u}`, JSON.stringify(this.trades));
+                        return;
+                    }
+
+                    this.isLoadingCloud = true;
+                    try {
+                        const res = await this.apiCall('deleteTrade', { id: id });
+                        if (res && res.success) {
+                            await this.pullTradesFromCloud(true);
+                        } else {
+                            alert('Lỗi xoá lệnh trên Cloud: ' + (res?.error || 'Unknown error'));
+                        }
+                    } catch (err) {
+                        this.trades = this.trades.filter(t => t.id !== id);
+                        localStorage.setItem(`dnc_trades_${u}`, JSON.stringify(this.trades));
+                    } finally {
+                        this.isLoadingCloud = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async quickUpdateTradeStatus(trade, newStatus) {
+                    trade.status = newStatus;
+                    const risk = Number(trade.riskUsd) || this.riskAmount5Percent || 500;
+                    const entry = Number(trade.entryPrice) || 0;
+                    const sl = Number(trade.stopLoss) || 0;
+                    const tp = Number(trade.takeProfit) || 0;
+                    const lots = Number(trade.volume) || 0;
+
+                    if (newStatus === 'WIN') {
+                        if (entry && tp && lots) {
+                            trade.pnl = Number((Math.abs(tp - entry) * lots).toFixed(2));
+                        } else {
+                            const rr = Number(trade.rrRatio || 2);
+                            trade.pnl = Number((risk * rr).toFixed(2));
+                        }
+                        trade.rAchieved = Number((trade.pnl / risk).toFixed(2));
+                    } else if (newStatus === 'LOSS') {
+                        if (entry && sl && lots) {
+                            trade.pnl = -Number((Math.abs(entry - sl) * lots).toFixed(2));
+                        } else {
+                            trade.pnl = -Number(risk.toFixed(2));
+                        }
+                        trade.rAchieved = -1;
+                    } else {
+                        trade.pnl = 0;
+                        trade.rAchieved = 0;
+                    }
+
+                    const u = this.traderUsername || 'default';
+                    if (this.tradingMode === 'BACKTEST') {
+                        localStorage.setItem(`dnc_backtest_trades_${u}`, JSON.stringify(this.trades));
+                        return;
+                    }
+
+                    try {
+                        await this.apiCall('saveTrade', trade);
+                        await this.pullTradesFromCloud(false);
+                    } catch (err) {
+                        localStorage.setItem(`dnc_trades_${u}`, JSON.stringify(this.trades));
+                    }
+                },
+
+                // ============================================================
+                // 6. CALCULATOR & FORM HELPERS
+                // ============================================================
+                calcStopLossDistance() {
+                    const dist = Math.abs(this.calcForm.entry - this.calcForm.sl);
+                    return isNaN(dist) ? 0 : dist;
+                },
+
+                calcRecommendedLot() {
+                    const dist = this.calcStopLossDistance();
+                    if (dist <= 0) return '0.00';
+                    const lot = (this.riskAmount5Percent / (dist * 100)).toFixed(2);
+                    return lot > 0 ? lot : (this.riskAmount5Percent / dist).toFixed(2);
+                },
+
+                calcTargetTp(rr) {
+                    const dist = this.calcStopLossDistance();
+                    if (this.calcForm.direction === 'LONG') {
+                        return (Number(this.calcForm.entry) + dist * rr).toFixed(2);
+                    } else {
+                        return (Number(this.calcForm.entry) - dist * rr).toFixed(2);
+                    }
+                },
+
+                applyCalcToNewTrade() {
+                    this.formTrade = {
+                        id: '',
+                        pair: this.calcForm.pair,
+                        direction: this.calcForm.direction,
+                        date: new Date().toISOString().split('T')[0],
+                        entryPrice: this.calcForm.entry,
+                        stopLoss: this.calcForm.sl,
+                        takeProfit: Number(this.calcTargetTp(2.0)),
+                        volume: Number(this.calcRecommendedLot()),
+                        riskUsd: this.riskAmount5Percent,
+                        rrRatio: '2.00',
+                        status: 'RUNNING',
+                        pnl: 0,
+                        rAchieved: 0,
+                        note: '',
+                        setupTag: 'Setup 5% Rule',
+                        imgHtf: null,
+                        imgMtf: null,
+                        imgLtf: null
+                    };
+                    this.activePasteSlot = 'LTF';
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
+                    this.modalOpen = true;
+                },
+
+                openModal(type) {
+                    if (type === 'NEW') {
+                        this.formTrade = {
+                            id: '',
+                            pair: 'BTCUSDT',
+                            direction: 'LONG',
+                            date: new Date().toISOString().split('T')[0],
+                            entryPrice: '',
+                            stopLoss: '',
+                            takeProfit: '',
+                            volume: '',
+                            riskUsd: this.riskAmount5Percent,
+                            rrRatio: '2.00',
+                            status: 'RUNNING',
+                            pnl: 0,
+                            rAchieved: 0,
+                            note: '',
+                            setupTag: 'Price Action',
+                            imgHtf: null,
+                            imgMtf: null,
+                            imgLtf: null
+                        };
+                    }
+                    this.activePasteSlot = 'LTF';
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
+                    this.modalOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                editTrade(t) {
+                    this.formTrade = JSON.parse(JSON.stringify(t));
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
+                    this.modalOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                duplicateTrade(t) {
+                    const copy = JSON.parse(JSON.stringify(t));
+                    delete copy.id;
+                    copy.date = new Date().toISOString().split('T')[0];
+                    copy.status = 'PENDING';
+                    copy.pnl = 0;
+                    copy.rAchieved = 0;
+                    this.formTrade = copy;
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
+                    this.modalOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                isFormModified() {
+                    if (!this.formTrade || !this.initialFormTradeSnapshot) return false;
+                    return JSON.stringify(this.formTrade) !== this.initialFormTradeSnapshot;
+                },
+
+                closeModal(fromBackdrop = false) {
+                    if (fromBackdrop && this.isFormModified()) return;
+                    if (!fromBackdrop && this.isFormModified()) {
+                        if (!confirm('⚠️ Bạn đang có thông tin lệnh chưa lưu.\n\nBạn có chắc chắn muốn thoát và hủy bỏ những gì đã nhập không?')) return;
+                    }
+                    this.modalOpen = false;
+                },
+
+                recalcFormVolume() {
+                    const e = Number(this.formTrade.entryPrice);
+                    const s = Number(this.formTrade.stopLoss);
+                    const tp = Number(this.formTrade.takeProfit);
+                    if (e && s && e !== s) {
+                        const dist = Math.abs(e - s);
+                        const riskToUse = Number(this.formTrade.riskUsd) > 0 ? Number(this.formTrade.riskUsd) : this.riskAmount5Percent;
+                        const units = (riskToUse / dist).toFixed(4);
+                        this.formTrade.volume = Number(units) > 0 ? Number(units) : 0.01;
+                        this.formTrade.volumeUsd = Number((this.formTrade.volume * e).toFixed(2));
+                    }
+                    if (e && s && tp && e !== s) {
+                        this.formTrade.rrRatio = (Math.abs(tp - e) / Math.abs(e - s)).toFixed(2);
+                    }
+                },
+
+                autoFillFormPnL() {
+                    const st = this.formTrade.status;
+                    const risk = Number(this.formTrade.riskUsd) || this.riskAmount5Percent || 500;
+                    const entry = Number(this.formTrade.entryPrice) || 0;
+                    const sl = Number(this.formTrade.stopLoss) || 0;
+                    const tp = Number(this.formTrade.takeProfit) || 0;
+                    const lots = Number(this.formTrade.volume) || 0;
+
+                    if (st === 'WIN') {
+                        if (entry && tp && lots) {
+                            this.formTrade.pnl = Number((Math.abs(tp - entry) * lots).toFixed(2));
+                        } else {
+                            const rr = Number(this.formTrade.rrRatio || this.formRRRatio || 2);
+                            this.formTrade.pnl = Number((risk * rr).toFixed(2));
+                        }
+                    } else if (st === 'LOSS') {
+                        if (entry && sl && lots) {
+                            this.formTrade.pnl = -Number((Math.abs(entry - sl) * lots).toFixed(2));
+                        } else {
+                            this.formTrade.pnl = -Number(risk.toFixed(2));
+                        }
+                    } else if (st === 'BE' || st === 'RUNNING') {
+                        this.formTrade.pnl = 0;
+                    }
+                },
+
+                applyFormTP(rr) {
+                    const e = Number(this.formTrade.entryPrice);
+                    const s = Number(this.formTrade.stopLoss);
+                    if (!e || !s || e === s) {
+                        alert('Vui lòng nhập Giá Entry và Stop Loss trước!');
+                        return;
+                    }
+                    const dist = Math.abs(e - s);
+                    if (this.formTrade.direction === 'LONG') {
+                        this.formTrade.takeProfit = Number((e + dist * rr).toFixed(2));
+                    } else {
+                        this.formTrade.takeProfit = Number((e - dist * rr).toFixed(2));
+                    }
+                    this.recalcFormVolume();
+                },
+
+                // ============================================================
+                // 7. VIEW SWITCHING & BACKTEST NAVIGATION
+                // ============================================================
+                switchTradingMode(newMode) {
+                    if (this.tradingMode === newMode) return;
+                    this.tradingMode = newMode;
+                    const u = this.traderUsername || 'default';
+                    localStorage.setItem(`dnc_mode_${u}`, newMode);
+                    if (newMode === 'BACKTEST') {
+                        this.loadBacktestState();
+                    } else {
+                        this.pullTradesFromCloud(false);
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                switchView(viewName) {
+                    if (viewName === 'BACKTEST') {
+                        this.switchTradingMode('BACKTEST');
+                        this.currentView = 'BACKTEST';
+                    } else {
+                        if (this.tradingMode === 'BACKTEST') {
+                            this.switchTradingMode('LIVE');
+                        }
+                        this.currentView = viewName;
+                        if (viewName === 'ANALYTICS') {
+                            setTimeout(() => this.renderAnalyticsChart(), 100);
+                        }
+                        if (viewName === 'SETTINGS') {
+                            this.fetchCloudViewLinks();
+                        }
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                resetBacktestAccount() {
+                    if (confirm('🧪 Bạn có chắc chắn muốn đặt lại Vốn Backtest về mặc định (10,000) và xoá toàn bộ lịch sử lệnh thử nghiệm không?')) {
+                        const u = this.traderUsername || 'default';
+                        this.totalCapital = 10000;
+                        this.trades = [];
+                        localStorage.setItem(`dnc_backtest_capital_${u}`, 10000);
+                        localStorage.setItem(`dnc_backtest_trades_${u}`, JSON.stringify([]));
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                // ============================================================
+                // 8. CLIPBOARD & IMAGE PASTE
+                // ============================================================
+                handlePaste(event, slot) {
+                    const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+                    for (let item of items) {
+                        if (item.type.indexOf('image') !== -1) {
+                            const blob = item.getAsFile();
+                            const reader = new FileReader();
+                            reader.onload = (e) => {
+                                if (slot === 'HTF') this.formTrade.imgHtf = e.target.result;
+                                if (slot === 'MTF') this.formTrade.imgMtf = e.target.result;
+                                if (slot === 'LTF') this.formTrade.imgLtf = e.target.result;
+                            };
+                            reader.readAsDataURL(blob);
+                            break;
+                        }
+                    }
+                },
+
+                handleFileInput(event, slot) {
+                    const file = event.target.files[0];
+                    if (!file || !file.type.startsWith('image/')) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        if (slot === 'HTF') this.formTrade.imgHtf = e.target.result;
+                        if (slot === 'MTF') this.formTrade.imgMtf = e.target.result;
+                        if (slot === 'LTF') this.formTrade.imgLtf = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                    event.target.value = '';
+                },
+
+                inspectTrade(trade, initialTFIndex = 3) {
+                    this.selectedTrade = trade;
+                    this.activeTFIndex = initialTFIndex;
+                    this.inspectorOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                getCurrentInspectImg() {
+                    if (this.activeTFIndex === 0) return this.selectedTrade.imgHtf;
+                    if (this.activeTFIndex === 1) return this.selectedTrade.imgMtf;
+                    if (this.activeTFIndex === 2) return this.selectedTrade.imgLtf;
+                    return null;
+                },
+
+                // ============================================================
+                // 9. AI GEMINI VISION & AUDIT DIAGNOSIS
+                // ============================================================
+                async scanChartWithAI(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    if (!this.googleApiKey) {
+                        alert('⚠️ Bạn cần nhập Gemini API Key trong mục Cài Đặt để sử dụng tính năng đọc ảnh AI!');
+                        return;
+                    }
+
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        const base64Str = e.target.result;
+                        this.formTrade[this.activePasteSlot === 'HTF' ? 'imgHtf' : (this.activePasteSlot === 'MTF' ? 'imgMtf' : 'imgLtf')] = base64Str;
+                        const base64Data = base64Str.split(',')[1];
+                        const mimeType = file.type || 'image/png';
+
+                        const prompt = `Hãy đọc bức ảnh biểu đồ giao dịch (chart) này và trích xuất các mức giá quan trọng nếu thấy trên hình (Giá vào lệnh Entry, Cắt lỗ Stop Loss, Chốt lời Take Profit, và Cặp tiền Pair nếu có).
+                        Trả về ĐÚNG 1 object JSON hợp lệ với định dạng:
+                        {"pair": "BTCUSDT", "direction": "LONG", "entry": 65000.5, "sl": 64200.0, "tp": 66600.0}
+                        Chỉ trả về chuỗi JSON, không giải thích thêm.`;
+
+                        try {
+                            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.googleApiKey}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    contents: [{
+                                        parts: [
+                                            { text: prompt },
+                                            { inline_data: { mime_type: mimeType, data: base64Data } }
+                                        ]
+                                    }],
+                                    generationConfig: { temperature: 0.1 }
+                                })
+                            });
+
+                            if (response.ok) {
+                                const data = await response.json();
+                                let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                                text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+                                try {
+                                    const parsed = JSON.parse(text);
+                                    if (parsed.pair) this.formTrade.pair = parsed.pair.toUpperCase();
+                                    if (parsed.direction) this.formTrade.direction = parsed.direction.toUpperCase();
+                                    if (parsed.entry) this.formTrade.entryPrice = Number(parsed.entry);
+                                    if (parsed.sl) this.formTrade.stopLoss = Number(parsed.sl);
+                                    if (parsed.tp) this.formTrade.takeProfit = Number(parsed.tp);
+                                    this.recalcFormVolume();
+                                    alert('⚡ AI Vision đã đọc xong thông số giá từ biểu đồ!');
+                                } catch(errParse) {
+                                    console.warn('Could not parse AI vision JSON:', text);
+                                }
+                            }
+                        } catch(err) {
+                            console.warn('scanChartWithAI error:', err);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                },
+
+                generateInstantDiagnosis() {
+                    const closed = this.trades.filter(t => {
+                        const st = String(t.status).toUpperCase();
+                        return st === 'WIN' || st === 'LOSS' || st === 'BE' || Number(t.pnl) !== 0;
+                    });
+                    if (closed.length === 0) {
+                        return `<div class="p-3 bg-white/5 rounded-xl border border-white/10 text-slate-400">
+                            💡 Chưa có dữ liệu lệnh đã đóng. Hãy vào lệnh hoặc chốt lệnh để AI chuyên gia phân tích dòng tiền và kỷ luật của bạn!
+                        </div>`;
+                    }
+
+                    const scoreObj = this.disciplineScore;
+                    const pf = this.profitFactor;
+                    const ev = this.expectedValue;
+                    const topSetup = this.setupStats.length > 0 ? this.setupStats[0] : null;
+
+                    let advice = '';
+                    if (scoreObj.score === 100) {
+                        advice = `🏆 <strong class="text-emerald-400">Kỷ Luật Tuyệt Đối (100/100):</strong> Bạn đang tuân thủ hoàn hảo mức rủi ro < 5% cho mỗi lệnh giao dịch và luôn đặt Stop Loss bảo vệ tài khoản.`;
+                    } else if (scoreObj.score >= 80) {
+                        advice = `⚡ <strong class="text-blue-400">Kỷ Luật Tốt (${scoreObj.score}/100):</strong> Bạn duy trì được sự ổn định. Phát hiện ${scoreObj.violations} lệnh vượt mức rủi ro cho phép hoặc thiếu Stop Loss. Hãy kiểm soát chặt chẽ lot size!`;
+                    } else {
+                        advice = `⚠️ <strong class="text-amber-400">Cảnh Báo Kỷ Luật (${scoreObj.score}/100):</strong> Bạn đang vi phạm quản lý vốn trên ${scoreObj.violations} lệnh (Vượt quá 5% rủi ro hoặc không đặt Stop Loss). Hãy hạ volume xuống ngay để tránh nguy cơ cháy tài khoản!`;
+                    }
+
+                    let setupAdvice = topSetup ? `• Setup hiệu quả nhất hiện tại là <strong class="text-cyan-300 font-outfit">${topSetup.setup}</strong> với tỷ lệ thắng <strong class="text-emerald-400">${topSetup.winRate}%</strong> (mang lại <strong class="text-cyan-400">+${topSetup.r} R</strong>).` : '';
+
+                    return `<div class="space-y-3 font-outfit text-sm">
+                        <div class="p-3.5 bg-card/80 rounded-xl border border-white/10 space-y-2">
+                            <div>${advice}</div>
+                            <div class="text-slate-300">
+                                • Kỳ vọng lợi nhuận (EV): <strong class="${ev.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${(ev.pnl >= 0 ? '+' : '') + this.formatCurrency(ev.pnl)} / lệnh (${(ev.r >= 0 ? '+' : '') + ev.r + ' R'})</strong>.<br>
+                                • Profit Factor (Hệ số lợi nhuận): <strong class="text-cyan-400">${pf}</strong>.<br>
+                                ${setupAdvice}
+                            </div>
+                        </div>
+                    </div>`;
+                },
+
+                async runAiDiagnosis() {
+                    const closed = this.trades.filter(t => {
+                        const st = String(t.status).toUpperCase();
+                        return st === 'WIN' || st === 'LOSS' || st === 'BE' || Number(t.pnl) !== 0;
+                    });
+                    if (closed.length === 0) {
+                        alert('⚠️ Bạn cần ít nhất 1 lệnh đã đóng để chạy chuẩn đoán AI!');
+                        return;
+                    }
+
+                    if (!this.googleApiKey) {
+                        this.aiDiagnosisReport = this.generateInstantDiagnosis();
+                        alert('💡 Hiện đang hiển thị phân tích tức thì của hệ thống. Nếu muốn AI Gemini Vision viết bài kiểm toán tâm lý sâu hơn, hãy nhập API Key trong mục Cài đặt!');
+                        return;
+                    }
+
+                    this.aiDiagnosisReport = `<div class="flex items-center gap-2 py-4 text-cyan-400 animate-pulse font-mono">
+                        <i data-lucide="loader" class="w-5 h-5 animate-spin"></i>
+                        <span>AI Gemini đang phân tích sâu dữ liệu dòng tiền, R:R và tâm lý giao dịch của bạn...</span>
+                    </div>`;
+                    this.$nextTick(() => lucide.createIcons());
+
+                    try {
+                        const summaryData = closed.slice(0, 20).map(t => ({
+                            pair: t.pair,
+                            dir: t.direction,
+                            rr: t.rrRatio,
+                            pnl: t.pnl,
+                            r: this.calcTradeRAchieved(t),
+                            setup: t.setupTag || 'Khác',
+                            note: t.note
+                        }));
+
+                        const prompt = `Bạn là một chuyên gia quản lý quỹ (Head Trader) và huấn luyện viên tâm lý giao dịch đẳng cấp quốc tế.
+                        Hãy phân tích lịch sử giao dịch sau đây của trader (Tên: ${this.traderUsername || 'VIP Trader'}, Vốn gốc: ${this.totalCapital} ${this.currency}, Điểm kỷ luật: ${this.disciplineScore.score}/100):
+                        ${JSON.stringify(summaryData, null, 2)}
+                        
+                        Hãy đưa ra một bài nhận xét kiểm toán cực kỳ sắc bén, ngắn gọn, súc tích bằng tiếng Việt (định dạng HTML đẹp mắt, dùng thẻ <strong>, <ul class="list-disc pl-5 space-y-1 mt-2">, <li>) gồm 3 phần:
+                        1. 🎯 Đánh giá tổng quan dòng tiền & chất lượng lệnh (R:R đạt được, setup nào đang thắng lớn).
+                        2. 🔍 Phát hiện lỗi tâm lý hoặc rủi ro tiềm ẩn (có gồng lỗ hay chốt lời non dưới 1R không).
+                        3. 💡 Lời khuyên hành động cụ thể cho tuần tới để x2 tài khoản bền vững.`;
+
+                        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.googleApiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                contents: [{ parts: [{ text: prompt }] }],
+                                generationConfig: { temperature: 0.3 }
+                            })
+                        });
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            let text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                            text = text.replace(/```html/gi, '').replace(/```/g, '').trim();
+                            this.aiDiagnosisReport = text;
+                        } else {
+                            this.aiDiagnosisReport = this.generateInstantDiagnosis();
+                        }
+                    } catch (err) {
+                        console.warn('AI Diagnosis fallback:', err);
+                        this.aiDiagnosisReport = this.generateInstantDiagnosis();
+                    } finally {
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                // ============================================================
+                // 10. CHARTS & EXPORT
+                // ============================================================
+                renderAnalyticsChart() {
+                    if (typeof Chart === 'undefined') {
+                        setTimeout(() => this.renderAnalyticsChart(), 300);
+                        return;
+                    }
+
+                    const eqCtx = document.getElementById('equityChart');
+                    if (eqCtx) {
+                        let runningEquity = Number(this.totalCapital) || 100;
+                        const labels = ['Bắt đầu'];
+                        const dataPoints = [runningEquity];
+
+                        const closed = this.trades.filter(t => {
+                            const st = String(t.status).toUpperCase();
+                            return st === 'WIN' || st === 'LOSS' || st === 'BE' || Number(t.pnl) !== 0;
+                        }).slice().reverse();
+                        closed.forEach((t, i) => {
+                            runningEquity += Number(t.pnl) || 0;
+                            labels.push(`Lệnh #${i + 1} (${t.pair})`);
+                            dataPoints.push(runningEquity);
+                        });
+
+                        if (window.equityChartObj) window.equityChartObj.destroy();
+                        window.equityChartObj = new Chart(eqCtx, {
+                            type: 'line',
+                            data: {
+                                labels: labels,
+                                datasets: [{
+                                    label: 'Tăng Trưởng Vốn (' + this.currency + ')',
+                                    data: dataPoints,
+                                    borderColor: '#06B6D4',
+                                    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+                                    borderWidth: 3,
+                                    fill: true,
+                                    tension: 0.35,
+                                    pointBackgroundColor: '#06B6D4',
+                                    pointRadius: 4
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { labels: { color: '#F8FAFC', font: { family: 'Outfit', weight: 'bold' } } } },
+                                scales: {
+                                    x: { ticks: { color: '#94A3B8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                                    y: { ticks: { color: '#94A3B8', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                                }
+                            }
+                        });
+                    }
+
+                    const pairCtx = document.getElementById('pairChart');
+                    if (pairCtx) {
+                        const pairMap = {};
+                        const closed = this.trades.filter(t => {
+                            const st = String(t.status).toUpperCase();
+                            return st === 'WIN' || st === 'LOSS' || st === 'BE' || Number(t.pnl) !== 0;
+                        });
+                        closed.forEach(t => {
+                            const p = t.pair || 'Khác';
+                            if (!pairMap[p]) pairMap[p] = { pair: p, pnl: 0, wins: 0, total: 0 };
+                            pairMap[p].pnl += (Number(t.pnl) || 0);
+                            pairMap[p].total += 1;
+                            if (String(t.status).toUpperCase() === 'WIN' || Number(t.pnl) > 0) pairMap[p].wins += 1;
+                        });
+
+                        const pairs = Object.values(pairMap);
+                        const labels = pairs.map(item => `${item.pair} (${item.wins}W/${item.total - item.wins}L)`);
+                        const pnlData = pairs.map(item => Number(item.pnl.toFixed(2)));
+                        const colors = pairs.map(item => item.pnl >= 0 ? '#10B981' : '#F43F5E');
+
+                        if (window.pairChartObj) window.pairChartObj.destroy();
+                        window.pairChartObj = new Chart(pairCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: labels.length > 0 ? labels : ['Chưa có lệnh closed'],
+                                datasets: [{
+                                    label: 'Lợi Nhuận Ròng (' + this.currency + ')',
+                                    data: pnlData.length > 0 ? pnlData : [0],
+                                    backgroundColor: colors.length > 0 ? colors : ['#3B82F6'],
+                                    borderRadius: 8
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false } },
+                                scales: {
+                                    x: { ticks: { color: '#F8FAFC', font: { weight: 'bold', size: 11 } }, grid: { display: false } },
+                                    y: { ticks: { color: '#94A3B8' }, grid: { color: 'rgba(255,255,255,0.05)' } }
+                                }
+                            }
+                        });
+                    }
+                },
+
+                exportJournalCSV() {
+                    if (this.trades.length === 0) {
+                        alert('⚠️ Bạn chưa có lệnh nào trong nhật ký để xuất!');
+                        return;
+                    }
+
+                    const headers = ['ID', 'Ngày (Date)', 'Cặp (Pair)', 'Lệnh (Direction)', 'Entry Price', 'Stop Loss', 'Take Profit', 'Lots', 'Value ($)', 'Risk USD ($)', 'R:R Target', 'PnL ($)', 'Net R Achieved', 'Trạng Thái (Status)', 'Setup Tag', 'Ghi Chú (Note)'];
+                    const rows = this.trades.map(t => [
+                        t.id,
+                        t.date,
+                        t.pair,
+                        t.direction,
+                        t.entryPrice,
+                        t.stopLoss,
+                        t.takeProfit,
+                        t.lots,
+                        t.dollarValue,
+                        t.riskUsd,
+                        t.rrRatio,
+                        t.pnl,
+                        this.calcTradeRAchieved(t),
+                        t.status,
+                        t.setupTag || '',
+                        (t.note || '').replace(/\"/g, '""')
+                    ]);
+
+                    let csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `DNC_Trading_OS_Journal_${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                },
+
+                printExecutiveReport() {
+                    const originalTitle = document.title;
+                    document.title = `Báo Cáo Kiểm Toán Giao Dịch DNC Trading OS - ${this.traderUsername || 'VIP'}`;
+                    window.print();
+                    document.title = originalTitle;
+                }
+            };
+        }
+</script>
