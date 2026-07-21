@@ -3037,15 +3037,53 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 sanitizeTradeData(trade) {
                     if (!trade) return trade;
-                    const lots = Number(trade.lots !== undefined ? trade.lots : trade.volume) || 0;
+                    const cap = Number(this.totalCapital) || 10000;
+                    let lots = Number(trade.lots !== undefined ? trade.lots : trade.volume) || 0;
+                    const entry = Number(trade.entryPrice) || 0;
+                    const sl = Number(trade.stopLoss) || 0;
+                    const tp = Number(trade.takeProfit) || 0;
+                    const risk = Number(trade.riskUsd) || (cap * (Number(this.riskPercent) || 5) / 100);
+                    const rr = Number(trade.rrRatio) || 0;
+                    let pnl = Number(trade.pnl) || 0;
+                    const status = String(trade.status || '').toUpperCase();
+
+                    if (Math.abs(pnl) > 100000 && Math.abs(pnl) > cap * 50) {
+                        let actualLots = lots;
+                        if (actualLots > 100 && (entry > 100 || sl > 100 || tp > 100)) {
+                            actualLots = actualLots / 1000;
+                            lots = actualLots;
+                        }
+                        if (status === 'WIN') {
+                            if (entry && tp && actualLots) {
+                                pnl = Number((Math.abs(tp - entry) * actualLots).toFixed(2));
+                            } else if (risk && rr) {
+                                pnl = Number((risk * rr).toFixed(2));
+                            } else {
+                                pnl = 0;
+                            }
+                        } else if (status === 'LOSS') {
+                            if (entry && sl && actualLots) {
+                                pnl = -Number((Math.abs(entry - sl) * actualLots).toFixed(2));
+                            } else if (risk) {
+                                pnl = -Number(risk.toFixed(2));
+                            } else {
+                                pnl = 0;
+                            }
+                        } else {
+                            pnl = 0;
+                        }
+                        trade.pnl = pnl;
+                    }
+
                     trade.lots = lots;
                     trade.volume = lots;
-                    trade.pnl = Number(trade.pnl) || 0;
+                    trade.pnl = pnl;
                     if (trade.rAchieved !== undefined && trade.rAchieved !== null && trade.rAchieved !== '') {
-                        trade.rAchieved = Number(trade.rAchieved) || 0;
+                        let rVal = Number(trade.rAchieved) || 0;
+                        if (Math.abs(rVal) > 500) rVal = risk > 0 && pnl !== 0 ? Number((pnl / risk).toFixed(2)) : 0;
+                        trade.rAchieved = rVal;
                     } else {
-                        const risk = Number(trade.riskUsd) || (Number(this.totalCapital || 100) * (Number(this.riskPercent) || 5) / 100);
-                        trade.rAchieved = risk > 0 && trade.pnl !== 0 ? Number((trade.pnl / risk).toFixed(2)) : 0;
+                        trade.rAchieved = risk > 0 && pnl !== 0 ? Number((pnl / risk).toFixed(2)) : 0;
                     }
                     trade.id = trade.id || ('trade_' + Math.random().toString(36).substring(2, 9));
                     return trade;

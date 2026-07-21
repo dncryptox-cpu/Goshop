@@ -226,17 +226,48 @@ function handleGetTrades(data) {
     if (username && rowUser.toLowerCase() !== username.toLowerCase()) continue;
 
     const riskUsd = parseSheetNumber(row[10]);
-    const pnl = parseSheetNumber(row[12]);
+    let pnl = parseSheetNumber(row[12]);
     const status = String(row[13] || 'RUNNING').toUpperCase();
     const entryPrice = parseSheetNumber(row[5]);
     const stopLoss = parseSheetNumber(row[6]);
     const takeProfit = parseSheetNumber(row[7]);
-    const lots = parseSheetNumber(row[8]);
+    let lots = parseSheetNumber(row[8]);
     const dollarValue = parseSheetNumber(row[9]);
+    const rrRatio = parseSheetNumber(row[11]);
+
+    const cap = settings.capital || 10000;
+    if (Math.abs(pnl) > 100000 && Math.abs(pnl) > cap * 50) {
+      let actualLots = lots;
+      if (actualLots > 100 && (entryPrice > 100 || stopLoss > 100)) {
+        actualLots = actualLots / 1000;
+        lots = actualLots;
+      }
+      if (status === 'WIN') {
+        if (entryPrice && takeProfit && actualLots) {
+          pnl = Number((Math.abs(takeProfit - entryPrice) * actualLots).toFixed(2));
+        } else if (riskUsd && rrRatio) {
+          pnl = Number((riskUsd * rrRatio).toFixed(2));
+        } else {
+          pnl = 0;
+        }
+      } else if (status === 'LOSS') {
+        if (entryPrice && stopLoss && actualLots) {
+          pnl = -Number((Math.abs(entryPrice - stopLoss) * actualLots).toFixed(2));
+        } else if (riskUsd) {
+          pnl = -Number(riskUsd.toFixed(2));
+        } else {
+          pnl = 0;
+        }
+      } else {
+        pnl = 0;
+      }
+    }
+
     let rAchieved = parseSheetNumber(row[11]);
     if (rAchieved === 0 && riskUsd > 0 && pnl !== 0) {
       rAchieved = Number((pnl / riskUsd).toFixed(2));
     }
+    if (Math.abs(rAchieved) > 500) rAchieved = 0;
 
     trades.push({
       id: String(row[19] || `cloud_${i + 1}`),
