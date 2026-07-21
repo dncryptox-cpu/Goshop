@@ -277,6 +277,22 @@ function handleGetTrades(data) {
     });
   }
 
+  // Tổng hợp và tính toán chuẩn xác ngay từ dữ liệu Sheet (Single Source of Truth)
+  const winTrades = trades.filter(t => t.status === 'WIN' && t.pnl > 0);
+  const lossTrades = trades.filter(t => t.status === 'LOSS' && t.pnl < 0);
+  const closedTrades = trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.pnl !== 0);
+
+  const totalNetPnL = Number(trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0).toFixed(2));
+  const totalR = Number(trades.reduce((sum, t) => sum + (Number(t.rAchieved) || 0), 0).toFixed(2));
+  const winCount = winTrades.length;
+  const lossCount = lossTrades.length;
+  const closedCount = closedTrades.length;
+  const winRate = closedCount > 0 ? Number(((winCount / closedCount) * 100).toFixed(1)) : 0;
+
+  const grossWin = winTrades.reduce((s, t) => s + t.pnl, 0);
+  const grossLoss = Math.abs(lossTrades.reduce((s, t) => s + t.pnl, 0));
+  const profitFactor = grossLoss === 0 ? (grossWin > 0 ? 'MAX' : '0.0') : (grossWin / grossLoss).toFixed(2);
+
   return jsonResponse({
     success: true,
     trades,
@@ -284,7 +300,16 @@ function handleGetTrades(data) {
     currency: settings.currency,
     geminiApiKey: settings.geminiApiKey,
     webhookUrl: settings.webhookUrl,
-    riskPercent: settings.riskPercent
+    riskPercent: settings.riskPercent,
+    summary: {
+      totalNetPnL,
+      totalR,
+      winCount,
+      lossCount,
+      closedCount,
+      winRate,
+      profitFactor
+    }
   });
 }
 

@@ -2136,6 +2136,7 @@
                 loginErrorMsg: '',
                 loginLoading: false,
                 cloudSyncing: false,
+                cloudSummary: null,
                 // Đổi mật khẩu
                 pwOld: '', pwNew: '', pwConfirm: '',
                 changePwLoading: false,
@@ -2643,7 +2644,7 @@
                                 this.userDriveName = result.driveName;
                                 localStorage.setItem(`dnc_drive_view_name_${u}`, result.driveName);
                             }
-                            // Áp dụng trades (Hợp nhất thông minh: giữ lại lệnh local chưa lên cloud, không xóa mất lệnh cũ)
+                            // Lấy trực tiếp dữ liệu từ Google Sheet làm chuẩn duy nhất (Single Source of Truth)
                             if (Array.isArray(result.trades)) {
                                 const cloudTrades = result.trades.map(t => ({
                                     ...t,
@@ -2651,9 +2652,10 @@
                                     imgMtf: this.formatDriveImgUrl(t.imgMtf),
                                     imgLtf: this.formatDriveImgUrl(t.imgLtf)
                                 }));
-                                const cloudMap = new Map(cloudTrades.map(t => [t.id, t]));
-                                const localOnlyTrades = (this.trades || []).filter(t => t && t.id && !cloudMap.has(t.id));
-                                this.trades = [...localOnlyTrades, ...cloudTrades].map(t => this.sanitizeTradeData(t));
+                                this.trades = cloudTrades.map(t => this.sanitizeTradeData(t));
+                            }
+                            if (result.summary) {
+                                this.cloudSummary = result.summary;
                             }
                             // Cập nhật localStorage
                             localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
@@ -3013,18 +3015,22 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 get winCount() {
+                    if (this.cloudSummary && this.cloudSummary.winCount !== undefined) return this.cloudSummary.winCount;
                     return this.trades.filter(t => t.status === 'WIN').length;
                 },
 
                 get lossCount() {
+                    if (this.cloudSummary && this.cloudSummary.lossCount !== undefined) return this.cloudSummary.lossCount;
                     return this.trades.filter(t => t.status === 'LOSS').length;
                 },
 
                 get closedTradesCount() {
+                    if (this.cloudSummary && this.cloudSummary.closedCount !== undefined) return this.cloudSummary.closedCount;
                     return this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS').length;
                 },
 
                 get winRate() {
+                    if (this.cloudSummary && this.cloudSummary.winRate !== undefined) return this.cloudSummary.winRate;
                     if (this.closedTradesCount === 0) return 0;
                     return (this.winCount / this.closedTradesCount) * 100;
                 },
@@ -3080,14 +3086,17 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 get totalNetPnL() {
+                    if (this.cloudSummary && this.cloudSummary.totalNetPnL !== undefined) return Number(this.cloudSummary.totalNetPnL);
                     return this.trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
                 },
 
                 get totalR() {
+                    if (this.cloudSummary && this.cloudSummary.totalR !== undefined) return Number(this.cloudSummary.totalR);
                     return this.trades.reduce((sum, t) => sum + this.calcTradeRAchieved(t), 0);
                 },
 
                 get profitFactor() {
+                    if (this.cloudSummary && this.cloudSummary.profitFactor !== undefined) return this.cloudSummary.profitFactor;
                     const grossWin = this.trades.filter(t => t.pnl > 0).reduce((s, t) => s + t.pnl, 0);
                     const grossLoss = Math.abs(this.trades.filter(t => t.pnl < 0).reduce((s, t) => s + t.pnl, 0));
                     if (grossLoss === 0) return grossWin > 0 ? 'MAX' : '0.0';
