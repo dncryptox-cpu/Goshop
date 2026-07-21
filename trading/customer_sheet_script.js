@@ -218,24 +218,56 @@ function handleGetTrades(data) {
     if (username && rowUser.toLowerCase() !== username.toLowerCase()) continue;
 
     const riskUsd = Number(row[10]) || 0;
-    const pnl = Number(row[12]) || 0;
-    const rAchieved = riskUsd > 0 ? Number((pnl / riskUsd).toFixed(2)) : (Number(row[12]) ? Number((pnl / (settings.capital * 0.05 || 1)).toFixed(2)) : 0);
+    let pnl = Number(row[12]) || 0;
+    const status = String(row[13] || 'Running');
+    const entryPrice = Number(row[5]) || 0;
+    const stopLoss = Number(row[6]) || 0;
+    const takeProfit = Number(row[7]) || 0;
+    const lots = Number(row[8]) || 0;
+    const rrRatio = Number(row[11]) || 0;
+
+    // Bảo vệ & tự động khôi phục nếu PnL bị bất thường (ví dụ > $100,000 hoặc > 50 lần vốn do lệch cột/nhầm ID timestamp)
+    if (Math.abs(pnl) > 100000 && Math.abs(pnl) > (settings.capital || 10000) * 50) {
+      const stUpper = status.toUpperCase();
+      if (stUpper === 'WIN') {
+        if (entryPrice && takeProfit && lots && lots < 1000) {
+          pnl = Number((Math.abs(takeProfit - entryPrice) * lots).toFixed(2));
+        } else if (riskUsd && rrRatio) {
+          pnl = Number((riskUsd * rrRatio).toFixed(2));
+        } else {
+          pnl = 0;
+        }
+      } else if (stUpper === 'LOSS') {
+        if (entryPrice && stopLoss && lots && lots < 1000) {
+          pnl = -Number((Math.abs(entryPrice - stopLoss) * lots).toFixed(2));
+        } else if (riskUsd) {
+          pnl = -Number(riskUsd.toFixed(2));
+        } else {
+          pnl = 0;
+        }
+      } else {
+        pnl = 0;
+      }
+    }
+
+    let rAchieved = riskUsd > 0 ? Number((pnl / riskUsd).toFixed(2)) : (Number(row[12]) ? Number((pnl / (settings.capital * 0.05 || 1)).toFixed(2)) : 0);
+    if (Math.abs(rAchieved) > 500) rAchieved = 0;
 
     trades.push({
       id: String(row[19] || `cloud_${i + 1}`),
       date: String(row[2] || ''),
       pair: String(row[3] || ''),
       direction: String(row[4] || ''),
-      entryPrice: Number(row[5]) || 0,
-      stopLoss: Number(row[6]) || 0,
-      takeProfit: Number(row[7]) || 0,
-      lots: Number(row[8]) || 0,
+      entryPrice: entryPrice,
+      stopLoss: stopLoss,
+      takeProfit: takeProfit,
+      lots: lots,
       dollarValue: Number(row[9]) || 0,
       riskUsd: riskUsd,
       rrRatio: String(row[11] || ''),
       pnl: pnl,
       rAchieved: rAchieved,
-      status: String(row[13] || 'Running'),
+      status: status,
       note: String(row[14] || ''),
       setupTag: String(row[15] || ''),
       imgHtf: String(row[16] || ''),

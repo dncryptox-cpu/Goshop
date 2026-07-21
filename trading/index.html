@@ -2237,7 +2237,7 @@
                         if (savedTrades) {
                             try {
                                 const parsed = JSON.parse(savedTrades);
-                                this.trades = (Array.isArray(parsed) ? parsed : []).map(t => ({
+                                this.trades = (Array.isArray(parsed) ? parsed : []).map(t => this.sanitizeTradeData({
                                     ...t,
                                     imgHtf: this.formatDriveImgUrl(t.imgHtf),
                                     imgMtf: this.formatDriveImgUrl(t.imgMtf),
@@ -2259,7 +2259,7 @@
                     if (savedTrades) {
                         try {
                             const parsed = JSON.parse(savedTrades);
-                            this.trades = (Array.isArray(parsed) ? parsed : []).map(t => ({
+                            this.trades = (Array.isArray(parsed) ? parsed : []).map(t => this.sanitizeTradeData({
                                 ...t,
                                 imgHtf: this.formatDriveImgUrl(t.imgHtf),
                                 imgMtf: this.formatDriveImgUrl(t.imgMtf),
@@ -2653,7 +2653,7 @@
                                 }));
                                 const cloudMap = new Map(cloudTrades.map(t => [t.id, t]));
                                 const localOnlyTrades = (this.trades || []).filter(t => t && t.id && !cloudMap.has(t.id));
-                                this.trades = [...localOnlyTrades, ...cloudTrades];
+                                this.trades = [...localOnlyTrades, ...cloudTrades].map(t => this.sanitizeTradeData(t));
                             }
                             // Cập nhật localStorage
                             localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
@@ -3029,14 +3029,54 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     return (this.winCount / this.closedTradesCount) * 100;
                 },
 
+                sanitizeTradeData(trade) {
+                    if (!trade) return trade;
+                    const cap = Number(this.totalCapital) || 10000;
+                    let pnl = Number(trade.pnl) || 0;
+                    const status = String(trade.status || '').toUpperCase();
+                    const entry = Number(trade.entryPrice) || 0;
+                    const sl = Number(trade.stopLoss) || 0;
+                    const tp = Number(trade.takeProfit) || 0;
+                    const lots = Number(trade.lots || trade.volume) || 0;
+                    const risk = Number(trade.riskUsd) || (cap * (Number(this.riskPercent) || 5) / 100);
+                    const rr = Number(trade.rrRatio) || 0;
+
+                    if (Math.abs(pnl) > 100000 && Math.abs(pnl) > cap * 50) {
+                        if (status === 'WIN') {
+                            if (entry && tp && lots && lots < 1000) {
+                                trade.pnl = Number((Math.abs(tp - entry) * lots).toFixed(2));
+                            } else if (risk && rr) {
+                                trade.pnl = Number((risk * rr).toFixed(2));
+                            } else {
+                                trade.pnl = 0;
+                            }
+                        } else if (status === 'LOSS') {
+                            if (entry && sl && lots && lots < 1000) {
+                                trade.pnl = -Number((Math.abs(entry - sl) * lots).toFixed(2));
+                            } else if (risk) {
+                                trade.pnl = -Number(risk.toFixed(2));
+                            } else {
+                                trade.pnl = 0;
+                            }
+                        } else {
+                            trade.pnl = 0;
+                        }
+                    }
+                    if (Math.abs(trade.rAchieved) > 500) {
+                        trade.rAchieved = risk > 0 ? Number((trade.pnl / risk).toFixed(2)) : 0;
+                    }
+                    return trade;
+                },
+
                 calcTradeRAchieved(trade) {
-                    if (trade.rAchieved !== undefined && trade.rAchieved !== null && !isNaN(Number(trade.rAchieved)) && Number(trade.rAchieved) !== 0) {
+                    if (trade.rAchieved !== undefined && trade.rAchieved !== null && !isNaN(Number(trade.rAchieved)) && Number(trade.rAchieved) !== 0 && Math.abs(Number(trade.rAchieved)) <= 500) {
                         return Number(trade.rAchieved);
                     }
                     const pnl = Number(trade.pnl) || 0;
                     if (pnl === 0) return 0;
                     const risk = (trade.riskUsd && Number(trade.riskUsd) > 0) ? Number(trade.riskUsd) : (Number(this.riskAmount5Percent) || 1);
-                    return Number((pnl / risk).toFixed(2));
+                    const calcR = Number((pnl / risk).toFixed(2));
+                    return Math.abs(calcR) > 500 ? 0 : calcR;
                 },
 
                 get totalNetPnL() {
