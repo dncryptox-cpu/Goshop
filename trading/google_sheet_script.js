@@ -196,6 +196,14 @@ function handleGetTrades(data) {
     }
   }
 
+  function parseSheetNumber(val) {
+    if (val === undefined || val === null || val === '') return 0;
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    const cleaned = String(val).replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+    const num = Number(cleaned);
+    return isNaN(num) ? 0 : num;
+  }
+
   const sheet = getOrCreateLogSheet();
   const rows = sheet.getDataRange().getValues();
   const trades = [];
@@ -204,29 +212,55 @@ function handleGetTrades(data) {
     const rowUser = String(rows[i][1] || '').trim().toLowerCase();
     if (!username || rowUser === username) {
       const storedId = String(rows[i][19] || '').trim();
+      const riskUsd = parseSheetNumber(rows[i][10]);
+      const pnl = parseSheetNumber(rows[i][12]);
+      const lots = parseSheetNumber(rows[i][8]);
+      let rAchieved = parseSheetNumber(rows[i][11]);
+      if (rAchieved === 0 && riskUsd > 0 && pnl !== 0) {
+        rAchieved = Number((pnl / riskUsd).toFixed(2));
+      }
+
       trades.push({
         id: storedId || ('cloud_' + (i + 1)),
         date: String(rows[i][2] || '').split('T')[0],
         pair: String(rows[i][3] || ''),
         direction: String(rows[i][4] || 'LONG'),
-        entryPrice: Number(rows[i][5]) || 0,
-        stopLoss: Number(rows[i][6]) || 0,
-        takeProfit: Number(rows[i][7]) || 0,
-        volume: Number(rows[i][8]) || 0,
-        dollarValue: Number(rows[i][9]) || 0,
-        riskUsd: Number(rows[i][10]) || 0,
+        entryPrice: parseSheetNumber(rows[i][5]),
+        stopLoss: parseSheetNumber(rows[i][6]),
+        takeProfit: parseSheetNumber(rows[i][7]),
+        volume: lots,
+        lots: lots,
+        dollarValue: parseSheetNumber(rows[i][9]),
+        riskUsd: riskUsd,
         rrRatio: String(rows[i][11] || '2.00').replace('1:', ''),
-        pnl: Number(rows[i][12]) || 0,
-        status: String(rows[i][13] || 'RUNNING'),
+        pnl: pnl,
+        rAchieved: rAchieved,
+        status: String(rows[i][13] || 'RUNNING').toUpperCase(),
         note: String(rows[i][14] || ''),
         setupTag: String(rows[i][15] || ''),
         imgHtf: String(rows[i][16] || ''),
         imgMtf: String(rows[i][17] || ''),
-        imgLtf: String(rows[i][18] || '')
+        imgLtf: String(rows[i][18] || ''),
+        cloud_rowNumber: i + 1
       });
     }
   }
-  trades.reverse();
+
+  const winTrades = trades.filter(t => t.status === 'WIN' && t.pnl > 0);
+  const lossTrades = trades.filter(t => t.status === 'LOSS' && t.pnl < 0);
+  const closedTrades = trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || t.pnl !== 0);
+
+  const totalNetPnL = Number(trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0).toFixed(2));
+  const totalR = Number(trades.reduce((sum, t) => sum + (Number(t.rAchieved) || 0), 0).toFixed(2));
+  const winCount = winTrades.length;
+  const lossCount = lossTrades.length;
+  const closedCount = closedTrades.length;
+  const winRate = closedCount > 0 ? Number(((winCount / closedCount) * 100).toFixed(1)) : 0;
+
+  const grossWin = winTrades.reduce((s, t) => s + t.pnl, 0);
+  const grossLoss = Math.abs(lossTrades.reduce((s, t) => s + t.pnl, 0));
+  const profitFactor = grossLoss === 0 ? (grossWin > 0 ? 'MAX' : '0.0') : (grossWin / grossLoss).toFixed(2);
+
   return jsonResponse({
     success: true,
     trades,
@@ -234,7 +268,16 @@ function handleGetTrades(data) {
     currency,
     geminiApiKey: settings.geminiApiKey,
     webhookUrl: settings.webhookUrl,
-    riskPercent: settings.riskPercent
+    riskPercent: settings.riskPercent,
+    summary: {
+      totalNetPnL,
+      totalR,
+      winCount,
+      lossCount,
+      closedCount,
+      winRate,
+      profitFactor
+    }
   });
 }
 

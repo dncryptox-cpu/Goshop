@@ -3037,52 +3037,29 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 sanitizeTradeData(trade) {
                     if (!trade) return trade;
-                    const cap = Number(this.totalCapital) || 10000;
-                    let pnl = Number(trade.pnl) || 0;
-                    const status = String(trade.status || '').toUpperCase();
-                    const entry = Number(trade.entryPrice) || 0;
-                    const sl = Number(trade.stopLoss) || 0;
-                    const tp = Number(trade.takeProfit) || 0;
-                    const lots = Number(trade.lots || trade.volume) || 0;
-                    const risk = Number(trade.riskUsd) || (cap * (Number(this.riskPercent) || 5) / 100);
-                    const rr = Number(trade.rrRatio) || 0;
-
-                    if (Math.abs(pnl) > 100000 && Math.abs(pnl) > cap * 50) {
-                        if (status === 'WIN') {
-                            if (entry && tp && lots && lots < 1000) {
-                                trade.pnl = Number((Math.abs(tp - entry) * lots).toFixed(2));
-                            } else if (risk && rr) {
-                                trade.pnl = Number((risk * rr).toFixed(2));
-                            } else {
-                                trade.pnl = 0;
-                            }
-                        } else if (status === 'LOSS') {
-                            if (entry && sl && lots && lots < 1000) {
-                                trade.pnl = -Number((Math.abs(entry - sl) * lots).toFixed(2));
-                            } else if (risk) {
-                                trade.pnl = -Number(risk.toFixed(2));
-                            } else {
-                                trade.pnl = 0;
-                            }
-                        } else {
-                            trade.pnl = 0;
-                        }
+                    const lots = Number(trade.lots !== undefined ? trade.lots : trade.volume) || 0;
+                    trade.lots = lots;
+                    trade.volume = lots;
+                    trade.pnl = Number(trade.pnl) || 0;
+                    if (trade.rAchieved !== undefined && trade.rAchieved !== null && trade.rAchieved !== '') {
+                        trade.rAchieved = Number(trade.rAchieved) || 0;
+                    } else {
+                        const risk = Number(trade.riskUsd) || (Number(this.totalCapital || 100) * (Number(this.riskPercent) || 5) / 100);
+                        trade.rAchieved = risk > 0 && trade.pnl !== 0 ? Number((trade.pnl / risk).toFixed(2)) : 0;
                     }
-                    if (Math.abs(trade.rAchieved) > 500) {
-                        trade.rAchieved = risk > 0 ? Number((trade.pnl / risk).toFixed(2)) : 0;
-                    }
+                    trade.id = trade.id || ('trade_' + Math.random().toString(36).substring(2, 9));
                     return trade;
                 },
 
                 calcTradeRAchieved(trade) {
-                    if (trade.rAchieved !== undefined && trade.rAchieved !== null && !isNaN(Number(trade.rAchieved)) && Number(trade.rAchieved) !== 0 && Math.abs(Number(trade.rAchieved)) <= 500) {
+                    if (!trade) return 0;
+                    if (trade.rAchieved !== undefined && trade.rAchieved !== null && !isNaN(Number(trade.rAchieved))) {
                         return Number(trade.rAchieved);
                     }
                     const pnl = Number(trade.pnl) || 0;
                     if (pnl === 0) return 0;
                     const risk = (trade.riskUsd && Number(trade.riskUsd) > 0) ? Number(trade.riskUsd) : (Number(this.riskAmount5Percent) || 1);
-                    const calcR = Number((pnl / risk).toFixed(2));
-                    return Math.abs(calcR) > 500 ? 0 : calcR;
+                    return Number((pnl / risk).toFixed(2));
                 },
 
                 get totalNetPnL() {
@@ -3227,9 +3204,14 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 aiDiagnosisReport: '',
 
                 get filteredTrades() {
-                    return this.trades.filter(t => {
-                        const matchesQuery = t.pair.toLowerCase().includes(this.searchQuery.toLowerCase());
-                        const matchesStatus = this.filterStatus === 'ALL' || t.status === this.filterStatus;
+                    return (this.trades || []).filter(t => {
+                        if (!t) return false;
+                        const pairStr = String(t.pair || '').toLowerCase();
+                        const queryStr = String(this.searchQuery || '').toLowerCase();
+                        const matchesQuery = pairStr.includes(queryStr);
+                        const statusStr = String(t.status || '').toUpperCase();
+                        const filterStr = String(this.filterStatus || 'ALL').toUpperCase();
+                        const matchesStatus = filterStr === 'ALL' || statusStr === filterStr;
                         return matchesQuery && matchesStatus;
                     });
                 },

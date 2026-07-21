@@ -211,60 +211,46 @@ function handleGetTrades(data) {
     });
   }
 
+  function parseSheetNumber(val) {
+    if (val === undefined || val === null || val === '') return 0;
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    const cleaned = String(val).replace(/,/g, '.').replace(/[^0-9.-]/g, '');
+    const num = Number(cleaned);
+    return isNaN(num) ? 0 : num;
+  }
+
   const trades = [];
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const rowUser = String(row[1] || '').trim();
     if (username && rowUser.toLowerCase() !== username.toLowerCase()) continue;
 
-    const riskUsd = Number(row[10]) || 0;
-    let pnl = Number(row[12]) || 0;
-    const status = String(row[13] || 'Running');
-    const entryPrice = Number(row[5]) || 0;
-    const stopLoss = Number(row[6]) || 0;
-    const takeProfit = Number(row[7]) || 0;
-    const lots = Number(row[8]) || 0;
-    const rrRatio = Number(row[11]) || 0;
-
-    // Bảo vệ & tự động khôi phục nếu PnL bị bất thường (ví dụ > $100,000 hoặc > 50 lần vốn do lệch cột/nhầm ID timestamp)
-    if (Math.abs(pnl) > 100000 && Math.abs(pnl) > (settings.capital || 10000) * 50) {
-      const stUpper = status.toUpperCase();
-      if (stUpper === 'WIN') {
-        if (entryPrice && takeProfit && lots && lots < 1000) {
-          pnl = Number((Math.abs(takeProfit - entryPrice) * lots).toFixed(2));
-        } else if (riskUsd && rrRatio) {
-          pnl = Number((riskUsd * rrRatio).toFixed(2));
-        } else {
-          pnl = 0;
-        }
-      } else if (stUpper === 'LOSS') {
-        if (entryPrice && stopLoss && lots && lots < 1000) {
-          pnl = -Number((Math.abs(entryPrice - stopLoss) * lots).toFixed(2));
-        } else if (riskUsd) {
-          pnl = -Number(riskUsd.toFixed(2));
-        } else {
-          pnl = 0;
-        }
-      } else {
-        pnl = 0;
-      }
+    const riskUsd = parseSheetNumber(row[10]);
+    const pnl = parseSheetNumber(row[12]);
+    const status = String(row[13] || 'RUNNING').toUpperCase();
+    const entryPrice = parseSheetNumber(row[5]);
+    const stopLoss = parseSheetNumber(row[6]);
+    const takeProfit = parseSheetNumber(row[7]);
+    const lots = parseSheetNumber(row[8]);
+    const dollarValue = parseSheetNumber(row[9]);
+    let rAchieved = parseSheetNumber(row[11]);
+    if (rAchieved === 0 && riskUsd > 0 && pnl !== 0) {
+      rAchieved = Number((pnl / riskUsd).toFixed(2));
     }
-
-    let rAchieved = riskUsd > 0 ? Number((pnl / riskUsd).toFixed(2)) : (Number(row[12]) ? Number((pnl / (settings.capital * 0.05 || 1)).toFixed(2)) : 0);
-    if (Math.abs(rAchieved) > 500) rAchieved = 0;
 
     trades.push({
       id: String(row[19] || `cloud_${i + 1}`),
-      date: String(row[2] || ''),
+      date: String(row[2] || '').split('T')[0],
       pair: String(row[3] || ''),
-      direction: String(row[4] || ''),
+      direction: String(row[4] || 'LONG'),
       entryPrice: entryPrice,
       stopLoss: stopLoss,
       takeProfit: takeProfit,
+      volume: lots,
       lots: lots,
-      dollarValue: Number(row[9]) || 0,
+      dollarValue: dollarValue,
       riskUsd: riskUsd,
-      rrRatio: String(row[11] || ''),
+      rrRatio: String(row[11] || '').replace('1:', ''),
       pnl: pnl,
       rAchieved: rAchieved,
       status: status,
@@ -277,10 +263,10 @@ function handleGetTrades(data) {
     });
   }
 
-  // Tổng hợp và tính toán chuẩn xác ngay từ dữ liệu Sheet (Single Source of Truth)
+  // Tổng hợp trực tiếp từ dữ liệu nguyên bản trên Sheet (Single Source of Truth)
   const winTrades = trades.filter(t => t.status === 'WIN' && t.pnl > 0);
   const lossTrades = trades.filter(t => t.status === 'LOSS' && t.pnl < 0);
-  const closedTrades = trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.pnl !== 0);
+  const closedTrades = trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE' || t.pnl !== 0);
 
   const totalNetPnL = Number(trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0).toFixed(2));
   const totalR = Number(trades.reduce((sum, t) => sum + (Number(t.rAchieved) || 0), 0).toFixed(2));
