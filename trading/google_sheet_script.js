@@ -274,6 +274,7 @@ function handleGetTrades(data) {
         imgHtf: String(rows[i][16] || ''),
         imgMtf: String(rows[i][17] || ''),
         imgLtf: String(rows[i][18] || ''),
+        mindset: String(rows[i][20] || '').trim(),
         cloud_rowNumber: i + 1
       });
     }
@@ -549,7 +550,8 @@ function handleSaveTrade(data) {
     htfUrl,
     mtfUrl,
     ltfUrl,
-    tradeId
+    tradeId,
+    data.mindset || ''
   ];
 
   // Tìm dòng có sẵn để cập nhật (tránh trùng lặp)
@@ -624,7 +626,7 @@ function ensureHeader(sheet) {
     'Cặp', 'Vị Thế', 'Entry', 'Stop Loss', 'Take Profit',
     'Lots', '$ Value', 'Risk $', 'R:R', 'PnL ($)',
     'Trạng Thái', 'Ghi Chú', 'Setup Tag',
-    'Ảnh HTF', 'Ảnh MTF', 'Ảnh LTF', 'Trade ID'
+    'Ảnh HTF', 'Ảnh MTF', 'Ảnh LTF', 'Trade ID', 'Tâm Lý / Năng Lượng'
   ];
   sheet.appendRow(headers);
   const r = sheet.getRange(1, 1, 1, headers.length);
