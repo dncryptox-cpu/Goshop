@@ -585,46 +585,146 @@
                     this.customers = [];
                 },
 
+                parseCSV(csv) {
+                    if (!csv || csv.includes('html')) return [];
+                    const lines = csv.split(/\r?\n/);
+                    if (lines.length < 2) return [];
+                    
+                    const parseLine = (str) => {
+                        const res = [];
+                        let cell = '';
+                        let inQuote = false;
+                        const len = str.length;
+                        for (let i = 0; i < len; i++) {
+                            const c = str[i];
+                            if (c === '"') {
+                                if (inQuote && i + 1 < len && str[i + 1] === '"') {
+                                    cell += '"';
+                                    i++;
+                                } else {
+                                    inQuote = !inQuote;
+                                }
+                            } else if (c === ',' && !inQuote) {
+                                res.push(cell.trim());
+                                cell = '';
+                            } else {
+                                cell += c;
+                            }
+                        }
+                        res.push(cell.trim());
+                        return res;
+                    };
+
+                    const headers = parseLine(lines[0]);
+                    return lines.slice(1).map(line => {
+                        if (!line.trim()) return null;
+                        const values = parseLine(line);
+                        const row = {};
+                        headers.forEach((h, i) => {
+                            if (h) row[h] = values[i] || '';
+                        });
+                        return row;
+                    }).filter(Boolean);
+                },
+
+                getField(r, patterns) {
+                    if (!r) return '';
+                    const keys = Object.keys(r);
+                    for (const pattern of patterns) {
+                        const patLower = pattern.toLowerCase().trim();
+                        const matchKey = keys.find(k => {
+                            const kLower = k.toLowerCase().trim();
+                            return kLower === patLower || kLower.includes(patLower);
+                        });
+                        if (matchKey && r[matchKey] !== undefined && r[matchKey] !== null && String(r[matchKey]).trim() !== '') {
+                            return String(r[matchKey]).trim();
+                        }
+                    }
+                    return '';
+                },
+
                 async fetchSheetData() {
                     this.isLoading = true;
                     try {
                         await this.fetchRequests();
-                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA`;
+                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA&t=${Date.now()}`;
                         const response = await fetch(url);
                         const csvText = await response.text();
 
-                        const lines = csvText.split('\n');
-                        if (lines.length < 2) return;
-                        const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
-
-                        const appData = lines.slice(1).map(line => {
-                            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
-                            const obj = {};
-                            headers.forEach((header, i) => {
-                                obj[header] = values[i] || '';
-                            });
-                            return obj;
-                        }).filter(row => Object.values(row).some(v => v !== ''));
-
+                        const appData = this.parseCSV(csvText);
                         const customerMap = {};
+
                         appData.forEach((r, index) => {
-                            const email = r['Email khách'];
+                            const email = this.getField(r, ['Email khách', 'Email', 'Mail']);
                             if (!email) return;
 
-                            const days = parseInt(r['Số ngày còn lại']) || 0;
-                            if (!customerMap[email] || days > customerMap[email].days) {
-                                customerMap[email] = {
-                                    email: email,
-                                    secondaryEmail: r['Mail phụ'] || '',
-                                    plan: r['Phân loại'] || '--',
-                                    expiry: r['HSD'] || '--',
-                                    purchaseDate: r['Ngày mua'] || r['Ngày đăng ký'] || r['Ngày đk'] || '--',
-                                    days: days,
-                                    staff: r['CTV'] || 'Unassigned',
-                                    renewalStatus: this.ytbStatuses[email] || (days > 0 ? 'Còn HSD' : 'Chờ GH')
-                                };
+                            const emailLower = email.toLowerCase();
+                            let daysRaw = this.getField(r, ['Số ngày còn lại', 'Ngày còn lại', 'Days Left', 'Days']);
+                            let days = parseInt(daysRaw);
+                            if (isNaN(days)) days = null;
+
+                            let expiry = this.getField(r, ['Date', 'HSD', 'Hạn sử dụng', 'Hạn dùng', 'Hết hạn', 'Expiry', 'Renew']);
+                            let purchaseDate = this.getField(r, ['Ngày mua', 'Ngày đăng ký', 'Ngày đk', 'Ngày ĐK', 'Purchase Date', 'Start']);
+                            let plan = this.getField(r, ['Phân loại', 'Gói', 'Product', 'Plan']) || '--';
+                            let secondaryEmail = this.getField(r, ['Mail phụ', 'Email phụ', 'Sub Email', 'Secondary']);
+                            let staff = this.getField(r, ['CTV', 'Nhân viên', 'Staff', 'Sales']) || 'Unassigned';
+
+                            // Tự động tính HSD nếu thiếu nhưng có số ngày còn lại
+                            if ((!expiry || expiry === '--') && days !== null) {
+                                const d = new Date();
+                                d.setDate(d.getDate() + days);
+                                const dd = String(d.getDate()).padStart(2, '0');
+                                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                const yyyy = d.getFullYear();
+                                expiry = `${dd}/${mm}/${yyyy}`;
+                            }
+
+                            // Tự động tính số ngày còn lại nếu thiếu hoặc 0 nhưng có HSD dạng date
+                            if (expiry && expiry !== '--' && (days === null || days === 0)) {
+                                let expDate;
+                                if (expiry.includes('/')) {
+                                    const parts = expiry.split('/');
+                                    if (parts.length === 3) {
+                                        expDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                                    }
+                                } else if (expiry.includes('-')) {
+                                    expDate = new Date(expiry);
+                                }
+                                if (expDate && !isNaN(expDate.getTime())) {
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const diffTime = expDate.getTime() - today.getTime();
+                                    days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                }
+                            }
+
+                            if (!expiry) expiry = '--';
+                            if (days === null) days = 0;
+
+                            const customerObj = {
+                                email: email,
+                                secondaryEmail: secondaryEmail,
+                                plan: plan,
+                                expiry: expiry,
+                                purchaseDate: purchaseDate || '--',
+                                days: days,
+                                staff: staff,
+                                renewalStatus: this.ytbStatuses[emailLower] || (days > 0 ? 'Còn HSD' : 'Chờ GH')
+                            };
+
+                            if (!customerMap[emailLower]) {
+                                customerMap[emailLower] = customerObj;
+                            } else {
+                                const existing = customerMap[emailLower];
+                                const existingDays = existing.days !== null ? existing.days : -9999;
+                                const currentDays = days !== null ? days : -9999;
+
+                                if (currentDays > existingDays || (existing.expiry === '--' && expiry !== '--')) {
+                                    customerMap[emailLower] = customerObj;
+                                }
                             }
                         });
+
                         this.customers = Object.values(customerMap);
 
                     } catch (error) {
@@ -680,15 +780,16 @@
 
                 calculateNewDate(oldExpiryStr) {
                     const expiry = oldExpiryStr || this.updateForm.oldExpiry;
-                    if (!expiry) return;
                     let date;
-                    if (expiry.includes('/')) {
-                        const parts = expiry.split('/');
-                        if (parts.length === 3) date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
-                    } else {
-                        date = new Date(expiry);
+                    if (expiry && expiry !== '--') {
+                        if (expiry.includes('/')) {
+                            const parts = expiry.split('/');
+                            if (parts.length === 3) date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                        } else {
+                            date = new Date(expiry);
+                        }
                     }
-                    if (isNaN(date.getTime())) date = new Date();
+                    if (!date || isNaN(date.getTime())) date = new Date();
 
                     date.setMonth(date.getMonth() + (this.updateForm.months || 1));
                     const dd = String(date.getDate()).padStart(2, '0');
@@ -774,29 +875,23 @@
 
                 async fetchRequests() {
                     try {
-                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=YEU_CAU`;
+                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=YEU_CAU&t=${Date.now()}`;
                         const response = await fetch(url);
                         const csvText = await response.text();
                         
-                        const lines = csvText.split('\n');
-                        if (lines.length < 2) return;
-                        const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
+                        const appData = this.parseCSV(csvText);
                         
-                        const requests = lines.slice(1).map(line => {
-                            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
-                            const obj = {};
-                            headers.forEach((header, i) => {
-                                obj[header] = values[i] || '';
-                            });
+                        const requests = appData.map(obj => {
+                            const statusVal = this.getField(obj, ['Trạng Thái', 'Status']);
                             return {
-                                id: parseInt(obj['ID']),
-                                email: obj['Email'],
-                                oldExpiry: obj['HSD Cũ'],
-                                months: parseInt(obj['Tháng Gia Hạn']) || 1,
-                                newExpiry: obj['HSD Mới'],
-                                staff: obj['CTV Yêu Cầu'],
-                                createdAt: obj['Thời Gian'],
-                                status: obj['Trạng Thái'] === 'Chờ Duyệt' ? 'pending' : (obj['Trạng Thái'] === 'Đã Duyệt' ? 'approved' : 'rejected')
+                                id: parseInt(this.getField(obj, ['ID'])),
+                                email: this.getField(obj, ['Email', 'Email khách']),
+                                oldExpiry: this.getField(obj, ['HSD Cũ', 'HSD Cu', 'Old Expiry']),
+                                months: parseInt(this.getField(obj, ['Tháng Gia Hạn', 'Tháng', 'Months'])) || 1,
+                                newExpiry: this.getField(obj, ['HSD Mới', 'HSD Moi', 'New Expiry']),
+                                staff: this.getField(obj, ['CTV Yêu Cầu', 'CTV', 'Staff']),
+                                createdAt: this.getField(obj, ['Thời Gian', 'Ngày']),
+                                status: statusVal === 'Chờ Duyệt' ? 'pending' : (statusVal === 'Đã Duyệt' ? 'approved' : 'rejected')
                             };
                         }).filter(r => r.id);
                         

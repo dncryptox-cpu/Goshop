@@ -904,6 +904,64 @@
                     }
                 },
 
+                parseCSV(csv) {
+                    if (!csv || csv.includes('html')) return [];
+                    const lines = csv.split(/\r?\n/);
+                    if (lines.length < 2) return [];
+                    
+                    const parseLine = (str) => {
+                        const res = [];
+                        let cell = '';
+                        let inQuote = false;
+                        const len = str.length;
+                        for (let i = 0; i < len; i++) {
+                            const c = str[i];
+                            if (c === '"') {
+                                if (inQuote && i + 1 < len && str[i + 1] === '"') {
+                                    cell += '"';
+                                    i++;
+                                } else {
+                                    inQuote = !inQuote;
+                                }
+                            } else if (c === ',' && !inQuote) {
+                                res.push(cell.trim());
+                                cell = '';
+                            } else {
+                                cell += c;
+                            }
+                        }
+                        res.push(cell.trim());
+                        return res;
+                    };
+
+                    const headers = parseLine(lines[0]);
+                    return lines.slice(1).map(line => {
+                        if (!line.trim()) return null;
+                        const values = parseLine(line);
+                        const row = {};
+                        headers.forEach((h, i) => {
+                            if (h) row[h] = values[i] || '';
+                        });
+                        return row;
+                    }).filter(Boolean);
+                },
+
+                getField(r, patterns) {
+                    if (!r) return '';
+                    const keys = Object.keys(r);
+                    for (const pattern of patterns) {
+                        const patLower = pattern.toLowerCase().trim();
+                        const matchKey = keys.find(k => {
+                            const kLower = k.toLowerCase().trim();
+                            return kLower === patLower || kLower.includes(patLower);
+                        });
+                        if (matchKey && r[matchKey] !== undefined && r[matchKey] !== null && String(r[matchKey]).trim() !== '') {
+                            return String(r[matchKey]).trim();
+                        }
+                    }
+                    return '';
+                },
+
                 setUser(user) {
                     this.currentUser = user;
                     this.isLoggedIn = true;
@@ -937,27 +995,16 @@
                         if (payoutResponse && payoutResponse.ok) {
                             const pCsvText = await payoutResponse.text();
                             if (!pCsvText.includes('html')) {
-                                const pLines = pCsvText.split('\n');
-                                if (pLines.length >= 2) {
-                                    const pHeaders = pLines[0].split(',').map(h => h.replace(/"/g, '').trim());
-                                    this.payoutRequests = pLines.slice(1).map(line => {
-                                        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
-                                        const obj = {};
-                                        pHeaders.forEach((header, i) => obj[header] = values[i] || '');
-                                        return {
-                                            id: obj['ID'] || '',
-                                            email: obj['Email'] || '',
-                                            date: obj['Thời Gian'] || '',
-                                            amount: parseInt((obj['Số Tiền'] || '0').replace(/\D/g, '')) || 0,
-                                            bankInfo: {
-                                                bank: obj['Ngân Hàng'] || '',
-                                                account: obj['Số Tài Khoản'] || '',
-                                                name: obj['Chủ Tài Khoản'] || ''
-                                            },
-                                            status: obj['Trạng Thái'] === 'Đã Thanh Toán' ? 'paid' : 'pending'
-                                        };
-                                    }).filter(p => p.id && p.email);
-                                }
+                                this.payoutRequests = this.parseCSV(pCsvText).map(obj => ({
+                                    id: this.getField(obj, ['ID']),
+                                    email: this.getField(obj, ['Email']),
+                                    date: this.getField(obj, ['Thời Gian', 'Ngày']),
+                                    amount: parseInt(this.getField(obj, ['Số Tiền', 'Amount'])) || 0,
+                                    bank: this.getField(obj, ['Ngân Hàng', 'Bank']),
+                                    accountNo: this.getField(obj, ['Số TK', 'STK']),
+                                    accountName: this.getField(obj, ['Tên TK', 'Chủ TK']),
+                                    status: this.getField(obj, ['Trạng Thái', 'Status']) || 'pending'
+                                }));
                             }
                         }
 
@@ -965,32 +1012,11 @@
                         if (ordersResponse && ordersResponse.ok) {
                             const oCsvText = await ordersResponse.text();
                             if (!oCsvText.includes('html')) {
-                                const oLines = oCsvText.split('\n');
-                                if (oLines.length >= 2) {
-                                    const oHeaders = oLines[0].split(',').map(h => h.replace(/"/g, '').trim());
-                                    oLines.slice(1).forEach(line => {
-                                        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
-                                        const obj = {};
-                                        oHeaders.forEach((h, i) => obj[h] = values[i] || '');
-                                        newOrders.push(obj);
-                                    });
-                                }
+                                newOrders.push(...this.parseCSV(oCsvText));
                             }
                         }
 
-
-                        const lines = csvText.split('\n');
-                        if (lines.length < 2) return;
-                        const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
-
-                        const appData = lines.slice(1).map(line => {
-                            const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.replace(/"/g, '').trim());
-                            const obj = {};
-                            headers.forEach((header, i) => {
-                                obj[header] = values[i] || '';
-                            });
-                            return obj;
-                        }).filter(row => row['Email khách']);
+                        const appData = this.parseCSV(csvText);
 
                         const parsedCustomers = [];
                         const affMap = {};
@@ -999,28 +1025,63 @@
                         // Build a reliable mapping of email -> referrer from DON_HANG_MOI
                         const realReferrersMap = {};
                         newOrders.forEach(o => {
-                            const email = (o['Email'] || '').toLowerCase().trim();
-                            const ref = (o['Người giới thiệu'] || '').toLowerCase().trim();
+                            const email = this.getField(o, ['Email', 'Email khách']).toLowerCase().trim();
+                            const ref = this.getField(o, ['Người giới thiệu', 'Affiliate']).toLowerCase().trim();
                             if (email && ref && ref !== email && ref !== email.split('@')[0]) {
                                 realReferrersMap[email] = ref;
                             }
                         });
 
                         appData.forEach(r => {
-                            let email = (r['Email khách'] || '').trim();
+                            let email = this.getField(r, ['Email khách', 'Email', 'Mail']);
                             if (!email) return;
                             
                             const emailLower = email.toLowerCase();
                             if (seenEmails.has(emailLower)) return; // Deduplicate by email
                             seenEmails.add(emailLower);
 
-                            const days = parseInt(r['Số ngày còn lại']) || 0;
-                            const price = parseInt((r['Doanh thu'] || r['Giá'] || '0').replace(/\D/g, '')) || this.CONFIG.DEFAULT_PRICE;
-                            
-                            // Affiliate tracking: Prioritize real referrer from DON_HANG_MOI if it exists, otherwise fallback to sheet data
-                            let referredBy = realReferrersMap[emailLower] || (r['Người giới thiệu'] || r['Affiliate'] || '').toLowerCase().trim();
+                            let daysRaw = this.getField(r, ['Số ngày còn lại', 'Ngày còn lại', 'Days Left', 'Days']);
+                            let days = parseInt(daysRaw);
+                            if (isNaN(days)) days = null;
 
-                            // Prevent self-referral (since Column J currently contains customer's own prefix)
+                            let expiryDate = this.getField(r, ['Date', 'HSD', 'Hạn sử dụng', 'Hạn dùng', 'Hết hạn', 'Expiry', 'Renew']);
+
+                            // Tự động tính HSD nếu thiếu nhưng có số ngày còn lại
+                            if ((!expiryDate || expiryDate === '--') && days !== null) {
+                                const d = new Date();
+                                d.setDate(d.getDate() + days);
+                                const dd = String(d.getDate()).padStart(2, '0');
+                                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                const yyyy = d.getFullYear();
+                                expiryDate = `${dd}/${mm}/${yyyy}`;
+                            }
+
+                            // Tự động tính số ngày còn lại nếu thiếu hoặc 0 nhưng có HSD dạng date
+                            if (expiryDate && expiryDate !== '--' && (days === null || days === 0)) {
+                                let expDate;
+                                if (expiryDate.includes('/')) {
+                                    const parts = expiryDate.split('/');
+                                    if (parts.length === 3) {
+                                        expDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                                    }
+                                } else if (expiryDate.includes('-')) {
+                                    expDate = new Date(expiryDate);
+                                }
+                                if (expDate && !isNaN(expDate.getTime())) {
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const diffTime = expDate.getTime() - today.getTime();
+                                    days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                }
+                            }
+
+                            if (!expiryDate) expiryDate = '--';
+                            if (days === null) days = 0;
+
+                            const priceRaw = this.getField(r, ['Doanh thu', 'Giá', 'Revenue', 'Price']);
+                            const price = parseInt(priceRaw.replace(/\D/g, '')) || this.CONFIG.DEFAULT_PRICE;
+                            let referredBy = realReferrersMap[emailLower] || (this.getField(r, ['Người giới thiệu', 'Affiliate', 'ReferredBy'])).toLowerCase().trim();
+
                             if (referredBy === emailLower || referredBy === emailLower.split('@')[0]) {
                                 referredBy = '';
                             }
@@ -1029,10 +1090,10 @@
 
                             const cData = {
                                 email: email,
-                                name: r['Tên'] || emailLower.split('@')[0],
-                                product: r['Phân loại'] || 'Standard',
-                                purchaseDate: r['Ngày mua'] || r['Ngày đk'] || '--',
-                                expiryDate: r['HSD'] || '--',
+                                name: this.getField(r, ['Tên', 'Name']) || emailLower.split('@')[0],
+                                product: this.getField(r, ['Phân loại', 'Gói', 'Product', 'Plan']) || 'Standard',
+                                purchaseDate: this.getField(r, ['Ngày mua', 'Ngày đk', 'Ngày đăng ký']) || '--',
+                                expiryDate: expiryDate,
                                 daysRemaining: days,
                                 referredBy: referredBy,
                                 revenue: price,
