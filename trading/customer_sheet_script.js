@@ -223,7 +223,7 @@ function handleGetTrades(data) {
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     const rowUser = String(row[1] || '').trim();
-    if (username && rowUser.toLowerCase() !== username.toLowerCase()) continue;
+    if (username && rowUser && rowUser.toLowerCase() !== username.toLowerCase()) continue;
 
     const riskUsd = parseSheetNumber(row[10]);
     let pnl = parseSheetNumber(row[12]);
@@ -263,10 +263,7 @@ function handleGetTrades(data) {
       }
     }
 
-    let rAchieved = parseSheetNumber(row[11]);
-    if (rAchieved === 0 && riskUsd > 0 && pnl !== 0) {
-      rAchieved = Number((pnl / riskUsd).toFixed(2));
-    }
+    let rAchieved = (riskUsd > 0 && pnl !== 0) ? Number((pnl / riskUsd).toFixed(2)) : (status === 'WIN' ? parseSheetNumber(row[11]) : (status === 'LOSS' ? -1 : 0));
     if (Math.abs(rAchieved) > 500) rAchieved = 0;
 
     trades.push({
@@ -310,6 +307,7 @@ function handleGetTrades(data) {
   const grossLoss = Math.abs(lossTrades.reduce((s, t) => s + t.pnl, 0));
   const profitFactor = grossLoss === 0 ? (grossWin > 0 ? 'MAX' : '0.0') : (grossWin / grossLoss).toFixed(2);
 
+  trades.reverse();
   return jsonResponse({
     success: true,
     trades,
@@ -544,7 +542,18 @@ function writeSettingsToSheet(data) {
 // ───────────────────────────────────────────────
 function getOrCreateLogSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(LOG_SHEET_NAME);
+  // Tự động nhận diện tab theo nhiều tên phổ biến — ưu tiên từ trên xuống
+  const candidates = [
+    LOG_SHEET_NAME,              // 'Trading Log' (mặc định)
+    'Trading Log customer',
+    'Trading Log Customer',
+    'Log'
+  ];
+  let sheet = null;
+  for (const name of candidates) {
+    sheet = ss.getSheetByName(name);
+    if (sheet) break;
+  }
   if (!sheet) {
     sheet = ss.insertSheet(LOG_SHEET_NAME);
     const headers = [

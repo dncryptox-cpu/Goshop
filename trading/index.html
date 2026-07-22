@@ -2647,12 +2647,19 @@
                             }
                             // Lấy trực tiếp dữ liệu từ Google Sheet làm chuẩn duy nhất (Single Source of Truth)
                             if (Array.isArray(result.trades)) {
-                                const cloudTrades = result.trades.map(t => ({
-                                    ...t,
-                                    imgHtf: this.formatDriveImgUrl(t.imgHtf),
-                                    imgMtf: this.formatDriveImgUrl(t.imgMtf),
-                                    imgLtf: this.formatDriveImgUrl(t.imgLtf)
-                                }));
+                                const seenIds = new Set();
+                                const cloudTrades = result.trades.map((t, idx) => {
+                                    let tid = String(t.id || `cloud_${idx + 1}`);
+                                    if (seenIds.has(tid)) tid = tid + '_' + Math.random().toString(36).substring(2, 6);
+                                    seenIds.add(tid);
+                                    return {
+                                        ...t,
+                                        id: tid,
+                                        imgHtf: this.formatDriveImgUrl(t.imgHtf),
+                                        imgMtf: this.formatDriveImgUrl(t.imgMtf),
+                                        imgLtf: this.formatDriveImgUrl(t.imgLtf)
+                                    };
+                                });
                                 this.trades = cloudTrades.map(t => this.sanitizeTradeData(t));
                             }
                             if (result.summary) {
@@ -3079,6 +3086,14 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     trade.lots = lots;
                     trade.volume = lots;
                     trade.pnl = pnl;
+                    trade.status = status || 'RUNNING';
+                    trade.direction = String(trade.direction || 'LONG').toUpperCase();
+                    trade.pair = String(trade.pair || 'UNKNOWN').toUpperCase();
+                    trade.date = String(trade.date || '').split('T')[0] || new Date().toISOString().split('T')[0];
+                    trade.entryPrice = entry;
+                    trade.stopLoss = sl;
+                    trade.takeProfit = tp;
+                    trade.rrRatio = trade.rrRatio ? String(trade.rrRatio).replace('1:', '') : '2.00';
                     if (trade.rAchieved !== undefined && trade.rAchieved !== null && trade.rAchieved !== '') {
                         let rVal = Number(trade.rAchieved) || 0;
                         if (Math.abs(rVal) > 500) rVal = risk > 0 && pnl !== 0 ? Number((pnl / risk).toFixed(2)) : 0;
@@ -3086,7 +3101,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     } else {
                         trade.rAchieved = risk > 0 && pnl !== 0 ? Number((pnl / risk).toFixed(2)) : 0;
                     }
-                    trade.id = trade.id || ('trade_' + Math.random().toString(36).substring(2, 9));
+                    trade.id = String(trade.id || ('trade_' + Math.random().toString(36).substring(2, 9))).trim();
                     return trade;
                 },
 
@@ -3310,7 +3325,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         const lightTrades = this.trades.map(t => ({ ...t, imgHtf: t.imgHtf ? '[img]' : '', imgMtf: t.imgMtf ? '[img]' : '', imgLtf: t.imgLtf ? '[img]' : '' }));
                         localStorage.setItem(storageKey, JSON.stringify(lightTrades));
                     }
-                    this.$nextTick(() => lucide.createIcons());
+                    this.$nextTick(() => { try { lucide.createIcons(); } catch(e) {} });
                 },
 
                 // Calculator math

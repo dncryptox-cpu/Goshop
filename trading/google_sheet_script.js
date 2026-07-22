@@ -210,7 +210,7 @@ function handleGetTrades(data) {
 
   for (let i = 1; i < rows.length; i++) {
     const rowUser = String(rows[i][1] || '').trim().toLowerCase();
-    if (!username || rowUser === username) {
+    if (!username || !rowUser || rowUser === username) {
       const storedId = String(rows[i][19] || '').trim();
       const riskUsd = parseSheetNumber(rows[i][10]);
       let pnl = parseSheetNumber(rows[i][12]);
@@ -250,10 +250,7 @@ function handleGetTrades(data) {
         }
       }
 
-      let rAchieved = parseSheetNumber(rows[i][11]);
-      if (rAchieved === 0 && riskUsd > 0 && pnl !== 0) {
-        rAchieved = Number((pnl / riskUsd).toFixed(2));
-      }
+      let rAchieved = (riskUsd > 0 && pnl !== 0) ? Number((pnl / riskUsd).toFixed(2)) : (status === 'WIN' ? parseSheetNumber(rows[i][11]) : (status === 'LOSS' ? -1 : 0));
       if (Math.abs(rAchieved) > 500) rAchieved = 0;
 
       trades.push({
@@ -297,6 +294,7 @@ function handleGetTrades(data) {
   const grossLoss = Math.abs(lossTrades.reduce((s, t) => s + t.pnl, 0));
   const profitFactor = grossLoss === 0 ? (grossWin > 0 ? 'MAX' : '0.0') : (grossWin / grossLoss).toFixed(2);
 
+  trades.reverse();
   return jsonResponse({
     success: true,
     trades,
