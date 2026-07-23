@@ -4320,7 +4320,7 @@
                 </div>
 
                 <!-- Module: ChatGPT Shared -->
-                <div x-show="activeModule === 'chatgpt_shared'" x-cloak>
+                <div x-show="activeModule === 'chatgpt_shared' && isModuleAllowed('chatgpt_shared')" x-cloak>
                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
                         <div>
                             <div class="flex items-center gap-2.5">
@@ -4442,7 +4442,7 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-50">
-                                    <template x-for="item in filteredChatgptSharedList" :key="item.date + item.email + item.product">
+                                    <template x-for="(item, index) in filteredChatgptSharedList" :key="'cg_' + index + '_' + (item.orderId || '')">
                                         <tr class="hover:bg-gray-50/70 transition-colors">
                                             <!-- Cột 1: Khách hàng / Mã đơn -->
                                             <td class="px-5 py-4">
@@ -9442,10 +9442,16 @@
                 isExpired(expiryStr) {
                     try {
                         if (!expiryStr || expiryStr === '--') return false;
-                        const parts = String(expiryStr).split('/');
-                        if (parts.length !== 3) return false;
-                        const expDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T23:59:59`);
-                        return expDate.getTime() < Date.now();
+                        const str = String(expiryStr).trim();
+                        if (str.includes('/')) {
+                            const parts = str.split('/');
+                            if (parts.length === 3) {
+                                const expDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]), 23, 59, 59);
+                                return expDate.getTime() < Date.now();
+                            }
+                        }
+                        const expDate = new Date(str);
+                        return !isNaN(expDate.getTime()) && expDate.getTime() < Date.now();
                     } catch (e) {
                         return false;
                     }
@@ -9454,11 +9460,20 @@
                 getDaysLeft(expiryStr) {
                     try {
                         if (!expiryStr || expiryStr === '--') return null;
-                        const parts = String(expiryStr).split('/');
-                        if (parts.length !== 3) return null;
-                        const expDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
-                        if (isNaN(expDate.getTime())) return null;
-                        const diffTime = expDate.getTime() - new Date().setHours(0,0,0,0);
+                        const str = String(expiryStr).trim();
+                        let expDate = null;
+                        if (str.includes('/')) {
+                            const parts = str.split('/');
+                            if (parts.length === 3) {
+                                expDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+                            }
+                        } else {
+                            expDate = new Date(str);
+                        }
+                        if (!expDate || isNaN(expDate.getTime())) return null;
+                        const today = new Date();
+                        today.setHours(0,0,0,0);
+                        const diffTime = expDate.getTime() - today.getTime();
                         return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                     } catch (e) {
                         return null;
@@ -9468,13 +9483,14 @@
                 parseDateStr(dateStr) {
                     try {
                         if (!dateStr) return new Date(0);
-                        if (String(dateStr).includes('/')) {
-                            const parts = String(dateStr).split('/');
+                        const str = String(dateStr).trim();
+                        if (str.includes('/')) {
+                            const parts = str.split('/');
                             if (parts.length === 3) {
-                                return new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                                return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
                             }
                         }
-                        const d = new Date(dateStr);
+                        const d = new Date(str);
                         return isNaN(d) ? new Date(0) : d;
                     } catch (e) {
                         return new Date(0);
@@ -10103,6 +10119,9 @@
                     this.$watch('activeModule', (val) => {
                         if (val === 'data_goc' || val === 'dashboard' || val === 'chatgpt_shared') {
                             this.fetchDataGoc();
+                            if (val === 'chatgpt_shared') {
+                                this.fetchSheetData();
+                            }
                         }
                         if (val === 'dashboard') {
                             this.calculateGlobalProfit();
