@@ -9292,69 +9292,74 @@
                 getChatgptSharedList() {
                     try {
                         const list = [];
-                        const data = (this.db && this.db.DATA_YTB) ? this.db.DATA_YTB : [];
-                        if (!Array.isArray(data) || data.length === 0) return [];
-
-                        data.forEach(row => {
+                        
+                        // 1. Process DATA_YTB (Google Sheet: DATA(YTB))
+                        const dataYtb = (this.db && Array.isArray(this.db.DATA_YTB)) ? this.db.DATA_YTB : [];
+                        dataYtb.forEach(row => {
                             if (!row || typeof row !== 'object') return;
-                            const vals = Object.values(row);
+                            const vals = row._rawVals || Object.values(row);
                             if (vals.length < 5) return;
 
-                            const keys = Object.keys(row).map(k => String(k || '').toLowerCase().trim());
-                            
-                            // Find product column index dynamically or default to Column E/G
-                            const productIdx = keys.findIndex(k => k.includes('sản phẩm') || k.includes('gói') || k.includes('sku') || k.includes('dịch vụ'));
-                            const product = String((productIdx !== -1 && vals[productIdx] !== undefined) ? vals[productIdx] : (vals[4] || row['Sản phẩm'] || '')).trim();
+                            // Column E (index 4) contains "Sản phẩm" (e.g. GPTshare-3, GPTshare-12, GPTshare-1)
+                            const product = String(row['Sản phẩm'] || vals[4] || row['SKU'] || vals[6] || '').trim();
+                            const prodLower = product.toLowerCase();
 
-                            // Filter for GPT / ChatGPT / GPTshare
-                            if (product.toLowerCase().includes('gpt') || product.toLowerCase().includes('chatgpt')) {
-                                const emailIdx = keys.findIndex(k => k.includes('email') || k.includes('thư'));
-                                const ctvIdx = keys.findIndex(k => k.includes('ctv') || k.includes('người giới thiệu') || k.includes('nhân viên'));
-                                const durationIdx = keys.findIndex(k => k.includes('thời gian') || k.includes('tháng') || k.includes('duration'));
-                                const orderIdIdx = keys.findIndex(k => k.includes('mã đơn') || k.includes('order id'));
-
-                                const dateStr = String(vals[0] || row['Ngày'] || '').trim();
-                                const orderId = String((orderIdIdx !== -1 && vals[orderIdIdx] !== undefined) ? vals[orderIdIdx] : (vals[1] || row['Mã Đơn'] || '')).trim();
-                                const email = String((emailIdx !== -1 && vals[emailIdx] !== undefined) ? vals[emailIdx] : (vals[3] || row['Email'] || '')).trim();
-                                const duration = parseInt((durationIdx !== -1 && vals[durationIdx] !== undefined) ? vals[durationIdx] : (vals[5] || row['Số tháng'] || '0')) || 0;
-                                const ctv = String((ctvIdx !== -1 && vals[ctvIdx] !== undefined) ? vals[ctvIdx] : (vals[7] || row['CTV'] || '')).trim();
-
-                                // HSD (Expiry Date) is in Column N (index 13)
-                                let expiryDate = '';
-                                if (vals[13] !== undefined && String(vals[13]).trim() !== '') {
-                                    expiryDate = String(vals[13]).trim();
-                                } else {
-                                    const hsdIdx = keys.findIndex(k => k === 'hsd' || k.includes('hạn sử dụng') || k.includes('expiry') || k === 'date');
-                                    expiryDate = (hsdIdx !== -1 && vals[hsdIdx] !== undefined) ? String(vals[hsdIdx]).trim() : String(row['Date'] || row['HSD'] || '--').trim();
-                                }
-                                if (expiryDate && expiryDate.includes('T')) {
-                                    expiryDate = expiryDate.split('T')[0];
-                                }
-
-                                // Mã thiết bị (Device note) is in Column P (index 15)
-                                let note = '';
-                                if (vals[15] !== undefined && String(vals[15]).trim() !== '') {
-                                    note = String(vals[15]).trim();
-                                } else {
-                                    const noteIdx = keys.findIndex(k => k.includes('thiết bị') || k.includes('ghi chú') || k.includes('note') || k.includes('device'));
-                                    note = (noteIdx !== -1 && vals[noteIdx] !== undefined) ? String(vals[noteIdx]).trim() : String(row['Mã thiết bị'] || row['Thiết bị'] || row['Ghi chú'] || 'Chưa ghi chú thiết bị').trim();
-                                }
+                            // Filter specifically for GPTshare / GPT / ChatGPT
+                            if (prodLower.includes('gptshare') || prodLower.includes('gpt') || prodLower.includes('chatgpt')) {
+                                const dateStr = String(vals[0] || row['Date'] || row['Ngày'] || '').trim();
+                                const orderId = String(vals[1] || row['NTT/MDH'] || row['Mã Đơn'] || '').trim();
+                                const email = String(vals[3] || row['Email'] || '').trim();
+                                const duration = parseInt(vals[5] || row['Duration'] || row['Số tháng'] || '1') || 1;
+                                const ctv = String(vals[7] || row['CTV'] || '').trim();
+                                const expiryDate = String(vals[13] || row['HSD'] || '').trim();
+                                
+                                // Column P (index 15) contains device info / note
+                                let note = String(vals[15] || row['Mã thiết bị'] || row['Ghi chú'] || '').trim();
+                                if (!note || note === 'Chưa ghi chú thiết bị') note = 'Chưa có thông tin thiết bị';
 
                                 let daysLeft = this.getDaysLeft(expiryDate);
 
                                 list.push({
                                     date: dateStr,
                                     orderId: orderId,
-                                    email: email,
+                                    email: email || 'Chưa có thông tin',
                                     product: product,
                                     duration: duration,
                                     expiryDate: expiryDate || '--',
                                     daysLeft: daysLeft,
-                                    ctv: ctv,
+                                    ctv: ctv || 'Dnc',
                                     note: note
                                 });
                             }
                         });
+
+                        // 2. Fallback: Process DATAGoc (Master Customer List)
+                        const dataGoc = (Array.isArray(this.dataGocList)) ? this.dataGocList : [];
+                        const seenEmails = new Set(list.map(i => (i.email || '').toLowerCase()));
+
+                        dataGoc.forEach(item => {
+                            if (!item || !item.email) return;
+                            const p = String(item.product || '').toLowerCase();
+                            const cat = String(item.category || '').toLowerCase();
+                            if (p.includes('gptshare') || p.includes('gpt') || p.includes('chatgpt') || cat.includes('gpt')) {
+                                const emLower = item.email.toLowerCase();
+                                if (!seenEmails.has(emLower)) {
+                                    seenEmails.add(emLower);
+                                    list.push({
+                                        date: item.purchaseDate || '--',
+                                        orderId: '',
+                                        email: item.email,
+                                        product: item.product || 'GPTshare',
+                                        duration: parseInt(item.months) || 1,
+                                        expiryDate: item.expiryDate || '--',
+                                        daysLeft: item.daysLeft,
+                                        ctv: item.staff || 'Dnc',
+                                        note: (item.subEmail && item.subEmail !== '-') ? ('Mail phụ: ' + item.subEmail) : 'Chưa có thông tin thiết bị'
+                                    });
+                                }
+                            }
+                        });
+
                         return list;
                     } catch (e) {
                         console.error('getChatgptSharedList error:', e);
@@ -10950,6 +10955,7 @@
                                 hasData = true;
                             }
                         }
+                        obj._rawVals = values;
                         if (hasData) {
                             result.push(obj);
                         }
