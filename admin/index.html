@@ -3706,7 +3706,8 @@
                                 </button>
                             </div>
                             <!-- Body -->
-                            <div class="p-6 space-y-4" x-if="editingHistoryRow">
+                            <template x-if="editingHistoryRow">
+                                <div class="p-6 space-y-4">
                                 <div class="bg-slate-50 p-3 rounded-lg text-xs space-y-1">
                                     <div><span class="font-bold text-gray-500">STT Fam:</span> <span class="font-bold text-gray-800" x-text="editingHistoryRow.stt"></span></div>
                                     <div><span class="font-bold text-gray-500">Tài khoản cũ:</span> <span class="font-medium text-gray-800" x-text="editingHistoryRow.oldEmail"></span></div>
@@ -3744,7 +3745,7 @@
                                         <input type="text" x-model="editingHistoryRow.notes" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
                                     </div>
                                 </div>
-                            </div>
+                            </template>
                             <!-- Footer -->
                             <div class="px-6 py-4 bg-gray-50 border-t border-gray-150 flex justify-end gap-3">
                                 <button @click="cancelEditHistory()" class="bg-white border border-gray-200 text-gray-600 text-xs font-bold py-2 px-4 rounded-lg hover:bg-gray-50 transition-all">Hủy</button>
@@ -4418,8 +4419,11 @@
                             <div>
                                 <select x-model="chatgptFilterCTV" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs focus:outline-none focus:border-primary transition-all text-gray-900 font-bold">
                                     <option value="all">Tất cả CTV</option>
-                                    <template x-for="ctvName in chatgptCTVList" :key="ctvName">
-                                        <option :value="ctvName" x-text="ctvName"></option>
+                                    <option value="Dnc">DNC</option>
+                                    <option value="Lộc">Lộc</option>
+                                    <option value="Tuan">Tuấn</option>
+                                    <template x-for="(ctvName, idx) in chatgptCTVList" :key="'ctv_' + idx">
+                                        <option x-show="!['all', 'dnc', 'lộc', 'tuan'].includes(String(ctvName).toLowerCase())" :value="ctvName" x-text="ctvName"></option>
                                     </template>
                                 </select>
                             </div>
@@ -9324,30 +9328,7 @@
                                     note = (noteIdx !== -1 && vals[noteIdx] !== undefined) ? String(vals[noteIdx]).trim() : String(row['Mã thiết bị'] || row['Thiết bị'] || row['Ghi chú'] || 'Chưa ghi chú thiết bị').trim();
                                 }
 
-                                // Calculate Days Left based on expiryDate (Column N)
-                                let daysLeft = null;
-                                if (expiryDate && expiryDate !== '--' && expiryDate !== '') {
-                                    try {
-                                        let expDate;
-                                        if (expiryDate.includes('/')) {
-                                            const parts = expiryDate.split('/');
-                                            if (parts.length === 3) {
-                                                expDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
-                                            }
-                                        } else {
-                                            expDate = new Date(expiryDate);
-                                        }
-
-                                        if (expDate && !isNaN(expDate.getTime())) {
-                                            const today = new Date();
-                                            today.setHours(0,0,0,0);
-                                            const diffTime = expDate.getTime() - today.getTime();
-                                            daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                                        }
-                                    } catch (e) {
-                                        console.error('Error calculating days left for expiryDate:', expiryDate, e);
-                                    }
-                                }
+                                let daysLeft = this.getDaysLeft(expiryDate);
 
                                 list.push({
                                     date: dateStr,
@@ -9412,11 +9393,18 @@
                         const list = this.getChatgptSharedList();
                         const ctvs = new Set();
                         list.forEach(item => {
-                            if (item.ctv) ctvs.add(item.ctv);
+                            if (item && item.ctv && item.ctv.trim() !== '') {
+                                ctvs.add(item.ctv.trim());
+                            }
                         });
+                        if (ctvs.size === 0) {
+                            ctvs.add('Dnc');
+                            ctvs.add('Lộc');
+                            ctvs.add('Tuan');
+                        }
                         return Array.from(ctvs);
                     } catch (e) {
-                        return [];
+                        return ['Dnc', 'Lộc', 'Tuan'];
                     }
                 },
 
