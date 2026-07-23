@@ -9492,13 +9492,39 @@
                 chatgptSharedSearch: '',
                 chatgptFilterStatus: 'all',
                 chatgptFilterCTV: 'all',
+                _chatgptListCache: null,
+                _chatgptListCacheKey: null,
+                _lucideTimer: null,
+                _dataGocSearchTimer: null,
+                _chatgptSearchTimer: null,
+                _orderSearchTimer: null,
 
                 copyText(text) {
                     navigator.clipboard.writeText(text);
                     this.showToast('Đã sao chép: ' + text);
                 },
 
+                // Throttled icon refresh — prevents 35 simultaneous DOM scans
+                refreshIcons() {
+                    if (this._lucideTimer) clearTimeout(this._lucideTimer);
+                    this._lucideTimer = setTimeout(() => {
+                        try {
+                            if (window.lucide && window.lucide.createIcons) {
+                                window.lucide.createIcons();
+                            } else if (typeof lucide !== 'undefined' && lucide.createIcons) {
+                                lucide.createIcons();
+                            }
+                        } catch(e) {}
+                        this._lucideTimer = null;
+                    }, 80);
+                },
+
                 getChatgptSharedList() {
+                    // Memoization: only recompute when data changes
+                    const cacheKey = (this.db.DATA_YTB ? this.db.DATA_YTB.length : 0) + '_' + (this.dataGocList ? this.dataGocList.length : 0);
+                    if (this._chatgptListCache && this._chatgptListCacheKey === cacheKey) {
+                        return this._chatgptListCache;
+                    }
                     try {
                         const list = [];
                         
@@ -9569,6 +9595,8 @@
                             }
                         });
 
+                        this._chatgptListCache = list;
+                        this._chatgptListCacheKey = cacheKey;
                         return list;
                     } catch (e) {
                         console.error('getChatgptSharedList error:', e);
@@ -9750,7 +9778,10 @@
                         .reduce((sum, o) => sum + o.amount, 0);
                 },
 
-                getFilteredOrders() {
+                // Kept as function for backward compat but now delegates to getter
+                getFilteredOrders() { return this.filteredOrders; },
+
+                get filteredOrders() {
                     let res = this.orders;
                     if (this.orderSubTab === 'pending_payment') {
                         res = res.filter(o => o.status === 'Pending Payment');
@@ -10334,12 +10365,28 @@
                     if (this.activeModule === 'chatgpt_shared') {
                         this.fetchSheetData();
                     }
+                    // Track which modules have been loaded (lazy loading)
+                    this._loadedModules = new Set();
+
                     this.$watch('activeModule', (val) => {
-                        if (val === 'data_goc' || val === 'dashboard' || val === 'chatgpt_shared' || val === 'gpt') {
+                        // Invalidate cache on module switch for fresh data feel
+                        window.location.hash = val;
+
+                        // Lazy load: only fetch data the FIRST time a module is visited
+                        const needsDataGoc = ['data_goc', 'dashboard', 'chatgpt_shared', 'gpt'];
+                        const needsSheet = ['chatgpt_shared', 'gpt'];
+
+                        if (needsDataGoc.includes(val) && !this._loadedModules.has('datagoc')) {
+                            this._loadedModules.add('datagoc');
                             this.fetchDataGoc();
-                            if (val === 'chatgpt_shared') {
-                                this.fetchSheetData();
-                            }
+                        }
+                        if (needsSheet.includes(val) && !this._loadedModules.has('sheet')) {
+                            this._loadedModules.add('sheet');
+                            this.fetchSheetData();
+                        }
+                        if (val === 'chatgpt_shared' || val === 'gpt') {
+                            this._chatgptListCache = null; // force refresh on navigate
+                        }
                         }
                         if (val === 'dashboard') {
                             this.calculateGlobalProfit();
@@ -10356,8 +10403,7 @@
                     this.fetchSystemConfig();
                     this.fetchLoginAccounts();
                     this.$nextTick(() => {
-                        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
-                        else if (window.lucide && window.lucide.createIcons) window.lucide.createIcons();
+                        this.refreshIcons();
                     });
                     this.$watch('sidebarOpen', () => {
                         this.$nextTick(() => {
@@ -11068,7 +11114,10 @@
                         console.error('Error fetching sheet data:', error);
                     } finally {
                         this.isLoading = false;
-                        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+                        // Invalidate getChatgptSharedList cache when new data arrives
+                        this._chatgptListCache = null;
+                        this._chatgptListCacheKey = null;
+                        this.refreshIcons();
                     }
                 },
 
