@@ -4556,6 +4556,211 @@
                     </div>
                 </div>
 
+                <!-- Module: GPT -->
+                <div x-show="activeModule === 'gpt'">
+                    <!-- Header -->
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+                        <div>
+                            <div class="flex items-center gap-2.5">
+                                <span class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-2.5 rounded-xl shadow-md flex items-center justify-center">
+                                    <i data-lucide="bot" class="w-6 h-6"></i>
+                                </span>
+                                <div>
+                                    <h1 class="text-2xl font-black text-gray-900 tracking-tight">Quản Lý GPT (GPTshare & ChatGPT)</h1>
+                                    <p class="text-sm text-gray-500 mt-0.5">Dữ liệu từ Google Sheet <span class="font-bold text-indigo-600">DATA(YTB)</span> - Cột E chứa <span class="font-mono bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded font-bold">GPTshare</span> & Log thiết bị Cột P.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Header Controls -->
+                        <div class="flex items-center gap-3">
+                            <button @click="fetchSheetData(); fetchDataGoc(true); showToast('Đang tải dữ liệu GPT từ Google Sheet...')" :disabled="isLoading || isFetchingDataGoc" class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2">
+                                <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': isLoading || isFetchingDataGoc}"></i>
+                                <span>Tải Lại Dữ Liệu Sheet</span>
+                            </button>
+
+                            <!-- Quick Filter Pills -->
+                            <div class="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200/60">
+                                <button @click="chatgptFilterStatus = 'active'"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                                    :class="chatgptFilterStatus === 'active' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'">
+                                    <span>🟢 Còn Hạn</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px]" :class="chatgptFilterStatus === 'active' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'" x-text="(chatgptStats || {}).active || 0"></span>
+                                </button>
+                                <button @click="chatgptFilterStatus = 'expired'"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                                    :class="chatgptFilterStatus === 'expired' ? 'bg-rose-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'">
+                                    <span>🔴 Quá Hạn</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px]" :class="chatgptFilterStatus === 'expired' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'" x-text="(chatgptStats || {}).expired || 0"></span>
+                                </button>
+                                <button @click="chatgptFilterStatus = 'all'"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                                    :class="chatgptFilterStatus === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'">
+                                    <span>Tất Cả</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px]" :class="chatgptFilterStatus === 'all' ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-700'" x-text="(chatgptStats || {}).total || 0"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Search & Filter Controls Card -->
+                    <div class="bg-white rounded-2xl border border-gray-100 card-shadow p-4 mb-6">
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-center">
+                            <!-- Search Input -->
+                            <div class="relative md:col-span-2">
+                                <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                                <input x-model="chatgptSharedSearch" type="text" placeholder="Tìm theo Email, Mã đơn, Thiết bị (Mac, iPhone, Windows...), CTV..." class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 pl-10 pr-4 text-xs font-medium text-gray-900 focus:outline-none focus:border-indigo-500 transition-all">
+                            </div>
+
+                            <!-- Filter Status Select -->
+                            <div>
+                                <select x-model="chatgptFilterStatus" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-800 focus:outline-none focus:border-indigo-500">
+                                    <option value="all">Tất cả Trạng Thái</option>
+                                    <option value="active">🟢 Đang Sử Dụng (Còn Hạn)</option>
+                                    <option value="expired">🔴 Đã Hết Hạn</option>
+                                </select>
+                            </div>
+
+                            <!-- Filter CTV Select -->
+                            <div>
+                                <select x-model="chatgptFilterCTV" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-800 focus:outline-none focus:border-indigo-500">
+                                    <option value="all">Tất cả CTV</option>
+                                    <option value="Dnc">DNC</option>
+                                    <option value="Lộc">Lộc</option>
+                                    <option value="Tuan">Tuấn</option>
+                                    <template x-for="(ctvName, idx) in chatgptCTVList" :key="'gpt_ctv_' + idx">
+                                        <option x-show="!['all', 'dnc', 'lộc', 'tuan'].includes(String(ctvName).toLowerCase())" :value="ctvName" x-text="ctvName"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- GPT Data Table -->
+                    <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-gray-50/80 border-b border-gray-100 text-gray-500 text-[11px] font-extrabold uppercase tracking-wider">
+                                        <th class="px-5 py-3.5">STT / Khách Hàng</th>
+                                        <th class="px-5 py-3.5">Gói Mua (Cột E)</th>
+                                        <th class="px-5 py-3.5">Thiết Bị Sử Dụng (Ghi Chú Cột P)</th>
+                                        <th class="px-5 py-3.5">Trạng Thái & HSD</th>
+                                        <th class="px-5 py-3.5">Ngày Mua</th>
+                                        <th class="px-5 py-3.5">CTV</th>
+                                        <th class="px-5 py-3.5 text-right">Sao Chép</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <!-- Table Rows -->
+                                    <template x-for="(item, index) in filteredChatgptSharedList" :key="'gpt_row_' + index + '_' + (item.email || '')">
+                                        <tr class="hover:bg-indigo-50/30 transition-colors">
+                                            <!-- Col 1: Customer / Email -->
+                                            <td class="px-5 py-3.5">
+                                                <div class="flex items-center gap-3">
+                                                    <span class="text-xs font-bold text-gray-400 w-5" x-text="index + 1"></span>
+                                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                                                        :class="isExpired(item.expiryDate) ? 'bg-rose-50 text-rose-600 border border-rose-100' : 'bg-emerald-50 text-emerald-600 border border-emerald-100'">
+                                                        <i data-lucide="bot" class="w-4 h-4"></i>
+                                                    </div>
+                                                    <div class="min-w-0">
+                                                        <span class="font-bold text-gray-900 text-xs block truncate font-mono" :title="item.email" x-text="item.email"></span>
+                                                        <span class="text-[10px] font-bold text-indigo-600 block mt-0.5 font-mono" x-text="item.orderId ? ('MDH: ' + item.orderId) : 'Đơn tay'"></span>
+                                                    </div>
+                                                </div>
+                                            </td>
+
+                                            <!-- Col 2: Product Package -->
+                                            <td class="px-5 py-3.5">
+                                                <div class="flex flex-col gap-0.5">
+                                                    <span class="text-xs font-extrabold text-indigo-900 bg-indigo-50 border border-indigo-100/80 px-2.5 py-1 rounded-lg w-fit" x-text="item.product"></span>
+                                                    <span class="text-[10px] font-bold text-gray-500" x-text="item.duration + ' Tháng'"></span>
+                                                </div>
+                                            </td>
+
+                                            <!-- Col 3: Device Note (Column P) -->
+                                            <td class="px-5 py-3.5">
+                                                <div class="flex items-start gap-2 bg-gray-50 border border-gray-200/80 rounded-xl p-2.5 max-w-sm">
+                                                    <i data-lucide="monitor" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
+                                                    <span class="text-xs font-medium text-gray-800 break-words" x-text="item.note || 'Chưa có thông tin thiết bị'"></span>
+                                                </div>
+                                            </td>
+
+                                            <!-- Col 4: Expiry Date & Days Left -->
+                                            <td class="px-5 py-3.5">
+                                                <div class="flex flex-col gap-1">
+                                                    <span class="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-lg border w-fit font-mono" 
+                                                          :class="isExpired(item.expiryDate) ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'">
+                                                        <span class="w-1.5 h-1.5 rounded-full" :class="isExpired(item.expiryDate) ? 'bg-rose-500' : 'bg-emerald-500'"></span>
+                                                        <span x-text="'HSD: ' + item.expiryDate"></span>
+                                                    </span>
+                                                    <span class="text-[11px] font-bold" 
+                                                          :class="isExpired(item.expiryDate) ? 'text-rose-600' : 'text-emerald-600'">
+                                                        <template x-if="getDaysLeft(item.expiryDate) !== null">
+                                                            <span x-text="getDaysLeft(item.expiryDate) >= 0 ? '🟢 Còn ' + getDaysLeft(item.expiryDate) + ' ngày' : '🔴 Quá hạn ' + Math.abs(getDaysLeft(item.expiryDate)) + ' ngày'"></span>
+                                                        </template>
+                                                    </span>
+                                                </div>
+                                            </td>
+
+                                            <!-- Col 5: Date Purchased -->
+                                            <td class="px-5 py-3.5">
+                                                <span class="text-xs font-semibold text-gray-700 font-mono" x-text="item.date"></span>
+                                            </td>
+
+                                            <!-- Col 6: CTV -->
+                                            <td class="px-5 py-3.5">
+                                                <span class="text-xs font-bold text-gray-800 bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200" x-text="item.ctv"></span>
+                                            </td>
+
+                                            <!-- Col 7: Copy Action Buttons -->
+                                            <td class="px-5 py-3.5 text-right">
+                                                <div class="flex items-center justify-end gap-1.5">
+                                                    <button @click="copyText(item.note || 'Chưa ghi chú thiết bị')"
+                                                        class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                                                        title="Sao chép thiết bị">
+                                                        <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
+                                                        <span>Thiết Bị</span>
+                                                    </button>
+                                                    <button @click="copyText(item.email)"
+                                                        class="px-2.5 py-1 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                                                        title="Sao chép Email">
+                                                        <i data-lucide="mail" class="w-3.5 h-3.5"></i>
+                                                        <span>Email</span>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+
+                                    <!-- Loading State -->
+                                    <template x-if="(isLoading || isFetchingDataGoc) && filteredChatgptSharedList.length === 0">
+                                        <tr>
+                                            <td colspan="7" class="px-5 py-12 text-center text-gray-400">
+                                                <div class="inline-block w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                                                <p class="text-sm font-bold text-gray-600">Đang tải dữ liệu GPT từ Google Sheet DATA(YTB)...</p>
+                                            </td>
+                                        </tr>
+                                    </template>
+
+                                    <!-- Empty State -->
+                                    <template x-if="!isLoading && !isFetchingDataGoc && filteredChatgptSharedList.length === 0">
+                                        <tr>
+                                            <td colspan="7" class="px-5 py-12 text-center text-gray-400">
+                                                <div class="w-12 h-12 rounded-2xl bg-gray-50 border border-gray-100 flex items-center justify-center mx-auto mb-3 text-gray-300">
+                                                    <i data-lucide="bot" class="w-6 h-6"></i>
+                                                </div>
+                                                <p class="text-sm font-bold text-gray-600">Không tìm thấy đơn hàng GPT nào phù hợp</p>
+                                                <p class="text-xs text-gray-400 mt-0.5">Bấm nút "Tải Lại Dữ Liệu Sheet" ở trên hoặc chọn lại bộ lọc</p>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Module: Orders Management -->
                 <div x-show="activeModule === 'orders'" x-cloak>
                     <!-- Header -->
@@ -6164,7 +6369,8 @@
                     { id: 'inventory', name: 'Acc Có Sẵn', icon: 'package' },
                     { id: 'pnl_calculator', name: 'Tính Lợi Nhuận', icon: 'calculator' },
                     { id: 'refunds', name: 'Hoàn Tiền', icon: 'banknote' },
-                    { id: 'chatgpt_shared', name: 'Thiết Bị ChatGPT', icon: 'monitor-smartphone' }
+                    { id: 'chatgpt_shared', name: 'Thiết Bị ChatGPT', icon: 'monitor-smartphone' },
+                    { id: 'gpt', name: 'GPT', icon: 'bot' }
                 ],
                 managementItems: [
                     { id: 'data_goc', name: 'Tra cứu & Gia hạn (DATAGoc)', icon: 'database' },
@@ -10126,7 +10332,7 @@
                         this.fetchSheetData();
                     }
                     this.$watch('activeModule', (val) => {
-                        if (val === 'data_goc' || val === 'dashboard' || val === 'chatgpt_shared') {
+                        if (val === 'data_goc' || val === 'dashboard' || val === 'chatgpt_shared' || val === 'gpt') {
                             this.fetchDataGoc();
                             if (val === 'chatgpt_shared') {
                                 this.fetchSheetData();
