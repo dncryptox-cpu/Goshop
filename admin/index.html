@@ -4475,7 +4475,7 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-50">
-                                    <template x-for="(item, index) in filteredChatgptSharedList" :key="'cg_' + index + '_' + (item.orderId || '')">
+                                    <template x-for="(item, index) in paginatedChatgptSharedList" :key="'cg_' + index + '_' + (item.orderId || '')">
                                         <tr class="hover:bg-gray-50/70 transition-colors">
                                             <!-- Cột 1: Khách hàng / Mã đơn -->
                                             <td class="px-5 py-4">
@@ -4577,6 +4577,17 @@
                                     </template>
                                 </tbody>
                             </table>
+                        </div>
+
+                        <!-- Pagination / Load More Footer -->
+                        <div x-show="filteredChatgptSharedList.length > chatgptDisplayLimit" class="p-4 border-t border-gray-100 flex items-center justify-between bg-gray-50/50">
+                            <p class="text-xs font-semibold text-gray-500">
+                                Đang hiển thị <span class="font-bold text-gray-900" x-text="Math.min(chatgptDisplayLimit, filteredChatgptSharedList.length)"></span> / <span class="font-bold text-gray-900" x-text="filteredChatgptSharedList.length"></span> thiết bị
+                            </p>
+                            <button @click="chatgptDisplayLimit += 30; refreshIcons();" class="px-4 py-2 bg-white border border-gray-200 hover:bg-gray-100 text-indigo-600 font-bold text-xs rounded-xl shadow-sm transition-all flex items-center gap-2">
+                                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                                <span>Xem Thêm 30 Thiết Bị</span>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -8576,6 +8587,10 @@
                 chatgptSharedSearch: '',
                 chatgptFilterStatus: 'all',
                 chatgptFilterCTV: 'all',
+                chatgptDisplayLimit: 30,
+                get paginatedChatgptSharedList() {
+                    return this.filteredChatgptSharedList.slice(0, this.chatgptDisplayLimit);
+                },
                 _chatgptListCache: null,
                 _chatgptListCacheKey: null,
                 _lucideTimer: null,
@@ -8631,8 +8646,12 @@
                             const product = String(row['Sản phẩm'] || vals[4] || row['SKU'] || vals[6] || '').trim();
                             const prodLower = product.toLowerCase();
 
-                            // Filter specifically for GPTshare / GPT / ChatGPT
-                            if (prodLower.includes('gptshare') || prodLower.includes('gpt') || prodLower.includes('chatgpt')) {
+                            // Filter for any GPT / ChatGPT / GPTshare product, email, or device note
+                            const emailStr = String(vals[3] || row['Email'] || '').trim();
+                            const noteStr = String(vals[15] || row['Mã thiết bị'] || row['Ghi chú'] || '').trim();
+                            const isGpt = prodLower.includes('gpt') || emailStr.toLowerCase().includes('gpt') || noteStr.toLowerCase().includes('gpt');
+
+                            if (isGpt) {
                                 const dateStr = String(vals[0] || row['Date'] || row['Ngày'] || '').trim();
                                 const orderId = String(vals[1] || row['NTT/MDH'] || row['Mã Đơn'] || '').trim();
                                 const email = String(vals[3] || row['Email'] || '').trim();
