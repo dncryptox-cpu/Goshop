@@ -22,9 +22,10 @@
         [x-cloak] { display: none !important; }
 
         /* === PERF: Browser-level rendering isolation === */
-        /* Modules hidden by x-show skip layout & paint */
+        /* NOTE: contain:layout was REMOVED — it breaks scroll height calc inside overflow-y-auto */
+        /* Use contain:style only to isolate CSS variables without affecting layout */
         main > div[x-show] {
-            contain: layout style;
+            contain: style;
         }
         /* Force GPU layer for main scrollable area */
         main {
@@ -4460,7 +4461,7 @@
                     </div>
 
                     <!-- Table Card -->
-                    <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
+                    <div class="bg-white rounded-xl border border-gray-100 card-shadow">
                         <div class="overflow-x-auto">
                             <table class="w-full text-left border-collapse">
                                 <thead>
@@ -9994,7 +9995,7 @@
                                     const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(tab)}`;
                                     const response = await fetch(url);
                                     const csvText = await response.text();
-                                    this.db[tab] = this.parseCSV(csvText);
+                                    window._rawDb[tab] = this.parseCSV(csvText);
                                 } catch (e) {
                                     console.error(`Error fetching tab ${tab}:`, e);
                                 }
@@ -10011,10 +10012,13 @@
                                 const gccText = await gccRes.text();
                                 const ytbData = this.parseCSV(ytbText);
                                 const gccData = this.parseCSV(gccText);
-                                this.db.DATA_YTB = [...ytbData, ...gccData];
+                                window._rawDb.DATA_YTB = [...ytbData, ...gccData];
+                                // Bump _dbVersion so Alpine re-evaluates filteredChatgptSharedList
+                                this._dbVersion++;
+                                this._chatgptListCache = null; this._chatgptListCacheKey = null;
                             } catch (e) {
                                 console.error('Error fetching Transaction Data:', e);
-                                this.db.DATA_YTB = [];
+                                window._rawDb.DATA_YTB = [];
                             }
                         })());
 
