@@ -8,8 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Alpine.js -->
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Alpine.js v3.14.9 — pinned for stability & perf -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/otpauth/dist/otpauth.umd.min.js"></script>
@@ -20,6 +20,24 @@
         .sidebar-item-active { background-color: #e6f7ff; color: #1890ff; border-right: 3px solid #1890ff; }
         .card-shadow { box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.1); }
         [x-cloak] { display: none !important; }
+
+        /* === PERF: Browser-level rendering isolation === */
+        /* Modules hidden by x-show skip layout & paint */
+        main > div[x-show] {
+            contain: layout style;
+        }
+        /* Force GPU layer for main scrollable area */
+        main {
+            transform: translateZ(0);
+            backface-visibility: hidden;
+        }
+        /* Prevent unnecessary reflows on table heavy modules */
+        table { table-layout: fixed; }
+        tbody { will-change: auto; }
+        /* Smooth scrolling on data tables */
+        .overflow-y-auto { -webkit-overflow-scrolling: touch; }
+        /* Reduce repaint scope for sidebar */
+        aside { contain: layout style; }
     </style>
     <script>
         tailwind.config = {
@@ -41,6 +59,11 @@
         }
     </script>
 </head>
+<script>
+    // Pre-initialize raw db store BEFORE Alpine starts
+    // This prevents Alpine from making CSV data reactive
+    window._rawDb = { APP_DATA: [], UPSALE: [], STOCK: [], PNL: [], DATA_YTB: [] };
+</script>
 <body x-data="app()" x-init="initApp()" class="antialiased bg-gray-950">
     
     <!-- Login Screen -->
@@ -6291,7 +6314,7 @@
                     }
                     return list;
                 },
-                dataGocDisplayLimit: 50,
+                dataGocDisplayLimit: 25, // Reduced from 50 for faster initial render
                 get paginatedDataGocList() {
                     return this.filteredDataGocList.slice(0, this.dataGocDisplayLimit);
                 },
@@ -6365,12 +6388,18 @@
                     FINANCIAL_WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxoBHLdCgValY0h2LtV5jDo1hhidv0nW_QXZ9rDf0RM0bl2ktpHpL38Utk2NbHos4PF/exec',
                     TABS: ['APP_DATA', 'UPSALE', 'STOCK', 'PNL', 'Spot']
                 },
-                db: {
-                    APP_DATA: [],
-                    UPSALE: [],
-                    STOCK: [],
-                    PNL: [],
-                    DATA_YTB: []
+                // db is now a NON-REACTIVE accessor — CSV data is stored in
+                // window._rawDb to avoid Alpine Proxy wrapping 1000s of rows.
+                // Use this._dbVersion to trigger reactive updates instead.
+                _dbVersion: 0,
+                get db() {
+                    // Access reactive version to subscribe to updates
+                    void this._dbVersion;
+                    return window._rawDb;
+                },
+                set db(val) {
+                    window._rawDb = val;
+                    this._dbVersion++;
                 },
                 menuItems: [
                     { id: 'dashboard', name: 'Dashboard', icon: 'layout-grid' },
@@ -11161,7 +11190,9 @@
                         console.error('Error fetching sheet data:', error);
                     } finally {
                         this.isLoading = false;
-                        // Invalidate ALL caches when fresh data arrives
+                        // Bump _dbVersion to notify Alpine that raw db data changed
+                        this._dbVersion++;
+                        // Invalidate ALL computation caches
                         this._chatgptListCache = null; this._chatgptListCacheKey = null;
                         this._rnTrackingCache = null; this._rnTrackingCacheKey = null;
                         this._dailyTasksCache = null; this._dailyTasksCacheKey = null;
