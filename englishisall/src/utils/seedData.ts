@@ -86,7 +86,44 @@ export function getSeedData() {
 
   const sampleSRSCards: SRSCard[] = [
     {
+      id: 'srs_mindset_1',
+      category: 'Trading',
+      front: 'What is the fundamental law of trading risk control when market turns against your setup?',
+      back: 'Preserve capital at all costs. Exit immediately at stop-loss without hope or ego. (Bảo toàn vốn bằng mọi giá. Cắt lỗ lập tức theo kế hoạch, không hy vọng hay để cái tôi can thiệp).',
+      box: 0,
+      nextReview: today,
+      createdAt: day2Ago,
+    },
+    {
+      id: 'srs_mindset_2',
+      category: 'Meditation',
+      front: 'How to practice non-attachment (Vô chấp) during extreme market or life volatility?',
+      back: 'Observe thoughts and price action like clouds passing in the sky. Do not react emotionally. (Quan sát suy nghĩ và chuyển động giá như mây trôi. Không phản ứng bằng cảm xúc).',
+      box: 0,
+      nextReview: today,
+      createdAt: day2Ago,
+    },
+    {
+      id: 'srs_mindset_3',
+      category: 'Psychology',
+      front: 'What is the psychological antidote to FOMO (Fear Of Missing Out) in day trading?',
+      back: 'Realize that market opportunities are infinite, but your trading capital is finite. (Cơ hội trên thị trường là vô hạn, nhưng vốn đầu tư là hữu hạn).',
+      box: 1,
+      nextReview: today,
+      createdAt: day3Ago,
+    },
+    {
+      id: 'srs_mindset_4',
+      category: 'Ultra Running',
+      front: 'How to push through extreme pain at kilometer 70 in a 100km ultra trail race?',
+      back: 'Pain is inevitable, suffering is optional. Focus only on taking the next 100 steps. (Cơn đau là tất yếu, nhưng sự chịu đựng là lựa chọn. Chỉ tập trung bước tiếp 100 bước nữa).',
+      box: 0,
+      nextReview: today,
+      createdAt: yesterday,
+    },
+    {
       id: 'srs_seed_1',
+      category: 'Grammar',
       front: 'due to Fed inflation report',
       back: 'due to the Fed inflation report',
       box: 0,
@@ -95,6 +132,7 @@ export function getSeedData() {
     },
     {
       id: 'srs_seed_2',
+      category: 'Grammar',
       front: 'staying in zone two heart rate',
       back: 'staying in heart rate Zone 2',
       box: 1,
@@ -102,28 +140,13 @@ export function getSeedData() {
       createdAt: day2Ago,
     },
     {
-      id: 'srs_seed_3',
-      front: 'When market spikes sharply',
-      back: 'When the market spikes sharply',
-      box: 0,
-      nextReview: today,
-      createdAt: day3Ago,
-    },
-    {
       id: 'srs_seed_4',
+      category: 'Grammar',
       front: 'recover legs',
       back: 'recover my legs',
       box: 2,
       nextReview: addDays(today, 3),
       createdAt: yesterday,
-    },
-    {
-      id: 'srs_seed_5',
-      front: 'I am used to trade without stoploss',
-      back: 'I am used to trading with a stop-loss',
-      box: 3,
-      nextReview: addDays(today, 7),
-      createdAt: addDays(today, -5),
     }
   ];
 

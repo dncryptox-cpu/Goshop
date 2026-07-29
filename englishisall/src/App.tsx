@@ -153,8 +153,10 @@ export function App() {
 
         {activeTab === 'flashcards' && (
           <FlashcardsTab
+            apiKey={apiKey}
             cards={cards}
             onUpdateCards={(updatedCards) => setCards(updatedCards)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
           />
         )}
 

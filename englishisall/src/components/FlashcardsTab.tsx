@@ -1,20 +1,33 @@
 import React, { useState } from 'react';
 import type { SRSCard } from '../types';
-import { handleRemembered, handleForgot, getTodayDateString, BOX_INTERVALS, addDays } from '../utils/srs';
+import { handleRemembered, handleForgot, getTodayDateString, BOX_INTERVALS } from '../utils/srs';
 import { saveSRSCards } from '../utils/storage';
-import { Layers, Plus, CheckCircle2, RotateCcw, Eye, Sparkles, Brain, Award, Clock } from 'lucide-react';
+import { generateMindsetFlashcards } from '../utils/gemini';
+import { Layers, Plus, CheckCircle2, RotateCcw, Eye, Sparkles, Brain, Award, Clock, Loader2, AlertTriangle, Key, Compass } from 'lucide-react';
 
 interface FlashcardsTabProps {
+  apiKey: string;
   cards: SRSCard[];
   onUpdateCards: (cards: SRSCard[]) => void;
+  onOpenSettings: () => void;
 }
 
-export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCards }) => {
+export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({
+  apiKey,
+  cards,
+  onUpdateCards,
+  onOpenSettings,
+}) => {
   const today = getTodayDateString();
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newFront, setNewFront] = useState('');
   const [newBack, setNewBack] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<'All' | 'Trading' | 'Meditation' | 'Psychology' | 'Ultra Running'>('All');
+  
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [aiErrorMsg, setAiErrorMsg] = useState<string | null>(null);
+
   const [revealed, setRevealed] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -48,10 +61,11 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCar
 
     const newCard: SRSCard = {
       id: `srs_custom_${Date.now()}`,
+      category: 'Psychology',
       front: newFront.trim(),
       back: newBack.trim(),
       box: 0,
-      nextReview: addDays(today, 1),
+      nextReview: today, // Review immediately today
       createdAt: today,
     };
 
@@ -64,12 +78,59 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCar
     setShowAddForm(false);
   };
 
+  const handleGenerateAIMindsetCards = async () => {
+    if (!apiKey) {
+      setAiErrorMsg('Chưa cấu hình API Key Gemini. Vui lòng nhấn nút "Cài đặt API Key" để kích hoạt.');
+      return;
+    }
+
+    setIsGeneratingAI(true);
+    setAiErrorMsg(null);
+
+    try {
+      const generated = await generateMindsetFlashcards(apiKey, selectedCategory);
+      
+      const newSRSCards: SRSCard[] = generated.map((g, idx) => ({
+        id: `srs_ai_gen_${Date.now()}_${idx}`,
+        category: g.category,
+        front: g.front,
+        back: g.back,
+        box: 0,
+        nextReview: today, // Due today for immediate review
+        createdAt: today,
+      }));
+
+      const updated = [...newSRSCards, ...cards];
+      saveSRSCards(updated);
+      onUpdateCards(updated);
+    } catch (err: any) {
+      setAiErrorMsg(err.message || 'Đã xảy ra lỗi khi gọi AI tạo thẻ thông điệp.');
+    } finally {
+      setIsGeneratingAI(false);
+    }
+  };
+
   // Box statistics
   const boxCounts = [0, 1, 2, 3, 4, 5].map((boxNum) => ({
     box: boxNum,
     interval: BOX_INTERVALS[boxNum],
     count: cards.filter((c) => c.box === boxNum).length,
   }));
+
+  const getCategoryBadgeStyle = (cat?: string) => {
+    switch (cat) {
+      case 'Trading':
+        return 'bg-amber-950/80 text-amber-400 border-amber-800';
+      case 'Meditation':
+        return 'bg-emerald-950/80 text-emerald-400 border-emerald-800';
+      case 'Psychology':
+        return 'bg-cyan-950/80 text-cyan-400 border-cyan-800';
+      case 'Ultra Running':
+        return 'bg-rose-950/80 text-rose-400 border-rose-800';
+      default:
+        return 'bg-zinc-900 text-zinc-400 border-zinc-800';
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-6 font-sans">
@@ -79,24 +140,90 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCar
         <div>
           <div className="flex items-center space-x-2 text-cyan-400 font-mono font-bold text-sm">
             <Layers className="w-4 h-4" />
-            <span>LEITNER SRS SYSTEM // SPACED REPETITION</span>
+            <span>LEITNER SRS SYSTEM // AI MINDSET CARDS</span>
           </div>
           <h2 className="text-xl font-extrabold text-zinc-100 mt-1 font-mono">
-            Bộ Thẻ Ôn Tập Thông Minh SRS (Leitner 6 Boxes)
+            Bộ Thẻ SRS & Thông Điệp Thiền / Trading / Tâm Lý
           </h2>
           <p className="text-xs text-zinc-400 mt-1">
-            Thẻ tự động nạp từ lỗi viết/nói. Hệ thống Leitner phân bổ thời gian ôn tập tối ưu để ghi nhớ lâu dài.
+            Tự động nạp lỗi sai từ bài tập hoặc dùng Gemini AI tạo các thẻ triết lý Thiền, Kỷ luật Trading & Tâm lý vượt ngưỡng!
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center space-x-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-mono font-bold text-xs px-4 py-2 rounded-lg transition-colors shadow-lg self-start sm:self-center"
-        >
-          <Plus className="w-4 h-4" />
-          <span>THÊM THẺ THỦ CÔNG</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-center font-mono">
+          <button
+            onClick={handleGenerateAIMindsetCards}
+            disabled={isGeneratingAI}
+            className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-bold text-xs shadow-lg transition-all ${
+              isGeneratingAI
+                ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-zinc-700'
+                : 'bg-amber-500 hover:bg-amber-400 text-zinc-950 shadow-amber-500/10 active:scale-95'
+            }`}
+          >
+            {isGeneratingAI ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-zinc-950" />
+                <span>AI ĐANG GEN THẺ...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 text-zinc-950" />
+                <span>🤖 AI GEN THẺ THÔNG ĐIỆP</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="flex items-center space-x-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs px-3 py-2 rounded-lg border border-zinc-700 transition-colors"
+          >
+            <Plus className="w-4 h-4 text-amber-400" />
+            <span>Thêm thủ công</span>
+          </button>
+        </div>
       </div>
+
+      {/* Category Filter for AI Generator */}
+      <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+        <div className="flex items-center space-x-2 text-zinc-400">
+          <Compass className="w-4 h-4 text-amber-400" />
+          <span>Chủ đề thông điệp AI:</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {(['All', 'Trading', 'Meditation', 'Psychology', 'Ultra Running'] as const).map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1 rounded transition-colors ${
+                selectedCategory === cat
+                  ? 'bg-amber-500 text-zinc-950 font-bold'
+                  : 'bg-zinc-950 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+              }`}
+            >
+              {cat === 'All' ? '🌐 Tất Cả' : cat === 'Trading' ? '📈 Trading' : cat === 'Meditation' ? '🧘 Thiền Định' : cat === 'Psychology' ? '🧠 Tâm Lý' : '🏃 Ultra Trail'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* AI Error Alert */}
+      {aiErrorMsg && (
+        <div className="bg-rose-950/60 border border-rose-800 p-3 rounded-lg flex items-center justify-between text-xs font-mono text-rose-300">
+          <div className="flex items-center space-x-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+            <span>{aiErrorMsg}</span>
+          </div>
+          {!apiKey && (
+            <button
+              onClick={onOpenSettings}
+              className="flex items-center space-x-1 bg-rose-900 hover:bg-rose-800 text-rose-200 px-2.5 py-1 rounded text-[11px] font-bold"
+            >
+              <Key className="w-3.5 h-3.5 mr-1" />
+              Cài Đặt Key
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Manual Card Form */}
       {showAddForm && (
@@ -104,7 +231,7 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCar
           <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
             <span className="font-bold text-amber-400 uppercase tracking-wider flex items-center">
               <Sparkles className="w-3.5 h-3.5 mr-1" />
-              TẠO THẺ SRS MỚI
+              TẠO THẺ THỦ CÔNG MỚI
             </span>
             <button
               type="button"
@@ -117,25 +244,25 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCar
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-zinc-400">Mặt trước (Original / Phrase with mistake):</label>
+              <label className="text-zinc-400">Mặt trước (Original Phrase / Mindset Question):</label>
               <input
                 type="text"
                 value={newFront}
                 onChange={(e) => setNewFront(e.target.value)}
-                placeholder="e.g. I am used to trade without stoploss"
-                className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded text-xs focus:outline-none focus:border-amber-500"
+                placeholder="e.g. Rule #1 when trade hits stop-loss?"
+                className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded text-xs focus:outline-none focus:border-amber-500 font-sans"
                 required
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-zinc-400">Mặt sau (Corrected / Natural phrase):</label>
+              <label className="text-zinc-400">Mặt sau (Corrected Phrase / Wisdom Mantra + VN):</label>
               <input
                 type="text"
                 value={newBack}
                 onChange={(e) => setNewBack(e.target.value)}
-                placeholder="e.g. I am used to trading with a stop-loss"
-                className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded text-xs focus:outline-none focus:border-amber-500"
+                placeholder="e.g. Exit immediately without ego. (Cắt lỗ lập tức không để cái tôi chi phối)."
+                className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded text-xs focus:outline-none focus:border-amber-500 font-sans"
                 required
               />
             </div>
@@ -182,7 +309,7 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCar
                 <div className="space-y-1">
                   <h3 className="text-lg font-bold text-zinc-100">ĐÃ ÔN HẾT THẺ HÔM NAY!</h3>
                   <p className="text-xs text-zinc-400 font-sans max-w-sm mx-auto">
-                    Tất cả các thẻ đến hạn đã được rèn luyện. Hãy quay lại viết Journal hoặc luyện Speaking để tự động nạp thẻ mới!
+                    Tất cả các thẻ đến hạn đã được rèn luyện. Bấm nút <strong>"🤖 AI Gen Thẻ Thông Điệp"</strong> ở trên để tạo thêm thẻ Thiền / Trading mới ngay!
                   </p>
                 </div>
               </div>
@@ -191,25 +318,32 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCar
               <div className="space-y-6">
                 
                 {/* The Flashcard */}
-                <div className={`p-8 rounded-xl border transition-all duration-300 min-h-[220px] flex flex-col justify-between ${
+                <div className={`p-8 rounded-xl border transition-all duration-300 min-h-[240px] flex flex-col justify-between ${
                   revealed
                     ? 'bg-zinc-950 border-amber-500/80 shadow-2xl shadow-amber-500/10'
                     : 'bg-zinc-950 border-zinc-800 shadow-xl'
                 }`}>
                   
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex items-center justify-between text-[11px] font-mono text-zinc-500">
-                      <span className="bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-amber-400">
-                        LEITNER BOX {currentCard.box} ({BOX_INTERVALS[currentCard.box]} ngày)
-                      </span>
-                      <span>TẠO NGÀY: {currentCard.createdAt}</span>
+                      <div className="flex items-center space-x-2">
+                        <span className="bg-zinc-900 border border-zinc-800 px-2 py-0.5 rounded text-amber-400 font-bold">
+                          LEITNER BOX {currentCard.box} ({BOX_INTERVALS[currentCard.box]} ngày)
+                        </span>
+                        {currentCard.category && (
+                          <span className={`px-2 py-0.5 rounded font-bold border ${getCategoryBadgeStyle(currentCard.category)}`}>
+                            {currentCard.category.toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <span>{currentCard.createdAt}</span>
                     </div>
 
-                    <div className="pt-4">
+                    <div className="pt-3">
                       <span className="text-xs font-mono text-rose-400 font-bold uppercase tracking-wider block mb-1">
-                        ORIGINAL PHRASE (MẶT TRƯỚC):
+                        MẶT TRƯỚC (QUESTION / PRINCIPLE):
                       </span>
-                      <p className="text-xl font-bold font-mono text-zinc-100">
+                      <p className="text-xl font-bold font-mono text-zinc-100 leading-relaxed">
                         "{currentCard.front}"
                       </p>
                     </div>
@@ -219,9 +353,9 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({ cards, onUpdateCar
                   {revealed ? (
                     <div className="pt-6 border-t border-zinc-800/80 mt-6 space-y-2 animate-fadeIn">
                       <span className="text-xs font-mono text-emerald-400 font-bold uppercase tracking-wider block">
-                        CORRECTED PHRASE (MẶT SAU):
+                        MẶT SAU (WISDOM MANTRA & GIẢI THÍCH):
                       </span>
-                      <p className="text-2xl font-extrabold font-mono text-emerald-400">
+                      <p className="text-lg font-bold font-sans text-emerald-400 leading-relaxed">
                         "{currentCard.back}"
                       </p>
                     </div>

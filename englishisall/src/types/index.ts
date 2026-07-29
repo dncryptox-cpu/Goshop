@@ -41,12 +41,13 @@ export interface SpeakingSession {
 
 export interface SRSCard {
   id: string;
-  front: string; // Original phrase with mistake
-  back: string;  // Corrected phrase
+  front: string; // Original phrase or Mindset Question
+  back: string;  // Corrected phrase or Wisdom Mantra + VN explanation
   box: number;   // 0 to 5
   nextReview: string; // YYYY-MM-DD
   createdAt: string;
   lastReviewedAt?: string;
+  category?: 'Trading' | 'Meditation' | 'Psychology' | 'Ultra Running' | 'Grammar' | string;
 }
 
 export type ActiveTab = 'journal' | 'speaking' | 'flashcards' | 'history';

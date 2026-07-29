@@ -109,3 +109,99 @@ export async function evaluateEnglishText(
     throw new Error('Đã xảy ra lỗi kết nối với Gemini AI.');
   }
 }
+
+export interface GeneratedMindsetCard {
+  category: 'Trading' | 'Meditation' | 'Psychology' | 'Ultra Running';
+  front: string;
+  back: string;
+}
+
+const MINDSET_SYSTEM_PROMPT = `
+You are a master mentor in Trading Psychology, Zen/Mindfulness Meditation, and Ultra Marathon Mental Toughness.
+Generate 4 high-impact English flashcards that serve as daily wisdom mantras, mental anchors, and psychological tools for a Vietnamese trader and 100km ultra trail runner.
+
+Return ONLY a raw JSON array matching this exact structure:
+[
+  {
+    "category": "Trading" | "Meditation" | "Psychology" | "Ultra Running",
+    "front": "A powerful principle, reflective question, or mindset rule in English.",
+    "back": "The profound English wisdom mantra + concise Vietnamese explanation & mental action (Chấp nhận lỗ lập tức không để cái tôi can thiệp...)."
+  }
+]
+
+Rules:
+- Return exactly 4 unique cards.
+- Focus on practical topics: Stop-loss discipline, FOMO control, Diaphragmatic breathing during market volatility, Non-attachment, Pain acceptance in 100km trail runs, Risk-Reward ratio.
+- Keep English natural, sharp, and memorable.
+- Provide clear Vietnamese translation and psychological key insight on the back side.
+- DO NOT output any text or markdown syntax outside the JSON array.
+`.trim();
+
+export async function generateMindsetFlashcards(
+  apiKey: string,
+  categoryFilter: string = 'All'
+): Promise<GeneratedMindsetCard[]> {
+  if (!apiKey || apiKey.trim() === '') {
+    throw new Error('Chưa cấu hình API Key Gemini. Vui lòng mở Cài đặt để nhập API Key.');
+  }
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
+
+  const promptText = categoryFilter === 'All'
+    ? 'Generate 4 wisdom mindset flashcards covering Trading, Meditation, Psychology, and Ultra Running.'
+    : `Generate 4 wisdom mindset flashcards specifically focused on ${categoryFilter}.`;
+
+  const payload = {
+    systemInstruction: {
+      parts: [{ text: MINDSET_SYSTEM_PROMPT }],
+    },
+    contents: [
+      {
+        parts: [{ text: promptText }],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      maxOutputTokens: 800,
+    },
+  };
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (response.status === 429) {
+      throw new Error('Đã vượt quá giới hạn lượt gọi AI (Free tier: 10 yêu cầu/phút). Vui lòng đợi 1 phút.');
+    }
+
+    if (!response.ok) {
+      throw new Error(`Gemini API báo lỗi (${response.status}). Vui lòng kiểm tra lại API Key.`);
+    }
+
+    const data = await response.json();
+    const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!candidateText) {
+      throw new Error('Không nhận được thẻ bài từ Gemini AI.');
+    }
+
+    const cleanText = candidateText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+    const parsed = JSON.parse(cleanText);
+
+    if (!Array.isArray(parsed)) {
+      throw new Error('Dữ liệu thẻ AI không đúng cấu trúc mảng.');
+    }
+
+    return parsed.map((item: any) => ({
+      category: item.category || 'Psychology',
+      front: String(item.front || ''),
+      back: String(item.back || ''),
+    })).filter(item => item.front && item.back);
+  } catch (err: any) {
+    if (err instanceof Error) throw err;
+    throw new Error('Không thể tạo thẻ AI mới.');
+  }
+}
+
