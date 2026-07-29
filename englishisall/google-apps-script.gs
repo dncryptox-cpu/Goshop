@@ -12,6 +12,14 @@
  * 5. Copy the generated Web App URL (ending with /exec) and paste into EN Terminal!
  */
 
+function doGet(e) {
+  return respondJSON({
+    status: "online",
+    message: "EN Terminal Apps Script Backend is running.",
+    spreadsheetId: "1gZ5sevZrKGzcL7ap0IBdyO3NdymkovwjDOQfC9xQf4o"
+  });
+}
+
 function doPost(e) {
   try {
     var contents = JSON.parse(e.postData.contents);

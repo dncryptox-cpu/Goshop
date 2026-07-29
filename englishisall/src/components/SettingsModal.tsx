@@ -18,6 +18,14 @@ interface SettingsModalProps {
 
 const GOOGLE_APPS_SCRIPT_CODE = `
 // Mã Google Apps Script gắn với Google Sheet (ID: 1gZ5sevZrKGzcL7ap0IBdyO3NdymkovwjDOQfC9xQf4o)
+function doGet(e) {
+  return respondJSON({
+    status: "online",
+    message: "EN Terminal Apps Script Backend is running.",
+    spreadsheetId: "1gZ5sevZrKGzcL7ap0IBdyO3NdymkovwjDOQfC9xQf4o"
+  });
+}
+
 function doPost(e) {
   try {
     var contents = JSON.parse(e.postData.contents);
