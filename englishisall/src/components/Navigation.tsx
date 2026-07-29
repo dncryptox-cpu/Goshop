@@ -1,11 +1,13 @@
 import React from 'react';
-import type { ActiveTab } from '../types';
-import { BookOpen, Mic, Layers, History, Settings } from 'lucide-react';
+import type { ActiveTab, UserSession } from '../types';
+import { BookOpen, Mic, Layers, History, Settings, LogOut, User } from 'lucide-react';
 
 interface NavigationProps {
   activeTab: ActiveTab;
   onSelectTab: (tab: ActiveTab) => void;
   cardsDueCount: number;
+  session: UserSession | null;
+  onLogout: () => void;
   onOpenSettings: () => void;
 }
 
@@ -21,6 +23,8 @@ export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   onSelectTab,
   cardsDueCount,
+  session,
+  onLogout,
   onOpenSettings,
 }) => {
   const tabs: TabItem[] = [
@@ -63,7 +67,14 @@ export const Navigation: React.FC<NavigationProps> = ({
           })}
         </div>
 
-        <div className="py-2 pl-2">
+        <div className="py-2 pl-2 flex items-center space-x-2">
+          {session && (
+            <div className="hidden sm:flex items-center space-x-1 text-xs font-mono text-zinc-400 bg-zinc-900 px-2.5 py-1.5 rounded-lg border border-zinc-800">
+              <User className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-zinc-200 font-bold">{session.username}</span>
+            </div>
+          )}
+
           <button
             onClick={onOpenSettings}
             className="flex items-center space-x-1.5 px-3 py-2 text-zinc-400 hover:text-amber-400 hover:bg-zinc-900 rounded-lg border border-transparent hover:border-zinc-800 font-mono text-xs transition-colors"
@@ -71,6 +82,15 @@ export const Navigation: React.FC<NavigationProps> = ({
           >
             <Settings className="w-4 h-4" />
             <span className="hidden md:inline">CÀI ĐẶT</span>
+          </button>
+
+          <button
+            onClick={onLogout}
+            className="flex items-center space-x-1 px-2.5 py-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-950/60 rounded-lg border border-rose-900/60 font-mono text-xs font-bold transition-colors"
+            title="Đăng xuất khỏi tài khoản để xem lại màn hình Login"
+          >
+            <LogOut className="w-3.5 h-3.5 text-rose-400" />
+            <span>ĐĂNG XUẤT</span>
           </button>
         </div>
       </div>

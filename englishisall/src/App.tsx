@@ -248,6 +248,8 @@ export function App() {
         activeTab={activeTab}
         onSelectTab={(tab) => setActiveTab(tab)}
         cardsDueCount={cardsDueCount}
+        session={session}
+        onLogout={handleLogout}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
