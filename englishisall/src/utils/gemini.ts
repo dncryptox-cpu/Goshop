@@ -139,7 +139,8 @@ Rules:
 
 export async function generateMindsetFlashcards(
   apiKey: string,
-  categoryFilter: string = 'All'
+  categoryFilter: string = 'All',
+  customPrompt?: string
 ): Promise<GeneratedMindsetCard[]> {
   if (!apiKey || apiKey.trim() === '') {
     throw new Error('Chưa cấu hình API Key Gemini. Vui lòng mở Cài đặt để nhập API Key.');
@@ -147,9 +148,14 @@ export async function generateMindsetFlashcards(
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey.trim())}`;
 
-  const promptText = categoryFilter === 'All'
-    ? 'Generate 4 wisdom mindset flashcards covering Trading, Meditation, Psychology, and Ultra Running.'
-    : `Generate 4 wisdom mindset flashcards specifically focused on ${categoryFilter}.`;
+  let promptText = '';
+  if (customPrompt && customPrompt.trim()) {
+    promptText = `User specific request: "${customPrompt.trim()}". Generate 4 wisdom mindset flashcards tailored to this exact request.`;
+  } else if (categoryFilter === 'All') {
+    promptText = 'Generate 4 wisdom mindset flashcards covering Trading, Meditation, Psychology, and Ultra Running.';
+  } else {
+    promptText = `Generate 4 wisdom mindset flashcards specifically focused on ${categoryFilter}.`;
+  }
 
   const payload = {
     systemInstruction: {
