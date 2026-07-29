@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import type { UserProgress } from '../types';
-import { Flame, TrendingUp, TrendingDown, Clock, ShieldCheck, AlertTriangle, Key, HelpCircle, X, DollarSign } from 'lucide-react';
+import type { UserProgress, SyncStatus, UserSession } from '../types';
+import { Flame, TrendingUp, TrendingDown, Clock, ShieldCheck, AlertTriangle, Key, HelpCircle, X, DollarSign, CloudCheck, RefreshCw, LogOut, User } from 'lucide-react';
 import { getTodayDateString } from '../utils/srs';
 
 interface HeaderTickerProps {
   progress: UserProgress;
   cardsDueCount: number;
   hasApiKey: boolean;
+  syncStatus: SyncStatus;
+  session: UserSession | null;
+  onLogout: () => void;
   onOpenSettings: () => void;
   onSelectTab: (tab: 'journal' | 'speaking' | 'flashcards') => void;
   onUpdateStake: (amount: number) => void;
@@ -16,6 +19,9 @@ export const HeaderTicker: React.FC<HeaderTickerProps> = ({
   progress,
   cardsDueCount,
   hasApiKey,
+  syncStatus,
+  session,
+  onLogout,
   onOpenSettings,
   onSelectTab,
   onUpdateStake,
@@ -40,8 +46,8 @@ export const HeaderTicker: React.FC<HeaderTickerProps> = ({
   };
 
   return (
-    <header className="bg-zinc-950 border-b border-zinc-800 text-zinc-200">
-      {/* Top Branding & Connection Line */}
+    <header className="bg-zinc-950 border-b border-zinc-800 text-zinc-200 font-sans">
+      {/* Top Branding & Sync Status Line */}
       <div className="max-w-7xl mx-auto px-4 py-2 flex flex-wrap items-center justify-between text-xs border-b border-zinc-900 gap-2">
         <div className="flex items-center space-x-3">
           <div className="flex items-center space-x-2 font-mono font-bold text-amber-400">
@@ -53,9 +59,50 @@ export const HeaderTicker: React.FC<HeaderTickerProps> = ({
           <span className="font-mono text-zinc-400 hidden sm:inline">godnc.com/englishisall</span>
         </div>
 
-        <div className="flex items-center space-x-3 font-mono">
+        {/* Sync Status & User Session Badge */}
+        <div className="flex flex-wrap items-center space-x-3 font-mono text-[11px]">
+          
+          {/* Small Cloud Sync Indicator */}
+          <div className="flex items-center space-x-1">
+            {syncStatus === 'syncing' && (
+              <span className="flex items-center text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800/80 animate-pulse">
+                <RefreshCw className="w-3 h-3 mr-1 animate-spin text-amber-400" />
+                <span>Đang đồng bộ...</span>
+              </span>
+            )}
+
+            {syncStatus === 'synced' && (
+              <span className="flex items-center text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
+                <CloudCheck className="w-3.5 h-3.5 mr-1 text-emerald-400" />
+                <span>Đã đồng bộ Google Sheet</span>
+              </span>
+            )}
+
+            {syncStatus === 'error' && (
+              <span className="flex items-center text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-800" title="Dữ liệu hiện được lưu tạm trên trình duyệt này">
+                <AlertTriangle className="w-3.5 h-3.5 mr-1 text-rose-400 flex-shrink-0" />
+                <span className="truncate max-w-[200px] sm:max-w-none">Không đồng bộ được lên Google Sheet, dữ liệu tạm lưu trên máy này</span>
+              </span>
+            )}
+          </div>
+
+          {/* User badge & Logout */}
+          {session && (
+            <div className="flex items-center space-x-1.5 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 text-zinc-300">
+              <User className="w-3 h-3 text-cyan-400" />
+              <span className="font-bold text-zinc-200">{session.username}</span>
+              <button
+                onClick={onLogout}
+                className="text-zinc-500 hover:text-rose-400 ml-1 transition-colors flex items-center"
+                title="Đăng xuất khỏi tài khoản"
+              >
+                <LogOut className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+
           {hasApiKey ? (
-            <span className="flex items-center text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
+            <span className="hidden md:flex items-center text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/60">
               <ShieldCheck className="w-3.5 h-3.5 mr-1" />
               GEMINI READY
             </span>
@@ -75,7 +122,7 @@ export const HeaderTicker: React.FC<HeaderTickerProps> = ({
             title="Giải thích quy tắc P&L Stake"
           >
             <HelpCircle className="w-3.5 h-3.5 mr-1" />
-            <span className="hidden md:inline">Cam kết Stake</span>
+            <span className="hidden lg:inline">Cam kết Stake</span>
           </button>
         </div>
       </div>
@@ -214,9 +261,9 @@ export const HeaderTicker: React.FC<HeaderTickerProps> = ({
       {/* Symbolic Stake Explanation Modal */}
       {showSymbolicInfo && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <h3 className="font-mono font-bold text-amber-400 text-lg flex items-center">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 max-w-md w-full shadow-2xl space-y-4 font-sans">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3 font-mono">
+              <h3 className="font-bold text-amber-400 text-lg flex items-center">
                 <DollarSign className="w-5 h-5 mr-1" />
                 Cơ chế Stake & P&L Kỷ Luật
               </h3>
@@ -228,7 +275,7 @@ export const HeaderTicker: React.FC<HeaderTickerProps> = ({
               </button>
             </div>
 
-            <div className="text-sm text-zinc-300 space-y-3 font-sans leading-relaxed">
+            <div className="text-sm text-zinc-300 space-y-3 leading-relaxed">
               <p>
                 <strong>EN Terminal</strong> áp dụng tư duy <strong>Trading Risk & Reward</strong> vào việc luyện tiếng Anh mỗi ngày:
               </p>

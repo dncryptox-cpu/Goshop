@@ -50,4 +50,24 @@ export interface SRSCard {
   category?: 'Trading' | 'Meditation' | 'Psychology' | 'Ultra Running' | 'Grammar' | string;
 }
 
+export interface UserSession {
+  username: string;
+  password?: string;
+}
+
+export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline';
+
+export interface CloudDataPayload {
+  progress: UserProgress;
+  journal: JournalEntry[];
+  speaking: SpeakingSession[];
+  srs: SRSCard[];
+}
+
+export interface AppsScriptResponse {
+  status: 'success' | 'error';
+  message?: string;
+  data?: Partial<CloudDataPayload>;
+}
+
 export type ActiveTab = 'journal' | 'speaking' | 'flashcards' | 'history';
