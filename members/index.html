@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Member Portal - Premium Shop</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        [x-cloak] { display: none !important; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.03);
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#2563eb', 'primary-light': '#dbeafe', 'primary-dark': '#1e40af' }
+                }
+            }
+        }
+    </script>
+</head>
+<body x-data="memberApp()" x-init="initApp()" class="antialiased min-h-screen flex flex-col">
+    <!-- Maintenance Screen Overlay -->
+    <div x-show="isMaintenanceMode" x-cloak style="display: none;" class="fixed inset-0 z-[9999] bg-[#0B0F19] flex flex-col items-center justify-center p-6 text-center">
+        <i data-lucide="settings" class="w-24 h-24 text-primary animate-spin-slow mb-8 opacity-80" style="animation-duration: 3s;"></i>
+        <h1 class="text-4xl md:text-5xl font-black text-white mb-4 tracking-tight">HỆ THỐNG ĐANG BẢO TRÌ</h1>
+        <p class="text-gray-400 text-lg md:text-xl max-w-xl mx-auto leading-relaxed">
+            Chúng tôi đang tiến hành nâng cấp hệ thống Member Shop để mang lại trải nghiệm tốt hơn. 
+            Vui lòng quay lại sau ít phút. Xin lỗi vì sự bất tiện này!
+        </p>
+    </div>
+
+    <!-- Login Screen -->
+    <div x-show="!isLoggedIn" x-cloak class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-indigo-50 via-slate-50 to-blue-50">
+        <div class="glass-card rounded-3xl p-8 w-full max-w-lg shadow-2xl">
+            <div class="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-white shadow-lg shadow-primary/30 mx-auto mb-6">
+                <i data-lucide="shopping-bag" class="w-8 h-8"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-center text-gray-900 mb-2">Member Portal</h2>
+            <p class="text-sm text-center text-gray-500 mb-8">Đăng nhập tài khoản Khách hàng hoặc Admin</p>
+
+            <form @submit.prevent="login()" class="space-y-5">
+                <div x-show="loginError" x-cloak class="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                    <span x-text="loginError"></span>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Email</label>
+                    <input type="email" x-model="loginForm.email" required placeholder="nhapemail@gmail.com"
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Mật Khẩu</label>
+                    <input type="password" x-model="loginForm.password" required placeholder="••••••••"
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all">
+                </div>
+                <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary/20 mt-2">
+                    <span>Đăng Nhập</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </form>
+
+            <div class="mt-8 pt-6 border-t border-gray-100 text-center">
+                <p class="text-xs text-gray-500">Hỗ trợ nạp tiền & tư vấn tài khoản trực tiếp Admin</p>
+                <a href="https://zalo.me/0398057191" target="_blank" class="inline-flex items-center gap-2 mt-3 text-xs font-bold text-primary hover:underline">
+                    <i data-lucide="message-circle" class="w-4 h-4"></i>
+                    <span>Zalo Admin: 0398.057.191 (@dnc)</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Authenticated Layout -->
+    <div x-show="isLoggedIn" x-cloak class="flex-1 flex flex-col">
+        <!-- Header -->
+        <header class="bg-white border-b border-gray-200 py-4 px-6 sticky top-0 z-50 shadow-sm flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-md shadow-primary/20">
+                    <i data-lucide="store" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-gray-900 leading-tight">Member Shop</h1>
+                    <p class="text-[11px] text-gray-500 font-medium uppercase tracking-wider" x-text="currentUser?.role === 'admin' ? 'Quản trị viên' : 'Khách hàng Thành Viên'"></p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <!-- Customer Wallet Badge -->
+                <template x-if="currentUser?.role === 'customer'">
+                    <div class="hidden sm:flex items-center gap-2 bg-blue-50 border border-blue-100 px-3.5 py-1.5 rounded-xl">
+                        <i data-lucide="wallet" class="w-4 h-4 text-primary"></i>
+                        <span class="text-xs font-semibold text-gray-500">Ví:</span>
+                        <span class="text-sm font-bold text-primary" x-text="formatCurrency(myWalletBalance)"></span>
+                    </div>
+                </template>
+
+                <div class="hidden md:block text-right">
+                    <p class="text-sm font-semibold text-gray-900" x-text="currentUser?.email"></p>
+                </div>
+                <button @click="fetchData()" class="p-2 text-gray-400 hover:text-primary hover:bg-primary-light rounded-lg transition-all" :class="{'animate-spin text-primary': isLoading}" title="Làm mới">
+                    <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                </button>
+                <button @click="logout()" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Đăng xuất">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="bg-white border-b border-gray-200 px-6">
+            <div class="max-w-7xl mx-auto flex gap-6 overflow-x-auto hide-scrollbar">
+                <!-- Customer Tabs -->
+                <template x-if="currentUser?.role === 'customer'">
+                    <div class="flex gap-6">
+                        <button @click="currentTab = 'cust_products'" :class="currentTab === 'cust_products' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
+                            <i data-lucide="grid" class="w-4 h-4"></i> Sản Phẩm
+                        </button>
+                        <button @click="currentTab = 'cust_wallet'" :class="currentTab === 'cust_wallet' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
+                            <i data-lucide="wallet" class="w-4 h-4"></i> Ví Tiền & Lịch Sử
+                        </button>
+                        <button @click="currentTab = 'cust_orders'" :class="currentTab === 'cust_orders' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
+                            <i data-lucide="package" class="w-4 h-4"></i> Đơn Hàng Của Tôi
+                        </button>
+                    </div>
+                </template>
+
+                <!-- Admin Tabs -->
+                <template x-if="currentUser?.role === 'admin'">
+                    <div class="flex gap-6">
+                        <button @click="currentTab = 'admin_topup'" :class="currentTab === 'admin_topup' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
+                            <i data-lucide="credit-card" class="w-4 h-4"></i> Nạp Tiền Ví
+                        </button>
+                        <button @click="currentTab = 'admin_products'" :class="currentTab === 'admin_products' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
+                            <i data-lucide="box" class="w-4 h-4"></i> Quản Lý Sản Phẩm
+                        </button>
+                        <button @click="currentTab = 'admin_pending'" :class="currentTab === 'admin_pending' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2 relative">
+                            <i data-lucide="clock" class="w-4 h-4"></i> Đơn Chờ Duyệt
+                            <span x-show="pendingOrdersCount > 0" class="w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center" x-text="pendingOrdersCount"></span>
+                        </button>
+                        <button @click="currentTab = 'admin_orders'" :class="currentTab === 'admin_orders' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
+                            <i data-lucide="shopping-cart" class="w-4 h-4"></i> Tất Cả Đơn Hàng
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6 max-w-7xl mx-auto w-full">
+            <div x-show="isLoading" class="flex flex-col items-center justify-center py-20 text-gray-400">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-primary mb-4"></i>
+                <p class="text-sm font-medium">Đang đồng bộ dữ liệu hệ thống...</p>
+            </div>
+
+            <div x-show="!isLoading" x-cloak>
+                <!-- ==================== CUSTOMER VIEWS ==================== -->
+                
+                <!-- Customer Tab: Products List -->
+                <div x-show="currentTab === 'cust_products'">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h2 class="text-xl font-bold text-gray-900">Danh Sách Sản Phẩm & Gói Dịch Vụ</h2>
+                            <p class="text-xs text-gray-500 mt-1">Chọn gói phù hợp và thanh toán trực tiếp qua Số dư Ví</p>
+                        </div>
+                        <div class="bg-blue-50 border border-blue-100 px-4 py-2 rounded-2xl flex items-center gap-3">
+                            <span class="text-xs text-gray-500 font-medium">Số dư khả dụng:</span>
+                            <span class="text-lg font-black text-primary" x-text="formatCurrency(myWalletBalance)"></span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <template x-for="p in activeProducts" :key="p.id">
+                            <div class="glass-card rounded-2xl p-6 flex flex-col justify-between hover:border-primary/40 transition-all group shadow-sm hover:shadow-md">
+                                <div>
+                                    <div class="flex items-start justify-between mb-4">
+                                        <span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                                            :class="p.type === 'auto' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
+                                            x-text="p.type === 'auto' ? 'Tự Động Kích Hoạt' : 'Xác Nhận Thủ Công'">
+                                        </span>
+                                        <p class="text-xl font-black text-gray-900" x-text="formatCurrency(p.price)"></p>
+                                    </div>
+                                    <h3 class="text-lg font-bold text-gray-900 group-hover:text-primary transition-colors mb-2" x-text="p.name"></h3>
+                                    <p class="text-xs text-gray-600 leading-relaxed mb-6 whitespace-pre-line" x-text="p.description || 'Không có mô tả bổ sung'"></p>
+                                </div>
+
+                                <button @click="handleBuyProduct(p)" class="w-full bg-primary hover:bg-primary-dark text-white py-3 rounded-xl font-bold text-sm transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2">
+                                    <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+                                    <span>Mua Ngay</span>
+                                </button>
+                            </div>
+                        </template>
+
+                        <template x-if="activeProducts.length === 0">
+                            <div class="col-span-full glass-card rounded-2xl p-12 text-center text-gray-400">
+                                <i data-lucide="box" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
+                                <p class="text-sm font-medium">Hiện chưa có sản phẩm nào được mở bán.</p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Customer Tab: Wallet & History -->
+                <div x-show="currentTab === 'cust_wallet'">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                        <!-- Wallet Card -->
+                        <div class="glass-card rounded-2xl p-6 bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-800 text-white relative overflow-hidden shadow-xl">
+                            <div class="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-xl pointer-events-none"></div>
+                            <div class="flex items-center justify-between mb-6">
+                                <div class="w-10 h-10 bg-white/20 backdrop-blur-md rounded-xl flex items-center justify-center">
+                                    <i data-lucide="wallet" class="w-5 h-5 text-white"></i>
+                                </div>
+                                <span class="text-xs bg-white/20 px-3 py-1 rounded-full font-semibold uppercase tracking-wider">Số dư Ví</span>
+                            </div>
+                            <p class="text-xs text-blue-100 mb-1">Số dư khả dụng hiện tại</p>
+                            <p class="text-3xl font-black mb-6" x-text="formatCurrency(myWalletBalance)"></p>
+
+                            <div class="pt-4 border-t border-white/10 flex items-center justify-between text-xs text-blue-100">
+                                <span>Tài khoản:</span>
+                                <span class="font-bold text-white" x-text="currentUser?.email"></span>
+                            </div>
+                        </div>
+
+                        <!-- Top-up Guide Info -->
+                        <div class="lg:col-span-2 glass-card rounded-2xl p-6 border-l-4 border-primary">
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-10 h-10 bg-blue-50 text-primary rounded-xl flex items-center justify-center">
+                                    <i data-lucide="qr-code" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-base font-bold text-gray-900">Hướng Dẫn Nạp Tiền Vào Ví</h3>
+                                    <p class="text-xs text-gray-500">Liên hệ Admin để nạp tiền hoặc chuyển khoản ngân hàng</p>
+                                </div>
+                            </div>
+                            
+                            <div class="bg-gray-50 rounded-xl p-4 text-xs text-gray-700 space-y-2 mb-4">
+                                <div class="flex justify-between border-b border-gray-200 pb-2">
+                                    <span class="text-gray-500">Zalo Admin Nạp Tiền:</span>
+                                    <span class="font-bold text-gray-900">0398.057.191 (@dnc)</span>
+                                </div>
+                                <div class="flex justify-between border-b border-gray-200 pb-2">
+                                    <span class="text-gray-500">Nội dung chuyển khoản:</span>
+                                    <span class="font-mono font-bold text-primary" x-text="'NAP ' + (currentUser?.email || '').split('@')[0]"></span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">Thời gian xử lý:</span>
+                                    <span class="font-bold text-green-600">Tức thì (1 - 5 phút)</span>
+                                </div>
+                            </div>
+
+                            <a href="https://zalo.me/0398057191" target="_blank" class="w-full sm:w-auto px-6 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded-xl transition-all shadow-md inline-flex items-center justify-center gap-2">
+                                <i data-lucide="message-circle" class="w-4 h-4"></i>
+                                <span>Nhắn Zalo Admin Nạp Tiền Ngay</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Wallet Logs Table -->
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 bg-white">
+                            <h3 class="text-lg font-bold text-gray-900">Biến Động Số Dư & Lịch Sử Giao Dịch</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">Thời Gian</th>
+                                        <th class="px-6 py-4">Loại Giao Dịch</th>
+                                        <th class="px-6 py-4">Ghi Chú</th>
+                                        <th class="px-6 py-4 text-right">Số Tiền</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <template x-for="log in myWalletLogs" :key="log.timestamp">
+                                        <tr class="hover:bg-gray-50 transition-colors">
+                                            <td class="px-6 py-4 text-xs text-gray-500" x-text="formatDate(log.timestamp)"></td>
+                                            <td class="px-6 py-4">
+                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                                                    :class="log.type === 'topup' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'"
+                                                    x-text="log.type === 'topup' ? '+ Nạp tiền' : '- Mua hàng'">
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 text-xs font-medium text-gray-700" x-text="log.note || '--'"></td>
+                                            <td class="px-6 py-4 text-right font-bold" :class="log.type === 'topup' ? 'text-green-600' : 'text-red-600'">
+                                                <span x-text="(log.type === 'topup' ? '+' : '-') + formatCurrency(log.amount)"></span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="myWalletLogs.length === 0">
+                                        <tr><td colspan="4" class="px-6 py-12 text-center text-gray-400 text-sm">Chưa có biến động số dư nào.</td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Customer Tab: Orders -->
+                <div x-show="currentTab === 'cust_orders'">
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 bg-white">
+                            <h2 class="text-lg font-bold text-gray-900">Danh Sách Đơn Hàng Của Tôi</h2>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">Mã Đơn</th>
+                                        <th class="px-6 py-4">Sản Phẩm</th>
+                                        <th class="px-6 py-4">Thời Gian</th>
+                                        <th class="px-6 py-4 text-right">Giá Tiền</th>
+                                        <th class="px-6 py-4 text-center">Trạng Thái</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <!-- Pending Orders First -->
+                                    <template x-for="po in myPendingOrders" :key="po.id">
+                                        <tr class="bg-amber-50/40 hover:bg-amber-50/70 transition-colors">
+                                            <td class="px-6 py-4 font-mono text-xs font-bold text-amber-700" x-text="po.id"></td>
+                                            <td class="px-6 py-4 font-semibold text-gray-900" x-text="po.productName"></td>
+                                            <td class="px-6 py-4 text-xs text-gray-500" x-text="formatDate(po.timestamp)"></td>
+                                            <td class="px-6 py-4 text-right font-bold text-gray-900" x-text="formatCurrency(po.amount)"></td>
+                                            <td class="px-6 py-4 text-center">
+                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                                                    :class="po.status === 'pending' ? 'bg-amber-100 text-amber-800' : (po.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')"
+                                                    x-text="po.status === 'pending' ? 'Chờ Xác Nhận' : (po.status === 'approved' ? 'Đã Duyệt' : 'Đã Từ Chối')">
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <!-- Completed Orders -->
+                                    <template x-for="o in myOrders" :key="o.id">
+                                        <tr class="hover:bg-gray-50 transition-colors">
+                                            <td class="px-6 py-4 font-mono text-xs font-bold text-primary" x-text="o.id"></td>
+                                            <td class="px-6 py-4 font-semibold text-gray-900" x-text="o.productName"></td>
+                                            <td class="px-6 py-4 text-xs text-gray-500" x-text="formatDate(o.timestamp)"></td>
+                                            <td class="px-6 py-4 text-right font-bold text-gray-900" x-text="formatCurrency(o.amount)"></td>
+                                            <td class="px-6 py-4 text-center">
+                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">Thành Công</span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="myOrders.length === 0 && myPendingOrders.length === 0">
+                                        <tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 text-sm">Bạn chưa có đơn hàng nào.</td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== ADMIN VIEWS ==================== -->
+                
+                <!-- Admin Tab: Topup Wallet -->
+                <div x-show="currentTab === 'admin_topup'">
+                    <div class="grid md:grid-cols-3 gap-8">
+                        <!-- Topup Form -->
+                        <div class="glass-card rounded-2xl p-6 md:col-span-1">
+                            <div class="flex items-center gap-3 mb-6">
+                                <div class="w-10 h-10 bg-green-100 text-green-600 rounded-xl flex items-center justify-center">
+                                    <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <h2 class="text-lg font-bold text-gray-900">Nạp Tiền Vào Ví</h2>
+                                    <p class="text-xs text-gray-500">Cộng số dư cho tài khoản khách hàng</p>
+                                </div>
+                            </div>
+
+                            <form @submit.prevent="submitAdminTopup()" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Email Khách Hàng</label>
+                                    <input type="email" x-model="topupForm.email" required placeholder="customer@gmail.com" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-medium focus:outline-none focus:border-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Số Tiền Nạp (VNĐ)</label>
+                                    <input type="number" x-model.number="topupForm.amount" min="10000" step="10000" required placeholder="500000" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm font-bold text-primary focus:outline-none focus:border-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ghi Chú Nạp Tiền</label>
+                                    <input type="text" x-model="topupForm.note" placeholder="Nạp tiền CK Vietcombank..." class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-4 text-sm focus:outline-none focus:border-primary">
+                                </div>
+                                <button type="submit" class="w-full bg-primary hover:bg-primary-dark text-white py-3 rounded-xl font-bold transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 mt-2">
+                                    <i data-lucide="check" class="w-4 h-4"></i>
+                                    <span>Xác Nhận Nạp Tiền</span>
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- All Topup Logs Table -->
+                        <div class="glass-card rounded-2xl overflow-hidden md:col-span-2">
+                            <div class="p-5 border-b border-gray-100 bg-white">
+                                <h3 class="text-lg font-bold text-gray-900">Nhật Ký Tất Cả Lần Nạp Tiền</h3>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase">
+                                        <tr>
+                                            <th class="px-6 py-4">Thời Gian</th>
+                                            <th class="px-6 py-4">Email Khách</th>
+                                            <th class="px-6 py-4 text-right">Số Tiền</th>
+                                            <th class="px-6 py-4">Ghi Chú</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 bg-white">
+                                        <template x-for="log in allTopupLogs" :key="log.timestamp + log.email">
+                                            <tr class="hover:bg-gray-50">
+                                                <td class="px-6 py-4 text-xs text-gray-500" x-text="formatDate(log.timestamp)"></td>
+                                                <td class="px-6 py-4 font-bold text-gray-900 text-xs" x-text="log.email"></td>
+                                                <td class="px-6 py-4 text-right font-bold text-green-600" x-text="'+' + formatCurrency(log.amount)"></td>
+                                                <td class="px-6 py-4 text-xs text-gray-600" x-text="log.note || '--'"></td>
+                                            </tr>
+                                        </template>
+                                        <template x-if="allTopupLogs.length === 0">
+                                            <tr><td colspan="4" class="px-6 py-12 text-center text-gray-400 text-sm">Chưa có giao dịch nạp tiền nào.</td></tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Tab: Product CRUD -->
+                <div x-show="currentTab === 'admin_products'">
+                    <div class="flex items-center justify-between mb-6">
+                        <h2 class="text-xl font-bold text-gray-900">Quản Lý Sản Phẩm (CRUD)</h2>
+                        <button @click="openProductModal()" class="bg-primary hover:bg-primary-dark text-white px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-md flex items-center gap-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Thêm Sản Phẩm Mới
+                        </button>
+                    </div>
+
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">ID</th>
+                                        <th class="px-6 py-4">Tên Sản Phẩm</th>
+                                        <th class="px-6 py-4 text-right">Giá Bán</th>
+                                        <th class="px-6 py-4 text-center">Loại Duyệt</th>
+                                        <th class="px-6 py-4 text-center">Trạng Thái</th>
+                                        <th class="px-6 py-4 text-center">Hành Động</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <template x-for="p in products" :key="p.id">
+                                        <tr class="hover:bg-gray-50 transition-colors">
+                                            <td class="px-6 py-4 font-mono text-xs text-gray-500" x-text="p.id"></td>
+                                            <td class="px-6 py-4">
+                                                <p class="font-bold text-gray-900" x-text="p.name"></p>
+                                                <p class="text-xs text-gray-500 truncate max-w-xs" x-text="p.description"></p>
+                                            </td>
+                                            <td class="px-6 py-4 text-right font-bold text-primary" x-text="formatCurrency(p.price)"></td>
+                                            <td class="px-6 py-4 text-center">
+                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                                                    :class="p.type === 'auto' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
+                                                    x-text="p.type === 'auto' ? 'Tự Động' : 'Thủ Công'">
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 text-center">
+                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                                                    :class="p.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'"
+                                                    x-text="p.status === 'active' ? 'Mở Bán' : 'Ẩn'">
+                                                </span>
+                                            </td>
+                                            <td class="px-6 py-4 text-center">
+                                                <button @click="openProductModal(p)" class="p-2 text-gray-500 hover:text-primary hover:bg-gray-100 rounded-lg transition-colors">
+                                                    <i data-lucide="edit" class="w-4 h-4"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="products.length === 0">
+                                        <tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 text-sm">Chưa có sản phẩm nào trong hệ thống.</td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Tab: Pending Orders Approval -->
+                <div x-show="currentTab === 'admin_pending'">
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 bg-white flex justify-between items-center">
+                            <div>
+                                <h2 class="text-lg font-bold text-gray-900">Danh Sách Đơn Hàng Chờ Duyệt (Manual)</h2>
+                                <p class="text-xs text-gray-500">Duyệt đơn sẽ tự động trừ số dư ví và tạo đơn hàng hoàn tất</p>
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">Mã Đơn Chờ</th>
+                                        <th class="px-6 py-4">Email Khách</th>
+                                        <th class="px-6 py-4">Sản Phẩm</th>
+                                        <th class="px-6 py-4">Ghi Chú</th>
+                                        <th class="px-6 py-4 text-right">Giá Tiền</th>
+                                        <th class="px-6 py-4 text-center">Hành Động</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <template x-for="po in pendingOrdersOnly" :key="po.id">
+                                        <tr class="hover:bg-amber-50/30 transition-colors">
+                                            <td class="px-6 py-4 font-mono text-xs font-bold text-amber-700" x-text="po.id"></td>
+                                            <td class="px-6 py-4 font-bold text-gray-900 text-xs" x-text="po.email"></td>
+                                            <td class="px-6 py-4 font-semibold text-gray-800" x-text="po.productName"></td>
+                                            <td class="px-6 py-4 text-xs text-gray-600" x-text="po.note || '--'"></td>
+                                            <td class="px-6 py-4 text-right font-bold text-gray-900" x-text="formatCurrency(po.amount)"></td>
+                                            <td class="px-6 py-4 text-center">
+                                                <div class="flex items-center justify-center gap-2">
+                                                    <button @click="approveAdminOrder(po.id)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm">
+                                                        Duyệt Đơn
+                                                    </button>
+                                                    <button @click="rejectAdminOrder(po.id)" class="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-all">
+                                                        Từ Chối
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="pendingOrdersOnly.length === 0">
+                                        <tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 text-sm">Không có đơn hàng nào đang chờ duyệt.</td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Tab: All Orders -->
+                <div x-show="currentTab === 'admin_orders'">
+                    <div class="glass-card rounded-2xl overflow-hidden">
+                        <div class="p-5 border-b border-gray-100 bg-white">
+                            <h2 class="text-lg font-bold text-gray-900">Tất Cả Đơn Hàng Đã Hoàn Tất</h2>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-4">Mã Đơn</th>
+                                        <th class="px-6 py-4">Email Khách</th>
+                                        <th class="px-6 py-4">Sản Phẩm</th>
+                                        <th class="px-6 py-4">Thời Gian</th>
+                                        <th class="px-6 py-4 text-right">Số Tiền</th>
+                                        <th class="px-6 py-4 text-center">Trạng Thái</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 bg-white">
+                                    <template x-for="o in allOrders" :key="o.id">
+                                        <tr class="hover:bg-gray-50 transition-colors">
+                                            <td class="px-6 py-4 font-mono text-xs font-bold text-primary" x-text="o.id"></td>
+                                            <td class="px-6 py-4 font-bold text-gray-900 text-xs" x-text="o.email"></td>
+                                            <td class="px-6 py-4 font-semibold text-gray-800" x-text="o.productName"></td>
+                                            <td class="px-6 py-4 text-xs text-gray-500" x-text="formatDate(o.timestamp)"></td>
+                                            <td class="px-6 py-4 text-right font-bold text-gray-900" x-text="formatCurrency(o.amount)"></td>
+                                            <td class="px-6 py-4 text-center">
+                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">Hoàn Tất</span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="allOrders.length === 0">
+                                        <tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 text-sm">Chưa có đơn hàng nào.</td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Manual Purchase Confirmation Modal (Customer) -->
+    <div x-show="showManualModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" x-cloak>
+        <div @click.away="showManualModal = false" class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-2">Xác Nhận Đặt Đơn (Duyệt Thủ Công)</h3>
+            <p class="text-xs text-gray-500 mb-4">Sản phẩm <strong class="text-gray-800" x-text="selectedProduct?.name"></strong> yêu cầu ghi chú bổ sung trước khi Admin phê duyệt.</p>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ghi Chú Yêu Cầu (Email/SĐT/Tên Kênh...)</label>
+                    <textarea x-model="manualNote" rows="3" placeholder="Nhập thông tin tài khoản cần gia hạn..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-primary"></textarea>
+                </div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button @click="showManualModal = false" class="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
+                    <button @click="submitManualPurchase()" class="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded-xl shadow-md">Gửi Yêu Cầu Mua</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Product CRUD Modal (Admin) -->
+    <div x-show="showProductModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" x-cloak>
+        <div @click.away="showProductModal = false" class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+            <h3 class="text-lg font-bold text-gray-900 mb-4" x-text="productForm.id ? 'Chỉnh Sửa Sản Phẩm' : 'Thêm Sản Phẩm Mới'"></h3>
+
+            <form @submit.prevent="saveAdminProduct()" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Tên Sản Phẩm</label>
+                    <input type="text" x-model="productForm.name" required placeholder="Gói YouTube Premium 1 Năm" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3.5 text-sm font-semibold focus:outline-none focus:border-primary">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Mô Tả</label>
+                    <textarea x-model="productForm.description" rows="3" placeholder="Gia hạn chính chủ, bảo hành full thời gian..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-primary"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Giá Bán (VNĐ)</label>
+                        <input type="number" x-model.number="productForm.price" required min="0" step="5000" placeholder="250000" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3.5 text-sm font-bold text-primary focus:outline-none focus:border-primary">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Loại Duyệt</label>
+                        <select x-model="productForm.type" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-semibold focus:outline-none focus:border-primary">
+                            <option value="auto">Tự động kích hoạt</option>
+                            <option value="manual">Xác nhận thủ công</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Trạng Thái Trên Shop</label>
+                    <select x-model="productForm.status" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-semibold focus:outline-none focus:border-primary">
+                        <option value="active">Mở bán (Active)</option>
+                        <option value="hidden">Ẩn sản phẩm (Hidden)</option>
+                    </select>
+                </div>
+                <div class="flex justify-end gap-3 pt-3">
+                    <button type="button" @click="showProductModal = false" class="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
+                    <button type="submit" class="px-6 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded-xl shadow-md">Lưu Sản Phẩm</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        function memberApp() {
+            return {
+                CONFIG: {
+                    SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
+                    WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxzXvVjASViAK--nYwzfJ_iTbK8e7Ilfd9xjbDdzS3SdXPTgdPRVSd9M4ORimanRWZN/exec'
+                },
+                isLoggedIn: false,
+                isLoading: false,
+                isMaintenanceMode: false,
+                loginForm: { email: '', password: '' },
+                loginError: '',
+                currentUser: null,
+                currentTab: 'cust_products',
+
+                // Data Arrays
+                products: [],
+                walletLogs: [],
+                allOrders: [],
+                pendingOrders: [],
+
+                // Modals & Form States
+                showManualModal: false,
+                selectedProduct: null,
+                manualNote: '',
+
+                showProductModal: false,
+                productForm: { id: '', name: '', description: '', price: 0, type: 'auto', status: 'active' },
+
+                topupForm: { email: '', amount: 0, note: '' },
+
+                // COMPUTED PROPERTIES
+                get activeProducts() {
+                    return this.products.filter(p => p.status === 'active');
+                },
+
+                get myWalletLogs() {
+                    if (!this.currentUser) return [];
+                    const email = this.currentUser.email.toLowerCase().trim();
+                    return this.walletLogs.filter(l => l.email.toLowerCase().trim() === email).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                },
+
+                get myWalletBalance() {
+                    if (!this.currentUser) return 0;
+                    const email = this.currentUser.email.toLowerCase().trim();
+                    const logs = this.walletLogs.filter(l => l.email.toLowerCase().trim() === email);
+                    let balance = 0;
+                    logs.forEach(l => {
+                        if (l.type === 'topup') balance += l.amount;
+                        else if (l.type === 'purchase') balance -= l.amount;
+                    });
+                    return Math.max(0, balance);
+                },
+
+                get myOrders() {
+                    if (!this.currentUser) return [];
+                    const email = this.currentUser.email.toLowerCase().trim();
+                    return this.allOrders.filter(o => o.email.toLowerCase().trim() === email).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                },
+
+                get myPendingOrders() {
+                    if (!this.currentUser) return [];
+                    const email = this.currentUser.email.toLowerCase().trim();
+                    return this.pendingOrders.filter(p => p.email.toLowerCase().trim() === email).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                },
+
+                get pendingOrdersOnly() {
+                    return this.pendingOrders.filter(po => po.status === 'pending').sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                },
+
+                get pendingOrdersCount() {
+                    return this.pendingOrdersOnly.length;
+                },
+
+                get allTopupLogs() {
+                    return this.walletLogs.filter(l => l.type === 'topup').sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                },
+
+                // INITIALIZATION
+                async initApp() {
+                    this.fetchSystemConfig();
+                    setInterval(() => this.fetchSystemConfig(), 30000);
+
+                    const savedUser = localStorage.getItem('members_crm_user');
+                    if (savedUser) {
+                        this.currentUser = JSON.parse(savedUser);
+                        this.isLoggedIn = true;
+                        this.currentTab = this.currentUser.role === 'admin' ? 'admin_topup' : 'cust_products';
+                        this.fetchData();
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async fetchSystemConfig() {
+                    try {
+                        const response = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:json&sheet=SYSTEM_CONFIG&t=${Date.now()}`);
+                        const text = await response.text();
+                        const jsonStr = text.substring(text.indexOf('({') + 1, text.lastIndexOf('})') + 1);
+                        const data = JSON.parse(jsonStr);
+                        
+                        if (data.table && data.table.rows) {
+                            data.table.rows.forEach(row => {
+                                if (row.c && row.c[0] && row.c[1]) {
+                                    if (row.c[0].v === "MAINTENANCE_MODE") {
+                                        const val = row.c[1].v;
+                                        this.isMaintenanceMode = typeof val === 'boolean' ? val : String(val).trim().toUpperCase() === "TRUE";
+                                    }
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.error('Error fetching system config', e);
+                    }
+                },
+
+                login() {
+                    const email = this.loginForm.email.trim().toLowerCase();
+                    const pw = this.loginForm.password;
+
+                    if ((email === 'admin@godnc.com' || email === 'admin') && pw === 'dnc1m@') {
+                        this.setUser({ email: 'admin@godnc.com', role: 'admin', name: 'Admin' });
+                        return;
+                    }
+
+                    if (email && pw) {
+                        this.setUser({ email: email, role: 'customer', name: email.split('@')[0] });
+                    } else {
+                        this.loginError = 'Vui lòng nhập đầy đủ thông tin đăng nhập';
+                    }
+                },
+
+                setUser(user) {
+                    this.currentUser = user;
+                    this.isLoggedIn = true;
+                    this.loginError = '';
+                    this.currentTab = user.role === 'admin' ? 'admin_topup' : 'cust_products';
+                    localStorage.setItem('members_crm_user', JSON.stringify(user));
+                    this.fetchData();
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                logout() {
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    this.loginForm = { email: '', password: '' };
+                    localStorage.removeItem('members_crm_user');
+                },
+
+                // FETCH DATA FROM GOOGLE SHEETS
+                async fetchData() {
+                    this.isLoading = true;
+                    try {
+                        const [prodRes, walletRes, orderRes, pendingRes] = await Promise.all([
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=PRODUCTS&t=${Date.now()}`).catch(() => null),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=WALLET_LOG&t=${Date.now()}`).catch(() => null),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=ORDERS&t=${Date.now()}`).catch(() => null),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=PENDING_ORDERS&t=${Date.now()}`).catch(() => null)
+                        ]);
+
+                        if (prodRes && prodRes.ok) {
+                            const csv = await prodRes.text();
+                            this.products = this.parseCSV(csv).map(r => ({
+                                id: this.getField(r, ['id', 'ID']),
+                                name: this.getField(r, ['name', 'Name', 'Tên']),
+                                description: this.getField(r, ['description', 'Description', 'Mô tả']),
+                                price: parseInt(this.getField(r, ['price', 'Price', 'Giá'])) || 0,
+                                type: this.getField(r, ['type', 'Type']) || 'auto',
+                                status: this.getField(r, ['status', 'Status']) || 'active'
+                            })).filter(p => p.id && p.name);
+                        }
+
+                        if (walletRes && walletRes.ok) {
+                            const csv = await walletRes.text();
+                            this.walletLogs = this.parseCSV(csv).map(r => ({
+                                email: this.getField(r, ['email', 'Email']),
+                                type: this.getField(r, ['type', 'Type']),
+                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
+                                note: this.getField(r, ['note', 'Note', 'Ghi chú']),
+                                timestamp: this.getField(r, ['timestamp', 'Timestamp', 'Thời gian']) || new Date().toISOString()
+                            })).filter(l => l.email && l.amount);
+                        }
+
+                        if (orderRes && orderRes.ok) {
+                            const csv = await orderRes.text();
+                            this.allOrders = this.parseCSV(csv).map(r => ({
+                                id: this.getField(r, ['id', 'ID']),
+                                email: this.getField(r, ['email', 'Email']),
+                                productId: this.getField(r, ['product_id', 'ProductId']),
+                                productName: this.getField(r, ['product_name', 'ProductName']),
+                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
+                                status: this.getField(r, ['status', 'Status']) || 'completed',
+                                timestamp: this.getField(r, ['timestamp', 'Timestamp']) || new Date().toISOString()
+                            })).filter(o => o.id);
+                        }
+
+                        if (pendingRes && pendingRes.ok) {
+                            const csv = await pendingRes.text();
+                            this.pendingOrders = this.parseCSV(csv).map(r => ({
+                                id: this.getField(r, ['id', 'ID']),
+                                email: this.getField(r, ['email', 'Email']),
+                                productId: this.getField(r, ['product_id', 'ProductId']),
+                                productName: this.getField(r, ['product_name', 'ProductName']),
+                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
+                                note: this.getField(r, ['note', 'Note']),
+                                status: this.getField(r, ['status', 'Status']) || 'pending',
+                                timestamp: this.getField(r, ['timestamp', 'Timestamp']) || new Date().toISOString()
+                            })).filter(po => po.id);
+                        }
+
+                    } catch (err) {
+                        console.error('Fetch data error:', err);
+                        this.showToast('Có lỗi xảy ra khi tải dữ liệu');
+                    } finally {
+                        this.isLoading = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                // CUSTOMER ACTIONS
+                async handleBuyProduct(product) {
+                    if (product.type === 'manual') {
+                        this.selectedProduct = product;
+                        this.manualNote = '';
+                        this.showManualModal = true;
+                        return;
+                    }
+
+                    // Auto Purchase
+                    if (this.myWalletBalance < product.price) {
+                        this.showToast('Số dư ví không đủ! Vui lòng nạp tiền vào ví.');
+                        return;
+                    }
+
+                    if (!confirm(`Xác nhận mua gói "${product.name}" với giá ${this.formatCurrency(product.price)}?`)) return;
+
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'purchase_product',
+                                email: this.currentUser.email,
+                                productId: product.id
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Mua hàng thành công! Đơn hàng đã được kích hoạt.');
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi mua hàng');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast(err.message || 'Có lỗi xảy ra khi mua hàng');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                async submitManualPurchase() {
+                    if (!this.selectedProduct) return;
+
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'create_pending_order',
+                                email: this.currentUser.email,
+                                productId: this.selectedProduct.id,
+                                note: this.manualNote
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã gửi yêu cầu! Đang chờ Admin xác nhận.');
+                            this.showManualModal = false;
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi gửi đơn');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast(err.message || 'Có lỗi xảy ra');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                // ADMIN ACTIONS
+                async submitAdminTopup() {
+                    if (!this.topupForm.email || this.topupForm.amount <= 0) {
+                        this.showToast('Vui lòng nhập đúng thông tin email và số tiền nạp');
+                        return;
+                    }
+
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'topup_wallet',
+                                email: this.topupForm.email.trim().toLowerCase(),
+                                amount: this.topupForm.amount,
+                                note: this.topupForm.note
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast(`Đã nạp thành công ${this.formatCurrency(this.topupForm.amount)} cho ${this.topupForm.email}`);
+                            this.topupForm = { email: '', amount: 0, note: '' };
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi nạp tiền');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast('Lỗi nạp tiền ví');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                openProductModal(prod = null) {
+                    if (prod) {
+                        this.productForm = { ...prod };
+                    } else {
+                        this.productForm = { id: '', name: '', description: '', price: 0, type: 'auto', status: 'active' };
+                    }
+                    this.showProductModal = true;
+                },
+
+                async saveAdminProduct() {
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'save_product',
+                                productData: this.productForm
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã lưu thông tin sản phẩm thành công!');
+                            this.showProductModal = false;
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi lưu sản phẩm');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast('Lỗi khi lưu thông tin sản phẩm');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                async approveAdminOrder(orderId) {
+                    if (!confirm('Duyệt đơn hàng này và trừ tiền ví khách hàng?')) return;
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'approve_order',
+                                orderId: orderId
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã duyệt đơn thành công!');
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi duyệt đơn');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast(err.message || 'Lỗi duyệt đơn hàng');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                async rejectAdminOrder(orderId) {
+                    if (!confirm('Từ chối đơn hàng chờ này?')) return;
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'reject_order',
+                                orderId: orderId
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã từ chối đơn hàng!');
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi từ chối đơn');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast('Lỗi khi từ chối đơn hàng');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                // UTILITY FUNCTIONS
+                parseCSV(csv) {
+                    if (!csv || csv.includes('html')) return [];
+                    const lines = csv.split(/\r?\n/);
+                    if (lines.length < 2) return [];
+                    
+                    const parseLine = (str) => {
+                        const res = [];
+                        let cell = '';
+                        let inQuote = false;
+                        const len = str.length;
+                        for (let i = 0; i < len; i++) {
+                            const c = str[i];
+                            if (c === '"') {
+                                if (inQuote && i + 1 < len && str[i + 1] === '"') {
+                                    cell += '"';
+                                    i++;
+                                } else {
+                                    inQuote = !inQuote;
+                                }
+                            } else if (c === ',' && !inQuote) {
+                                res.push(cell.trim());
+                                cell = '';
+                            } else {
+                                cell += c;
+                            }
+                        }
+                        res.push(cell.trim());
+                        return res;
+                    };
+
+                    const headers = parseLine(lines[0]);
+                    return lines.slice(1).map(line => {
+                        if (!line.trim()) return null;
+                        const values = parseLine(line);
+                        const row = {};
+                        headers.forEach((h, i) => {
+                            if (h) row[h] = values[i] || '';
+                        });
+                        return row;
+                    }).filter(Boolean);
+                },
+
+                getField(r, patterns) {
+                    if (!r) return '';
+                    const keys = Object.keys(r);
+                    for (const pattern of patterns) {
+                        const patLower = pattern.toLowerCase().trim();
+                        const matchKey = keys.find(k => {
+                            const kLower = k.toLowerCase().trim();
+                            return kLower === patLower || kLower.includes(patLower);
+                        });
+                        if (matchKey && r[matchKey] !== undefined && r[matchKey] !== null && String(r[matchKey]).trim() !== '') {
+                            return String(r[matchKey]).trim();
+                        }
+                    }
+                    return '';
+                },
+
+                formatCurrency(val) {
+                    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val || 0);
+                },
+
+                formatDate(isoStr) {
+                    if (!isoStr || isoStr === '--') return '--';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        return d.toLocaleDateString('vi-VN') + ' ' + d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                    } catch (e) {
+                        return isoStr;
+                    }
+                },
+
+                showToast(message) {
+                    const container = document.getElementById('toast-container');
+                    const toast = document.createElement('div');
+                    toast.className = 'bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 transition-all duration-300 transform translate-y-10 opacity-0';
+                    toast.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i><span class="text-sm font-medium">${message}</span>`;
+                    container.appendChild(toast);
+
+                    setTimeout(() => toast.classList.remove('translate-y-10', 'opacity-0'), 100);
+                    setTimeout(() => {
+                        toast.classList.add('translate-y-10', 'opacity-0');
+                        setTimeout(() => toast.remove(), 300);
+                    }, 3000);
+
+                    lucide.createIcons();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
