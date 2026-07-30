@@ -93,7 +93,7 @@
     <!-- Authenticated Layout -->
     <div x-show="isLoggedIn" x-cloak class="flex-1 flex flex-col">
         <!-- Header -->
-        <header class="bg-white border-b border-gray-200 py-4 px-6 sticky top-0 z-50 shadow-sm flex items-center justify-between">
+        <header class="bg-white border-b border-gray-200 py-4 px-6 sticky top-0 z-40 shadow-sm flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white shadow-md shadow-primary/20">
                     <i data-lucide="store" class="w-5 h-5"></i>
@@ -132,6 +132,38 @@
             </div>
         </header>
 
+        <!-- STICKY STATUS BANNER FOR CUSTOMER TOPUP (Feature 5) -->
+        <template x-if="currentUser?.role === 'customer' && activeTopupBanner.show">
+            <div class="px-6 py-2.5 text-xs font-bold transition-all flex items-center justify-between shadow-inner"
+                :class="{
+                    'bg-amber-400 text-amber-950': activeTopupBanner.status === 'pending',
+                    'bg-emerald-500 text-white': activeTopupBanner.status === 'approved',
+                    'bg-red-500 text-white': activeTopupBanner.status === 'rejected'
+                }">
+                <div class="flex items-center gap-2 max-w-7xl mx-auto w-full">
+                    <template x-if="activeTopupBanner.status === 'pending'">
+                        <span class="flex items-center gap-1.5">
+                            <i data-lucide="clock" class="w-4 h-4 animate-spin"></i>
+                            <span>⏳ Yêu cầu nạp <strong x-text="formatCurrency(activeTopupBanner.amount)"></strong> đang chờ duyệt · Thường xử lý trong 15 phút</span>
+                        </span>
+                    </template>
+                    <template x-if="activeTopupBanner.status === 'approved'">
+                        <span class="flex items-center gap-1.5">
+                            <i data-lucide="check-circle" class="w-4 h-4"></i>
+                            <span>✓ Ví đã được nạp <strong x-text="formatCurrency(activeTopupBanner.amount)"></strong> thành công!</span>
+                        </span>
+                    </template>
+                    <template x-if="activeTopupBanner.status === 'rejected'">
+                        <span class="flex items-center gap-1.5">
+                            <i data-lucide="x-circle" class="w-4 h-4"></i>
+                            <span>✗ Yêu cầu bị từ chối · <span x-text="activeTopupBanner.note || 'Ảnh hóa đơn không hợp lệ'"></span></span>
+                        </span>
+                    </template>
+                </div>
+                <button @click="activeTopupBanner.show = false" class="opacity-70 hover:opacity-100 text-sm">✕</button>
+            </div>
+        </template>
+
         <!-- Navigation Tabs -->
         <div class="bg-white border-b border-gray-200 px-6">
             <div class="max-w-7xl mx-auto flex gap-6 overflow-x-auto hide-scrollbar">
@@ -155,7 +187,7 @@
                 <template x-if="currentUser?.role === 'admin'">
                     <div class="flex gap-6">
                         <button @click="currentTab = 'admin_topup_approval'" :class="currentTab === 'admin_topup_approval' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2 relative">
-                            <i data-lucide="check-square" class="w-4 h-4"></i> Duyệt Nạp Tiền
+                            <i data-lucide="check-square" class="w-4 h-4"></i> Duyệt Nạp Tiền (<span x-text="pendingTopupsCount"></span>)
                             <span x-show="pendingTopupsCount > 0" class="w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center" x-text="pendingTopupsCount"></span>
                         </button>
                         <button @click="currentTab = 'admin_products_inv'" :class="currentTab === 'admin_products_inv' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
@@ -209,21 +241,18 @@
                                 <div>
                                     <!-- BADGES (Feature 7) -->
                                     <div class="flex flex-wrap items-center gap-1.5 mb-3">
-                                        <!-- Badge 🔥 Mới (trong vòng 7 ngày) -->
                                         <template x-if="isNewProduct(p)">
                                             <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm flex items-center gap-0.5">
                                                 🔥 Mới
                                             </span>
                                         </template>
 
-                                        <!-- Badge ⚡ Sắp hết (tồn <= 3) -->
                                         <template x-if="isLowStock(p)">
                                             <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 flex items-center gap-0.5">
                                                 ⚡ Sắp hết
                                             </span>
                                         </template>
 
-                                        <!-- Badge Hết hàng -->
                                         <template x-if="p.type === 'auto' && getAvailableStock(p.id) === 0">
                                             <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-700">
                                                 Hết hàng
@@ -242,10 +271,10 @@
                                     </div>
                                     <p class="text-xs text-gray-600 leading-relaxed mb-4 whitespace-pre-line" x-text="p.description || 'Chính hãng, bảo hành full thời gian'"></p>
 
-                                    <!-- Duration info if available -->
+                                    <!-- Duration info -->
                                     <div class="text-[11px] text-gray-500 font-medium flex items-center gap-1.5 mb-4 bg-gray-50 p-2 rounded-lg">
                                         <i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>
-                                        <span>Thời hạn sử dụng: <strong>30 ngày</strong> (tính từ ngày mua thành công)</span>
+                                        <span>Thời hạn sử dụng: <strong>30 ngày</strong> (tính từ ngày mua)</span>
                                     </div>
                                 </div>
 
@@ -396,11 +425,11 @@
                                 </div>
                             </div>
 
-                            <!-- QR CODE IMAGE (If Available) -->
+                            <!-- QR CODE IMAGE -->
                             <template x-if="systemConfig.SHOP_BANK_QR_URL">
                                 <div class="flex flex-col items-center bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm shrink-0">
                                     <img :src="systemConfig.SHOP_BANK_QR_URL" alt="QR Code Bank" class="w-36 h-36 object-contain rounded-xl">
-                                    <span class="text-[10px] text-gray-400 font-medium mt-1">Quét mã QR để chuyển nhanh</span>
+                                    <span class="text-[10px] text-gray-400 font-medium mt-1">Quét mã QR chuyển nhanh</span>
                                 </div>
                             </template>
                         </div>
@@ -432,9 +461,9 @@
                                             <td class="px-4 py-3 font-mono font-bold text-amber-700" x-text="tr.id"></td>
                                             <td class="px-4 py-3 text-gray-500" x-text="formatDate(tr.requestedAt)"></td>
                                             <td class="px-4 py-3">
-                                                <a :href="tr.proofUrl" target="_blank" class="text-primary hover:underline font-medium inline-flex items-center gap-1">
-                                                    <i data-lucide="external-link" class="w-3 h-3"></i> Xem ảnh
-                                                </a>
+                                                <button @click="openLightbox(tr.proofUrl)" class="text-primary hover:underline font-medium inline-flex items-center gap-1">
+                                                    <i data-lucide="image" class="w-3 h-3"></i> Xem ảnh
+                                                </button>
                                             </td>
                                             <td class="px-4 py-3 text-right font-bold text-gray-900" x-text="formatCurrency(tr.amount)"></td>
                                             <td class="px-4 py-3 text-center">
@@ -450,12 +479,12 @@
                         </div>
                     </div>
 
-                    <!-- WALLET LOGS TABLE WITH PILL FILTER BUTTONS (Feature 5) -->
+                    <!-- WALLET LOGS TABLE WITH PILL FILTER BUTTONS -->
                     <div class="glass-card rounded-2xl overflow-hidden">
                         <div class="p-5 border-b border-gray-100 bg-white flex flex-wrap justify-between items-center gap-4">
                             <h3 class="text-lg font-bold text-gray-900">Biến Động Số Dư & Lịch Sử Giao Dịch</h3>
                             
-                            <!-- Filter Pill Buttons (Feature 5) -->
+                            <!-- Filter Pill Buttons -->
                             <div class="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
                                 <button @click="walletLogFilter = 'all'" :class="walletLogFilter === 'all' ? 'bg-white text-gray-900 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-700 font-medium'" class="px-3 py-1 rounded-lg text-xs transition-all">Tất cả</button>
                                 <button @click="walletLogFilter = 'topup'" :class="walletLogFilter === 'topup' ? 'bg-white text-green-700 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-700 font-medium'" class="px-3 py-1 rounded-lg text-xs transition-all">Nạp tiền</button>
@@ -539,7 +568,7 @@
                                         </tr>
                                     </template>
 
-                                    <!-- Completed Orders with RE-ORDER BUTTON (Feature 6) -->
+                                    <!-- Completed Orders -->
                                     <template x-for="o in myOrders" :key="o.id">
                                         <tr class="hover:bg-gray-50 transition-colors">
                                             <td class="px-6 py-4 font-mono text-xs font-bold text-primary" x-text="o.id"></td>
@@ -555,7 +584,6 @@
                                                         <i data-lucide="key" class="w-3.5 h-3.5"></i> Xem Nick
                                                     </button>
                                                     
-                                                    <!-- Re-order button (Feature 6) -->
                                                     <button @click="reorderProduct(o)" 
                                                         :disabled="isProductOutOfStock(o.productId)"
                                                         :title="isProductOutOfStock(o.productId) ? 'Tạm hết hàng' : 'Mua lại sản phẩm này'"
@@ -578,51 +606,104 @@
 
                 <!-- ==================== ADMIN VIEWS ==================== -->
                 
-                <!-- Admin Tab: Top-up Requests Approval -->
+                <!-- ADMIN TAB: ENHANCED TOPUP APPROVAL (Feature 6 & 7) -->
                 <div x-show="currentTab === 'admin_topup_approval'">
-                    <div class="grid md:grid-cols-3 gap-8">
-                        <!-- Pending Requests Table -->
-                        <div class="glass-card rounded-2xl overflow-hidden md:col-span-2">
-                            <div class="p-5 border-b border-gray-100 bg-white flex justify-between items-center">
-                                <h3 class="text-lg font-bold text-gray-900">Danh Sách Yêu Cầu Nạp Tiền Chờ Duyệt</h3>
-                                <span class="text-xs bg-amber-100 text-amber-800 px-3 py-1 rounded-full font-bold" x-text="pendingTopupsCount + ' yêu cầu'"></span>
+                    <!-- Summary Bar (Feature 7) -->
+                    <div class="bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-2xl p-4 mb-6 shadow-md flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                                <i data-lucide="clock" class="w-5 h-5"></i>
                             </div>
+                            <div>
+                                <h3 class="text-sm font-bold">Tổng Quan Yêu Cầu Nạp Tiền</h3>
+                                <p class="text-xs text-amber-100" x-text="pendingTopupsCount + ' yêu cầu đang chờ · Tổng số tiền khai: ' + formatCurrency(pendingTopupsTotalSum)"></p>
+                            </div>
+                        </div>
+                        
+                        <!-- Admin Filter Toggle -->
+                        <div class="flex items-center gap-1.5 bg-black/20 p-1 rounded-xl">
+                            <button @click="adminTopupFilter = 'pending'" :class="adminTopupFilter === 'pending' ? 'bg-white text-amber-900 font-bold' : 'text-white/80 hover:text-white'" class="px-3 py-1 rounded-lg text-xs transition-all">Chưa xử lý (<span x-text="pendingTopupsCount"></span>)</button>
+                            <button @click="adminTopupFilter = 'processed'" :class="adminTopupFilter === 'processed' ? 'bg-white text-amber-900 font-bold' : 'text-white/80 hover:text-white'" class="px-3 py-1 rounded-lg text-xs transition-all">Đã xử lý</button>
+                            <button @click="adminTopupFilter = 'all'" :class="adminTopupFilter === 'all' ? 'bg-white text-amber-900 font-bold' : 'text-white/80 hover:text-white'" class="px-3 py-1 rounded-lg text-xs transition-all">Tất cả</button>
+                        </div>
+                    </div>
+
+                    <div class="grid md:grid-cols-3 gap-8">
+                        <!-- Top-up Requests Table -->
+                        <div class="glass-card rounded-2xl overflow-hidden md:col-span-2">
                             <div class="overflow-x-auto">
                                 <table class="w-full text-left text-sm">
                                     <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase">
                                         <tr>
-                                            <th class="px-4 py-3">Mã YC</th>
-                                            <th class="px-4 py-3">Email Khách</th>
-                                            <th class="px-4 py-3 text-right">Số Tiền</th>
-                                            <th class="px-4 py-3 text-center">Ảnh Hóa Đơn</th>
+                                            <th class="px-4 py-3">Ảnh CK</th>
+                                            <th class="px-4 py-3">Thông Tin Khách</th>
+                                            <th class="px-4 py-3 text-right">Số Tiền (Khai / Thực Duyệt)</th>
                                             <th class="px-4 py-3 text-center">Hành Động</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-100 bg-white">
-                                        <template x-for="tr in pendingTopupsOnly" :key="tr.id">
-                                            <tr class="hover:bg-amber-50/20">
-                                                <td class="px-4 py-3 font-mono font-bold text-xs text-amber-700" x-text="tr.id"></td>
-                                                <td class="px-4 py-3 font-bold text-gray-900 text-xs" x-text="tr.email"></td>
-                                                <td class="px-4 py-3 text-right font-bold text-green-600" x-text="formatCurrency(tr.amount)"></td>
-                                                <td class="px-4 py-3 text-center">
-                                                    <a :href="tr.proofUrl" target="_blank" class="text-primary hover:underline text-xs font-bold inline-flex items-center gap-1">
-                                                        <i data-lucide="image" class="w-3.5 h-3.5"></i> Xem Ảnh
-                                                    </a>
-                                                </td>
-                                                <td class="px-4 py-3 text-center">
-                                                    <div class="flex items-center justify-center gap-2">
-                                                        <button @click="approveTopup(tr)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm">
-                                                            Duyệt Nạp
-                                                        </button>
-                                                        <button @click="rejectTopup(tr)" class="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-all">
-                                                            Từ Chối
-                                                        </button>
+                                        <template x-for="tr in filteredAdminTopups" :key="tr.id">
+                                            <tr :class="{
+                                                    'bg-amber-50/20': tr.status === 'pending',
+                                                    'bg-emerald-50/40': tr.status === 'approved',
+                                                    'bg-red-50/30': tr.status === 'rejected'
+                                                }">
+                                                <!-- Proof Image Thumbnail (Feature 6) -->
+                                                <td class="px-4 py-3 shrink-0">
+                                                    <div class="relative group w-14 h-14 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 cursor-pointer shadow-sm" @click="openLightbox(tr.proofUrl)">
+                                                        <img :src="tr.proofUrl" alt="Hóa đơn CK" class="w-full h-full object-cover group-hover:scale-110 transition-transform">
+                                                        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                                            <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                                                        </div>
                                                     </div>
+                                                </td>
+
+                                                <!-- Customer Details & Notes -->
+                                                <td class="px-4 py-3">
+                                                    <p class="font-bold text-gray-900 text-xs" x-text="tr.email"></p>
+                                                    <p class="text-[11px] text-gray-400 font-mono" x-text="tr.id + ' · ' + formatDate(tr.requestedAt)"></p>
+                                                    <template x-if="tr.note">
+                                                        <p class="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded mt-1 font-medium inline-block" x-text="'💬 ' + tr.note"></p>
+                                                    </template>
+                                                    <template x-if="tr.status !== 'pending'">
+                                                        <p class="text-[11px] font-bold mt-1" :class="tr.status === 'approved' ? 'text-emerald-600' : 'text-red-500'" 
+                                                           x-text="tr.status === 'approved' ? '✓ Đã duyệt bởi ' + (tr.reviewedBy || 'Admin') : '✗ Từ chối bởi ' + (tr.reviewedBy || 'Admin')"></p>
+                                                    </template>
+                                                </td>
+
+                                                <!-- Amount Input for Admin (Feature 6) -->
+                                                <td class="px-4 py-3 text-right">
+                                                    <template x-if="tr.status === 'pending'">
+                                                        <div class="inline-flex flex-col items-end">
+                                                            <span class="text-[11px] text-gray-400 font-medium">Khai: <strong x-text="formatCurrency(tr.amount)"></strong></span>
+                                                            <input type="number" x-model.number="tr.editableAmount" step="10000" class="w-28 text-right bg-white border border-gray-300 rounded-lg px-2 py-1 text-xs font-bold text-emerald-600 focus:outline-none focus:border-primary">
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="tr.status !== 'pending'">
+                                                        <span class="font-bold text-sm" :class="tr.status === 'approved' ? 'text-emerald-600' : 'text-red-500'" x-text="formatCurrency(tr.amount)"></span>
+                                                    </template>
+                                                </td>
+
+                                                <!-- Action Buttons (Feature 6) -->
+                                                <td class="px-4 py-3 text-center">
+                                                    <template x-if="tr.status === 'pending'">
+                                                        <div class="flex flex-col sm:flex-row items-center justify-center gap-1.5">
+                                                            <button @click="approveTopupWithAmount(tr)" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm">
+                                                                Duyệt
+                                                            </button>
+                                                            <button @click="rejectTopup(tr)" class="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-all">
+                                                                Từ Chối
+                                                            </button>
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="tr.status !== 'pending'">
+                                                        <span class="text-xs text-gray-400 font-medium uppercase" x-text="tr.status === 'approved' ? 'Đã duyệt' : 'Đã từ chối'"></span>
+                                                    </template>
                                                 </td>
                                             </tr>
                                         </template>
-                                        <template x-if="pendingTopupsOnly.length === 0">
-                                            <tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 text-sm">Không có yêu cầu nạp tiền nào đang chờ duyệt.</td></tr>
+                                        <template x-if="filteredAdminTopups.length === 0">
+                                            <tr><td colspan="4" class="px-6 py-12 text-center text-gray-400 text-sm">Không có yêu cầu nạp tiền nào.</td></tr>
                                         </template>
                                     </tbody>
                                 </table>
@@ -902,7 +983,7 @@
                     </div>
                 </div>
 
-                <!-- ADMIN TAB: SHOP SETTINGS (Feature 9) -->
+                <!-- ADMIN TAB: SHOP SETTINGS (Feature 8) -->
                 <div x-show="currentTab === 'admin_shop_settings'">
                     <div class="glass-card rounded-2xl p-8 max-w-2xl mx-auto shadow-xl">
                         <div class="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
@@ -910,33 +991,51 @@
                                 <i data-lucide="building-2" class="w-5 h-5"></i>
                             </div>
                             <div>
-                                <h2 class="text-xl font-bold text-gray-900">Cài Đặt Thông Tin Ngân Hàng Shop</h2>
-                                <p class="text-xs text-gray-500">Tự động cập nhật 4 thông số `SHOP_BANK_*` vào `SYSTEM_CONFIG`</p>
+                                <h2 class="text-xl font-bold text-gray-900">Cài Đặt Ngân Hàng & Upload Cloudinary</h2>
+                                <p class="text-xs text-gray-500">Tự động lưu vào `SYSTEM_CONFIG`</p>
                             </div>
                         </div>
 
                         <form @submit.prevent="saveShopSettings()" class="space-y-5">
-                            <div>
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tên Ngân Hàng (SHOP_BANK_NAME)</label>
-                                <input type="text" x-model="adminConfigForm.SHOP_BANK_NAME" placeholder="MB Bank / Vietcombank..." class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-semibold focus:outline-none focus:border-primary">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Số Tài Khoản (SHOP_BANK_ACCOUNT)</label>
-                                <input type="text" x-model="adminConfigForm.SHOP_BANK_ACCOUNT" placeholder="0398057191" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-mono font-bold text-primary focus:outline-none focus:border-primary">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tên Chủ Tài Khoản (SHOP_BANK_OWNER)</label>
-                                <input type="text" x-model="adminConfigForm.SHOP_BANK_OWNER" placeholder="NGUYEN VAN A" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:border-primary">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Link Ảnh Mã QR Chuyển Khoản (SHOP_BANK_QR_URL)</label>
-                                <input type="url" x-model="adminConfigForm.SHOP_BANK_QR_URL" placeholder="https://img.vietqr.io/image/MB-0398057191-compact2.png" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary">
+                            <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
+                                <h4 class="text-xs font-bold uppercase text-gray-600 tracking-wider">Thông Tin Chuyển Khoản Ngân Hàng</h4>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 mb-1">Tên Ngân Hàng (SHOP_BANK_NAME)</label>
+                                    <input type="text" x-model="adminConfigForm.SHOP_BANK_NAME" placeholder="MB Bank / Vietcombank..." class="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-semibold focus:outline-none focus:border-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 mb-1">Số Tài Khoản (SHOP_BANK_ACCOUNT)</label>
+                                    <input type="text" x-model="adminConfigForm.SHOP_BANK_ACCOUNT" placeholder="0398057191" class="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-mono font-bold text-primary focus:outline-none focus:border-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 mb-1">Tên Chủ Tài Khoản (SHOP_BANK_OWNER)</label>
+                                    <input type="text" x-model="adminConfigForm.SHOP_BANK_OWNER" placeholder="NGUYEN VAN A" class="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold focus:outline-none focus:border-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 mb-1">Link Ảnh Mã QR (SHOP_BANK_QR_URL)</label>
+                                    <input type="url" x-model="adminConfigForm.SHOP_BANK_QR_URL" placeholder="https://img.vietqr.io/..." class="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary">
+                                </div>
                             </div>
 
-                            <div class="pt-4 border-t border-gray-100 flex justify-end">
+                            <!-- CLOUDINARY CONFIG (Feature 8) -->
+                            <div class="bg-indigo-50/60 p-4 rounded-xl border border-indigo-100 space-y-4">
+                                <h4 class="text-xs font-bold uppercase text-indigo-900 tracking-wider flex items-center gap-1.5">
+                                    <i data-lucide="cloud-upload" class="w-4 h-4 text-indigo-600"></i> Cấu Hình Cloudinary Upload Ảnh Trực Tiếp
+                                </h4>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 mb-1">Cloud Name (CLOUDINARY_CLOUD_NAME)</label>
+                                    <input type="text" x-model="adminConfigForm.CLOUDINARY_CLOUD_NAME" placeholder="Tên cloud name tài khoản Cloudinary" class="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-gray-500 mb-1">Unsigned Upload Preset (CLOUDINARY_UPLOAD_PRESET)</label>
+                                    <input type="text" x-model="adminConfigForm.CLOUDINARY_UPLOAD_PRESET" placeholder="goshop_unsigned..." class="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-3 text-sm focus:outline-none focus:border-primary">
+                                </div>
+                            </div>
+
+                            <div class="pt-2 flex justify-end">
                                 <button type="submit" class="bg-primary hover:bg-primary-dark text-white px-8 py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/20 flex items-center gap-2">
                                     <i data-lucide="check" class="w-4 h-4"></i>
-                                    <span>Lưu Cấu Hình Ngân Hàng</span>
+                                    <span>Lưu Tất Cả Cấu Hình</span>
                                 </button>
                             </div>
                         </form>
@@ -949,30 +1048,132 @@
 
     <!-- MODALS -->
 
-    <!-- Customer Top-up Request Modal -->
-    <div x-show="showTopupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" x-cloak>
-        <div @click.away="showTopupModal = false" class="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h3 class="text-lg font-bold text-gray-900 mb-2">Gửi Yêu Cầu Nạp Tiền Vào Ví</h3>
-            <p class="text-xs text-gray-500 mb-4">Nhập số tiền đã chuyển khoản và dán link ảnh hóa đơn để Admin kiểm tra.</p>
+    <!-- CUSTOMER TOP-UP REQUEST MODAL WITH CLOUDINARY & QUICK PILLS (Feature 1, 2, 3, 4) -->
+    <div x-show="showTopupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" x-cloak>
+        <div @click.away="showTopupModal = false" class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 sm:p-8 text-left">
+            <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+                <h3 class="text-xl font-bold text-gray-900">Gửi Yêu Cầu Nạp Tiền Vào Ví</h3>
+                <button @click="showTopupModal = false" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
 
-            <form @submit.prevent="submitTopupRequest()" class="space-y-4">
+            <form @submit.prevent="submitTopupRequest()" class="space-y-5">
+                <!-- QUICK SUGGESTION PILLS (Feature 2) -->
                 <div>
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Số Tiền Nạp (VNĐ)</label>
-                    <input type="number" x-model.number="topupReqForm.amount" min="10000" step="10000" required placeholder="100000" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3.5 text-sm font-bold text-primary focus:outline-none focus:border-primary">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Chọn Nhanh Số Tiền Nạp (VNĐ)</label>
+                    <div class="grid grid-cols-4 gap-2 mb-2">
+                        <template x-for="amt in [50000, 100000, 200000, 500000]" :key="amt">
+                            <button type="button" @click="selectQuickAmount(amt)"
+                                :class="topupReqForm.amount === amt ? 'bg-primary text-white shadow-md font-black border-primary' : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100 font-semibold'"
+                                class="py-2.5 rounded-xl border text-xs text-center transition-all">
+                                <span x-text="formatCurrency(amt)"></span>
+                            </button>
+                        </template>
+                    </div>
+
+                    <input type="number" x-model.number="topupReqForm.amount" @input="activeQuickAmount = null" min="10000" step="10000" required placeholder="Nhập số tiền khác..." 
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold text-primary focus:outline-none focus:border-primary">
+                    
+                    <!-- REALTIME BALANCE PREVIEW (Feature 3) -->
+                    <template x-if="topupReqForm.amount > 0">
+                        <p class="text-xs text-emerald-600 font-bold mt-1.5 flex items-center gap-1">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                            <span>Sau khi nạp, số dư của bạn sẽ là: <strong class="font-mono text-sm" x-text="formatCurrency(myWalletBalance + Number(topupReqForm.amount))"></strong></span>
+                        </p>
+                    </template>
                 </div>
+
+                <!-- DIRECT FILE UPLOAD WITH CLOUDINARY (Feature 1) -->
                 <div>
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Link Ảnh Chuyển Khoản (Imgur/drive/zalo...)</label>
-                    <input type="url" x-model="topupReqForm.proofUrl" required placeholder="https://i.imgur.com/..." class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3.5 text-sm focus:outline-none focus:border-primary">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tải Ảnh Hóa Đơn Chuyển Khoản</label>
+                    
+                    <div class="border-2 border-dashed rounded-2xl p-4 text-center transition-all bg-gray-50/70"
+                        :class="uploadingState.isSuccess ? 'border-emerald-400 bg-emerald-50/30' : (uploadingState.isError ? 'border-red-300 bg-red-50/30' : 'border-gray-300 hover:border-primary')">
+                        
+                        <!-- Uploading State -->
+                        <template x-if="uploadingState.isUploading">
+                            <div class="py-4 flex flex-col items-center justify-center text-gray-500">
+                                <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-primary mb-2"></i>
+                                <span class="text-xs font-bold text-gray-700">Đang tải ảnh hóa đơn lên Cloudinary...</span>
+                            </div>
+                        </template>
+
+                        <!-- Upload Success Preview -->
+                        <template x-if="uploadingState.isSuccess && !uploadingState.isUploading">
+                            <div class="flex items-center justify-between gap-4 p-1">
+                                <div class="flex items-center gap-3">
+                                    <img :src="uploadingState.previewUrl" class="w-16 h-16 object-cover rounded-xl shadow-md border border-emerald-200">
+                                    <div class="text-left">
+                                        <span class="inline-flex items-center gap-1 text-xs font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-md">
+                                            ✓ Tải ảnh thành công
+                                        </span>
+                                        <p class="text-[11px] text-gray-400 mt-1">Đã sẵn sàng gửi duyệt</p>
+                                    </div>
+                                </div>
+                                <label class="cursor-pointer text-xs text-primary hover:underline font-bold">
+                                    Đổi ảnh khác
+                                    <input type="file" accept="image/*" capture="environment" class="hidden" @change="handleFileUpload($event)">
+                                </label>
+                            </div>
+                        </template>
+
+                        <!-- Error State -->
+                        <template x-if="uploadingState.isError && !uploadingState.isUploading">
+                            <div class="py-2 flex flex-col items-center">
+                                <span class="text-xs font-bold text-red-600 mb-2">Upload thất bại, thử lại</span>
+                                <button type="button" @click="retryUpload()" class="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-bold shadow-sm">
+                                    Thử lại Upload
+                                </button>
+                            </div>
+                        </template>
+
+                        <!-- Initial Idle State -->
+                        <template x-if="!uploadingState.isUploading && !uploadingState.isSuccess && !uploadingState.isError">
+                            <label class="cursor-pointer flex flex-col items-center py-4">
+                                <i data-lucide="camera" class="w-8 h-8 text-primary mb-2"></i>
+                                <span class="text-xs font-bold text-gray-700">Bấm để chụp ảnh hoặc chọn file hóa đơn</span>
+                                <span class="text-[11px] text-gray-400 mt-1">Hỗ trợ JPG, PNG, WEBP (camera mobile)</span>
+                                <input type="file" accept="image/*" capture="environment" class="hidden" @change="handleFileUpload($event)">
+                            </label>
+                        </template>
+                    </div>
+
+                    <!-- Fallback Link Input if Cloudinary not configured -->
+                    <template x-if="!systemConfig.CLOUDINARY_CLOUD_NAME">
+                        <div class="mt-2">
+                            <input type="url" x-model="topupReqForm.proofUrl" placeholder="Hoặc dán link ảnh trực tiếp (http...)" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-xs">
+                        </div>
+                    </template>
                 </div>
+
+                <!-- OPTIONAL NOTE FIELD (Feature 4) -->
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Ghi Chú (Tùy chọn)</label>
+                    <textarea x-model="topupReqForm.note" rows="2" placeholder="VD: CK lúc 14:30 ngày 10/06..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs focus:outline-none focus:border-primary"></textarea>
+                </div>
+
                 <div class="flex justify-end gap-3 pt-2">
-                    <button type="button" @click="showTopupModal = false" class="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
-                    <button type="submit" class="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded-xl shadow-md">Gửi Yêu Cầu</button>
+                    <button type="button" @click="showTopupModal = false" class="px-5 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
+                    <button type="submit" :disabled="!topupReqForm.proofUrl || uploadingState.isUploading" 
+                        :class="!topupReqForm.proofUrl || uploadingState.isUploading ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-lg shadow-primary/20'"
+                        class="px-6 py-3 text-xs font-bold rounded-xl transition-all">
+                        Gửi Yêu Cầu Nạp
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- PURCHASE SUCCESSFUL MODAL (Feature 2) -->
+    <!-- LIGHTBOX MODAL FOR ADMIN IMAGE PREVIEW (Feature 6) -->
+    <div x-show="lightboxModal.show" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md" x-cloak @click="lightboxModal.show = false">
+        <div class="relative max-w-4xl max-h-[90vh] p-2 bg-transparent" @click.stop>
+            <button @click="lightboxModal.show = false" class="absolute -top-10 right-0 text-white hover:text-gray-300 text-sm font-bold flex items-center gap-1">
+                <i data-lucide="x" class="w-6 h-6"></i> Đóng
+            </button>
+            <img :src="lightboxModal.imgUrl" class="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border border-white/20 mx-auto">
+        </div>
+    </div>
+
+    <!-- PURCHASE SUCCESSFUL MODAL -->
     <div x-show="showPurchaseSuccessModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" x-cloak>
         <div @click.away="showPurchaseSuccessModal = false" class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 sm:p-8 text-left border border-emerald-100">
             <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/10">
@@ -1197,21 +1398,25 @@
                 currentUser: null,
                 currentTab: 'cust_products',
 
-                // SHOP CONFIG FROM SYSTEM_CONFIG (Feature 1)
+                // SHOP CONFIG FROM SYSTEM_CONFIG (Feature 8)
                 systemConfig: {
                     SHOP_BANK_NAME: '',
                     SHOP_BANK_ACCOUNT: '',
                     SHOP_BANK_OWNER: '',
-                    SHOP_BANK_QR_URL: ''
+                    SHOP_BANK_QR_URL: '',
+                    CLOUDINARY_CLOUD_NAME: '',
+                    CLOUDINARY_UPLOAD_PRESET: ''
                 },
                 adminConfigForm: {
                     SHOP_BANK_NAME: '',
                     SHOP_BANK_ACCOUNT: '',
                     SHOP_BANK_OWNER: '',
-                    SHOP_BANK_QR_URL: ''
+                    SHOP_BANK_QR_URL: '',
+                    CLOUDINARY_CLOUD_NAME: '',
+                    CLOUDINARY_UPLOAD_PRESET: ''
                 },
 
-                // COPY FEEDBACK STATE (Feature 1)
+                // COPY FEEDBACK STATE
                 copiedState: {},
 
                 // Data Arrays (MB_ Prefix Schemas)
@@ -1222,19 +1427,38 @@
                 allOrders: [],
                 pendingOrders: [],
 
-                // Modals & Form States
+                // TOP-UP MODAL & UPLOADING STATE (Feature 1, 2, 3, 4)
                 showTopupModal: false,
-                topupReqForm: { amount: 100000, proofUrl: '' },
+                topupReqForm: { amount: 100000, proofUrl: '', note: '' },
+                activeQuickAmount: 100000,
+                uploadingState: {
+                    isUploading: false,
+                    isSuccess: false,
+                    isError: false,
+                    errorMessage: '',
+                    previewUrl: '',
+                    file: null
+                },
+
+                // CUSTOMER TOPUP STICKY BANNER (Feature 5)
+                activeTopupBanner: { show: false, reqId: '', amount: 0, status: 'pending', note: '' },
 
                 showItemModal: false,
                 currentItemData: '',
 
-                // PURCHASE SUCCESS MODAL (Feature 2)
+                // PURCHASE SUCCESS MODAL
                 showPurchaseSuccessModal: false,
                 purchasedModalData: { productName: '', price: 0, walletBalanceAfter: 0, itemData: '', itemDataLines: [] },
 
-                // WALLET LOG FILTER (Feature 5)
+                // LIGHTBOX MODAL FOR ADMIN (Feature 6)
+                lightboxModal: { show: false, imgUrl: '' },
+
+                // WALLET LOG FILTER
                 walletLogFilter: 'all',
+
+                // ADMIN TOPUP FILTER & ROW STATE (Feature 6 & 7)
+                adminTopupFilter: 'pending',
+                adminEditableAmounts: {},
 
                 // ADMIN FORMS
                 showProductModal: false,
@@ -1250,10 +1474,6 @@
                 adjustForm: { email: '', amount: 0, note: '' },
                 adjustSearchEmail: '',
                 orderSearchQuery: '',
-
-                // POLLING TIMER (Feature 4)
-                topupPollingTimer: null,
-                lastKnownApprovedCount: 0,
 
                 // COMPUTED PROPERTIES
                 get activeProducts() {
@@ -1314,6 +1534,24 @@
                     return this.pendingTopupsOnly.length;
                 },
 
+                get pendingTopupsTotalSum() {
+                    return this.pendingTopupsOnly.reduce((sum, r) => sum + (r.amount || 0), 0);
+                },
+
+                get filteredAdminTopups() {
+                    let list = this.topupRequests.map(r => ({
+                        ...r,
+                        editableAmount: this.adminEditableAmounts[r.id] !== undefined ? this.adminEditableAmounts[r.id] : r.amount
+                    })).sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt));
+
+                    if (this.adminTopupFilter === 'pending') {
+                        return list.filter(r => r.status === 'pending');
+                    } else if (this.adminTopupFilter === 'processed') {
+                        return list.filter(r => r.status !== 'pending');
+                    }
+                    return list;
+                },
+
                 get pendingOrdersOnly() {
                     return this.pendingOrders.filter(po => po.status === 'pending').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
                 },
@@ -1339,7 +1577,7 @@
                     return this.inventory.filter(i => String(i.productId) === String(this.selectedProdInv.id));
                 },
 
-                // PRODUCT HELPER FUNCTIONS (Feature 6 & 7)
+                // PRODUCT HELPER FUNCTIONS
                 isNewProduct(p) {
                     if (!p.createdAt) return false;
                     try {
@@ -1381,12 +1619,19 @@
                     this.fetchSystemConfig();
                     setInterval(() => this.fetchSystemConfig(), 30000);
 
-                    // Polling for top-up status updates (Feature 4)
+                    // Polling for customer topup banner & status (Feature 5) - every 30s
                     setInterval(() => {
-                        if (this.isLoggedIn && this.currentUser?.role === 'customer' && this.currentTab === 'cust_wallet') {
+                        if (this.isLoggedIn && this.currentUser?.role === 'customer') {
                             this.pollTopupStatus();
                         }
                     }, 30000);
+
+                    // Polling for admin pending count (Feature 7) - every 60s
+                    setInterval(() => {
+                        if (this.isLoggedIn && this.currentUser?.role === 'admin') {
+                            this.fetchData();
+                        }
+                    }, 60000);
 
                     const savedUser = localStorage.getItem('members_crm_user');
                     if (savedUser) {
@@ -1426,27 +1671,38 @@
 
                 async pollTopupStatus() {
                     try {
-                        const walletRes = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_WALLET_LOG&t=${Date.now()}`);
-                        if (walletRes.ok) {
-                            const csv = await walletRes.text();
-                            const newWalletLogs = this.parseCSV(csv).map(r => ({
+                        const topupRes = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_TOPUP_REQ&t=${Date.now()}`);
+                        if (topupRes.ok) {
+                            const csv = await topupRes.text();
+                            const newRequests = this.parseCSV(csv).map(r => ({
                                 id: this.getField(r, ['id', 'ID']),
                                 email: this.getField(r, ['email', 'Email']),
-                                type: this.getField(r, ['type', 'Type']),
                                 amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
-                                balanceAfter: parseInt(this.getField(r, ['balance_after', 'BalanceAfter'])) || 0,
-                                refId: this.getField(r, ['ref_id', 'RefId']),
-                                note: this.getField(r, ['note', 'Note']),
-                                timestamp: this.getField(r, ['timestamp', 'Timestamp']) || new Date().toISOString()
-                            })).filter(l => l.email);
+                                proofUrl: this.getField(r, ['proof_url', 'ProofUrl']),
+                                status: this.getField(r, ['status', 'Status']) || 'pending',
+                                requestedAt: this.getField(r, ['requested_at', 'RequestedAt']) || new Date().toISOString(),
+                                note: this.getField(r, ['note', 'Note'])
+                            })).filter(tr => tr.id && tr.email);
 
-                            const oldBal = this.myWalletBalance;
-                            this.walletLogs = newWalletLogs;
-                            const newBal = this.myWalletBalance;
+                            this.topupRequests = newRequests;
 
-                            if (newBal > oldBal) {
-                                const diff = newBal - oldBal;
-                                this.showToast(`Ví của bạn đã được nạp ${this.formatCurrency(diff)}!`);
+                            // Check active banner update (Feature 5)
+                            if (this.activeTopupBanner.show && this.activeTopupBanner.reqId) {
+                                const matched = newRequests.find(r => r.id === this.activeTopupBanner.reqId);
+                                if (matched && matched.status !== this.activeTopupBanner.status) {
+                                    this.activeTopupBanner.status = matched.status;
+                                    this.activeTopupBanner.note = matched.note || '';
+
+                                    if (matched.status === 'approved') {
+                                        this.showToast(`✓ Ví của bạn đã được nạp ${this.formatCurrency(matched.amount)}!`);
+                                        this.fetchData();
+                                        setTimeout(() => {
+                                            this.activeTopupBanner.show = false;
+                                        }, 5000);
+                                    } else if (matched.status === 'rejected') {
+                                        this.showToast(`✗ Yêu cầu nạp tiền bị từ chối`);
+                                    }
+                                }
                             }
                         }
                     } catch(e) {}
@@ -1571,7 +1827,9 @@
                                 amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
                                 proofUrl: this.getField(r, ['proof_url', 'ProofUrl']),
                                 status: this.getField(r, ['status', 'Status']) || 'pending',
-                                requestedAt: this.getField(r, ['requested_at', 'RequestedAt']) || new Date().toISOString()
+                                requestedAt: this.getField(r, ['requested_at', 'RequestedAt']) || new Date().toISOString(),
+                                reviewedBy: this.getField(r, ['reviewed_by', 'ReviewedBy']),
+                                note: this.getField(r, ['note', 'Note'])
                             })).filter(tr => tr.id && tr.email);
                         }
 
@@ -1613,15 +1871,83 @@
                     }
                 },
 
-                // CUSTOMER ACTIONS
+                // QUICK SUGGESTION PILLS (Feature 2)
+                selectQuickAmount(amt) {
+                    this.topupReqForm.amount = amt;
+                    this.activeQuickAmount = amt;
+                },
+
+                // FILE UPLOAD WITH CLOUDINARY (Feature 1)
+                async handleFileUpload(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    
+                    this.uploadingState.file = file;
+                    this.uploadingState.previewUrl = URL.createObjectURL(file);
+                    this.uploadingState.isError = false;
+                    this.uploadingState.errorMessage = '';
+
+                    await this.uploadToCloudinary(file);
+                },
+
+                async retryUpload() {
+                    if (!this.uploadingState.file) return;
+                    await this.uploadToCloudinary(this.uploadingState.file);
+                },
+
+                async uploadToCloudinary(file) {
+                    const cloudName = this.systemConfig.CLOUDINARY_CLOUD_NAME;
+                    const preset = this.systemConfig.CLOUDINARY_UPLOAD_PRESET;
+
+                    if (!cloudName || !preset) {
+                        // Fallback if Cloudinary is not configured in Admin Settings yet
+                        this.topupReqForm.proofUrl = this.uploadingState.previewUrl;
+                        this.uploadingState.isSuccess = true;
+                        this.showToast('Đã nhận ảnh hóa đơn!');
+                        return;
+                    }
+
+                    try {
+                        this.uploadingState.isUploading = true;
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        formData.append('upload_preset', preset);
+
+                        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const data = await res.json();
+                        
+                        if (data.secure_url) {
+                            this.uploadingState.isUploading = false;
+                            this.uploadingState.isSuccess = true;
+                            this.uploadingState.previewUrl = data.secure_url;
+                            this.topupReqForm.proofUrl = data.secure_url;
+                            this.showToast('✓ Tải ảnh lên Cloudinary thành công!');
+                        } else {
+                            throw new Error(data.error?.message || 'Lỗi upload ảnh');
+                        }
+                    } catch(err) {
+                        console.error('Cloudinary upload error:', err);
+                        this.uploadingState.isUploading = false;
+                        this.uploadingState.isError = true;
+                        this.uploadingState.errorMessage = 'Upload thất bại, thử lại';
+                        this.showToast('Upload ảnh thất bại, bấm thử lại');
+                    }
+                },
+
+                // CUSTOMER TOP-UP MODAL SUBMIT
                 openTopupModal() {
-                    this.topupReqForm = { amount: 100000, proofUrl: '' };
+                    this.topupReqForm = { amount: 100000, proofUrl: '', note: '' };
+                    this.activeQuickAmount = 100000;
+                    this.uploadingState = { isUploading: false, isSuccess: false, isError: false, errorMessage: '', previewUrl: '', file: null };
                     this.showTopupModal = true;
                 },
 
                 async submitTopupRequest() {
                     if (this.topupReqForm.amount <= 0 || !this.topupReqForm.proofUrl) {
-                        this.showToast('Vui lòng điền đúng số tiền và dán link ảnh hóa đơn');
+                        this.showToast('Vui lòng nhập đúng số tiền và tải ảnh hóa đơn');
                         return;
                     }
 
@@ -1638,8 +1964,17 @@
                         });
                         const data = await res.json();
                         if (data.status === 'success') {
-                            this.showToast('Đã gửi yêu cầu nạp tiền thành công! Đang chờ Admin duyệt.');
+                            this.showToast('Đã gửi yêu cầu nạp tiền!');
                             this.showTopupModal = false;
+
+                            // Show sticky banner (Feature 5)
+                            this.activeTopupBanner = {
+                                show: true,
+                                reqId: data.reqId,
+                                amount: this.topupReqForm.amount,
+                                status: 'pending',
+                                note: ''
+                            };
                             this.fetchData();
                         } else {
                             throw new Error(data.message || 'Lỗi gửi yêu cầu');
@@ -1755,9 +2090,15 @@
                     this.showItemModal = true;
                 },
 
-                // ADMIN ACTIONS
-                async approveTopup(req) {
-                    if (!confirm(`Xác nhận duyệt nạp ${this.formatCurrency(req.amount)} cho ${req.email}?`)) return;
+                openLightbox(imgUrl) {
+                    if (!imgUrl) return;
+                    this.lightboxModal = { show: true, imgUrl: imgUrl };
+                },
+
+                // ADMIN ACTIONS WITH EDITABLE AMOUNT (Feature 6)
+                async approveTopupWithAmount(req) {
+                    const amountToApprove = req.editableAmount || req.amount;
+                    if (!confirm(`Xác nhận duyệt nạp ${this.formatCurrency(amountToApprove)} cho ${req.email}?`)) return;
                     try {
                         this.isLoading = true;
                         const res = await fetch(this.CONFIG.WEBAPP_URL, {
@@ -1765,7 +2106,7 @@
                             body: JSON.stringify({
                                 action: 'topup_wallet',
                                 email: req.email,
-                                amount: req.amount,
+                                amount: amountToApprove,
                                 refId: req.id,
                                 note: 'Duyệt yêu cầu nạp: ' + req.id,
                                 reviewedBy: this.currentUser.email
@@ -1773,7 +2114,7 @@
                         });
                         const data = await res.json();
                         if (data.status === 'success') {
-                            this.showToast('Đã duyệt nạp tiền thành công!');
+                            this.showToast(`Đã duyệt nạp ${this.formatCurrency(amountToApprove)}!`);
                             this.fetchData();
                         } else {
                             throw new Error(data.message || 'Lỗi duyệt nạp');
@@ -2020,7 +2361,7 @@
                     }
                 },
 
-                // ADMIN SAVE SHOP SETTINGS (Feature 9)
+                // ADMIN SAVE SHOP SETTINGS INCLUDING CLOUDINARY (Feature 8)
                 async saveShopSettings() {
                     try {
                         this.isLoading = true;
@@ -2033,14 +2374,14 @@
                         });
                         const data = await res.json();
                         if (data.status === 'success') {
-                            this.showToast('Đã lưu thông tin cấu hình ngân hàng Shop thành công!');
+                            this.showToast('Đã lưu tất cả cấu hình thành công!');
                             this.systemConfig = { ...this.adminConfigForm };
                         } else {
                             throw new Error(data.message || 'Lỗi lưu cấu hình');
                         }
                     } catch(err) {
                         console.error(err);
-                        this.showToast('Lỗi khi lưu cấu hình ngân hàng');
+                        this.showToast('Lỗi khi lưu cấu hình');
                     } finally {
                         this.isLoading = false;
                     }
