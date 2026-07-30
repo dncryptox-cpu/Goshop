@@ -104,6 +104,13 @@
                     </div>
                 </template>
 
+                <!-- Admin Auto-Init Sheet Button -->
+                <template x-if="currentUser?.role === 'admin'">
+                    <button @click="initMemberSheets()" class="hidden sm:flex bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 px-3 py-1.5 rounded-xl text-xs font-bold transition-all items-center gap-1.5" title="Tự động tạo 6 Sheet Tab MB_ trên Google Sheets">
+                        <i data-lucide="zap" class="w-3.5 h-3.5 text-emerald-600"></i> Khởi Tạo Sheet MB
+                    </button>
+                </template>
+
                 <div class="hidden md:block text-right">
                     <p class="text-sm font-semibold text-gray-900" x-text="currentUser?.email"></p>
                 </div>
@@ -227,7 +234,12 @@
                         <template x-if="activeProducts.length === 0">
                             <div class="col-span-full glass-card rounded-2xl p-12 text-center text-gray-400">
                                 <i data-lucide="box" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
-                                <p class="text-sm font-medium">Hiện chưa có sản phẩm nào được mở bán.</p>
+                                <p class="text-sm font-medium mb-3">Hiện chưa có sản phẩm nào được mở bán.</p>
+                                <template x-if="currentUser?.role === 'admin'">
+                                    <button @click="initMemberSheets()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md">
+                                        ⚡ Bấm vào đây để Khởi Tạo 6 Sheet Tab Tự Động
+                                    </button>
+                                </template>
                             </div>
                         </template>
                     </div>
@@ -523,9 +535,12 @@
 
                 <!-- Admin Tab: Products & Inventory Management -->
                 <div x-show="currentTab === 'admin_products_inv'">
-                    <div class="flex items-center justify-between mb-6">
+                    <div class="flex flex-wrap items-center justify-between mb-6 gap-4">
                         <h2 class="text-xl font-bold text-gray-900">Quản Lý Sản Phẩm & Nhập Kho Tồn</h2>
                         <div class="flex items-center gap-3">
+                            <button @click="initMemberSheets()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-1.5" title="Khởi tạo tự động 6 Sheet Tab MB_ trên Google Sheets">
+                                <i data-lucide="zap" class="w-4 h-4"></i> Khởi Tạo Sheet MB_
+                            </button>
                             <button @click="openBulkInventoryModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-2">
                                 <i data-lucide="file-plus" class="w-4 h-4"></i> Nhập Kho Hàng Loạt
                             </button>
@@ -942,7 +957,7 @@
                 currentUser: null,
                 currentTab: 'cust_products',
 
-                // Data Arrays (New MB_ Prefix Schemas)
+                // Data Arrays (MB_ Prefix Schemas)
                 products: [],
                 inventory: [],
                 walletLogs: [],
@@ -1128,6 +1143,30 @@
                     localStorage.removeItem('members_crm_user');
                 },
 
+                // AUTO INIT SHEET TABS
+                async initMemberSheets() {
+                    if (!confirm('Khởi tạo tự động đủ 6 Sheet tab MB_ (MB_PRODUCTS, MB_INVENTORY, MB_WALLET_LOG, MB_TOPUP_REQ, MB_ORDERS, MB_PENDING_ORDERS) trên Google Sheets?')) return;
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'init_member_sheets' })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã khởi tạo đủ 6 Sheet tab MB_ trên Google Sheets thành công!');
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi khởi tạo');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast('Lỗi khi tự động khởi tạo Sheet tab MB_');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
                 // FETCH DATA FROM NEW MB_ PREFIX SHEETS
                 async fetchData() {
                     this.isLoading = true;
@@ -1274,7 +1313,7 @@
                 async handleBuyProduct(product) {
                     if (product.type === 'manual') {
                         const note = prompt(`Nhập ghi chú yêu cầu gia hạn cho gói "${product.name}" (VD: Email YouTube / SĐT):`);
-                        if (note === null) return; // User cancelled
+                        if (note === null) return;
                         
                         try {
                             this.isLoading = true;
