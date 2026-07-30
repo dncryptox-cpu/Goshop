@@ -1315,28 +1315,204 @@
         </div>
     </div>
 
-    <!-- View Item Data / Account Key Modal -->
-    <div x-show="showItemModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" x-cloak>
-        <div @click.away="showItemModal = false" class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+    <!-- View Item Data / Account Key Modal (Fully Upgraded) -->
+    <div x-show="showItemModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" x-cloak>
+        <div @click.away="showItemModal = false" class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 sm:p-7 overflow-hidden text-left border border-gray-100">
+            <!-- Modal Header -->
             <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
-                <h3 class="text-lg font-bold text-gray-900">Thông Tin Sản Phẩm / Tài Khoản Gia Hạn</h3>
-                <button @click="showItemModal = false" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
-            </div>
-            
-            <div class="bg-gray-900 text-green-400 p-4 rounded-xl font-mono text-sm whitespace-pre-wrap break-all mb-4 relative group select-all">
-                <span x-text="currentItemData"></span>
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-blue-50 text-primary rounded-xl flex items-center justify-center">
+                        <i data-lucide="key" class="w-4 h-4"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-gray-900">Chi Tiết Đơn Hàng & Tài Khoản</h3>
+                </div>
+                <button @click="showItemModal = false" class="text-gray-400 hover:text-gray-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
 
-            <div class="flex justify-end gap-3">
-                <button @click="copyTextWithFeedback(currentItemData, 'modalItem')" class="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2">
+            <!-- HEADER ORDER INFO & EXPIRY COUNTDOWN (Yêu cầu 4) -->
+            <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 mb-4 space-y-2 text-xs">
+                <div class="flex items-center justify-between">
+                    <h4 class="font-bold text-gray-900 text-sm" x-text="selectedModalOrder?.productName || 'Sản Phẩm Gia Hạn'"></h4>
+                    <span class="px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
+                        ✓ Hoàn thành
+                    </span>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-2 text-gray-500 pt-1 border-t border-gray-200/80">
+                    <div>
+                        <span>Mua lúc: </span>
+                        <strong class="text-gray-800 font-mono" x-text="formatDate(selectedModalOrder?.createdAt)"></strong>
+                    </div>
+                    <div class="text-right">
+                        <span>Mã đơn: </span>
+                        <strong class="text-primary font-mono font-bold" x-text="selectedModalOrder?.id"></strong>
+                    </div>
+                </div>
+
+                <!-- Expire date & Countdown -->
+                <template x-if="getExpiryCountdown(selectedModalOrder)">
+                    <div class="flex items-center justify-between pt-1.5 border-t border-gray-200/80 text-xs">
+                        <div class="text-gray-500">
+                            <span>Hết hạn: </span>
+                            <strong class="text-gray-800 font-mono" x-text="getExpiryCountdown(selectedModalOrder).expireFormatted"></strong>
+                        </div>
+                        <div>
+                            <template x-if="getExpiryCountdown(selectedModalOrder).isExpired">
+                                <span class="font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                    <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+                                    <span>Đã hết hạn</span>
+                                </span>
+                            </template>
+                            <template x-if="!getExpiryCountdown(selectedModalOrder).isExpired">
+                                <span class="font-bold px-2 py-0.5 rounded-md flex items-center gap-1"
+                                      :class="getExpiryCountdown(selectedModalOrder).isWarning ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-800'">
+                                    <template x-if="getExpiryCountdown(selectedModalOrder).isWarning">
+                                        <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+                                    </template>
+                                    <span x-text="getExpiryCountdown(selectedModalOrder).text"></span>
+                                </span>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- ADMIN OPEN REPORT WARNING (For Admin View) -->
+            <template x-if="currentUser?.role === 'admin' && hasOpenReport(selectedModalOrder?.id)">
+                <div class="bg-red-50 border border-red-200 rounded-2xl p-4 mb-4 text-xs space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-red-900 flex items-center gap-1.5">
+                            <i data-lucide="alert-circle" class="w-4 h-4 text-red-600"></i>
+                            Báo lỗi từ khách hàng:
+                        </span>
+                        <span class="text-[10px] text-red-600 font-mono" x-text="formatDate(getOpenReport(selectedModalOrder?.id)?.createdAt)"></span>
+                    </div>
+                    <p class="text-red-800 font-medium bg-white/90 p-2.5 rounded-xl border border-red-100" x-text="getOpenReport(selectedModalOrder?.id)?.description"></p>
+                    <div class="flex justify-end pt-1">
+                        <button type="button" @click="resolveOrderReport(getOpenReport(selectedModalOrder?.id)?.id)" class="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-xl shadow-sm flex items-center gap-1.5">
+                            <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+                            <span>Đánh dấu đã xử lý</span>
+                        </button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- PARSED ITEM DATA TABLE WITH INDIVIDUAL LABELS & COPY (Yêu cầu 1, 2, 3) -->
+            <div class="space-y-2.5 mb-4">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider">Thông Tin Tài Khoản / Key Được Cấp:</label>
+                <template x-for="item in currentItemParsedLines" :key="item.id">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-slate-50 border border-slate-200/70 rounded-2xl gap-2">
+                        <span class="text-xs text-gray-500 font-bold shrink-0 sm:w-1/3" x-text="item.label"></span>
+
+                        <div class="flex items-center gap-2 justify-between sm:justify-end flex-1 overflow-hidden">
+                            <!-- Masked Value for Password -->
+                            <div class="font-mono text-xs font-bold text-gray-900 truncate select-all">
+                                <template x-if="item.isPassword && !showPasswordState[item.id]">
+                                    <span class="tracking-widest text-gray-500 font-bold">••••••••</span>
+                                </template>
+                                <template x-if="!item.isPassword || showPasswordState[item.id]">
+                                    <span x-text="item.value"></span>
+                                </template>
+                            </div>
+
+                            <!-- Individual Copy & Eye Toggle Buttons -->
+                            <div class="flex items-center gap-1 shrink-0">
+                                <template x-if="item.isPassword">
+                                    <button type="button" @click="showPasswordState[item.id] = !showPasswordState[item.id]; $nextTick(() => lucide.createIcons())" 
+                                            class="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-200/60 rounded-lg transition-colors"
+                                            :title="showPasswordState[item.id] ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'">
+                                        <template x-if="!showPasswordState[item.id]">
+                                            <i data-lucide="eye" class="w-4 h-4"></i>
+                                        </template>
+                                        <template x-if="showPasswordState[item.id]">
+                                            <i data-lucide="eye-off" class="w-4 h-4"></i>
+                                        </template>
+                                    </button>
+                                </template>
+
+                                <button type="button" @click="copyTextWithFeedback(item.value, item.id)" 
+                                        class="p-1.5 text-gray-600 hover:text-primary hover:bg-gray-200/60 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold">
+                                    <template x-if="!copiedState[item.id]">
+                                        <i data-lucide="copy" class="w-4 h-4"></i>
+                                    </template>
+                                    <template x-if="copiedState[item.id]">
+                                        <i data-lucide="check" class="w-4 h-4 text-emerald-600 font-extrabold"></i>
+                                    </template>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- BUTTON: XEM HƯỚNG DẪN SỬ DỤNG (Yêu cầu 5) -->
+            <template x-if="selectedOrderProductGuideUrl">
+                <a :href="selectedOrderProductGuideUrl" target="_blank" rel="noopener noreferrer" 
+                   class="w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-2xl flex items-center justify-center gap-2 border border-blue-200 transition-colors mb-3 shadow-sm">
+                    <i data-lucide="book-open" class="w-4 h-4"></i>
+                    <span>Xem hướng dẫn sử dụng</span>
+                    <i data-lucide="external-link" class="w-3.5 h-3.5 text-blue-400"></i>
+                </a>
+            </template>
+
+            <!-- COPY ALL RAW TEXT BUTTON -->
+            <div class="mb-4">
+                <button type="button" @click="copyTextWithFeedback(currentItemData, 'modalItem')" class="w-full py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-2xl transition-all flex items-center justify-center gap-2">
                     <template x-if="!copiedState.modalItem">
                         <i data-lucide="copy" class="w-4 h-4"></i>
                     </template>
                     <template x-if="copiedState.modalItem">
-                        <i data-lucide="check" class="w-4 h-4 text-green-400"></i>
+                        <i data-lucide="check" class="w-4 h-4 text-emerald-600"></i>
                     </template>
-                    <span>Sao Chép Thông Tin</span>
+                    <span>Sao Chép Tất Cả Thông Tin (Raw)</span>
                 </button>
+            </div>
+
+            <!-- BUTTON / FORM: BÁO LỖI TÀI KHOẢN (Yêu cầu 6) -->
+            <div class="pt-3 border-t border-gray-100">
+                <template x-if="isOrderReported(selectedModalOrder?.id)">
+                    <div class="text-center">
+                        <span class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 text-orange-800 rounded-xl text-xs font-bold cursor-not-allowed">
+                            <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                            <span>Đã gửi báo lỗi · Đang xử lý</span>
+                        </span>
+                    </div>
+                </template>
+
+                <template x-if="!isOrderReported(selectedModalOrder?.id)">
+                    <div>
+                        <template x-if="!showReportInlineForm">
+                            <div class="text-center">
+                                <button type="button" @click="showReportInlineForm = true; $nextTick(() => lucide.createIcons())" class="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 font-bold px-3 py-1.5 rounded-xl border border-red-200/70 transition-colors inline-flex items-center gap-1.5">
+                                    <i data-lucide="flag" class="w-3.5 h-3.5"></i>
+                                    <span>Báo lỗi tài khoản</span>
+                                </button>
+                            </div>
+                        </template>
+
+                        <!-- Inline Report Form -->
+                        <template x-if="showReportInlineForm">
+                            <div class="bg-red-50/60 border border-red-200/80 rounded-2xl p-3.5 text-left space-y-2.5">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-red-900 flex items-center gap-1.5">
+                                        <i data-lucide="alert-circle" class="w-4 h-4 text-red-600"></i>
+                                        Mô tả sự cố tài khoản:
+                                    </span>
+                                    <button type="button" @click="showReportInlineForm = false" class="text-gray-400 hover:text-gray-600 text-xs">Hủy</button>
+                                </div>
+
+                                <textarea x-model="reportDescription" rows="2" placeholder="VD: Sai mật khẩu / không đăng nhập được / mất premium..." class="w-full bg-white border border-red-200 rounded-xl p-2.5 text-xs focus:outline-none focus:border-red-400"></textarea>
+
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" @click="showReportInlineForm = false" class="px-3 py-1.5 text-xs text-gray-500 font-bold hover:bg-gray-100 rounded-lg">Hủy</button>
+                                    <button type="button" @click="submitOrderReport()" :disabled="!reportDescription.trim()" class="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm">
+                                        Gửi báo lỗi
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
             </div>
         </div>
     </div>
@@ -1378,6 +1554,10 @@
                         <option value="rieng">Dùng riêng (rieng)</option>
                         <option value="gia_dinh">Dùng chung / Gia đình (gia_dinh)</option>
                     </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Link Hướng Dẫn Sử Dụng (Tùy chọn)</label>
+                    <input type="url" x-model="productForm.guide_url" placeholder="https://notion.so/... hoặc https://youtube.com/..." class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3.5 text-sm font-medium focus:outline-none focus:border-primary">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Trạng Thái Trên Shop</label>
@@ -1577,8 +1757,16 @@
                 // CUSTOMER TOPUP STICKY BANNER (Feature 5)
                 activeTopupBanner: { show: false, reqId: '', amount: 0, status: 'pending', note: '' },
 
+                // ITEM DATA MODAL & REPORTING STATE (Upgraded Modal)
                 showItemModal: false,
                 currentItemData: '',
+                currentItemParsedLines: [],
+                showPasswordState: {},
+                selectedModalOrder: null,
+                orderReports: [],
+                showReportInlineForm: false,
+                reportDescription: '',
+                reportedOrdersMap: {},
 
                 // PURCHASE SUCCESS MODAL
                 showPurchaseSuccessModal: false,
@@ -1973,13 +2161,14 @@
                 async fetchData() {
                     this.isLoading = true;
                     try {
-                        const [prodRes, invRes, walletRes, topupRes, orderRes, pendingRes] = await Promise.all([
+                        const [prodRes, invRes, walletRes, topupRes, orderRes, pendingRes, reportRes] = await Promise.all([
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_PRODUCTS&t=${Date.now()}`).catch(() => null),
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_INVENTORY&t=${Date.now()}`).catch(() => null),
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_WALLET_LOG&t=${Date.now()}`).catch(() => null),
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_TOPUP_REQ&t=${Date.now()}`).catch(() => null),
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_ORDERS&t=${Date.now()}`).catch(() => null),
-                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_PENDING_ORDERS&t=${Date.now()}`).catch(() => null)
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_PENDING_ORDERS&t=${Date.now()}`).catch(() => null),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_REPORTS&t=${Date.now()}`).catch(() => null)
                         ]);
 
                         if (prodRes && prodRes.ok) {
@@ -1993,7 +2182,8 @@
                                 category: this.getField(r, ['category', 'Category']),
                                 status: this.getField(r, ['status', 'Status']) || 'active',
                                 createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString(),
-                                slot_type: this.getField(r, ['slot_type', 'SlotType']) || 'rieng'
+                                slot_type: this.getField(r, ['slot_type', 'SlotType']) || 'rieng',
+                                guide_url: this.getField(r, ['guide_url', 'GuideUrl', 'Guide_Url']) || ''
                             })).filter(p => p.id && p.name);
                         }
 
@@ -2067,6 +2257,19 @@
                                 createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString(),
                                 note: this.getField(r, ['note', 'Note'])
                             })).filter(po => po.id);
+                        }
+
+                        if (reportRes && reportRes.ok) {
+                            const csv = await reportRes.text();
+                            this.orderReports = this.parseCSV(csv).map(r => ({
+                                id: this.getField(r, ['id', 'ID']),
+                                orderId: this.getField(r, ['order_id', 'OrderId']),
+                                email: this.getField(r, ['email', 'Email']),
+                                productName: this.getField(r, ['product_name', 'ProductName']),
+                                description: this.getField(r, ['description', 'Description']),
+                                status: this.getField(r, ['status', 'Status']) || 'open',
+                                createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString()
+                            })).filter(rp => rp.id);
                         }
 
                     } catch (err) {
@@ -2435,9 +2638,160 @@
                     this.currentTab = 'cust_orders';
                 },
 
+                // ITEM DATA PARSING & MODAL HELPERS (Upgraded Modal)
+                parseItemData(rawText) {
+                    if (!rawText) return [];
+                    let text = String(rawText).trim();
+                    if (text.includes('|')) {
+                        text = text.split('|').join('\n');
+                    }
+                    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+                    
+                    const parsed = [];
+                    lines.forEach((line, index) => {
+                        let label = '';
+                        let isPassword = false;
+                        if (index === 0) {
+                            label = 'Email / Tài khoản';
+                        } else if (index === 1) {
+                            label = 'Mật khẩu';
+                            isPassword = true;
+                        } else if (index === 2) {
+                            label = 'Ghi chú';
+                        } else {
+                            label = `Thông tin thêm ${index - 2}`;
+                        }
+                        parsed.push({
+                            id: 'line_' + index,
+                            label: label,
+                            value: line,
+                            isPassword: isPassword
+                        });
+                    });
+                    return parsed;
+                },
+
+                getExpiryCountdown(order) {
+                    if (!order) return null;
+                    
+                    let expireDateStr = order.expireDate;
+                    if (!expireDateStr && order.inventoryId) {
+                        const inv = this.inventory.find(i => String(i.id) === String(order.inventoryId));
+                        if (inv) expireDateStr = inv.expireDate;
+                    }
+                    
+                    if (!expireDateStr) return null;
+                    
+                    const exp = new Date(expireDateStr);
+                    if (isNaN(exp.getTime())) return null;
+                    
+                    const now = new Date();
+                    const diffMs = exp.getTime() - now.getTime();
+                    
+                    if (diffMs <= 0) {
+                        return { isExpired: true, text: 'Đã hết hạn', isWarning: true, expireFormatted: this.formatDate(expireDateStr) };
+                    }
+                    
+                    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                    const isWarning = diffDays <= 7;
+                    return {
+                        isExpired: false,
+                        daysLeft: diffDays,
+                        text: `Còn ${diffDays} ngày`,
+                        isWarning: isWarning,
+                        expireFormatted: this.formatDate(expireDateStr)
+                    };
+                },
+
+                get selectedOrderProductGuideUrl() {
+                    if (!this.selectedModalOrder) return null;
+                    const p = this.products.find(prod => String(prod.id) === String(this.selectedModalOrder.productId));
+                    return p ? (p.guide_url || p.guideUrl || null) : null;
+                },
+
+                hasOpenReport(orderId) {
+                    if (!orderId) return false;
+                    return this.orderReports.some(rp => String(rp.orderId) === String(orderId) && rp.status === 'open');
+                },
+
+                getOpenReport(orderId) {
+                    if (!orderId) return null;
+                    return this.orderReports.find(rp => String(rp.orderId) === String(orderId) && rp.status === 'open');
+                },
+
+                isOrderReported(orderId) {
+                    if (!orderId) return false;
+                    if (this.reportedOrdersMap[orderId]) return true;
+                    return this.orderReports.some(rp => String(rp.orderId) === String(orderId));
+                },
+
                 showItemDataModal(order) {
+                    this.selectedModalOrder = order;
                     this.currentItemData = order.itemData || 'Không có thông tin chi tiết';
+                    this.currentItemParsedLines = this.parseItemData(order.itemData);
+                    this.showPasswordState = {};
+                    this.showReportInlineForm = false;
+                    this.reportDescription = '';
                     this.showItemModal = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async submitOrderReport() {
+                    if (!this.selectedModalOrder || !this.reportDescription.trim()) return;
+
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'submit_order_report',
+                                orderId: this.selectedModalOrder.id,
+                                email: this.currentUser?.email || this.selectedModalOrder.email,
+                                productName: this.selectedModalOrder.productName,
+                                description: this.reportDescription.trim()
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã gửi báo lỗi thành công!');
+                            this.showReportInlineForm = false;
+                            this.reportedOrdersMap[this.selectedModalOrder.id] = true;
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi gửi báo lỗi');
+                        }
+                    } catch(err) {
+                        console.error(err);
+                        this.showToast(err.message || 'Có lỗi khi gửi báo lỗi');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                async resolveOrderReport(reportId) {
+                    if (!confirm('Xác nhận đánh dấu báo lỗi này đã được xử lý xong?')) return;
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'resolve_order_report',
+                                reportId: reportId
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã đánh dấu xử lý xong báo lỗi!');
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi xử lý báo lỗi');
+                        }
+                    } catch(err) {
+                        console.error(err);
+                        this.showToast('Lỗi khi cập nhật báo lỗi');
+                    } finally {
+                        this.isLoading = false;
+                    }
                 },
 
                 openLightbox(imgUrl) {
