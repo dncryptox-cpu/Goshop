@@ -19,6 +19,15 @@
         }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .tooltip-box {
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+        .has-tooltip:hover .tooltip-box, .has-tooltip:focus .tooltip-box {
+            visibility: visible;
+            opacity: 1;
+        }
     </style>
     <script>
         tailwind.config = {
@@ -97,9 +106,9 @@
             <div class="flex items-center gap-4">
                 <!-- Customer Wallet Badge -->
                 <template x-if="currentUser?.role === 'customer'">
-                    <div class="hidden sm:flex items-center gap-2 bg-blue-50 border border-blue-100 px-3.5 py-1.5 rounded-xl">
+                    <div class="hidden sm:flex items-center gap-2 bg-blue-50 border border-blue-100 px-3.5 py-1.5 rounded-xl cursor-pointer" @click="currentTab = 'cust_wallet'">
                         <i data-lucide="wallet" class="w-4 h-4 text-primary"></i>
-                        <span class="text-xs font-semibold text-gray-500">Số dư:</span>
+                        <span class="text-xs font-semibold text-gray-500">Ví:</span>
                         <span class="text-sm font-bold text-primary" x-text="formatCurrency(myWalletBalance)"></span>
                     </div>
                 </template>
@@ -132,8 +141,9 @@
                         <button @click="currentTab = 'cust_products'" :class="currentTab === 'cust_products' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
                             <i data-lucide="grid" class="w-4 h-4"></i> Cửa Hàng Sản Phẩm
                         </button>
-                        <button @click="currentTab = 'cust_wallet'" :class="currentTab === 'cust_wallet' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
+                        <button @click="currentTab = 'cust_wallet'" :class="currentTab === 'cust_wallet' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2 relative">
                             <i data-lucide="wallet" class="w-4 h-4"></i> Ví Của Tôi & Lịch Sử
+                            <span x-show="myPendingTopupsCount > 0" class="w-5 h-5 bg-red-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center animate-pulse" x-text="myPendingTopupsCount"></span>
                         </button>
                         <button @click="currentTab = 'cust_orders'" :class="currentTab === 'cust_orders' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
                             <i data-lucide="package" class="w-4 h-4"></i> Đơn Hàng Của Tôi
@@ -161,6 +171,9 @@
                         <button @click="currentTab = 'admin_adjust_wallet'" :class="currentTab === 'admin_adjust_wallet' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
                             <i data-lucide="sliders" class="w-4 h-4"></i> Điều Chỉnh Ví
                         </button>
+                        <button @click="currentTab = 'admin_shop_settings'" :class="currentTab === 'admin_shop_settings' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'" class="px-2 py-4 font-semibold text-sm border-b-2 transition-all whitespace-nowrap flex items-center gap-2">
+                            <i data-lucide="settings" class="w-4 h-4"></i> Cài Đặt Shop
+                        </button>
                     </div>
                 </template>
             </div>
@@ -184,7 +197,7 @@
                             <p class="text-xs text-gray-500 mt-1">Hệ thống giao nick/key tự động tức thì ngay khi mua</p>
                         </div>
                         <div class="bg-blue-50 border border-blue-100 px-4 py-2 rounded-2xl flex items-center gap-3">
-                            <span class="text-xs text-gray-500 font-medium">Số dư khả dụng:</span>
+                            <span class="text-xs text-gray-500 font-medium">Số dư ví:</span>
                             <span class="text-lg font-black text-primary" x-text="formatCurrency(myWalletBalance)"></span>
                         </div>
                     </div>
@@ -192,41 +205,108 @@
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         <template x-for="p in activeProducts" :key="p.id">
                             <div class="glass-card rounded-2xl p-6 flex flex-col justify-between hover:border-primary/40 transition-all group shadow-sm hover:shadow-md relative overflow-hidden"
-                                :class="getAvailableStock(p.id) === 0 ? 'opacity-75 bg-gray-50' : ''">
+                                :class="getAvailableStock(p.id) === 0 && p.type === 'auto' ? 'opacity-80 bg-gray-50' : ''">
                                 <div>
-                                    <div class="flex items-start justify-between mb-3">
-                                        <div class="flex flex-wrap gap-1.5">
-                                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
-                                                :class="p.type === 'auto' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
-                                                x-text="p.type === 'auto' ? 'Giao Tự Động' : 'Duyệt Thủ Công'">
+                                    <!-- BADGES (Feature 7) -->
+                                    <div class="flex flex-wrap items-center gap-1.5 mb-3">
+                                        <!-- Badge 🔥 Mới (trong vòng 7 ngày) -->
+                                        <template x-if="isNewProduct(p)">
+                                            <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm flex items-center gap-0.5">
+                                                🔥 Mới
                                             </span>
-                                            <template x-if="p.category">
-                                                <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-gray-100 text-gray-600" x-text="p.category"></span>
-                                            </template>
-                                        </div>
-                                        <p class="text-xl font-black text-gray-900" x-text="formatCurrency(p.price)"></p>
-                                    </div>
+                                        </template>
 
-                                    <h3 class="text-lg font-bold text-gray-900 group-hover:text-primary transition-colors mb-2" x-text="p.name"></h3>
-                                    <p class="text-xs text-gray-600 leading-relaxed mb-6 whitespace-pre-line" x-text="p.description || 'Chính hãng, bảo hành full thời gian'"></p>
-                                </div>
+                                        <!-- Badge ⚡ Sắp hết (tồn <= 3) -->
+                                        <template x-if="isLowStock(p)">
+                                            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 flex items-center gap-0.5">
+                                                ⚡ Sắp hết
+                                            </span>
+                                        </template>
 
-                                <div>
-                                    <!-- Stock badge -->
-                                    <div class="flex items-center justify-between text-xs mb-3 font-medium">
-                                        <span class="text-gray-500">Kho tồn hàng:</span>
-                                        <span :class="getAvailableStock(p.id) > 0 ? 'text-green-600 font-bold' : 'text-red-500 font-bold'"
-                                              x-text="p.type === 'manual' ? 'Sẵn hàng' : (getAvailableStock(p.id) > 0 ? 'Còn ' + getAvailableStock(p.id) + ' sản phẩm' : 'Hết hàng')">
+                                        <!-- Badge Hết hàng -->
+                                        <template x-if="p.type === 'auto' && getAvailableStock(p.id) === 0">
+                                            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-700">
+                                                Hết hàng
+                                            </span>
+                                        </template>
+
+                                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ml-auto"
+                                            :class="p.type === 'auto' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
+                                            x-text="p.type === 'auto' ? 'Giao Tự Động' : 'Duyệt Thủ Công'">
                                         </span>
                                     </div>
 
-                                    <button @click="handleBuyProduct(p)"
-                                        :disabled="p.type === 'auto' && getAvailableStock(p.id) === 0"
-                                        :class="p.type === 'auto' && getAvailableStock(p.id) === 0 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-md shadow-primary/20'"
-                                        class="w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2">
-                                        <i data-lucide="shopping-cart" class="w-4 h-4"></i>
-                                        <span x-text="p.type === 'auto' && getAvailableStock(p.id) === 0 ? 'Hết Hàng' : 'Mua Ngay'"></span>
-                                    </button>
+                                    <div class="flex items-baseline justify-between mb-2">
+                                        <h3 class="text-lg font-bold text-gray-900 group-hover:text-primary transition-colors" x-text="p.name"></h3>
+                                        <p class="text-xl font-black text-gray-900" x-text="formatCurrency(p.price)"></p>
+                                    </div>
+                                    <p class="text-xs text-gray-600 leading-relaxed mb-4 whitespace-pre-line" x-text="p.description || 'Chính hãng, bảo hành full thời gian'"></p>
+
+                                    <!-- Duration info if available -->
+                                    <div class="text-[11px] text-gray-500 font-medium flex items-center gap-1.5 mb-4 bg-gray-50 p-2 rounded-lg">
+                                        <i data-lucide="clock" class="w-3.5 h-3.5 text-gray-400"></i>
+                                        <span>Thời hạn sử dụng: <strong>30 ngày</strong> (tính từ ngày mua thành công)</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <!-- Stock Badge -->
+                                    <div class="flex items-center justify-between text-xs mb-3 font-medium">
+                                        <span class="text-gray-500">Kho tồn hàng:</span>
+                                        <span :class="getAvailableStock(p.id) > 0 ? 'text-green-600 font-bold' : 'text-red-500 font-bold'"
+                                              x-text="p.type === 'manual' ? 'Sẵn sàng tiếp nhận' : (getAvailableStock(p.id) > 0 ? 'Còn ' + getAvailableStock(p.id) + ' sản phẩm' : 'Hết hàng')">
+                                        </span>
+                                    </div>
+
+                                    <!-- MANUAL PRODUCT BUTTON WITH TOOLTIP (Feature 8) -->
+                                    <template x-if="p.type === 'manual'">
+                                        <div class="relative has-tooltip">
+                                            <button @click="handleBuyProduct(p)"
+                                                class="w-full py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-md shadow-amber-600/20">
+                                                <i data-lucide="clock" class="w-4 h-4"></i>
+                                                <span>Đặt Hàng (Duyệt Tay)</span>
+                                            </button>
+                                            <div class="tooltip-box absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 p-3 bg-gray-900 text-white text-[11px] rounded-xl shadow-xl text-center pointer-events-none z-30 leading-tight">
+                                                Sản phẩm này cần xác nhận thủ công, thường trong 15–30 phút trong giờ hành chính.
+                                            </div>
+                                        </div>
+                                    </template>
+
+                                    <!-- AUTO PRODUCT BUTTON & PREVIEW BALANCE (Feature 3) -->
+                                    <template x-if="p.type === 'auto'">
+                                        <div>
+                                            <button @click="handleBuyProduct(p)"
+                                                :disabled="getAvailableStock(p.id) === 0 || myWalletBalance < p.price"
+                                                :class="getAvailableStock(p.id) === 0 || myWalletBalance < p.price ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-md shadow-primary/20'"
+                                                class="w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2">
+                                                <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+                                                <span x-text="getAvailableStock(p.id) === 0 ? 'Hết Hàng' : 'Mua Ngay'"></span>
+                                            </button>
+
+                                            <!-- Preview số dư (Feature 3) -->
+                                            <div class="mt-2 text-center text-xs">
+                                                <template x-if="getAvailableStock(p.id) > 0">
+                                                    <div>
+                                                        <template x-if="myWalletBalance >= p.price">
+                                                            <p class="text-emerald-600 font-semibold">
+                                                                Sau khi mua còn: <span x-text="formatCurrency(myWalletBalance - p.price)"></span>
+                                                            </p>
+                                                        </template>
+                                                        <template x-if="myWalletBalance < p.price">
+                                                            <div class="flex items-center justify-center gap-1.5">
+                                                                <p class="text-red-500 font-bold">
+                                                                    Thiếu <span x-text="formatCurrency(p.price - myWalletBalance)"></span>
+                                                                </p>
+                                                                <button @click="currentTab = 'cust_wallet'" class="text-primary hover:underline font-bold text-[11px]">
+                                                                    Nạp thêm →
+                                                                </button>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
                                 </div>
                             </div>
                         </template>
@@ -235,11 +315,6 @@
                             <div class="col-span-full glass-card rounded-2xl p-12 text-center text-gray-400">
                                 <i data-lucide="box" class="w-12 h-12 mx-auto mb-3 text-gray-300"></i>
                                 <p class="text-sm font-medium mb-3">Hiện chưa có sản phẩm nào được mở bán.</p>
-                                <template x-if="currentUser?.role === 'admin'">
-                                    <button @click="initMemberSheets()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md">
-                                        ⚡ Bấm vào đây để Khởi Tạo 6 Sheet Tab Tự Động
-                                    </button>
-                                </template>
                             </div>
                         </template>
                     </div>
@@ -266,45 +341,79 @@
                             </button>
                         </div>
 
-                        <!-- Top-up Guide Info -->
-                        <div class="lg:col-span-2 glass-card rounded-2xl p-6 border-l-4 border-primary">
-                            <div class="flex items-center justify-between mb-4">
-                                <div class="flex items-center gap-3">
-                                    <div class="w-10 h-10 bg-blue-50 text-primary rounded-xl flex items-center justify-center">
-                                        <i data-lucide="qr-code" class="w-5 h-5"></i>
+                        <!-- BANK TRANSFER INFO CARD WITH COPY & QR (Feature 1) -->
+                        <div class="lg:col-span-2 glass-card rounded-2xl p-6 flex flex-col md:flex-row gap-6 items-center justify-between border-l-4 border-primary">
+                            <div class="flex-1 space-y-3 w-full">
+                                <div class="flex items-center gap-3 mb-2">
+                                    <div class="w-9 h-9 bg-blue-50 text-primary rounded-xl flex items-center justify-center">
+                                        <i data-lucide="building-2" class="w-5 h-5"></i>
                                     </div>
                                     <div>
                                         <h3 class="text-base font-bold text-gray-900">Hướng Dẫn Chuyển Khoản Nạp Tiền</h3>
-                                        <p class="text-xs text-gray-500">Sau khi CK, dán link ảnh hóa đơn để gửi duyệt</p>
+                                        <p class="text-xs text-gray-500">Chuyển khoản trực tiếp theo thông tin bên dưới</p>
                                     </div>
                                 </div>
-                                <button @click="openTopupModal()" class="hidden sm:flex bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-xl text-xs font-bold transition-all items-center gap-1.5 shadow-sm">
-                                    <i data-lucide="send" class="w-3.5 h-3.5"></i> Nạp Ngay
-                                </button>
+
+                                <div class="bg-slate-50 rounded-xl p-4 text-xs space-y-2 border border-gray-100">
+                                    <div class="flex justify-between items-center pb-2 border-b border-gray-200">
+                                        <span class="text-gray-500 font-medium">Ngân hàng:</span>
+                                        <span class="font-bold text-gray-900" x-text="systemConfig.SHOP_BANK_NAME || 'MB Bank'"></span>
+                                    </div>
+                                    <div class="flex justify-between items-center pb-2 border-b border-gray-200">
+                                        <span class="text-gray-500 font-medium">Số tài khoản:</span>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-mono font-bold text-primary text-sm" x-text="systemConfig.SHOP_BANK_ACCOUNT || '0398057191'"></span>
+                                            <button @click="copyTextWithFeedback(systemConfig.SHOP_BANK_ACCOUNT || '0398057191', 'bankAcc')" 
+                                                    class="p-1 text-gray-400 hover:text-primary rounded transition-all">
+                                                <template x-if="!copiedState.bankAcc">
+                                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                                </template>
+                                                <template x-if="copiedState.bankAcc">
+                                                    <i data-lucide="check" class="w-3.5 h-3.5 text-green-600"></i>
+                                                </template>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-between items-center pb-2 border-b border-gray-200">
+                                        <span class="text-gray-500 font-medium">Chủ tài khoản:</span>
+                                        <span class="font-bold text-gray-900" x-text="systemConfig.SHOP_BANK_OWNER || 'DNC OPERATOR'"></span>
+                                    </div>
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-gray-500 font-medium">Nội dung CK:</span>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-mono font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded" x-text="'NAP ' + (currentUser?.email || '').split('@')[0]"></span>
+                                            <button @click="copyTextWithFeedback('NAP ' + (currentUser?.email || '').split('@')[0], 'transferContent')"
+                                                    class="p-1 text-gray-400 hover:text-primary rounded transition-all">
+                                                <template x-if="!copiedState.transferContent">
+                                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                                </template>
+                                                <template x-if="copiedState.transferContent">
+                                                    <i data-lucide="check" class="w-3.5 h-3.5 text-green-600"></i>
+                                                </template>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            
-                            <div class="bg-gray-50 rounded-xl p-4 text-xs text-gray-700 space-y-2 mb-4 border border-gray-100">
-                                <div class="flex justify-between border-b border-gray-200 pb-2">
-                                    <span class="text-gray-500">Zalo Admin / Hotline:</span>
-                                    <span class="font-bold text-gray-900">0398.057.191 (@dnc)</span>
+
+                            <!-- QR CODE IMAGE (If Available) -->
+                            <template x-if="systemConfig.SHOP_BANK_QR_URL">
+                                <div class="flex flex-col items-center bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm shrink-0">
+                                    <img :src="systemConfig.SHOP_BANK_QR_URL" alt="QR Code Bank" class="w-36 h-36 object-contain rounded-xl">
+                                    <span class="text-[10px] text-gray-400 font-medium mt-1">Quét mã QR để chuyển nhanh</span>
                                 </div>
-                                <div class="flex justify-between border-b border-gray-200 pb-2">
-                                    <span class="text-gray-500">Nội dung chuyển khoản mẫu:</span>
-                                    <span class="font-mono font-bold text-primary" x-text="'NAP ' + (currentUser?.email || '').split('@')[0]"></span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-gray-500">Trạng thái duyệt:</span>
-                                    <span class="font-bold text-green-600">Admin duyệt 24/7 siêu tốc</span>
-                                </div>
-                            </div>
+                            </template>
                         </div>
                     </div>
 
                     <!-- Pending Top-up Requests Section -->
                     <div x-show="myTopupRequests.length > 0" class="glass-card rounded-2xl overflow-hidden mb-8">
-                        <div class="p-4 border-b border-amber-100 bg-amber-50/50 flex items-center gap-2">
-                            <i data-lucide="clock" class="w-4 h-4 text-amber-600"></i>
-                            <h3 class="text-sm font-bold text-amber-900">Yêu Cầu Nạp Tiền Đang Chờ Duyệt</h3>
+                        <div class="p-4 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="clock" class="w-4 h-4 text-amber-600"></i>
+                                <h3 class="text-sm font-bold text-amber-900">Yêu Cầu Nạp Tiền Đang Chờ Duyệt</h3>
+                            </div>
+                            <span class="text-xs text-amber-700 font-semibold">Tự động cập nhật mỗi 30s</span>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-xs">
@@ -341,11 +450,20 @@
                         </div>
                     </div>
 
-                    <!-- Wallet Logs Table -->
+                    <!-- WALLET LOGS TABLE WITH PILL FILTER BUTTONS (Feature 5) -->
                     <div class="glass-card rounded-2xl overflow-hidden">
-                        <div class="p-5 border-b border-gray-100 bg-white">
+                        <div class="p-5 border-b border-gray-100 bg-white flex flex-wrap justify-between items-center gap-4">
                             <h3 class="text-lg font-bold text-gray-900">Biến Động Số Dư & Lịch Sử Giao Dịch</h3>
+                            
+                            <!-- Filter Pill Buttons (Feature 5) -->
+                            <div class="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
+                                <button @click="walletLogFilter = 'all'" :class="walletLogFilter === 'all' ? 'bg-white text-gray-900 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-700 font-medium'" class="px-3 py-1 rounded-lg text-xs transition-all">Tất cả</button>
+                                <button @click="walletLogFilter = 'topup'" :class="walletLogFilter === 'topup' ? 'bg-white text-green-700 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-700 font-medium'" class="px-3 py-1 rounded-lg text-xs transition-all">Nạp tiền</button>
+                                <button @click="walletLogFilter = 'purchase'" :class="walletLogFilter === 'purchase' ? 'bg-white text-red-700 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-700 font-medium'" class="px-3 py-1 rounded-lg text-xs transition-all">Mua hàng</button>
+                                <button @click="walletLogFilter = 'adjust'" :class="walletLogFilter === 'adjust' ? 'bg-white text-amber-800 shadow-sm font-bold' : 'text-gray-500 hover:text-gray-700 font-medium'" class="px-3 py-1 rounded-lg text-xs transition-all">Điều chỉnh</button>
+                            </div>
                         </div>
+
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-sm">
                                 <thead class="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -358,7 +476,7 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 bg-white">
-                                    <template x-for="log in myWalletLogs" :key="log.timestamp + log.id">
+                                    <template x-for="log in filteredMyWalletLogs" :key="log.timestamp + log.id">
                                         <tr class="hover:bg-gray-50 transition-colors">
                                             <td class="px-6 py-4 text-xs text-gray-500" x-text="formatDate(log.timestamp)"></td>
                                             <td class="px-6 py-4">
@@ -379,8 +497,8 @@
                                             <td class="px-6 py-4 text-right font-mono font-bold text-gray-800" x-text="formatCurrency(log.balanceAfter)"></td>
                                         </tr>
                                     </template>
-                                    <template x-if="myWalletLogs.length === 0">
-                                        <tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 text-sm">Chưa có biến động số dư nào.</td></tr>
+                                    <template x-if="filteredMyWalletLogs.length === 0">
+                                        <tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 text-sm">Không có lịch sử biến động nào phù hợp filter.</td></tr>
                                     </template>
                                 </tbody>
                             </table>
@@ -403,7 +521,7 @@
                                         <th class="px-6 py-4">Thời Gian</th>
                                         <th class="px-6 py-4 text-right">Giá Tiền</th>
                                         <th class="px-6 py-4 text-center">Trạng Thái</th>
-                                        <th class="px-6 py-4 text-center">Chi Tiết / Mã Nick</th>
+                                        <th class="px-6 py-4 text-center">Hành Động</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 bg-white">
@@ -415,12 +533,13 @@
                                             <td class="px-6 py-4 text-xs text-gray-500" x-text="formatDate(po.createdAt)"></td>
                                             <td class="px-6 py-4 text-right font-bold text-gray-900" x-text="formatCurrency(po.amount)"></td>
                                             <td class="px-6 py-4 text-center">
-                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800">Đang Xử Lý</span>
+                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800">Đang Xử Lý (15-30p)</span>
                                             </td>
-                                            <td class="px-6 py-4 text-center text-xs text-gray-500">Chờ admin xác nhận</td>
+                                            <td class="px-6 py-4 text-center text-xs text-gray-500">Đang được xử lý...</td>
                                         </tr>
                                     </template>
-                                    <!-- Completed Orders -->
+
+                                    <!-- Completed Orders with RE-ORDER BUTTON (Feature 6) -->
                                     <template x-for="o in myOrders" :key="o.id">
                                         <tr class="hover:bg-gray-50 transition-colors">
                                             <td class="px-6 py-4 font-mono text-xs font-bold text-primary" x-text="o.id"></td>
@@ -431,9 +550,20 @@
                                                 <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-green-100 text-green-700">Hoàn Tất</span>
                                             </td>
                                             <td class="px-6 py-4 text-center">
-                                                <button @click="showItemDataModal(o)" class="bg-blue-50 text-primary hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1">
-                                                    <i data-lucide="key" class="w-3.5 h-3.5"></i> Xem Tài Khoản
-                                                </button>
+                                                <div class="flex items-center justify-center gap-2">
+                                                    <button @click="showItemDataModal(o)" class="bg-blue-50 text-primary hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1">
+                                                        <i data-lucide="key" class="w-3.5 h-3.5"></i> Xem Nick
+                                                    </button>
+                                                    
+                                                    <!-- Re-order button (Feature 6) -->
+                                                    <button @click="reorderProduct(o)" 
+                                                        :disabled="isProductOutOfStock(o.productId)"
+                                                        :title="isProductOutOfStock(o.productId) ? 'Tạm hết hàng' : 'Mua lại sản phẩm này'"
+                                                        :class="isProductOutOfStock(o.productId) ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'"
+                                                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all inline-flex items-center gap-1">
+                                                        <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Mua lại
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     </template>
@@ -772,6 +902,47 @@
                     </div>
                 </div>
 
+                <!-- ADMIN TAB: SHOP SETTINGS (Feature 9) -->
+                <div x-show="currentTab === 'admin_shop_settings'">
+                    <div class="glass-card rounded-2xl p-8 max-w-2xl mx-auto shadow-xl">
+                        <div class="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
+                            <div class="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                                <i data-lucide="building-2" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-xl font-bold text-gray-900">Cài Đặt Thông Tin Ngân Hàng Shop</h2>
+                                <p class="text-xs text-gray-500">Tự động cập nhật 4 thông số `SHOP_BANK_*` vào `SYSTEM_CONFIG`</p>
+                            </div>
+                        </div>
+
+                        <form @submit.prevent="saveShopSettings()" class="space-y-5">
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tên Ngân Hàng (SHOP_BANK_NAME)</label>
+                                <input type="text" x-model="adminConfigForm.SHOP_BANK_NAME" placeholder="MB Bank / Vietcombank..." class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-semibold focus:outline-none focus:border-primary">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Số Tài Khoản (SHOP_BANK_ACCOUNT)</label>
+                                <input type="text" x-model="adminConfigForm.SHOP_BANK_ACCOUNT" placeholder="0398057191" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-mono font-bold text-primary focus:outline-none focus:border-primary">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tên Chủ Tài Khoản (SHOP_BANK_OWNER)</label>
+                                <input type="text" x-model="adminConfigForm.SHOP_BANK_OWNER" placeholder="NGUYEN VAN A" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:border-primary">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Link Ảnh Mã QR Chuyển Khoản (SHOP_BANK_QR_URL)</label>
+                                <input type="url" x-model="adminConfigForm.SHOP_BANK_QR_URL" placeholder="https://img.vietqr.io/image/MB-0398057191-compact2.png" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary">
+                            </div>
+
+                            <div class="pt-4 border-t border-gray-100 flex justify-end">
+                                <button type="submit" class="bg-primary hover:bg-primary-dark text-white px-8 py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-primary/20 flex items-center gap-2">
+                                    <i data-lucide="check" class="w-4 h-4"></i>
+                                    <span>Lưu Cấu Hình Ngân Hàng</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
             </div>
         </main>
     </div>
@@ -801,6 +972,69 @@
         </div>
     </div>
 
+    <!-- PURCHASE SUCCESSFUL MODAL (Feature 2) -->
+    <div x-show="showPurchaseSuccessModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" x-cloak>
+        <div @click.away="showPurchaseSuccessModal = false" class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 sm:p-8 text-left border border-emerald-100">
+            <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/10">
+                <i data-lucide="party-popper" class="w-8 h-8"></i>
+            </div>
+            
+            <h3 class="text-xl font-black text-center text-gray-900 mb-1">Mua Hàng Thành Công!</h3>
+            <p class="text-xs text-center text-gray-500 mb-6">Đơn hàng của bạn đã được khởi tạo và nhận dữ liệu nick/key</p>
+
+            <div class="bg-slate-50 border border-slate-100 rounded-2xl p-4 mb-6 space-y-2 text-xs">
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Sản phẩm:</span>
+                    <span class="font-bold text-gray-900" x-text="purchasedModalData.productName"></span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-500">Số tiền đã trừ:</span>
+                    <span class="font-bold text-red-600" x-text="'-' + formatCurrency(purchasedModalData.price)"></span>
+                </div>
+                <div class="flex justify-between pt-2 border-t border-gray-200">
+                    <span class="text-gray-500">Số dư ví còn lại:</span>
+                    <span class="font-black text-primary font-mono text-sm" x-text="formatCurrency(purchasedModalData.walletBalanceAfter)"></span>
+                </div>
+            </div>
+
+            <!-- Item Data Box line-by-line -->
+            <div class="mb-6">
+                <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Thông Tin Tài Khoản / Key Được Cấp:</label>
+                <div class="bg-gray-900 text-emerald-400 rounded-2xl p-4 font-mono text-xs space-y-2 max-h-48 overflow-y-auto">
+                    <template x-for="(line, idx) in purchasedModalData.itemDataLines" :key="idx">
+                        <div class="flex items-center justify-between gap-2 border-b border-gray-800 pb-1.5 last:border-0 last:pb-0">
+                            <span class="break-all font-semibold" x-text="line"></span>
+                            <button @click="copyTextWithFeedback(line, 'line_' + idx)" class="p-1 text-gray-400 hover:text-emerald-300 rounded shrink-0">
+                                <template x-if="!copiedState['line_' + idx]">
+                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                </template>
+                                <template x-if="copiedState['line_' + idx]">
+                                    <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                                </template>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button @click="copyTextWithFeedback(purchasedModalData.itemData, 'allItemData')" class="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2">
+                    <template x-if="!copiedState.allItemData">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </template>
+                    <template x-if="copiedState.allItemData">
+                        <i data-lucide="check" class="w-4 h-4 text-green-600"></i>
+                    </template>
+                    <span>Sao Chép Tất Cả</span>
+                </button>
+                <button @click="goToOrdersTab()" class="flex-1 py-3 bg-primary hover:bg-primary-dark text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center justify-center gap-2">
+                    <span>Xem Tất Cả Đơn Hàng</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- View Item Data / Account Key Modal -->
     <div x-show="showItemModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" x-cloak>
         <div @click.away="showItemModal = false" class="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
@@ -814,8 +1048,14 @@
             </div>
 
             <div class="flex justify-end gap-3">
-                <button @click="copyText(currentItemData)" class="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2">
-                    <i data-lucide="copy" class="w-4 h-4"></i> Sao Chép Thông Tin
+                <button @click="copyTextWithFeedback(currentItemData, 'modalItem')" class="px-5 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-2">
+                    <template x-if="!copiedState.modalItem">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </template>
+                    <template x-if="copiedState.modalItem">
+                        <i data-lucide="check" class="w-4 h-4 text-green-400"></i>
+                    </template>
+                    <span>Sao Chép Thông Tin</span>
                 </button>
             </div>
         </div>
@@ -957,6 +1197,23 @@
                 currentUser: null,
                 currentTab: 'cust_products',
 
+                // SHOP CONFIG FROM SYSTEM_CONFIG (Feature 1)
+                systemConfig: {
+                    SHOP_BANK_NAME: '',
+                    SHOP_BANK_ACCOUNT: '',
+                    SHOP_BANK_OWNER: '',
+                    SHOP_BANK_QR_URL: ''
+                },
+                adminConfigForm: {
+                    SHOP_BANK_NAME: '',
+                    SHOP_BANK_ACCOUNT: '',
+                    SHOP_BANK_OWNER: '',
+                    SHOP_BANK_QR_URL: ''
+                },
+
+                // COPY FEEDBACK STATE (Feature 1)
+                copiedState: {},
+
                 // Data Arrays (MB_ Prefix Schemas)
                 products: [],
                 inventory: [],
@@ -972,6 +1229,14 @@
                 showItemModal: false,
                 currentItemData: '',
 
+                // PURCHASE SUCCESS MODAL (Feature 2)
+                showPurchaseSuccessModal: false,
+                purchasedModalData: { productName: '', price: 0, walletBalanceAfter: 0, itemData: '', itemDataLines: [] },
+
+                // WALLET LOG FILTER (Feature 5)
+                walletLogFilter: 'all',
+
+                // ADMIN FORMS
                 showProductModal: false,
                 productForm: { id: '', name: '', category: '', description: '', price: 0, type: 'auto', status: 'active' },
 
@@ -985,6 +1250,10 @@
                 adjustForm: { email: '', amount: 0, note: '' },
                 adjustSearchEmail: '',
                 orderSearchQuery: '',
+
+                // POLLING TIMER (Feature 4)
+                topupPollingTimer: null,
+                lastKnownApprovedCount: 0,
 
                 // COMPUTED PROPERTIES
                 get activeProducts() {
@@ -1007,10 +1276,22 @@
                     return this.walletLogs.filter(l => l.email.toLowerCase().trim() === email).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
                 },
 
+                get filteredMyWalletLogs() {
+                    if (this.walletLogFilter === 'all') return this.myWalletLogs;
+                    return this.myWalletLogs.filter(l => {
+                        if (this.walletLogFilter === 'topup') return l.type === 'topup' || l.type === 'refund';
+                        return l.type === this.walletLogFilter;
+                    });
+                },
+
                 get myTopupRequests() {
                     if (!this.currentUser) return [];
                     const email = this.currentUser.email.toLowerCase().trim();
                     return this.topupRequests.filter(r => r.email.toLowerCase().trim() === email).sort((a, b) => new Date(b.requestedAt) - new Date(a.requestedAt));
+                },
+
+                get myPendingTopupsCount() {
+                    return this.myTopupRequests.filter(r => r.status === 'pending').length;
                 },
 
                 get myOrders() {
@@ -1058,7 +1339,29 @@
                     return this.inventory.filter(i => String(i.productId) === String(this.selectedProdInv.id));
                 },
 
-                // STOCK COUNT HELPER
+                // PRODUCT HELPER FUNCTIONS (Feature 6 & 7)
+                isNewProduct(p) {
+                    if (!p.createdAt) return false;
+                    try {
+                        const diffTime = Math.abs(new Date() - new Date(p.createdAt));
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        return diffDays <= 7;
+                    } catch(e) { return false; }
+                },
+
+                isLowStock(p) {
+                    if (p.type === 'manual') return false;
+                    const avail = this.getAvailableStock(p.id);
+                    return avail > 0 && avail <= 3;
+                },
+
+                isProductOutOfStock(productId) {
+                    const p = this.products.find(prod => String(prod.id) === String(productId));
+                    if (!p) return true;
+                    if (p.type === 'manual') return false;
+                    return this.getAvailableStock(p.id) === 0;
+                },
+
                 getAvailableStock(productId) {
                     const now = new Date();
                     return this.inventory.filter(i => {
@@ -1077,6 +1380,13 @@
                 async initApp() {
                     this.fetchSystemConfig();
                     setInterval(() => this.fetchSystemConfig(), 30000);
+
+                    // Polling for top-up status updates (Feature 4)
+                    setInterval(() => {
+                        if (this.isLoggedIn && this.currentUser?.role === 'customer' && this.currentTab === 'cust_wallet') {
+                            this.pollTopupStatus();
+                        }
+                    }, 30000);
 
                     const savedUser = localStorage.getItem('members_crm_user');
                     if (savedUser) {
@@ -1098,9 +1408,13 @@
                         if (data.table && data.table.rows) {
                             data.table.rows.forEach(row => {
                                 if (row.c && row.c[0] && row.c[1]) {
-                                    if (row.c[0].v === "MAINTENANCE_MODE") {
-                                        const val = row.c[1].v;
+                                    const key = String(row.c[0].v).trim();
+                                    const val = row.c[1] ? row.c[1].v : '';
+                                    if (key === "MAINTENANCE_MODE") {
                                         this.isMaintenanceMode = typeof val === 'boolean' ? val : String(val).trim().toUpperCase() === "TRUE";
+                                    } else if (key in this.systemConfig) {
+                                        this.systemConfig[key] = String(val || '').trim();
+                                        this.adminConfigForm[key] = String(val || '').trim();
                                     }
                                 }
                             });
@@ -1108,6 +1422,34 @@
                     } catch (e) {
                         console.error('Error fetching system config', e);
                     }
+                },
+
+                async pollTopupStatus() {
+                    try {
+                        const walletRes = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_WALLET_LOG&t=${Date.now()}`);
+                        if (walletRes.ok) {
+                            const csv = await walletRes.text();
+                            const newWalletLogs = this.parseCSV(csv).map(r => ({
+                                id: this.getField(r, ['id', 'ID']),
+                                email: this.getField(r, ['email', 'Email']),
+                                type: this.getField(r, ['type', 'Type']),
+                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
+                                balanceAfter: parseInt(this.getField(r, ['balance_after', 'BalanceAfter'])) || 0,
+                                refId: this.getField(r, ['ref_id', 'RefId']),
+                                note: this.getField(r, ['note', 'Note']),
+                                timestamp: this.getField(r, ['timestamp', 'Timestamp']) || new Date().toISOString()
+                            })).filter(l => l.email);
+
+                            const oldBal = this.myWalletBalance;
+                            this.walletLogs = newWalletLogs;
+                            const newBal = this.myWalletBalance;
+
+                            if (newBal > oldBal) {
+                                const diff = newBal - oldBal;
+                                this.showToast(`Ví của bạn đã được nạp ${this.formatCurrency(diff)}!`);
+                            }
+                        }
+                    } catch(e) {}
                 },
 
                 login() {
@@ -1312,7 +1654,7 @@
 
                 async handleBuyProduct(product) {
                     if (product.type === 'manual') {
-                        const note = prompt(`Nhập ghi chú yêu cầu gia hạn cho gói "${product.name}" (VD: Email YouTube / SĐT):`);
+                        const note = prompt(`Nhập thông tin yêu cầu gia hạn cho gói "${product.name}" (VD: Email YouTube / SĐT):`);
                         if (note === null) return;
                         
                         try {
@@ -1328,7 +1670,7 @@
                             });
                             const data = await res.json();
                             if (data.status === 'success') {
-                                this.showToast('Đã gửi đơn chờ! Admin sẽ xác nhận và bàn giao sớm.');
+                                this.showToast('Đã gửi đơn chờ! Admin sẽ duyệt trong 15-30 phút.');
                                 this.fetchData();
                             } else {
                                 throw new Error(data.message || 'Lỗi đặt hàng');
@@ -1344,7 +1686,7 @@
 
                     // Auto Product Purchase
                     if (this.myWalletBalance < product.price) {
-                        this.showToast('Số dư ví không đủ! Vui lòng gửi yêu cầu nạp tiền.');
+                        this.showToast('Số dư ví không đủ! Vui lòng nạp thêm.');
                         return;
                     }
 
@@ -1367,9 +1709,17 @@
                         });
                         const data = await res.json();
                         if (data.status === 'success') {
-                            this.showToast('Mua hàng thành công!');
-                            this.currentItemData = data.itemData || 'Thông tin tài khoản đã sẵn sàng trong tab Đơn Hàng';
-                            this.showItemModal = true;
+                            const rawData = data.itemData || 'Thông tin nick/key sẵn sàng';
+                            const lines = rawData.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+                            this.purchasedModalData = {
+                                productName: product.name,
+                                price: product.price,
+                                walletBalanceAfter: this.myWalletBalance - product.price,
+                                itemData: rawData,
+                                itemDataLines: lines
+                            };
+                            this.showPurchaseSuccessModal = true;
                             this.fetchData();
                         } else {
                             throw new Error(data.message || 'Lỗi mua hàng');
@@ -1380,6 +1730,24 @@
                     } finally {
                         this.isLoading = false;
                     }
+                },
+
+                reorderProduct(order) {
+                    const prod = this.products.find(p => String(p.id) === String(order.productId));
+                    if (!prod) {
+                        this.showToast('Sản phẩm này không còn tồn tại trên shop');
+                        return;
+                    }
+                    if (prod.type === 'auto' && this.getAvailableStock(prod.id) === 0) {
+                        this.showToast('Sản phẩm tạm thời hết hàng!');
+                        return;
+                    }
+                    this.handleBuyProduct(prod);
+                },
+
+                goToOrdersTab() {
+                    this.showPurchaseSuccessModal = false;
+                    this.currentTab = 'cust_orders';
                 },
 
                 showItemDataModal(order) {
@@ -1652,6 +2020,32 @@
                     }
                 },
 
+                // ADMIN SAVE SHOP SETTINGS (Feature 9)
+                async saveShopSettings() {
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'save_system_config',
+                                configs: this.adminConfigForm
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã lưu thông tin cấu hình ngân hàng Shop thành công!');
+                            this.systemConfig = { ...this.adminConfigForm };
+                        } else {
+                            throw new Error(data.message || 'Lỗi lưu cấu hình');
+                        }
+                    } catch(err) {
+                        console.error(err);
+                        this.showToast('Lỗi khi lưu cấu hình ngân hàng');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
                 // UTILITY FUNCTIONS
                 parseCSV(csv) {
                     if (!csv || csv.includes('html')) return [];
@@ -1736,9 +2130,13 @@
                     }
                 },
 
-                copyText(text) {
+                copyTextWithFeedback(text, key) {
                     if (!text) return;
                     navigator.clipboard.writeText(text);
+                    this.copiedState[key] = true;
+                    setTimeout(() => {
+                        this.copiedState[key] = false;
+                    }, 1000);
                     this.showToast('Đã sao chép vào bộ nhớ tạm!');
                 },
 
