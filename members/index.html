@@ -790,10 +790,9 @@
                                             </td>
                                             <td class="px-6 py-4 text-right font-bold text-primary" x-text="formatCurrency(p.price)"></td>
                                             <td class="px-6 py-4 text-center">
-                                                <div class="inline-flex items-center gap-1.5 text-xs">
-                                                    <span class="bg-green-100 text-green-700 px-2 py-0.5 rounded font-bold" x-text="getAvailableStock(p.id) + ' sẵn'"></span>
-                                                    <span class="text-gray-400">/</span>
-                                                    <span class="bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-medium" x-text="getSoldStock(p.id) + ' đã bán'"></span>
+                                                <div class="inline-flex flex-col items-center gap-0.5 text-xs">
+                                                    <span class="bg-green-100 text-green-800 px-2 py-0.5 rounded font-bold" x-text="getStockBreakdownText(p.id)"></span>
+                                                    <span class="text-[10px] text-gray-400 font-medium" x-text="getSoldStock(p.id) + ' đã bán'"></span>
                                                 </div>
                                             </td>
                                             <td class="px-6 py-4 text-center">
@@ -1299,6 +1298,13 @@
                     </div>
                 </div>
                 <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Loại Slot Kho Mặc Định (slot_type)</label>
+                    <select x-model="productForm.slot_type" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-semibold focus:outline-none focus:border-primary">
+                        <option value="rieng">Dùng riêng (rieng)</option>
+                        <option value="gia_dinh">Dùng chung / Gia đình (gia_dinh)</option>
+                    </select>
+                </div>
+                <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Trạng Thái Trên Shop</label>
                     <select x-model="productForm.status" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-semibold focus:outline-none focus:border-primary">
                         <option value="active">Mở bán (Active)</option>
@@ -1321,16 +1327,29 @@
             <form @submit.prevent="submitBulkInventory()" class="space-y-4">
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Chọn Sản Phẩm</label>
-                    <select x-model="bulkInvForm.productId" required class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold focus:outline-none focus:border-primary">
+                    <select x-model="bulkInvForm.productId" @change="onBulkProdChange()" required class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold focus:outline-none focus:border-primary">
                         <option value="">-- Chọn sản phẩm --</option>
                         <template x-for="p in products" :key="p.id">
                             <option :value="p.id" x-text="p.name + ' (' + formatCurrency(p.price) + ')'"></option>
                         </template>
                     </select>
                 </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Phân Loại Slot (slot_type)</label>
+                        <select x-model="bulkInvForm.slotType" @change="bulkInvForm.maxUsers = (bulkInvForm.slotType === 'gia_dinh' ? 5 : 1)" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold focus:outline-none focus:border-primary">
+                            <option value="rieng">Dùng riêng (rieng)</option>
+                            <option value="gia_dinh">Dùng chung / Gia đình (gia_dinh)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Số Người Dùng Tối Đa (max_users)</label>
+                        <input type="number" x-model.number="bulkInvForm.maxUsers" min="1" max="100" required class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3 text-sm font-bold focus:outline-none focus:border-primary">
+                    </div>
+                </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Danh Sách Item Kho (Mỗi dòng 1 nick/key/link)</label>
-                    <textarea x-model="bulkInvForm.rawItems" rows="6" required placeholder="user1@gmail.com|pass1&#10;user2@gmail.com|pass2&#10;KEY-XXXX-YYYY" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs focus:outline-none focus:border-primary"></textarea>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Danh Sách Item Kho (Mỗi dòng 1 nick/key/link = 1 Slot)</label>
+                    <textarea x-model="bulkInvForm.rawItems" rows="5" required placeholder="user1@gmail.com|pass1&#10;user2@gmail.com|pass2&#10;KEY-XXXX-YYYY" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 font-mono text-xs focus:outline-none focus:border-primary"></textarea>
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Hạn Sử Dụng (Tùy chọn)</label>
@@ -1346,18 +1365,37 @@
 
     <!-- View Detailed Inventory Modal (Admin) -->
     <div x-show="showViewInvModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm" x-cloak>
-        <div @click.away="showViewInvModal = false" class="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
-            <div class="flex justify-between items-center mb-4 pb-3 border-b border-gray-100">
-                <h3 class="text-lg font-bold text-gray-900">Chi Tiết Kho Tồn: <span class="text-primary" x-text="selectedProdInv?.name"></span></h3>
-                <button @click="showViewInvModal = false" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+        <div @click.away="showViewInvModal = false" class="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col p-6 overflow-hidden">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-100">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-900">Chi Tiết Kho Tồn: <span class="text-primary" x-text="selectedProdInv?.name"></span></h3>
+                    <p class="text-xs text-gray-500">Lọc slot theo loại và trạng thái sẵn có</p>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    <select x-model="invModalSlotFilter" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-700">
+                        <option value="all">Tất cả loại slot</option>
+                        <option value="rieng">Dùng riêng (rieng)</option>
+                        <option value="gia_dinh">Gia đình (gia_dinh)</option>
+                    </select>
+                    <select x-model="invModalStatusFilter" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs font-bold text-gray-700">
+                        <option value="all">Tất cả trạng thái</option>
+                        <option value="available">Sẵn hàng</option>
+                        <option value="sold">Đã bán full</option>
+                        <option value="expired">Hết hạn</option>
+                    </select>
+                    <button @click="showViewInvModal = false" class="text-gray-400 hover:text-gray-600 p-1"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
             </div>
 
             <div class="overflow-y-auto flex-1 border border-gray-100 rounded-xl">
                 <table class="w-full text-left text-xs">
                     <thead class="bg-gray-50 text-gray-500 uppercase font-semibold">
                         <tr>
-                            <th class="px-4 py-3">ID Item</th>
+                            <th class="px-4 py-3">ID Slot</th>
                             <th class="px-4 py-3">Data / Tài Khoản</th>
+                            <th class="px-4 py-3 text-center">Phân Loại Slot</th>
+                            <th class="px-4 py-3 text-center">Số Người Dùng</th>
                             <th class="px-4 py-3 text-center">Trạng Thái</th>
                             <th class="px-4 py-3">Bán Cho Email</th>
                         </tr>
@@ -1369,15 +1407,24 @@
                                 <td class="px-4 py-3 font-mono text-gray-900 max-w-xs truncate" x-text="item.itemData"></td>
                                 <td class="px-4 py-3 text-center">
                                     <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                                        :class="(item.slotType || 'rieng') === 'gia_dinh' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'"
+                                        x-text="(item.slotType || 'rieng') === 'gia_dinh' ? 'Gia đình' : 'Dùng riêng'">
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-center font-bold font-mono">
+                                    <span x-text="countSoldForInventory(item.id) + '/' + (item.maxUsers || 1) + ' người'"></span>
+                                </td>
+                                <td class="px-4 py-3 text-center">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
                                         :class="item.status === 'available' ? 'bg-green-100 text-green-700' : (item.status === 'sold' ? 'bg-gray-100 text-gray-600' : 'bg-red-100 text-red-700')"
                                         x-text="item.status === 'available' ? 'Sẵn Hàng' : (item.status === 'sold' ? 'Đã Bán' : 'Hết Hạn')">
                                     </span>
                                 </td>
-                                <td class="px-4 py-3 text-gray-600" x-text="item.soldToEmail || '--'"></td>
+                                <td class="px-4 py-3 text-gray-600 max-w-xs truncate" x-text="item.soldToEmail || '--'"></td>
                             </tr>
                         </template>
                         <template x-if="currentProdInventoryItems.length === 0">
-                            <tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">Kho hàng trống.</td></tr>
+                            <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400">Không có item kho nào phù hợp bộ lọc.</td></tr>
                         </template>
                     </tbody>
                 </table>
@@ -1467,13 +1514,15 @@
 
                 // ADMIN FORMS
                 showProductModal: false,
-                productForm: { id: '', name: '', category: '', description: '', price: 0, type: 'auto', status: 'active' },
+                productForm: { id: '', name: '', category: '', description: '', price: 0, type: 'auto', status: 'active', slot_type: 'rieng' },
 
                 showBulkInvModal: false,
-                bulkInvForm: { productId: '', rawItems: '', expireDate: '' },
+                bulkInvForm: { productId: '', rawItems: '', expireDate: '', slotType: 'rieng', maxUsers: 1 },
 
                 showViewInvModal: false,
                 selectedProdInv: null,
+                invModalSlotFilter: 'all',
+                invModalStatusFilter: 'all',
 
                 directTopupForm: { email: '', amount: 0, note: '' },
                 adjustForm: { email: '', amount: 0, note: '' },
@@ -1579,7 +1628,74 @@
 
                 get currentProdInventoryItems() {
                     if (!this.selectedProdInv) return [];
-                    return this.inventory.filter(i => String(i.productId) === String(this.selectedProdInv.id));
+                    const now = new Date();
+                    return this.inventory.filter(i => {
+                        if (String(i.productId) !== String(this.selectedProdInv.id)) return false;
+                        
+                        if (this.invModalSlotFilter !== 'all') {
+                            const type = (i.slotType || 'rieng').toLowerCase();
+                            if (this.invModalSlotFilter === 'rieng' && (type === 'gia_dinh' || type === 'giadinh')) return false;
+                            if (this.invModalSlotFilter === 'gia_dinh' && type !== 'gia_dinh' && type !== 'giadinh') return false;
+                        }
+                        
+                        if (this.invModalStatusFilter !== 'all') {
+                            if (this.invModalStatusFilter === 'expired') {
+                                return i.expireDate && new Date(i.expireDate) < now;
+                            }
+                            if (i.status !== this.invModalStatusFilter) return false;
+                        }
+                        
+                        return true;
+                    });
+                },
+
+                // PRODUCT HELPER FUNCTIONS
+                getStockBreakdownText(productId) {
+                    const p = this.products.find(prod => String(prod.id) === String(productId));
+                    if (!p) return 'Hết hàng';
+                    if (p.type === 'manual') return 'Duyệt thủ công';
+
+                    const now = new Date();
+                    const avail = this.inventory.filter(i => {
+                        if (String(i.productId) !== String(productId)) return false;
+                        if (i.status !== 'available') return false;
+                        if (i.expireDate && new Date(i.expireDate) < now) return false;
+                        return true;
+                    });
+
+                    if (avail.length === 0) return 'Hết hàng';
+
+                    let riengCount = 0;
+                    let giaDinhCount = 0;
+
+                    avail.forEach(i => {
+                        const type = (i.slotType || 'rieng').toLowerCase();
+                        if (type === 'gia_dinh' || type === 'giadinh') {
+                            giaDinhCount++;
+                        } else {
+                            riengCount++;
+                        }
+                    });
+
+                    const parts = [];
+                    if (riengCount > 0) parts.push(`${riengCount} sẵn (riêng)`);
+                    if (giaDinhCount > 0) parts.push(`${giaDinhCount} sẵn (gia đình)`);
+
+                    return parts.join(' · ');
+                },
+
+                countSoldForInventory(invId) {
+                    if (!invId) return 0;
+                    return this.allOrders.filter(o => String(o.inventoryId) === String(invId)).length;
+                },
+
+                onBulkProdChange() {
+                    if (!this.bulkInvForm.productId) return;
+                    const p = this.products.find(prod => String(prod.id) === String(this.bulkInvForm.productId));
+                    if (p && p.slot_type) {
+                        this.bulkInvForm.slotType = p.slot_type;
+                        this.bulkInvForm.maxUsers = p.slot_type === 'gia_dinh' ? 5 : 1;
+                    }
                 },
 
                 // PRODUCT HELPER FUNCTIONS
@@ -1793,7 +1909,8 @@
                                 type: this.getField(r, ['type', 'Type']) || 'auto',
                                 category: this.getField(r, ['category', 'Category']),
                                 status: this.getField(r, ['status', 'Status']) || 'active',
-                                createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString()
+                                createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString(),
+                                slot_type: this.getField(r, ['slot_type', 'SlotType']) || 'rieng'
                             })).filter(p => p.id && p.name);
                         }
 
@@ -1806,7 +1923,9 @@
                                 expireDate: this.getField(r, ['expire_date', 'ExpireDate']),
                                 status: this.getField(r, ['status', 'Status']) || 'available',
                                 soldToEmail: this.getField(r, ['sold_to_email', 'SoldToEmail']),
-                                soldAt: this.getField(r, ['sold_at', 'SoldAt'])
+                                soldAt: this.getField(r, ['sold_at', 'SoldAt']),
+                                slotType: this.getField(r, ['slot_type', 'SlotType']) || 'rieng',
+                                maxUsers: parseInt(this.getField(r, ['max_users', 'MaxUsers'])) || 1
                             })).filter(i => i.id && i.productId);
                         }
 
@@ -2197,9 +2316,9 @@
 
                 openProductModal(prod = null) {
                     if (prod) {
-                        this.productForm = { ...prod };
+                        this.productForm = { slot_type: 'rieng', ...prod };
                     } else {
-                        this.productForm = { id: '', name: '', category: '', description: '', price: 0, type: 'auto', status: 'active' };
+                        this.productForm = { id: '', name: '', category: '', description: '', price: 0, type: 'auto', status: 'active', slot_type: 'rieng' };
                     }
                     this.showProductModal = true;
                 },
@@ -2231,7 +2350,7 @@
                 },
 
                 openBulkInventoryModal() {
-                    this.bulkInvForm = { productId: '', rawItems: '', expireDate: '' };
+                    this.bulkInvForm = { productId: '', rawItems: '', expireDate: '', slotType: 'rieng', maxUsers: 1 };
                     this.showBulkInvModal = true;
                 },
 
@@ -2255,12 +2374,14 @@
                                 action: 'bulk_add_inventory',
                                 productId: this.bulkInvForm.productId,
                                 items: itemsArray,
-                                expireDate: this.bulkInvForm.expireDate
+                                expireDate: this.bulkInvForm.expireDate,
+                                slotType: this.bulkInvForm.slotType || 'rieng',
+                                maxUsers: this.bulkInvForm.maxUsers || 1
                             })
                         });
                         const data = await res.json();
                         if (data.status === 'success') {
-                            this.showToast(`Đã nhập thành công ${itemsArray.length} sản phẩm vào kho!`);
+                            this.showToast(`Đã nhập thành công ${itemsArray.length} slot vào kho (${this.bulkInvForm.slotType === 'gia_dinh' ? 'Gia đình' : 'Dùng riêng'})!`);
                             this.showBulkInvModal = false;
                             this.fetchData();
                         } else {
