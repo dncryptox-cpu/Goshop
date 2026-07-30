@@ -373,6 +373,11 @@
                                 <i data-lucide="plus-circle" class="w-4 h-4"></i>
                                 <span>Gửi Yêu Cầu Nạp Tiền</span>
                             </button>
+                            <div class="mt-2.5 text-center">
+                                <button type="button" @click="openManualTopupModal()" class="text-[11px] text-blue-100 hover:text-white underline font-semibold transition-colors">
+                                    Đã chuyển khoản nhưng gặp sự cố? Liên hệ admin →
+                                </button>
+                            </div>
                         </div>
 
                         <!-- BANK TRANSFER INFO CARD WITH COPY & QR (Feature 1) -->
@@ -653,19 +658,32 @@
                                                     'bg-emerald-50/40': tr.status === 'approved',
                                                     'bg-red-50/30': tr.status === 'rejected'
                                                 }">
-                                                <!-- Proof Image Thumbnail (Feature 6) -->
+                                                <!-- Proof Image Thumbnail & Manual Badge -->
                                                 <td class="px-4 py-3 shrink-0">
-                                                    <div class="relative group w-14 h-14 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 cursor-pointer shadow-sm" @click="openLightbox(tr.proofUrl)">
-                                                        <img :src="tr.proofUrl" alt="Hóa đơn CK" class="w-full h-full object-cover group-hover:scale-110 transition-transform">
-                                                        <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                                                            <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                                                    <template x-if="tr.proofUrl === 'manual_request' || (tr.note && tr.note.includes('[THỦ CÔNG]'))">
+                                                        <div class="w-14 h-14 rounded-xl bg-orange-100 border border-orange-200 flex flex-col items-center justify-center p-1 text-center shadow-sm">
+                                                            <span class="text-[9px] font-black text-orange-700 uppercase tracking-tighter">THỦ CÔNG</span>
+                                                            <i data-lucide="alert-triangle" class="w-4 h-4 text-orange-600 mt-0.5 animate-bounce"></i>
                                                         </div>
-                                                    </div>
+                                                    </template>
+                                                    <template x-if="tr.proofUrl !== 'manual_request' && (!tr.note || !tr.note.includes('[THỦ CÔNG]'))">
+                                                        <div class="relative group w-14 h-14 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 cursor-pointer shadow-sm" @click="openLightbox(tr.proofUrl)">
+                                                            <img :src="tr.proofUrl" alt="Hóa đơn CK" class="w-full h-full object-cover group-hover:scale-110 transition-transform">
+                                                            <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                                                                <i data-lucide="zoom-in" class="w-4 h-4"></i>
+                                                            </div>
+                                                        </div>
+                                                    </template>
                                                 </td>
 
                                                 <!-- Customer Details & Notes -->
                                                 <td class="px-4 py-3">
-                                                    <p class="font-bold text-gray-900 text-xs" x-text="tr.email"></p>
+                                                    <div class="flex items-center gap-1.5">
+                                                        <p class="font-bold text-gray-900 text-xs" x-text="tr.email"></p>
+                                                        <template x-if="tr.proofUrl === 'manual_request' || (tr.note && tr.note.includes('[THỦ CÔNG]'))">
+                                                            <span class="bg-orange-500 text-white px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shadow-sm">⚠️ THỦ CÔNG</span>
+                                                        </template>
+                                                    </div>
                                                     <p class="text-[11px] text-gray-400 font-mono" x-text="tr.id + ' · ' + formatDate(tr.requestedAt)"></p>
                                                     <template x-if="tr.note">
                                                         <p class="text-xs text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded mt-1 font-medium inline-block" x-text="'💬 ' + tr.note"></p>
@@ -1060,6 +1078,23 @@
                 <button @click="showTopupModal = false" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
 
+            <!-- DRAFT RESTORE BANNER (Vấn đề 2) -->
+            <template x-if="showDraftBanner && topupDraft">
+                <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-4 text-xs space-y-2">
+                    <div class="flex items-start gap-2.5">
+                        <i data-lucide="alert-circle" class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"></i>
+                        <div class="flex-1">
+                            <p class="font-bold text-amber-900">Bạn có yêu cầu chưa gửi!</p>
+                            <p class="text-amber-700 mt-0.5">Số tiền: <strong class="font-mono text-amber-900" x-text="formatCurrency(topupDraft.amount || 0)"></strong>. Bạn có muốn tiếp tục gửi không?</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 pt-1 justify-end">
+                        <button type="button" @click="discardTopupDraft()" class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-bold text-[11px] transition-colors">Bỏ qua</button>
+                        <button type="button" @click="restoreTopupDraft()" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[11px] shadow-sm transition-colors">Tiếp tục gửi</button>
+                    </div>
+                </div>
+            </template>
+
             <form @submit.prevent="submitTopupRequest()" class="space-y-5">
                 <!-- QUICK SUGGESTION PILLS (Feature 2) -->
                 <div>
@@ -1074,7 +1109,7 @@
                         </template>
                     </div>
 
-                    <input type="number" x-model.number="topupReqForm.amount" @input="activeQuickAmount = null" min="10000" step="10000" required placeholder="Nhập số tiền khác..." 
+                    <input type="number" x-model.number="topupReqForm.amount" @input="activeQuickAmount = null; saveTopupDraft()" min="10000" step="10000" required placeholder="Nhập số tiền khác..." 
                         class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold text-primary focus:outline-none focus:border-primary">
                     
                     <!-- REALTIME BALANCE PREVIEW (Feature 3) -->
@@ -1086,12 +1121,15 @@
                     </template>
                 </div>
 
-                <!-- DIRECT FILE UPLOAD WITH CLOUDINARY (Feature 1) -->
+                <!-- DIRECT FILE UPLOAD WITH DRAG & DROP & PASTE SUPPORT (Vấn đề 1) -->
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tải Ảnh Hóa Đơn Chuyển Khoản</label>
                     
-                    <div class="border-2 border-dashed rounded-2xl p-4 text-center transition-all bg-gray-50/70"
-                        :class="uploadingState.isSuccess ? 'border-emerald-400 bg-emerald-50/30' : (uploadingState.isError ? 'border-red-300 bg-red-50/30' : 'border-gray-300 hover:border-primary')">
+                    <div class="border-2 border-dashed rounded-2xl p-4 text-center transition-all relative overflow-hidden"
+                        :class="isDragging ? 'border-primary bg-primary/10 scale-[1.01]' : (uploadingState.isSuccess || topupReqForm.proofUrl ? 'border-emerald-400 bg-emerald-50/30' : (uploadingState.isError ? 'border-red-300 bg-red-50/30' : 'border-gray-300 hover:border-primary bg-gray-50/50'))"
+                        @dragover.prevent="isDragging = true"
+                        @dragleave.prevent="isDragging = false"
+                        @drop.prevent="handleDrop($event)">
                         
                         <!-- Uploading State -->
                         <template x-if="uploadingState.isUploading">
@@ -1101,22 +1139,24 @@
                             </div>
                         </template>
 
-                        <!-- Upload Success Preview -->
-                        <template x-if="uploadingState.isSuccess && !uploadingState.isUploading">
-                            <div class="flex items-center justify-between gap-4 p-1">
+                        <!-- Upload Success Preview & Priority Display (Thumbnail > Link > Clear Button) -->
+                        <template x-if="(uploadingState.isSuccess || topupReqForm.proofUrl) && !uploadingState.isUploading">
+                            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 p-1">
                                 <div class="flex items-center gap-3">
-                                    <img :src="uploadingState.previewUrl" class="w-16 h-16 object-cover rounded-xl shadow-md border border-emerald-200">
+                                    <template x-if="uploadingState.previewUrl || topupReqForm.proofUrl">
+                                        <img :src="uploadingState.previewUrl || topupReqForm.proofUrl" class="w-16 h-16 object-cover rounded-xl shadow-md border border-emerald-200 shrink-0">
+                                    </template>
                                     <div class="text-left">
                                         <span class="inline-flex items-center gap-1 text-xs font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-md">
-                                            ✓ Tải ảnh thành công
+                                            ✓ Đã nhận ảnh hóa đơn
                                         </span>
-                                        <p class="text-[11px] text-gray-400 mt-1">Đã sẵn sàng gửi duyệt</p>
+                                        <p class="text-[11px] text-gray-400 mt-1">Sẵn sàng gửi duyệt nạp tiền</p>
                                     </div>
                                 </div>
-                                <label class="cursor-pointer text-xs text-primary hover:underline font-bold">
-                                    Đổi ảnh khác
-                                    <input type="file" accept="image/*" capture="environment" class="hidden" @change="handleFileUpload($event)">
-                                </label>
+                                <button type="button" @click="clearUpload()" class="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 shrink-0">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                    <span>Xóa & chọn lại</span>
+                                </button>
                             </div>
                         </template>
 
@@ -1130,12 +1170,12 @@
                             </div>
                         </template>
 
-                        <!-- Initial Idle State -->
-                        <template x-if="!uploadingState.isUploading && !uploadingState.isSuccess && !uploadingState.isError">
+                        <!-- Initial Idle State (Click / Paste Ctrl+V / Drag & Drop) -->
+                        <template x-if="!uploadingState.isUploading && !uploadingState.isSuccess && !topupReqForm.proofUrl && !uploadingState.isError">
                             <label class="cursor-pointer flex flex-col items-center py-4">
-                                <i data-lucide="camera" class="w-8 h-8 text-primary mb-2"></i>
-                                <span class="text-xs font-bold text-gray-700">Bấm để chụp ảnh hoặc chọn file hóa đơn</span>
-                                <span class="text-[11px] text-gray-400 mt-1">Hỗ trợ JPG, PNG, WEBP (camera mobile)</span>
+                                <i data-lucide="upload-cloud" class="w-10 h-10 text-primary mb-2" :class="isDragging ? 'animate-bounce' : ''"></i>
+                                <span class="text-xs font-bold text-gray-800" x-text="isDragging ? 'Thả ảnh vào đây!' : 'Bấm để chụp ảnh hoặc chọn file hóa đơn'"></span>
+                                <span class="text-[11px] text-gray-400 mt-1">Hoặc dán ảnh (<kbd class="px-1 py-0.5 bg-gray-200 rounded font-mono text-[10px]">Ctrl+V</kbd> / <kbd class="px-1 py-0.5 bg-gray-200 rounded font-mono text-[10px]">Cmd+V</kbd>) hoặc Kéo thả vào đây</span>
                                 <input type="file" accept="image/*" capture="environment" class="hidden" @change="handleFileUpload($event)">
                             </label>
                         </template>
@@ -1144,7 +1184,7 @@
                     <!-- Fallback Link Input if Cloudinary not configured -->
                     <template x-if="!systemConfig.CLOUDINARY_CLOUD_NAME">
                         <div class="mt-2">
-                            <input type="url" x-model="topupReqForm.proofUrl" placeholder="Hoặc dán link ảnh trực tiếp (http...)" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-xs">
+                            <input type="url" x-model="topupReqForm.proofUrl" @input="saveTopupDraft()" placeholder="Hoặc dán link ảnh trực tiếp (http...)" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-xs">
                         </div>
                     </template>
                 </div>
@@ -1152,7 +1192,7 @@
                 <!-- OPTIONAL NOTE FIELD (Feature 4) -->
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Ghi Chú (Tùy chọn)</label>
-                    <textarea x-model="topupReqForm.note" rows="2" placeholder="VD: CK lúc 14:30 ngày 10/06..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs focus:outline-none focus:border-primary"></textarea>
+                    <textarea x-model="topupReqForm.note" @input="saveTopupDraft()" rows="2" placeholder="VD: CK lúc 14:30 ngày 10/06..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs focus:outline-none focus:border-primary"></textarea>
                 </div>
 
                 <div class="flex justify-end gap-3 pt-2">
@@ -1161,6 +1201,41 @@
                         :class="!topupReqForm.proofUrl || uploadingState.isUploading ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-lg shadow-primary/20'"
                         class="px-6 py-3 text-xs font-bold rounded-xl transition-all">
                         Gửi Yêu Cầu Nạp
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MANUAL TOPUP REQUEST MODAL FOR INCIDENTS (Vấn đề 2) -->
+    <div x-show="showManualTopupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" x-cloak>
+        <div @click.away="showManualTopupModal = false" class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 sm:p-7 border border-orange-100 text-left">
+            <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center">
+                        <i data-lucide="life-buoy" class="w-4 h-4"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-gray-900">Báo Sự Cố Nạp Tiền (Thủ Công)</h3>
+                </div>
+                <button @click="showManualTopupModal = false" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <form @submit.prevent="submitManualTopup()" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Số Tiền Khai Đã Chuyển (VNĐ)</label>
+                    <input type="number" x-model.number="manualTopupForm.amount" required min="10000" step="10000" placeholder="100000" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 px-3.5 text-sm font-bold text-primary focus:outline-none focus:border-primary">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Mô Tả Sự Cố / Thông Tin Chuyển Khoản</label>
+                    <textarea x-model="manualTopupForm.note" rows="3" required placeholder="VD: Đã CK 200k lúc 14:20 qua Vietcombank nhưng không tải được ảnh hóa đơn..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs focus:outline-none focus:border-primary"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" @click="showManualTopupModal = false" class="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
+                    <button type="submit" class="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow-md flex items-center gap-1.5">
+                        <i data-lucide="send" class="w-4 h-4"></i>
+                        <span>Gửi Yêu Cầu Xử Lý</span>
                     </button>
                 </div>
             </form>
@@ -1492,6 +1567,13 @@
                     file: null
                 },
 
+                // DRAG & DROP + PASTE + DRAFT STATE (Vấn đề 1 & 2)
+                isDragging: false,
+                showDraftBanner: false,
+                topupDraft: null,
+                showManualTopupModal: false,
+                manualTopupForm: { amount: 100000, note: '' },
+
                 // CUSTOMER TOPUP STICKY BANNER (Feature 5)
                 activeTopupBanner: { show: false, reqId: '', amount: 0, status: 'pending', note: '' },
 
@@ -1738,6 +1820,7 @@
                 // INITIALIZATION
                 async initApp() {
                     this.fetchSystemConfig();
+                    this.initPasteEventListener();
                     setInterval(() => this.fetchSystemConfig(), 30000);
 
                     // Polling for customer topup banner & status (Feature 5) - every 30s
@@ -2002,16 +2085,55 @@
                 },
 
                 // FILE UPLOAD WITH CLOUDINARY (Feature 1)
-                async handleFileUpload(event) {
+                // FILE UPLOAD, DRAG & DROP, PASTE AND DRAFT HANDLERS (Vấn đề 1 & 2)
+                initPasteEventListener() {
+                    window.addEventListener('paste', (e) => {
+                        if (!this.showTopupModal) return;
+                        const items = (e.clipboardData || e.originalEvent?.clipboardData)?.items;
+                        if (!items) return;
+                        for (let item of items) {
+                            if (item.type.indexOf('image') !== -1) {
+                                const file = item.getAsFile();
+                                if (file) {
+                                    this.processImageFile(file);
+                                    this.showToast('✓ Đã dán ảnh hóa đơn từ bộ nhớ tạm!');
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                },
+
+                handleDrop(event) {
+                    this.isDragging = false;
+                    const files = event.dataTransfer?.files;
+                    if (files && files.length > 0 && files[0].type.startsWith('image/')) {
+                        this.processImageFile(files[0]);
+                        this.showToast('✓ Đã thả ảnh hóa đơn!');
+                    }
+                },
+
+                handleFileUpload(event) {
                     const file = event.target.files[0];
-                    if (!file) return;
-                    
+                    if (file) {
+                        this.processImageFile(file);
+                    }
+                },
+
+                processImageFile(file) {
                     this.uploadingState.file = file;
                     this.uploadingState.previewUrl = URL.createObjectURL(file);
+                    this.uploadingState.isUploading = false;
+                    this.uploadingState.isSuccess = false;
                     this.uploadingState.isError = false;
-                    this.uploadingState.errorMessage = '';
+                    this.uploadToCloudinary(file);
+                    this.saveTopupDraft();
+                },
 
-                    await this.uploadToCloudinary(file);
+                clearUpload() {
+                    this.uploadingState = { isUploading: false, isSuccess: false, isError: false, errorMessage: '', previewUrl: '', file: null };
+                    this.topupReqForm.proofUrl = '';
+                    this.saveTopupDraft();
                 },
 
                 async retryUpload() {
@@ -2024,9 +2146,9 @@
                     const preset = this.systemConfig.CLOUDINARY_UPLOAD_PRESET;
 
                     if (!cloudName || !preset) {
-                        // Fallback if Cloudinary is not configured in Admin Settings yet
                         this.topupReqForm.proofUrl = this.uploadingState.previewUrl;
                         this.uploadingState.isSuccess = true;
+                        this.saveTopupDraft();
                         this.showToast('Đã nhận ảnh hóa đơn!');
                         return;
                     }
@@ -2048,6 +2170,7 @@
                             this.uploadingState.isSuccess = true;
                             this.uploadingState.previewUrl = data.secure_url;
                             this.topupReqForm.proofUrl = data.secure_url;
+                            this.saveTopupDraft();
                             this.showToast('✓ Tải ảnh lên Cloudinary thành công!');
                         } else {
                             throw new Error(data.error?.message || 'Lỗi upload ảnh');
@@ -2061,11 +2184,68 @@
                     }
                 },
 
+                // LOCALSTORAGE DRAFT HANDLERS (Vấn đề 2)
+                saveTopupDraft() {
+                    if (!this.currentUser) return;
+                    try {
+                        const draft = {
+                            amount: this.topupReqForm.amount,
+                            proofUrl: this.topupReqForm.proofUrl,
+                            note: this.topupReqForm.note,
+                            previewUrl: this.uploadingState.previewUrl,
+                            timestamp: Date.now()
+                        };
+                        localStorage.setItem('mb_topup_draft_' + this.currentUser.email, JSON.stringify(draft));
+                    } catch(e) {}
+                },
+
+                checkTopupDraft() {
+                    if (!this.currentUser) return;
+                    const raw = localStorage.getItem('mb_topup_draft_' + this.currentUser.email);
+                    if (!raw) return;
+                    try {
+                        const draft = JSON.parse(raw);
+                        const age = Date.now() - (draft.timestamp || 0);
+                        if (age < 2 * 3600 * 1000 && (draft.amount || draft.proofUrl || draft.note)) {
+                            this.topupDraft = draft;
+                            this.showDraftBanner = true;
+                        } else {
+                            localStorage.removeItem('mb_topup_draft_' + this.currentUser.email);
+                        }
+                    } catch(e) {}
+                },
+
+                restoreTopupDraft() {
+                    if (!this.topupDraft) return;
+                    this.topupReqForm.amount = this.topupDraft.amount || 100000;
+                    this.topupReqForm.proofUrl = this.topupDraft.proofUrl || '';
+                    this.topupReqForm.note = this.topupDraft.note || '';
+                    if (this.topupDraft.previewUrl || this.topupDraft.proofUrl) {
+                        this.uploadingState.previewUrl = this.topupDraft.previewUrl || this.topupDraft.proofUrl;
+                        this.uploadingState.isSuccess = true;
+                    }
+                    this.showDraftBanner = false;
+                    this.showToast('Đã khôi phục bản nháp!');
+                },
+
+                discardTopupDraft() {
+                    if (this.currentUser) {
+                        localStorage.removeItem('mb_topup_draft_' + this.currentUser.email);
+                    }
+                    this.topupDraft = null;
+                    this.showDraftBanner = false;
+                    this.topupReqForm = { amount: 100000, proofUrl: '', note: '' };
+                    this.uploadingState = { isUploading: false, isSuccess: false, isError: false, errorMessage: '', previewUrl: '', file: null };
+                },
+
                 // CUSTOMER TOP-UP MODAL SUBMIT
                 openTopupModal() {
                     this.topupReqForm = { amount: 100000, proofUrl: '', note: '' };
                     this.activeQuickAmount = 100000;
                     this.uploadingState = { isUploading: false, isSuccess: false, isError: false, errorMessage: '', previewUrl: '', file: null };
+                    this.showDraftBanner = false;
+                    this.topupDraft = null;
+                    this.checkTopupDraft();
                     this.showTopupModal = true;
                 },
 
@@ -2083,7 +2263,8 @@
                                 action: 'submit_topup_request',
                                 email: this.currentUser.email,
                                 amount: this.topupReqForm.amount,
-                                proofUrl: this.topupReqForm.proofUrl
+                                proofUrl: this.topupReqForm.proofUrl,
+                                note: this.topupReqForm.note
                             })
                         });
                         const data = await res.json();
@@ -2091,7 +2272,12 @@
                             this.showToast('Đã gửi yêu cầu nạp tiền!');
                             this.showTopupModal = false;
 
-                            // Show sticky banner (Feature 5)
+                            // Clear draft after successful submit
+                            if (this.currentUser) {
+                                localStorage.removeItem('mb_topup_draft_' + this.currentUser.email);
+                            }
+
+                            // Show sticky banner
                             this.activeTopupBanner = {
                                 show: true,
                                 reqId: data.reqId,
@@ -2106,6 +2292,46 @@
                     } catch (err) {
                         console.error(err);
                         this.showToast(err.message || 'Có lỗi xảy ra khi gửi yêu cầu nạp');
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
+                // MANUAL TOPUP INCIDENT REQUEST (Vấn đề 2)
+                openManualTopupModal() {
+                    this.manualTopupForm = { amount: 100000, note: '' };
+                    this.showManualTopupModal = true;
+                },
+
+                async submitManualTopup() {
+                    if (this.manualTopupForm.amount <= 0 || !this.manualTopupForm.note.trim()) {
+                        this.showToast('Vui lòng nhập số tiền và mô tả sự cố');
+                        return;
+                    }
+
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                action: 'submit_topup_request',
+                                email: this.currentUser.email,
+                                amount: this.manualTopupForm.amount,
+                                proofUrl: 'manual_request',
+                                note: '[THỦ CÔNG] ' + this.manualTopupForm.note.trim()
+                            })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast('Đã gửi yêu cầu xử lý thủ công cho Admin!');
+                            this.showManualTopupModal = false;
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi gửi yêu cầu');
+                        }
+                    } catch(err) {
+                        console.error(err);
+                        this.showToast(err.message || 'Có lỗi xảy ra');
                     } finally {
                         this.isLoading = false;
                     }
