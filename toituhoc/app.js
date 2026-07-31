@@ -488,7 +488,11 @@ function renderNotesHistory(notes) {
    ========================================== */
 function setupUpload() {
   const trigger = document.getElementById('upload-trigger');
-  const fileInput = document.getElementById('camera-file-input');
+  const galleryInput = document.getElementById('gallery-file-input');
+  const cameraInput = document.getElementById('camera-file-input');
+  const btnPickGallery = document.getElementById('btn-pick-gallery');
+  const btnPickCamera = document.getElementById('btn-pick-camera');
+
   const previewBox = document.getElementById('image-preview-box');
   const previewImg = document.getElementById('image-preview-img');
   const btnProcess = document.getElementById('btn-process-image');
@@ -496,12 +500,8 @@ function setupUpload() {
   const resultsContainer = document.getElementById('ai-results-container');
   const btnStartReviewNew = document.getElementById('btn-start-review-new');
 
-  trigger.addEventListener('click', () => fileInput.click());
-
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
+  const handleFileSelect = (file) => {
+    if (!file || !file.type.startsWith('image/')) return;
     compressAndReadImage(file, (base64Str, mimeType) => {
       state.selectedImageBase64 = base64Str;
       state.selectedImageMimeType = mimeType;
@@ -510,7 +510,86 @@ function setupUpload() {
       previewBox.style.display = 'block';
       btnProcess.style.display = 'flex';
       resultsContainer.style.display = 'none';
+      previewBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
+  };
+
+  // 1. Thư viện ảnh (Mobile & PC)
+  if (btnPickGallery) {
+    btnPickGallery.addEventListener('click', (e) => {
+      e.stopPropagation();
+      galleryInput.click();
+    });
+  }
+  if (galleryInput) {
+    galleryInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleFileSelect(e.target.files[0]);
+      }
+    });
+  }
+
+  // 2. Chụp ảnh trực tiếp
+  if (btnPickCamera) {
+    btnPickCamera.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cameraInput.click();
+    });
+  }
+  if (cameraInput) {
+    cameraInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleFileSelect(e.target.files[0]);
+      }
+    });
+  }
+
+  trigger.addEventListener('click', (e) => {
+    if (e.target === trigger || e.target.classList.contains('upload-icon')) {
+      galleryInput.click();
+    }
+  });
+
+  // 3. HỖ TRỢ DÁN ẢNH (PASTE CTRL+V / CMD+V) TOÀN CỤC
+  window.addEventListener('paste', (e) => {
+    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          showView('view-upload');
+          updateNavActive('view-upload');
+          handleFileSelect(blob);
+          e.preventDefault();
+          break;
+        }
+      }
+    }
+  });
+
+  // 4. HỖ TRỢ KÉO THẢ (DRAG & DROP)
+  trigger.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    trigger.style.borderColor = 'var(--primary)';
+    trigger.style.background = 'rgba(99, 102, 241, 0.15)';
+  });
+
+  trigger.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    trigger.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+    trigger.style.background = 'rgba(15, 23, 42, 0.4)';
+  });
+
+  trigger.addEventListener('drop', (e) => {
+    e.preventDefault();
+    trigger.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+    trigger.style.background = 'rgba(15, 23, 42, 0.4)';
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileSelect(e.dataTransfer.files[0]);
+    }
   });
 
   btnProcess.addEventListener('click', async () => {
