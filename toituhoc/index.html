@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Tôi Tự Học - Học Tiếng Anh Hằng Ngày Qua Ảnh</title>
+  <meta name="description" content="Webapp học tiếng Anh hằng ngày từ ảnh chụp biển hiệu, sách, menu... tích hợp Gemini AI và thuật toán ôn tập Spaced Repetition (SM-2).">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- CSS Style -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Google Identity Services (Sign-In) SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+  <div id="app">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">📚</div>
+        <div class="brand-title">Tôi Tự Học</div>
+      </div>
+      <div class="user-badge" id="user-badge-container">
+        <span id="user-email-display">Chưa đăng nhập</span>
+        <div class="user-avatar" id="user-avatar-initial">?</div>
+      </div>
+    </header>
+
+    <!-- 1. AUTH VIEW -->
+    <section id="view-auth" class="view-section active">
+      <div class="glass-card auth-box">
+        <div class="auth-hero-icon">📸✨</div>
+        <h2>Học Tiếng Anh Qua Ảnh Thực Tế</h2>
+        <p>Chụp bất kỳ biển hiệu, menu, sách hay bao bì chứa tiếng Anh. Gemini AI sẽ trích xuất từ vựng đáng học & tạo thẻ ôn tập Spaced Repetition cho bạn!</p>
+        
+        <!-- Quick Email Login / Google OAuth -->
+        <div style="width: 100%; display: flex; flex-direction: column; gap: 12px; margin-top: 10px;">
+          <input type="email" id="input-auth-email" placeholder="Nhập Email Google của bạn..." 
+                 style="width: 100%; padding: 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(15,23,42,0.6); color: #fff; font-size: 0.95rem;">
+          
+          <button class="btn-primary" id="btn-login-submit">
+            <span>🚀 Đăng Nhập / Bắt Đầu</span>
+          </button>
+        </div>
+
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px;">
+          * Mức độ cá nhân hóa: Dữ liệu của bạn được phân biệt qua Google Email trên Google Sheet.
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. DASHBOARD VIEW -->
+    <section id="view-dashboard" class="view-section">
+      <!-- Stats -->
+      <div class="dashboard-grid">
+        <div class="stat-card">
+          <div class="stat-label">Cần Ôn Hôm Nay</div>
+          <div class="stat-number" id="stat-due-count">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Tổng Từ Đã Lưu</div>
+          <div class="stat-number" id="stat-total-count" style="color: var(--secondary);">0</div>
+        </div>
+      </div>
+
+      <!-- Main Banner Action -->
+      <div class="action-banner">
+        <h3>Hôm nay bạn gặp chữ tiếng Anh gì?</h3>
+        <p style="font-size: 0.88rem; color: var(--text-sub);">Chụp lại ngay để AI đọc & phân tích từ vựng giúp bạn!</p>
+        
+        <div style="display: flex; gap: 10px; width: 100%;">
+          <button class="btn-primary" id="btn-goto-upload" style="flex: 1;">
+            <span>📸 Chụp / Upload Ảnh</span>
+          </button>
+          <button class="btn-primary" id="btn-goto-review" style="flex: 1; background: linear-gradient(135deg, var(--secondary), var(--accent));">
+            <span>🃏 Ôn Thẻ Bài</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Config Apps Script URL -->
+      <div class="glass-card" style="padding: 16px;">
+        <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); margin-bottom: 8px;">
+          ⚙️ Google Apps Script Web App URL Backend:
+        </div>
+        <input type="text" id="input-script-url" placeholder="https://script.google.com/macros/s/.../exec" 
+               style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.3); color: #a5b4fc; font-size: 0.8rem; font-family: monospace;">
+        <button id="btn-save-script-url" style="margin-top: 8px; width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: none; border-radius: 6px; color: #fff; font-size: 0.8rem; cursor: pointer;">
+          Lưu Cấu Hình Backend
+        </button>
+      </div>
+    </section>
+
+    <!-- 3. UPLOAD / CAMERA VIEW -->
+    <section id="view-upload" class="view-section">
+      <div class="glass-card">
+        <h3 style="margin-bottom: 12px;">📸 Tải Ảnh Chứa Chữ Tiếng Anh</h3>
+        
+        <!-- Hidden file input -->
+        <input type="file" id="camera-file-input" accept="image/*" capture="environment" style="display: none;">
+        
+        <!-- Dropzone / Click target -->
+        <div class="upload-dropzone" id="upload-trigger">
+          <div class="upload-icon">📷</div>
+          <div style="font-weight: 600; color: #fff;">Bấm vào đây để Chụp hoặc Chọn Ảnh</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">Biển hiệu, menu nhà hàng, nhãn bao bì, trang sách...</div>
+        </div>
+
+        <!-- Preview container -->
+        <div class="preview-container" id="image-preview-box" style="display: none; margin-top: 14px;">
+          <img id="image-preview-img" src="" alt="Preview">
+        </div>
+
+        <!-- Submit Button -->
+        <button class="btn-primary" id="btn-process-image" style="margin-top: 14px; display: none;">
+          <span>🤖 AI Đọc & Trích Từ Vựng</span>
+        </button>
+
+        <!-- Loading spinner state -->
+        <div class="loading-box" id="upload-loading-spinner" style="display: none;">
+          <div class="spinner"></div>
+          <div style="font-weight: 600;" id="loading-status-text">Đang tải ảnh lên Drive...</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">Gemini AI đang phân tích từ vựng & ví dụ...</div>
+        </div>
+      </div>
+
+      <!-- Result List from Gemini AI -->
+      <div id="ai-results-container" style="display: none; flex-direction: column; gap: 12px;">
+        <h4 style="color: var(--success); font-size: 1rem;">✨ Đã trích xuất các từ vựng thành công:</h4>
+        <div id="ai-results-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        <button class="btn-primary" id="btn-start-review-new" style="margin-top: 6px;">
+          <span>🃏 Chuyển Sang Ôn Tập Ngay</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 4. FLASHCARD REVIEW VIEW -->
+    <section id="view-review" class="view-section">
+      <!-- Progress Bar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--text-muted);">
+        <span id="review-progress-text">Thẻ 0 / 0</span>
+        <span style="color: var(--primary);" id="review-date-indicator">Hôm nay</span>
+      </div>
+
+      <!-- Empty state when review complete -->
+      <div id="review-empty-state" class="glass-card" style="text-align: center; padding: 40px 20px; display: none;">
+        <div style="font-size: 3.5rem; margin-bottom: 12px;">🎉</div>
+        <h3>Tuyệt Vời!</h3>
+        <p style="color: var(--text-muted); margin-top: 8px;">Bạn đã hoàn thành tất cả các từ vựng cần ôn tập hôm nay!</p>
+        <button class="btn-primary" id="btn-back-dashboard" style="margin-top: 20px;">
+          <span>Trở Về Trang Chủ</span>
+        </button>
+      </div>
+
+      <!-- Flashcard Interactive Container -->
+      <div id="review-card-container" class="flashcard-wrapper">
+        <div class="flashcard" id="flashcard-element">
+          <!-- Card Front -->
+          <div class="card-face card-front">
+            <div class="pos-tag" id="card-pos">NOUN</div>
+            <div class="word-display" id="card-word">Example Word</div>
+            <button class="tts-btn" id="btn-tts-front" title="Nghe phát âm">🔊</button>
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; margin-top: 20px;">
+              👆 Chạm vào thẻ để xem nghĩa & ví dụ
+            </div>
+          </div>
+
+          <!-- Card Back -->
+          <div class="card-face card-back">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div class="pos-tag" id="card-pos-back">NOUN</div>
+              <button class="tts-btn" id="btn-tts-back" style="width: 32px; height: 32px; font-size: 1rem;">🔊</button>
+            </div>
+            
+            <div class="meaning-display" id="card-meaning">Nghĩa tiếng Việt</div>
+            
+            <div class="example-box">
+              <span style="color: var(--text-muted); display: block; font-size: 0.75rem; margin-bottom: 4px; font-style: normal;">CÂU VÍ DỤ:</span>
+              <span id="card-example">"This is an example sentence using the word."</span>
+            </div>
+
+            <div class="grammar-box" id="card-grammar-box" style="display: none;">
+              💡 <span id="card-grammar">Ghi chú ngữ pháp...</span>
+            </div>
+
+            <div style="text-align: center; margin-top: 10px;">
+              <a id="card-photo-link" href="#" target="_blank" style="color: #a5b4fc; font-size: 0.78rem; text-decoration: underline;">🖼️ Xem lại ảnh chụp gốc</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rating buttons (SM-2) -->
+      <div id="rating-controls" class="rating-buttons">
+        <button class="btn-rate btn-again" data-rating="again">
+          <span>🟥 Quên</span>
+          <span class="rate-sub">1 ngày</span>
+        </button>
+        <button class="btn-rate btn-hard" data-rating="hard">
+          <span>🟧 Khó</span>
+          <span class="rate-sub">+2 ngày</span>
+        </button>
+        <button class="btn-rate btn-normal" data-rating="normal">
+          <span>🔵 Thường</span>
+          <span class="rate-sub">+6 ngày</span>
+        </button>
+        <button class="btn-rate btn-easy" data-rating="easy">
+          <span>🟩 Dễ</span>
+          <span class="rate-sub">+8 ngày</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 5. KHO TỪ VỰNG (ALL VOCAB) -->
+    <section id="view-vocab" class="view-section">
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <input type="text" id="input-vocab-search" placeholder="🔍 Tìm kiếm từ vựng hoặc nghĩa..." 
+               style="flex: 1; padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: rgba(15,23,42,0.6); color: #fff; font-size: 0.9rem;">
+      </div>
+
+      <div id="vocab-all-list" style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
+        <!-- Dynamic list items -->
+      </div>
+    </section>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav" id="bottom-navigation" style="display: none;">
+      <div class="nav-item active" data-target="view-dashboard">
+        <span class="nav-icon">🏠</span>
+        <span>Trang chủ</span>
+      </div>
+      <div class="nav-item" data-target="view-upload">
+        <span class="nav-icon">📸</span>
+        <span>Chụp ảnh</span>
+      </div>
+      <div class="nav-item" data-target="view-review">
+        <span class="nav-icon">🃏</span>
+        <span>Ôn tập</span>
+      </div>
+      <div class="nav-item" data-target="view-vocab">
+        <span class="nav-icon">📚</span>
+        <span>Kho từ</span>
+      </div>
+    </nav>
+
+  </div>
+
+  <!-- JavaScript -->
+  <script src="app.js"></script>
+</body>
+</html>
