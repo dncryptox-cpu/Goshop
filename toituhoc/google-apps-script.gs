@@ -1,23 +1,15 @@
 /**
- * TÔI TỰ HỌC - GOOGLE APPS SCRIPT BACKEND
+ * TÔI TỰ HỌC - GOOGLE APPS SCRIPT BACKEND (PHIÊN BẢN AUTH RIÊNG & PER-USER API KEY)
  * 
- * HƯỚNG DẪN CÀI ĐẶT:
- * 1. Tạo một Google Sheet mới trên Google Drive (hoặc mở Sheet có sẵn).
+ * HƯỚNG DẪN DÀNH CHO ADMIN:
+ * 1. Mở một Google Sheet mới trên Google Drive (để sở hữu riêng, không public).
  * 2. Mở "Tiện ích mở rộng" -> "Apps Script" (Extensions -> Apps Script).
- * 3. Xóa hết mã nguồn cũ trong file Code.gs và dán toàn bộ đoạn mã này vào.
- * 4. Thêm Gemini API Key:
- *    - Nhấp vào biểu tượng Bánh răng (Project Settings) ở menu bên trái.
- *    - Cuộn xuống phần "Script Properties" (Các thuộc tính của kịch bản).
- *    - Thêm một thuộc tính mới:
- *      + Property: GEMINI_API_KEY
- *      + Value: <Nhập Gemini API Key của bạn từ Google AI Studio>
- * 5. Deploy Web App:
- *    - Bấm nút "Deploy" (Triển khai) -> "New deployment" (Triển khai mới).
- *    - Chọn loại: "Web app" (Ứng dụng web).
- *    - Execute as (Thực thi dưới dạng): "Me" (Tôi).
- *    - Who has access (Ai có quyền truy cập): "Anyone" (Bất kỳ ai).
- *    - Bấm "Deploy", cấp quyền cấp phép (Authorize access) khi được hỏi.
- *    - Sao chép Web App URL thu được và dán vào file app.js ở frontend.
+ * 3. Dán toàn bộ mã nguồn này vào file Code.gs và lưu lại.
+ * 4. Deploy Web App:
+ *    - Deploy -> New deployment -> Select type: Web app.
+ *    - Execute as: Me
+ *    - Who has access: Anyone
+ * 5. Cung cấp URL nhận được cho người dùng / cấu hình mặc định ở frontend.
  */
 
 function doGet(e) {
@@ -33,23 +25,32 @@ function doGet(e) {
       });
     }
 
+    var token = params.token;
+    var user = getUserByToken(token);
+    if (!user) {
+      return respondJSON({ status: 'error', code: 'UNAUTHORIZED', message: 'Phiên đăng nhập hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.' });
+    }
+
     if (action === 'getDueVocab') {
-      var userEmail = params.user_email;
-      if (!userEmail) {
-        return respondJSON({ status: 'error', message: 'Thiếu email người dùng.' });
-      }
       var todayStr = params.today || getTodayDateString();
-      var vocabList = getDueVocabForUser(userEmail, todayStr);
+      var vocabList = getDueVocabForUser(user.email, todayStr);
       return respondJSON({ status: 'success', data: vocabList });
     }
 
     if (action === 'getAllVocab') {
-      var userEmail = params.user_email;
-      if (!userEmail) {
-        return respondJSON({ status: 'error', message: 'Thiếu email người dùng.' });
-      }
-      var vocabList = getAllVocabForUser(userEmail);
+      var vocabList = getAllVocabForUser(user.email);
       return respondJSON({ status: 'success', data: vocabList });
+    }
+
+    if (action === 'getUserProfile') {
+      return respondJSON({
+        status: 'success',
+        data: {
+          email: user.email,
+          has_api_key: !!(user.api_key_gemini && user.api_key_gemini.trim()),
+          role: user.role
+        }
+      });
     }
 
     return respondJSON({ status: 'error', message: 'Hành động GET không hợp lệ.' });
@@ -66,12 +67,32 @@ function doPost(e) {
     }
     var action = postData.action;
 
+    // Các hành động công khai (không cần Token)
+    if (action === 'register') {
+      return handleRegister(postData);
+    }
+
+    if (action === 'login') {
+      return handleLogin(postData);
+    }
+
+    // Các hành động yêu cầu Token xác thực
+    var token = postData.token;
+    var user = getUserByToken(token);
+    if (!user) {
+      return respondJSON({ status: 'error', code: 'UNAUTHORIZED', message: 'Phiên đăng nhập hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại.' });
+    }
+
+    if (action === 'updateApiKey') {
+      return handleUpdateApiKey(user.email, postData.api_key_gemini);
+    }
+
     if (action === 'processImage') {
-      return handleProcessImage(postData);
+      return handleProcessImage(user, postData);
     }
 
     if (action === 'submitReview') {
-      return handleSubmitReview(postData);
+      return handleSubmitReview(user.email, postData);
     }
 
     return respondJSON({ status: 'error', message: 'Hành động POST không hợp lệ.' });
@@ -81,24 +102,192 @@ function doPost(e) {
 }
 
 // ==========================================
+// THAO TÁC AUTH, MẬT KHẨU & TOKEN
+// ==========================================
+
+function handleRegister(data) {
+  var email = (data.email || '').trim().toLowerCase();
+  var password = data.password || '';
+  var apiKeyGemini = (data.api_key_gemini || '').trim();
+
+  if (!email || !password) {
+    return respondJSON({ status: 'error', message: 'Vui lòng nhập đầy đủ Email và Mật khẩu.' });
+  }
+
+  if (password.length < 6) {
+    return respondJSON({ status: 'error', message: 'Mật khẩu phải có ít nhất 6 ký tự.' });
+  }
+
+  var ss = getOrCreateSpreadsheet();
+  var usersSheet = ss.getSheetByName('users');
+  var usersData = usersSheet.getDataRange().getValues();
+
+  for (var i = 1; i < usersData.length; i++) {
+    if (usersData[i][1] === email) {
+      return respondJSON({ status: 'error', message: 'Email này đã được đăng ký tài khoản trên hệ thống.' });
+    }
+  }
+
+  var userId = 'u_' + new Date().getTime();
+  var passwordHash = hashPassword(password);
+  var todayStr = getTodayDateString();
+  var token = generateToken(email);
+
+  // Ghi vào Sheet users: id | email | password_hash | api_key_gemini | ngày_đăng_ký | role | current_token
+  usersSheet.appendRow([
+    userId,
+    email,
+    passwordHash,
+    apiKeyGemini,
+    todayStr,
+    'user',
+    token
+  ]);
+
+  return respondJSON({
+    status: 'success',
+    message: 'Đăng ký tài khoản thành công!',
+    token: token,
+    email: email,
+    has_api_key: !!apiKeyGemini
+  });
+}
+
+function handleLogin(data) {
+  var email = (data.email || '').trim().toLowerCase();
+  var password = data.password || '';
+
+  if (!email || !password) {
+    return respondJSON({ status: 'error', message: 'Vui lòng nhập Email và Mật khẩu.' });
+  }
+
+  var passwordHash = hashPassword(password);
+  var ss = getOrCreateSpreadsheet();
+  var usersSheet = ss.getSheetByName('users');
+  var usersData = usersSheet.getDataRange().getValues();
+
+  for (var i = 1; i < usersData.length; i++) {
+    if (usersData[i][1] === email) {
+      var storedHash = usersData[i][2];
+      if (storedHash === passwordHash) {
+        var token = generateToken(email);
+        // Cập nhật current_token vào cột 7
+        usersSheet.getRange(i + 1, 7).setValue(token);
+        
+        var apiKey = usersData[i][3] || '';
+        return respondJSON({
+          status: 'success',
+          message: 'Đăng nhập thành công!',
+          token: token,
+          email: email,
+          has_api_key: !!apiKey
+        });
+      } else {
+        return respondJSON({ status: 'error', message: 'Mật khẩu không chính xác.' });
+      }
+    }
+  }
+
+  return respondJSON({ status: 'error', message: 'Tài khoản không tồn tại trên hệ thống.' });
+}
+
+function handleUpdateApiKey(userEmail, newApiKey) {
+  var apiKeyClean = (newApiKey || '').trim();
+  var ss = getOrCreateSpreadsheet();
+  var usersSheet = ss.getSheetByName('users');
+  var usersData = usersSheet.getDataRange().getValues();
+
+  for (var i = 1; i < usersData.length; i++) {
+    if (usersData[i][1] === userEmail) {
+      usersSheet.getRange(i + 1, 4).setValue(apiKeyClean);
+      return respondJSON({
+        status: 'success',
+        message: 'Cập nhật Gemini API Key cá nhân thành công!',
+        has_api_key: !!apiKeyClean
+      });
+    }
+  }
+
+  return respondJSON({ status: 'error', message: 'Không tìm thấy thông tin người dùng.' });
+}
+
+function getUserByToken(token) {
+  if (!token) return null;
+
+  var ss = getOrCreateSpreadsheet();
+  var usersSheet = ss.getSheetByName('users');
+  var usersData = usersSheet.getDataRange().getValues();
+
+  for (var i = 1; i < usersData.length; i++) {
+    var row = usersData[i];
+    var storedToken = row[6];
+    if (storedToken && storedToken === token) {
+      return {
+        id: row[0],
+        email: row[1],
+        password_hash: row[2],
+        api_key_gemini: row[3],
+        ngay_dang_ky: row[4],
+        role: row[5],
+        token: row[6]
+      };
+    }
+  }
+  return null;
+}
+
+function hashPassword(password) {
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password, Utilities.Charset.UTF_8);
+  var hex = '';
+  for (var i = 0; i < digest.length; i++) {
+    var byteStr = (digest[i] < 0 ? digest[i] + 256 : digest[i]).toString(16);
+    if (byteStr.length === 1) byteStr = '0' + byteStr;
+    hex += byteStr;
+  }
+  return hex;
+}
+
+function generateToken(email) {
+  var timestamp = new Date().getTime();
+  var rawStr = email + '_' + timestamp + '_' + Math.random();
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawStr, Utilities.Charset.UTF_8);
+  var token = '';
+  for (var i = 0; i < digest.length; i++) {
+    var byteStr = (digest[i] < 0 ? digest[i] + 256 : digest[i]).toString(16);
+    if (byteStr.length === 1) byteStr = '0' + byteStr;
+    token += byteStr;
+  }
+  return token;
+}
+
+// ==========================================
 // THAO TÁC XỬ LÝ ẢNH & GEMINI VISION
 // ==========================================
 
-function handleProcessImage(data) {
-  var userEmail = data.user_email;
-  var imageBase64 = data.image_base64; // Dạng base64 string
+function handleProcessImage(user, data) {
+  var userEmail = user.email;
+  var userApiKey = user.api_key_gemini;
+  var imageBase64 = data.image_base64;
   var mimeType = data.mime_type || 'image/jpeg';
   var fileName = data.file_name || ('photo_' + new Date().getTime() + '.jpg');
 
-  if (!userEmail || !imageBase64) {
-    return respondJSON({ status: 'error', message: 'Dữ liệu tải lên không hợp lệ (thiếu email hoặc ảnh).' });
+  if (!userApiKey || !userApiKey.trim()) {
+    return respondJSON({
+      status: 'error',
+      code: 'NO_API_KEY',
+      message: 'Bạn chưa cài đặt Gemini API Key cá nhân. Vui lòng vào Cài đặt tài khoản để nhập API Key của bạn.'
+    });
+  }
+
+  if (!imageBase64) {
+    return respondJSON({ status: 'error', message: 'Dữ liệu ảnh gửi lên không hợp lệ.' });
   }
 
   // 1. Upload ảnh lên Google Drive
   var imageUrl = saveImageToDrive(imageBase64, mimeType, fileName);
 
-  // 2. Gọi Gemini API Vision để trích xuất từ vựng
-  var extractedItems = callGeminiVisionAPI(imageBase64, mimeType);
+  // 2. Gọi Gemini API Vision với API Key CỦA CHÍNH USER ĐÓ
+  var extractedItems = callGeminiVisionAPIWithUserKey(imageBase64, mimeType, userApiKey);
 
   if (!extractedItems || extractedItems.length === 0) {
     return respondJSON({ 
@@ -109,7 +298,7 @@ function handleProcessImage(data) {
     });
   }
 
-  // 3. Ghi các từ vựng vào Tab "vocab"
+  // 3. Ghi từ vựng vào Tab "vocab"
   var addedVocabList = [];
   var ss = getOrCreateSpreadsheet();
   var vocabSheet = ss.getSheetByName('vocab');
@@ -180,7 +369,6 @@ function saveImageToDrive(base64Data, mimeType, fileName) {
     var file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     
-    // Trả về direct thumbnail link hoặc view URL
     return 'https://lh3.googleusercontent.com/d/' + file.getId();
   } catch (e) {
     Logger.log('Lỗi lưu Drive: ' + e.toString());
@@ -188,15 +376,10 @@ function saveImageToDrive(base64Data, mimeType, fileName) {
   }
 }
 
-function callGeminiVisionAPI(base64Data, mimeType) {
-  var apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  if (!apiKey) {
-    throw new Error('Chưa cấu hình GEMINI_API_KEY trong Script Properties của Apps Script.');
-  }
-
+function callGeminiVisionAPIWithUserKey(base64Data, mimeType, userApiKey) {
   var cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
   var modelName = 'gemini-1.5-flash';
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + apiKey;
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
 
   var promptText = "Bạn là một trợ lý giảng dạy tiếng Anh thông minh. Hãy đọc chữ tiếng Anh trong ảnh và trích ra từ 3 đến 8 từ vựng, cụm từ (phrasal verbs, idioms) hoặc cấu trúc ngữ pháp đáng học nhất (BỎ QUA các từ quá cơ bản như 'the', 'is', 'a', 'in', 'on', 'it', 'and').\n" +
     "Trả về kết quả duy nhất ở dạng một JSON Array chứa các đối tượng có cấu trúc chính xác như sau:\n" +
@@ -239,8 +422,8 @@ function callGeminiVisionAPI(base64Data, mimeType) {
   var responseText = response.getContentText();
 
   if (responseCode !== 200) {
-    Logger.log("Lỗi gọi Gemini API (" + responseCode + "): " + responseText);
-    throw new Error("Lỗi kết nối Gemini API: " + responseText);
+    Logger.log("Lỗi gọi Gemini API với User Key (" + responseCode + "): " + responseText);
+    throw new Error("Lỗi Gemini API (kiểm tra lại API Key cá nhân): " + responseText);
   }
 
   var jsonRes = JSON.parse(responseText);
@@ -249,7 +432,6 @@ function callGeminiVisionAPI(base64Data, mimeType) {
     candidateText = jsonRes.candidates[0].content.parts[0].text;
   }
 
-  // Làm sạch kết quả JSON
   var cleanJSONStr = candidateText.replace(/```json/gi, '').replace(/```/g, '').trim();
   try {
     var items = JSON.parse(cleanJSONStr);
@@ -264,10 +446,9 @@ function callGeminiVisionAPI(base64Data, mimeType) {
 // THUẬT TOÁN SPACED REPETITION (SM-2) & LOG
 // ==========================================
 
-function handleSubmitReview(data) {
-  var userEmail = data.user_email;
+function handleSubmitReview(userEmail, data) {
   var vocabId = data.vocab_id;
-  var rating = data.rating; // 'again', 'hard', 'normal', 'easy'
+  var rating = data.rating;
 
   if (!userEmail || !vocabId || !rating) {
     return respondJSON({ status: 'error', message: 'Dữ liệu đánh giá không đầy đủ.' });
@@ -295,7 +476,6 @@ function handleSubmitReview(data) {
     return respondJSON({ status: 'error', message: 'Không tìm thấy từ vựng tương ứng.' });
   }
 
-  // Tính toán SM-2
   var q = 3;
   if (rating === 'again') q = 0;
   else if (rating === 'hard') q = 2;
@@ -321,13 +501,10 @@ function handleSubmitReview(data) {
   var nextReviewDateStr = getNextDateString(newInterval);
   var todayStr = getTodayDateString();
 
-  // Cập nhật dòng trong Sheet `vocab`
-  // Cột 10 (ease_factor), Cột 11 (interval), Cột 12 (next_review_date)
   vocabSheet.getRange(rowIndex, 10).setValue(parseFloat(newEase.toFixed(2)));
   vocabSheet.getRange(rowIndex, 11).setValue(newInterval);
   vocabSheet.getRange(rowIndex, 12).setValue(nextReviewDateStr);
 
-  // Thêm log vào Sheet `review_log`
   var logId = 'log_' + new Date().getTime();
   logSheet.appendRow([
     logId,
@@ -414,7 +591,14 @@ function getOrCreateSpreadsheet() {
     throw new Error('Script này cần được gắn (bound) vào một Google Sheet.');
   }
 
-  // Khởi tạo Tab vocab nếu chưa có
+  // 1. Tab users: id | email | password_hash | api_key_gemini | ngày_đăng_ký | role | current_token
+  var usersSheet = ss.getSheetByName('users');
+  if (!usersSheet) {
+    usersSheet = ss.insertSheet('users');
+    usersSheet.appendRow(['id', 'email', 'password_hash', 'api_key_gemini', 'ngày_đăng_ký', 'role', 'current_token']);
+  }
+
+  // 2. Tab vocab: id | user_email | ngày_thêm | link_ảnh | từ/cụm | loại_từ | nghĩa | câu_ví_dụ | ghi_chú_ngữ_pháp | ease_factor | interval | next_review_date
   var vocabSheet = ss.getSheetByName('vocab');
   if (!vocabSheet) {
     vocabSheet = ss.insertSheet('vocab');
@@ -425,7 +609,7 @@ function getOrCreateSpreadsheet() {
     ]);
   }
 
-  // Khởi tạo Tab review_log nếu chưa có
+  // 3. Tab review_log: id | user_email | vocab_id | ngày_ôn | kết_quả
   var logSheet = ss.getSheetByName('review_log');
   if (!logSheet) {
     logSheet = ss.insertSheet('review_log');

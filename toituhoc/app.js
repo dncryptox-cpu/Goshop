@@ -2,13 +2,13 @@
    TÔI TỰ HỌC - FRONTEND LOGIC (APP.JS)
    ========================================== */
 
-// Default Web App URL (bạn có thể dán Web App URL của mình vào đây)
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_placeholder/exec";
 
-// Global App State
 const state = {
+  token: localStorage.getItem('toituhoc_token') || '',
   userEmail: localStorage.getItem('toituhoc_user_email') || '',
   scriptUrl: localStorage.getItem('toituhoc_script_url') || DEFAULT_SCRIPT_URL,
+  hasApiKey: false,
   dueVocabList: [],
   allVocabList: [],
   currentReviewIndex: 0,
@@ -16,7 +16,6 @@ const state = {
   selectedImageMimeType: 'image/jpeg'
 };
 
-// Initial DOM Load
 document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
@@ -28,16 +27,16 @@ function initApp() {
   setupUpload();
   setupReview();
   setupVocabList();
+  setupSettings();
   
-  // Set saved Apps Script URL in config input
   const inputUrl = document.getElementById('input-script-url');
   if (inputUrl) {
     inputUrl.value = state.scriptUrl;
   }
 
-  // Check login status
-  if (state.userEmail) {
-    onUserLoggedIn(state.userEmail);
+  // Check login state via Token
+  if (state.token && state.userEmail) {
+    onUserAuthenticated(state.token, state.userEmail);
   } else {
     showView('view-auth');
     document.getElementById('bottom-navigation').style.display = 'none';
@@ -53,11 +52,27 @@ function setupNavigation() {
     item.addEventListener('click', () => {
       const targetView = item.getAttribute('data-target');
       showView(targetView);
-
-      navItems.forEach(n => n.classList.remove('active'));
-      item.classList.add('active');
+      updateNavActive(targetView);
     });
   });
+
+  const avatar = document.getElementById('user-avatar-initial');
+  if (avatar) {
+    avatar.addEventListener('click', () => {
+      if (state.token) {
+        showView('view-settings');
+        updateNavActive('view-settings');
+      }
+    });
+  }
+
+  const warningBanner = document.getElementById('apikey-warning-banner');
+  if (warningBanner) {
+    warningBanner.addEventListener('click', () => {
+      showView('view-settings');
+      updateNavActive('view-settings');
+    });
+  }
 }
 
 function showView(viewId) {
@@ -69,32 +84,109 @@ function showView(viewId) {
     activeView.classList.add('active');
   }
 
-  // Action hook on view change
   if (viewId === 'view-dashboard') {
     fetchDashboardStats();
   } else if (viewId === 'view-review') {
     loadReviewQueue();
   } else if (viewId === 'view-vocab') {
     loadAllVocab();
+  } else if (viewId === 'view-settings') {
+    loadUserSettings();
   }
 }
 
+function updateNavActive(targetView) {
+  const items = document.querySelectorAll('.nav-item');
+  items.forEach(n => {
+    if (n.getAttribute('data-target') === targetView) {
+      n.classList.add('active');
+    } else {
+      n.classList.remove('active');
+    }
+  });
+}
+
 /* ==========================================
-   2. AUTHENTICATION (GOOGLE / EMAIL)
+   2. AUTHENTICATION (REGISTER & LOGIN)
    ========================================== */
 function setupAuth() {
-  const btnLogin = document.getElementById('btn-login-submit');
-  const inputEmail = document.getElementById('input-auth-email');
+  const tabBtnLogin = document.getElementById('tab-btn-login');
+  const tabBtnRegister = document.getElementById('tab-btn-register');
+  const formLogin = document.getElementById('form-login');
+  const formRegister = document.getElementById('form-register');
 
-  btnLogin.addEventListener('click', () => {
-    const email = inputEmail.value.trim().toLowerCase();
-    if (!email || !validateEmail(email)) {
-      alert('Vui lòng nhập email hợp lệ!');
-      return;
-    }
-    onUserLoggedIn(email);
+  tabBtnLogin.addEventListener('click', () => {
+    tabBtnLogin.classList.add('active');
+    tabBtnLogin.style.background = 'var(--primary)';
+    tabBtnLogin.style.color = '#fff';
+    
+    tabBtnRegister.classList.remove('active');
+    tabBtnRegister.style.background = 'transparent';
+    tabBtnRegister.style.color = 'var(--text-muted)';
+    
+    formLogin.style.display = 'flex';
+    formRegister.style.display = 'none';
   });
 
+  tabBtnRegister.addEventListener('click', () => {
+    tabBtnRegister.classList.add('active');
+    tabBtnRegister.style.background = 'var(--primary)';
+    tabBtnRegister.style.color = '#fff';
+    
+    tabBtnLogin.classList.remove('active');
+    tabBtnLogin.style.background = 'transparent';
+    tabBtnLogin.style.color = 'var(--text-muted)';
+    
+    formRegister.style.display = 'flex';
+    formLogin.style.display = 'none';
+  });
+
+  // Handle Login Submit
+  formLogin.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('input-login-email').value.trim();
+    const password = document.getElementById('input-login-password').value;
+
+    try {
+      const res = await callAppsScriptAPI('login', { email, password });
+      if (res.status === 'success' && res.token) {
+        state.hasApiKey = !!res.has_api_key;
+        onUserAuthenticated(res.token, res.email);
+      } else {
+        alert(res.message || 'Đăng nhập thất bại.');
+      }
+    } catch (err) {
+      alert('Không thể kết nối đến máy chủ: ' + err.message);
+    }
+  });
+
+  // Handle Register Submit
+  formRegister.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('input-reg-email').value.trim();
+    const password = document.getElementById('input-reg-password').value;
+    const apiKey = document.getElementById('input-reg-apikey').value.trim();
+
+    try {
+      const res = await callAppsScriptAPI('register', {
+        email,
+        password,
+        api_key_gemini: apiKey
+      });
+
+      if (res.status === 'success' && res.token) {
+        state.hasApiKey = !!res.has_api_key;
+        alert('Đăng ký tài khoản thành công!');
+        onUserAuthenticated(res.token, res.email);
+      } else {
+        alert(res.message || 'Đăng ký thất bại.');
+      }
+    } catch (err) {
+      alert('Đã xảy ra lỗi khi tạo tài khoản: ' + err.message);
+    }
+  });
+
+  // Config Backend URL
   const btnSaveScript = document.getElementById('btn-save-script-url');
   if (btnSaveScript) {
     btnSaveScript.addEventListener('click', () => {
@@ -110,21 +202,34 @@ function setupAuth() {
   }
 }
 
-function onUserLoggedIn(email) {
+function onUserAuthenticated(token, email) {
+  state.token = token;
   state.userEmail = email;
+  localStorage.setItem('toituhoc_token', token);
   localStorage.setItem('toituhoc_user_email', email);
 
-  // Update Header UI
   document.getElementById('user-email-display').innerText = email;
   document.getElementById('user-avatar-initial').innerText = email.charAt(0).toUpperCase();
 
-  // Show navigation & go to dashboard
   document.getElementById('bottom-navigation').style.display = 'flex';
   showView('view-dashboard');
+
+  checkUserProfile();
 }
 
-function validateEmail(email) {
-  return String(email).toLowerCase().match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
+function logout() {
+  state.token = '';
+  state.userEmail = '';
+  state.hasApiKey = false;
+  localStorage.removeItem('toituhoc_token');
+  localStorage.removeItem('toituhoc_user_email');
+
+  document.getElementById('user-email-display').innerText = 'Chưa đăng nhập';
+  document.getElementById('user-avatar-initial').innerText = '?';
+  document.getElementById('apikey-warning-banner').style.display = 'none';
+
+  document.getElementById('bottom-navigation').style.display = 'none';
+  showView('view-auth');
 }
 
 /* ==========================================
@@ -138,22 +243,44 @@ async function callAppsScriptAPI(action, payload = {}, method = 'POST') {
 
   try {
     let response;
+    const bodyPayload = { action, token: state.token, ...payload };
+
     if (method === 'GET') {
-      const urlParams = new URLSearchParams({ action, user_email: state.userEmail, ...payload });
+      const urlParams = new URLSearchParams(bodyPayload);
       response = await fetch(`${state.scriptUrl}?${urlParams.toString()}`);
     } else {
       response = await fetch(state.scriptUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, user_email: state.userEmail, ...payload })
+        body: JSON.stringify(bodyPayload)
       });
     }
 
     const data = await response.json();
+    if (data.code === 'UNAUTHORIZED') {
+      alert('Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại!');
+      logout();
+    }
     return data;
   } catch (err) {
     console.error('API Error:', err);
     throw err;
+  }
+}
+
+async function checkUserProfile() {
+  if (!state.token) return;
+  try {
+    const res = await callAppsScriptAPI('getUserProfile', {}, 'GET');
+    if (res.status === 'success' && res.data) {
+      state.hasApiKey = res.data.has_api_key;
+      const warningBanner = document.getElementById('apikey-warning-banner');
+      if (warningBanner) {
+        warningBanner.style.display = state.hasApiKey ? 'none' : 'block';
+      }
+    }
+  } catch (e) {
+    console.warn('Could not check user profile:', e);
   }
 }
 
@@ -173,7 +300,7 @@ function setupDashboard() {
 }
 
 async function fetchDashboardStats() {
-  if (!state.userEmail) return;
+  if (!state.token) return;
 
   try {
     const todayStr = getTodayDateString();
@@ -191,17 +318,6 @@ async function fetchDashboardStats() {
   } catch (e) {
     console.warn('Could not fetch stats automatically:', e);
   }
-}
-
-function updateNavActive(targetView) {
-  const items = document.querySelectorAll('.nav-item');
-  items.forEach(n => {
-    if (n.getAttribute('data-target') === targetView) {
-      n.classList.add('active');
-    } else {
-      n.classList.remove('active');
-    }
-  });
 }
 
 /* ==========================================
@@ -236,6 +352,13 @@ function setupUpload() {
 
   btnProcess.addEventListener('click', async () => {
     if (!state.selectedImageBase64) return;
+
+    if (!state.hasApiKey) {
+      alert('⚠️ Bạn chưa cài đặt Gemini API Key cá nhân! Vui lòng vào Cài đặt để thêm API Key của bạn trước khi đọc ảnh.');
+      showView('view-settings');
+      updateNavActive('view-settings');
+      return;
+    }
 
     btnProcess.style.display = 'none';
     spinner.style.display = 'flex';
@@ -331,7 +454,6 @@ function setupReview() {
   const btnTtsBack = document.getElementById('btn-tts-back');
   const btnBackDashboard = document.getElementById('btn-back-dashboard');
 
-  // Toggle card flip
   cardEl.addEventListener('click', () => {
     cardEl.classList.toggle('flipped');
   });
@@ -354,7 +476,6 @@ function setupReview() {
     updateNavActive('view-dashboard');
   });
 
-  // Setup rating buttons
   const rateButtons = document.querySelectorAll('.btn-rate');
   rateButtons.forEach(btn => {
     btn.addEventListener('click', async (e) => {
@@ -407,11 +528,9 @@ function renderCurrentCard() {
   const item = list[state.currentReviewIndex];
   progressText.innerText = `Thẻ ${state.currentReviewIndex + 1} / ${list.length}`;
 
-  // Populate Front
   document.getElementById('card-pos').innerText = item.loai_tu || 'NOUN';
   document.getElementById('card-word').innerText = item.tu_cum || '';
 
-  // Populate Back
   document.getElementById('card-pos-back').innerText = item.loai_tu || 'NOUN';
   document.getElementById('card-meaning').innerText = item.nghia || '';
   document.getElementById('card-example').innerText = `"${item.cau_vi_du || ''}"`;
@@ -432,7 +551,6 @@ function renderCurrentCard() {
     photoLink.style.display = 'none';
   }
 
-  // Auto speak word on card load
   setTimeout(() => speakText(item.tu_cum), 300);
 }
 
@@ -440,11 +558,9 @@ async function submitCardRating(rating) {
   const currentItem = state.dueVocabList[state.currentReviewIndex];
   if (!currentItem) return;
 
-  // Optimistic step to next card
   state.currentReviewIndex++;
   renderCurrentCard();
 
-  // Send rating background request
   try {
     await callAppsScriptAPI('submitReview', {
       vocab_id: currentItem.id,
@@ -514,17 +630,55 @@ function filterAndRenderVocab(query) {
 }
 
 /* ==========================================
-   8. WEB SPEECH API (TEXT-TO-SPEECH)
+   8. USER SETTINGS
+   ========================================== */
+function setupSettings() {
+  const btnSaveApiKey = document.getElementById('btn-save-user-apikey');
+  const btnLogout = document.getElementById('btn-logout');
+
+  btnSaveApiKey.addEventListener('click', async () => {
+    const apiKey = document.getElementById('input-settings-apikey').value.trim();
+    if (!apiKey) {
+      alert('Vui lòng nhập API Key Gemini của bạn.');
+      return;
+    }
+
+    try {
+      const res = await callAppsScriptAPI('updateApiKey', { api_key_gemini: apiKey });
+      if (res.status === 'success') {
+        state.hasApiKey = true;
+        document.getElementById('apikey-warning-banner').style.display = 'none';
+        alert('Đã lưu Gemini API Key cá nhân thành công!');
+      } else {
+        alert(res.message || 'Không thể lưu API Key.');
+      }
+    } catch (err) {
+      alert('Đã xảy ra lỗi khi lưu API Key: ' + err.message);
+    }
+  });
+
+  btnLogout.addEventListener('click', () => {
+    if (confirm('Bạn có chắc chắn muốn đăng xuất tài khoản?')) {
+      logout();
+    }
+  });
+}
+
+function loadUserSettings() {
+  checkUserProfile();
+}
+
+/* ==========================================
+   9. WEB SPEECH API (TEXT-TO-SPEECH)
    ========================================== */
 function speakText(text) {
   if (!text || !('speechSynthesis' in window)) return;
 
-  window.speechSynthesis.cancel(); // Stop active audio
+  window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'en-US';
-  utterance.rate = 0.9; // Slightly slower for clear learning
+  utterance.rate = 0.9;
 
-  // Pick natural voice if available
   const voices = window.speechSynthesis.getVoices();
   const enVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha')));
   if (enVoice) {
@@ -535,7 +689,7 @@ function speakText(text) {
 }
 
 /* ==========================================
-   9. UTILITIES
+   10. UTILITIES
    ========================================== */
 function getTodayDateString() {
   const d = new Date();
