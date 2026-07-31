@@ -72,15 +72,34 @@ function responseJSON(obj) {
 }
 
 function saveProduct(productData) {
+  Logger.log('>>> [saveProduct] Input productData: ' + JSON.stringify(productData));
+
   if (!productData || !productData.name) {
     return responseJSON({ status: 'error', message: 'Dữ liệu sản phẩm không hợp lệ' });
   }
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var prodSheet = ss.getSheetByName('MB_PRODUCTS');
+  var expectedHeaders = ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"];
+
   if (!prodSheet) {
     prodSheet = ss.insertSheet('MB_PRODUCTS');
-    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"]);
+    prodSheet.appendRow(expectedHeaders);
+  } else {
+    // Đảm bảo hàng 1 luôn đủ 14 tiêu đề chuẩn để Google Sheets GViz CSV xuất đúng tên cột
+    var currentHeaders = prodSheet.getRange(1, 1, 1, 14).getValues()[0];
+    var needUpdateHeader = false;
+    for (var h = 0; h < expectedHeaders.length; h++) {
+      if (String(currentHeaders[h] || '').trim() !== expectedHeaders[h]) {
+        currentHeaders[h] = expectedHeaders[h];
+        needUpdateHeader = true;
+      }
+    }
+    if (needUpdateHeader) {
+      prodSheet.getRange(1, 1, 1, 14).setValues([currentHeaders]);
+    }
   }
+
   var prodData = prodSheet.getDataRange().getValues();
   var existingRow = -1;
 
@@ -93,11 +112,15 @@ function saveProduct(productData) {
 
   var slotType = productData.slot_type || 'rieng';
   var guideUrl = productData.guide_url || '';
-  var saleType = productData.sale_type || 'none';
-  var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price) !== '') ? productData.sale_price : '';
-  var saleLabel = productData.sale_label || '';
-  var saleEndDate = productData.sale_end_date || '';
+  var saleType = String(productData.sale_type || 'none').trim().toLowerCase();
+  var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price).trim() !== '') ? productData.sale_price : '';
+  var saleLabel = String(productData.sale_label || '').trim();
+  var saleEndDate = String(productData.sale_end_date || '').trim();
   var prodId = productData.id || ('PROD-' + Date.now());
+
+  Logger.log('>>> [saveProduct] Writing 14 fields: ' + JSON.stringify([
+    prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate
+  ]));
 
   if (existingRow > 0) {
     prodSheet.getRange(existingRow, 1, 1, 14).setValues([[
@@ -106,6 +129,7 @@ function saveProduct(productData) {
   } else {
     prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate]);
   }
+
   return responseJSON({ status: 'success', id: prodId });
 }
 
@@ -582,6 +606,20 @@ function initMemberSheets() {
       sh = ss.insertSheet(s.name);
       sh.appendRow(s.headers);
       created.push(s.name);
+    } else {
+      // Đảm bảo cập nhật đủ tiêu đề nếu sheet đã có trước đó
+      if (s.name === 'MB_PRODUCTS') {
+        var range = sh.getRange(1, 1, 1, s.headers.length);
+        var cur = range.getValues()[0];
+        var update = false;
+        for (var h = 0; h < s.headers.length; h++) {
+          if (String(cur[h] || '').trim() !== s.headers[h]) {
+            cur[h] = s.headers[h];
+            update = true;
+          }
+        }
+        if (update) range.setValues([cur]);
+      }
     }
   });
 

@@ -3149,9 +3149,10 @@
                                 createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString(),
                                 slot_type: this.getField(r, ['slot_type', 'SlotType']) || 'rieng',
                                 guide_url: this.getField(r, ['guide_url', 'GuideUrl', 'Guide_Url']) || '',
-                                sale_type: this.getField(r, ['sale_type', 'SaleType', 'Sale_Type']) || 'none',
-                                sale_price: this.getField(r, ['sale_price', 'SalePrice', 'Sale_Price']),
-                                sale_label: this.getField(r, ['sale_label', 'SaleLabel', 'Sale_Label']) || ''
+                                sale_type: this.getField(r, ['sale_type', 'SaleType', 'Sale_Type', 'C']) || 'none',
+                                sale_price: this.getField(r, ['sale_price', 'SalePrice', 'Sale_Price', 'D']),
+                                sale_label: this.getField(r, ['sale_label', 'SaleLabel', 'Sale_Label', 'E']) || '',
+                                sale_end_date: this.getField(r, ['sale_end_date', 'SaleEndDate', 'Sale_End_Date', 'F']) || ''
                             })).filter(p => p.id && p.name);
                         }
 
@@ -4036,14 +4037,29 @@
                                 }
                             } catch(e) {}
                         }
+
+                        const rawSaleType = String(prod.sale_type || 'none').trim().toLowerCase();
+                        const validSaleType = (rawSaleType === 'flash' || rawSaleType === 'clearance') ? rawSaleType : 'none';
+
+                        let validSalePrice = '';
+                        if (prod.sale_price !== undefined && prod.sale_price !== null && String(prod.sale_price).trim() !== '') {
+                            const sp = parseInt(prod.sale_price);
+                            validSalePrice = isNaN(sp) ? 0 : sp;
+                        }
+
                         this.productForm = {
-                            slot_type: 'rieng',
-                            guide_url: '',
-                            sale_type: 'none',
-                            sale_price: '',
-                            sale_label: '',
-                            sale_end_date: endDate,
-                            ...prod,
+                            id: prod.id || '',
+                            name: prod.name || '',
+                            category: prod.category || '',
+                            description: prod.description || '',
+                            price: parseInt(prod.price) || 0,
+                            type: prod.type || 'auto',
+                            status: prod.status || 'active',
+                            slot_type: prod.slot_type || 'rieng',
+                            guide_url: prod.guide_url || '',
+                            sale_type: validSaleType,
+                            sale_price: validSalePrice,
+                            sale_label: prod.sale_label || '',
                             sale_end_date: endDate
                         };
                     } else {
@@ -4063,14 +4079,38 @@
                             sale_end_date: ''
                         };
                     }
+                    console.log('>>> [openProductModal] Pre-filled productForm:', JSON.parse(JSON.stringify(this.productForm)));
                     this.showProductModal = true;
                 },
 
                 async saveAdminProduct() {
-                    if (!this.productForm.name || !this.productForm.price) {
+                    if (!this.productForm.name || this.productForm.price === undefined || this.productForm.price === null) {
                         this.showToast('Vui lòng điền đầy đủ tên sản phẩm và giá bán');
                         return;
                     }
+
+                    const cleanSaleType = String(this.productForm.sale_type || 'none').trim().toLowerCase();
+                    const cleanSalePrice = (this.productForm.sale_price !== undefined && this.productForm.sale_price !== null && String(this.productForm.sale_price).trim() !== '') ? this.productForm.sale_price : '';
+                    const cleanSaleLabel = String(this.productForm.sale_label || '').trim();
+                    const cleanSaleEndDate = String(this.productForm.sale_end_date || '').trim();
+
+                    const payload = {
+                        id: this.productForm.id || '',
+                        name: String(this.productForm.name || '').trim(),
+                        category: String(this.productForm.category || '').trim(),
+                        description: String(this.productForm.description || '').trim(),
+                        price: parseInt(this.productForm.price) || 0,
+                        type: this.productForm.type || 'auto',
+                        status: this.productForm.status || 'active',
+                        slot_type: this.productForm.slot_type || 'rieng',
+                        guide_url: String(this.productForm.guide_url || '').trim(),
+                        sale_type: cleanSaleType,
+                        sale_price: cleanSalePrice,
+                        sale_label: cleanSaleLabel,
+                        sale_end_date: cleanSaleEndDate
+                    };
+
+                    console.log('>>> [saveAdminProduct] Submitting product payload (4 sale fields included):', JSON.parse(JSON.stringify(payload)));
 
                     try {
                         this.isLoading = true;
@@ -4078,7 +4118,7 @@
                             method: 'POST',
                             body: JSON.stringify({
                                 action: 'save_product',
-                                productData: this.productForm
+                                productData: payload
                             })
                         });
                         const data = await res.json();

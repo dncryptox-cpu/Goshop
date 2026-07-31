@@ -2420,15 +2420,33 @@ function initMemberShopSheets() {
 }
 
 function saveProduct(productData) {
+  Logger.log('>>> [saveProduct] Input productData: ' + JSON.stringify(productData));
+
   if (!productData || !productData.name) {
     return responseJSON({ status: 'error', message: 'Dữ liệu sản phẩm không hợp lệ' });
   }
+
   var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
   var prodSheet = ss.getSheetByName('MB_PRODUCTS');
+  var expectedHeaders = ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"];
+
   if (!prodSheet) {
     prodSheet = ss.insertSheet('MB_PRODUCTS');
-    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"]);
+    prodSheet.appendRow(expectedHeaders);
+  } else {
+    var currentHeaders = prodSheet.getRange(1, 1, 1, 14).getValues()[0];
+    var needUpdateHeader = false;
+    for (var h = 0; h < expectedHeaders.length; h++) {
+      if (String(currentHeaders[h] || '').trim() !== expectedHeaders[h]) {
+        currentHeaders[h] = expectedHeaders[h];
+        needUpdateHeader = true;
+      }
+    }
+    if (needUpdateHeader) {
+      prodSheet.getRange(1, 1, 1, 14).setValues([currentHeaders]);
+    }
   }
+
   var prodData = prodSheet.getDataRange().getValues();
   var existingRow = -1;
 
@@ -2441,10 +2459,10 @@ function saveProduct(productData) {
 
   var slotType = productData.slot_type || 'rieng';
   var guideUrl = productData.guide_url || '';
-  var saleType = productData.sale_type || 'none';
-  var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price) !== '') ? productData.sale_price : '';
-  var saleLabel = productData.sale_label || '';
-  var saleEndDate = productData.sale_end_date || '';
+  var saleType = String(productData.sale_type || 'none').trim().toLowerCase();
+  var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price).trim() !== '') ? productData.sale_price : '';
+  var saleLabel = String(productData.sale_label || '').trim();
+  var saleEndDate = String(productData.sale_end_date || '').trim();
   var prodId = productData.id || ('PROD-' + Date.now());
 
   if (existingRow > 0) {
