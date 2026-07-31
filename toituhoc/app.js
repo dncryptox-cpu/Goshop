@@ -281,14 +281,26 @@ async function checkUserProfile() {
     const res = await callAppsScriptAPI('getUserProfile', {}, 'GET');
     if (res.status === 'success' && res.data) {
       state.hasApiKey = res.data.has_api_key;
+      state.streak = res.data.streak || 0;
+      
       const warningBanner = document.getElementById('apikey-warning-banner');
       if (warningBanner) {
         warningBanner.style.display = state.hasApiKey ? 'none' : 'block';
       }
+
+      updateStreakUI(state.streak);
     }
   } catch (e) {
     console.warn('Could not check user profile:', e);
   }
+}
+
+function updateStreakUI(streakCount) {
+  const headerStreak = document.getElementById('header-streak-count');
+  if (headerStreak) headerStreak.innerText = streakCount;
+
+  const statStreak = document.getElementById('stat-streak-count');
+  if (statStreak) statStreak.innerText = `${streakCount} ngày`;
 }
 
 /* ==========================================
@@ -321,6 +333,7 @@ async function fetchDashboardStats() {
     const todayStr = getTodayDateString();
     const resDue = await callAppsScriptAPI('getDueVocab', { today: todayStr }, 'GET');
     const resAll = await callAppsScriptAPI('getAllVocab', {}, 'GET');
+    const resProf = await callAppsScriptAPI('getUserProfile', {}, 'GET');
 
     if (resDue.status === 'success') {
       document.getElementById('stat-due-count').innerText = resDue.data.length;
@@ -329,6 +342,9 @@ async function fetchDashboardStats() {
     if (resAll.status === 'success') {
       document.getElementById('stat-total-count').innerText = resAll.data.length;
       state.allVocabList = resAll.data;
+    }
+    if (resProf.status === 'success' && resProf.data) {
+      updateStreakUI(resProf.data.streak || 0);
     }
   } catch (e) {
     console.warn('Could not fetch stats automatically:', e);

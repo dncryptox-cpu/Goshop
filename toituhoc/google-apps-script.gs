@@ -101,12 +101,14 @@ function doGet(e) {
     }
 
     if (action === 'getUserProfile') {
+      var streak = calculateUserStreak(user.email);
       return respondJSON({
         status: 'success',
         data: {
           email: user.email,
           has_api_key: !!(user.api_key_gemini && user.api_key_gemini.trim()),
-          role: user.role
+          role: user.role,
+          streak: streak
         }
       });
     }
@@ -849,6 +851,91 @@ function rowToVocabObject(row) {
     interval: row[10],
     next_review_date: formatDateString(row[11])
   };
+}
+
+// ==========================================
+// TÍNH TOÁN STREAK CHUỖI NGÀY HỌC LIÊN TỤC
+// ==========================================
+
+function calculateUserStreak(userEmail) {
+  if (!userEmail) return 0;
+
+  var ss = getOrCreateSpreadsheet();
+  var activeDates = {};
+
+  // 1. Thu thập ngày từ Tab vocab (ngày_thêm)
+  var vocabSheet = ss.getSheetByName('vocab');
+  if (vocabSheet) {
+    var vocabData = vocabSheet.getDataRange().getValues();
+    for (var i = 1; i < vocabData.length; i++) {
+      if (vocabData[i][1] === userEmail) {
+        var dateStr = formatDateString(vocabData[i][2]);
+        if (dateStr) {
+          activeDates[dateStr] = true;
+        }
+      }
+    }
+  }
+
+  // 2. Thu thập ngày từ Tab review_log (ngày_ôn)
+  var logSheet = ss.getSheetByName('review_log');
+  if (logSheet) {
+    var logData = logSheet.getDataRange().getValues();
+    for (var j = 1; j < logData.length; j++) {
+      if (logData[j][1] === userEmail) {
+        var dateStr = formatDateString(logData[j][3]);
+        if (dateStr) {
+          activeDates[dateStr] = true;
+        }
+      }
+    }
+  }
+
+  // 3. Tính chuỗi liên tiếp từ Hôm nay hoặc Hôm qua
+  var today = new Date();
+  var todayStr = formatDate(today);
+
+  var yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  var yesterdayStr = formatDate(yesterday);
+
+  var streak = 0;
+  var startDate = null;
+
+  if (activeDates[todayStr]) {
+    startDate = today;
+  } else if (activeDates[yesterdayStr]) {
+    startDate = yesterday;
+  }
+
+  if (startDate) {
+    var checkDate = new Date(startDate.getTime());
+    while (true) {
+      var checkStr = formatDate(checkDate);
+      if (activeDates[checkStr]) {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  }
+
+  return streak;
+}
+
+function testStreak() {
+  var ss = getOrCreateSpreadsheet();
+  var usersSheet = ss.getSheetByName('users');
+  var usersData = usersSheet.getDataRange().getValues();
+  if (usersData.length > 1) {
+    var email = usersData[1][1];
+    var streak = calculateUserStreak(email);
+    var msg = "User: " + email + " | Streak học liên tục: 🔥 " + streak + " ngày";
+    Logger.log(msg);
+    return msg;
+  }
+  return "Chưa có user nào trong Sheet";
 }
 
 // ==========================================
