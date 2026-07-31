@@ -265,8 +265,11 @@ async function callAppsScriptAPI(action, payload = {}, method = 'POST') {
 
     const data = await response.json();
     if (data.code === 'UNAUTHORIZED') {
-      alert('Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại!');
+      const hadTokenBefore = !!state.token;
       logout();
+      if (hadTokenBefore) {
+        alert('Phiên đăng nhập của bạn đã hết hạn. Vui lòng đăng nhập lại!');
+      }
     }
     return data;
   } catch (err) {
