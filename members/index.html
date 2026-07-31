@@ -1034,6 +1034,9 @@
                     <div class="flex flex-wrap items-center justify-between mb-6 gap-4">
                         <h2 class="text-xl font-bold text-gray-900">Quản Lý Sản Phẩm & Nhập Kho Tồn</h2>
                         <div class="flex items-center gap-3">
+                            <button @click="fixInventoryStatus()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-1.5" title="Sửa tất cả các dòng trạng thái kho bị trống/lỗi thành available">
+                                <i data-lucide="wrench" class="w-4 h-4"></i> Kiểm Tra & Sửa Kho
+                            </button>
                             <button @click="initMemberSheets()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-1.5" title="Khởi tạo tự động 6 Sheet Tab MB_ trên Google Sheets">
                                 <i data-lucide="zap" class="w-4 h-4"></i> Khởi Tạo Sheet MB_
                             </button>
@@ -2162,7 +2165,7 @@
                                     <template x-if="!isItemExpired(item) && item.status === 'sold'">
                                         <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-100 text-gray-600">Đã bán</span>
                                     </template>
-                                    <template x-if="!isItemExpired(item) && item.status === 'available'">
+                                    <template x-if="!isItemExpired(item) && String(item.status || '').trim().toLowerCase() === 'available'">
                                         <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700"
                                             x-text="(item.slotType === 'gia_dinh' ? 'Có sẵn (' + countSoldForInventory(item.id) + '/' + (item.maxUsers || 3) + ')' : 'Có sẵn')">
                                         </span>
@@ -2644,7 +2647,8 @@
                     const now = new Date();
                     const avail = this.inventory.filter(i => {
                         if (String(i.productId) !== String(productId)) return false;
-                        if (i.status !== 'available') return false;
+                        const st = String(i.status || '').trim().toLowerCase();
+                        if (st !== 'available') return false;
                         if (i.expireDate && new Date(i.expireDate) < now) return false;
                         return true;
                     });
@@ -2711,14 +2715,19 @@
                     const now = new Date();
                     return this.inventory.filter(i => {
                         if (String(i.productId) !== String(productId)) return false;
-                        if (i.status !== 'available') return false;
+                        const st = String(i.status || '').trim().toLowerCase();
+                        if (st !== 'available') return false;
                         if (i.expireDate && new Date(i.expireDate) < now) return false;
                         return true;
                     }).length;
                 },
 
                 getSoldStock(productId) {
-                    return this.inventory.filter(i => String(i.productId) === String(productId) && i.status === 'sold').length;
+                    return this.inventory.filter(i => {
+                        if (String(i.productId) !== String(productId)) return false;
+                        const st = String(i.status || '').trim().toLowerCase();
+                        return st === 'sold';
+                    }).length;
                 },
 
                 // INITIALIZATION
@@ -3024,6 +3033,29 @@
                 },
 
                 // AUTO INIT SHEET TABS
+                async fixInventoryStatus() {
+                    if (!confirm('Bạn có muốn tự động kiểm tra và sửa tất cả các dòng trạng thái kho bị trống hoặc lỗi trong MB_INVENTORY?')) return;
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify({ action: 'fix_inventory_status' })
+                        });
+                        const data = await res.json();
+                        if (data.status === 'success') {
+                            this.showToast(data.message || 'Đã sửa trạng thái kho thành công!');
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi khi sửa kho từ Apps Script');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        this.showToast('Lỗi khi sửa kho: ' + err.message);
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
                 async initMemberSheets() {
                     if (!confirm('Khởi tạo tự động đủ 6 Sheet tab MB_ (MB_PRODUCTS, MB_INVENTORY, MB_WALLET_LOG, MB_TOPUP_REQ, MB_ORDERS, MB_PENDING_ORDERS) trên Google Sheets?')) return;
                     try {

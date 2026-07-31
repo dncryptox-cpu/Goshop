@@ -2618,10 +2618,23 @@ function bulkAddInventory(productId, items, expireDate, slotType, maxUsers) {
 function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
   var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
   var invSheet = ss.getSheetByName("MB_INVENTORY");
+  var headers = ["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"];
+
   if (!invSheet) {
     invSheet = ss.insertSheet("MB_INVENTORY");
-    invSheet.appendRow(["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"]);
+    invSheet.appendRow(headers);
+  } else {
+    var curH = invSheet.getRange(1, 1, 1, 9).getValues()[0];
+    var needUpdate = false;
+    for (var h = 0; h < headers.length; h++) {
+      if (String(curH[h] || '').trim() !== headers[h]) {
+        curH[h] = headers[h];
+        needUpdate = true;
+      }
+    }
+    if (needUpdate) invSheet.getRange(1, 1, 1, 9).setValues([curH]);
   }
+
   if (!productId) {
     return responseJSON({ status: "error", message: "Thiếu productId" });
   }
@@ -2639,7 +2652,7 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
       if (!line) continue;
 
       var id = "INV-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
-      invSheet.appendRow([
+      var rowData = [
         id,
         productId,
         line,
@@ -2649,7 +2662,9 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
         "",
         slotType,
         maxUsers
-      ]);
+      ];
+      Logger.log(">>> [addInventoryBulk] Appending row " + (i + 1) + ": " + JSON.stringify(rowData));
+      invSheet.appendRow(rowData);
       addedCount++;
       addedIds.push(id);
     }
@@ -2657,9 +2672,42 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
 
   return responseJSON({
     status: "success",
-    message: "Đã thêm " + addedCount + " account vào kho thành công",
+    message: "Đã thêm " + addedCount + " account vào kho thành công với status 'available'",
     addedCount: addedCount,
     addedIds: addedIds
+  });
+}
+
+function fixInventoryStatus() {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var invSheet = ss.getSheetByName("MB_INVENTORY");
+  if (!invSheet) {
+    return responseJSON({ status: "error", message: "Sheet MB_INVENTORY chưa tồn tại" });
+  }
+
+  var data = invSheet.getDataRange().getValues();
+  var fixedCount = 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var status = String(data[i][4] || data[i][6] || "").trim().toLowerCase();
+    var soldEmail = String(data[i][5] || data[i][7] || "").trim();
+
+    if (status === "" || status === "null" || status === "undefined") {
+      var newStatus = (soldEmail !== "") ? "sold" : "available";
+      // Update both possible status columns if 9-column sheet format
+      invSheet.getRange(i + 1, 5).setValue(newStatus);
+      if (invSheet.getLastColumn() >= 7) {
+        invSheet.getRange(i + 1, 7).setValue(newStatus);
+      }
+      fixedCount++;
+      Logger.log(">>> [fixInventoryStatus] Fixed row " + (i + 1) + ": status set to " + newStatus);
+    }
+  }
+
+  return responseJSON({
+    status: "success",
+    message: "Đã kiểm tra và sửa " + fixedCount + " dòng trạng thái kho!",
+    fixedCount: fixedCount
   });
 }
 

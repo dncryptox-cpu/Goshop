@@ -61,6 +61,11 @@ function doPost(e) {
       return ContentService.createTextOutput(JSON.stringify(initResult)).setMimeType(ContentService.MimeType.JSON);
     }
 
+    // --- 10. ACTION: FIX INVENTORY STATUS ---
+    if (action === 'fix_inventory_status') {
+      return fixInventoryStatus();
+    }
+
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Action không hợp lệ: ' + action })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
@@ -86,7 +91,6 @@ function saveProduct(productData) {
     prodSheet = ss.insertSheet('MB_PRODUCTS');
     prodSheet.appendRow(expectedHeaders);
   } else {
-    // Đảm bảo hàng 1 luôn đủ 14 tiêu đề chuẩn để Google Sheets GViz CSV xuất đúng tên cột
     var currentHeaders = prodSheet.getRange(1, 1, 1, 14).getValues()[0];
     var needUpdateHeader = false;
     for (var h = 0; h < expectedHeaders.length; h++) {
@@ -220,8 +224,8 @@ function purchaseProduct(email, productId) {
 
     for (var i = 1; i < invData.length; i++) {
       var rowProdId = String(invData[i][1]);
-      var rowStatus = String(invData[i][4]);
-      var rowExpire = invData[i][3] || invData[i][5];
+      var rowStatus = String(invData[i][6] || invData[i][4] || '').trim().toLowerCase();
+      var rowExpire = invData[i][5] || invData[i][3];
 
       if (rowProdId === String(productId) && rowStatus === 'available') {
         if (rowExpire && new Date(rowExpire) < now) continue;
@@ -229,9 +233,9 @@ function purchaseProduct(email, productId) {
         targetInvItem = {
           id: invData[i][0],
           itemData: invData[i][2],
-          expireDate: invData[i][3] || invData[i][5] || '',
-          slotType: invData[i][7] || 'rieng',
-          maxUsers: parseInt(invData[i][8]) || 1
+          expireDate: invData[i][5] || invData[i][3] || '',
+          slotType: invData[i][3] || invData[i][7] || 'rieng',
+          maxUsers: parseInt(invData[i][4] || invData[i][8]) || 1
         };
         break;
       }
@@ -247,10 +251,10 @@ function purchaseProduct(email, productId) {
     var logNote = product.effectivePrice === 0 ? 'FREE — Hàng cận date (' + product.name + ')' : 'Mua hàng: ' + product.name;
     logSheet.appendRow([logId, cleanEmail, 'purchase', -product.effectivePrice, newBalance, product.id, logNote, new Date().toISOString()]);
 
-    // 5. Cập nhật trạng thái slot kho
-    invSheet.getRange(targetInvRow, 5).setValue('sold');
-    invSheet.getRange(targetInvRow, 6).setValue(cleanEmail);
-    invSheet.getRange(targetInvRow, 7).setValue(new Date().toISOString());
+    // 5. Cập nhật trạng thái slot kho (Cột 7 là status: sold)
+    invSheet.getRange(targetInvRow, 7).setValue('sold');
+    invSheet.getRange(targetInvRow, 8).setValue(cleanEmail);
+    invSheet.getRange(targetInvRow, 9).setValue(new Date().toISOString());
 
     // 6. Ghi đơn hàng MB_ORDERS
     var orderId = 'ORD-' + Date.now();
@@ -281,8 +285,39 @@ function purchaseProduct(email, productId) {
 }
 
 /**
+ * FIX TRẠNG THÁI KHO CHO CÁC DÒNG BỊ TRỐNG HOẶC SAI
+ */
+function fixInventoryStatus() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var invSheet = ss.getSheetByName("MB_INVENTORY");
+  if (!invSheet) {
+    return responseJSON({ status: "error", message: "Sheet MB_INVENTORY chưa tồn tại" });
+  }
+
+  var data = invSheet.getDataRange().getValues();
+  var fixedCount = 0;
+
+  for (var i = 1; i < data.length; i++) {
+    var status = String(data[i][6] || "").trim().toLowerCase();
+    var soldEmail = String(data[i][7] || "").trim();
+
+    if (status === "" || status === "null" || status === "undefined") {
+      var newStatus = (soldEmail !== "") ? "sold" : "available";
+      invSheet.getRange(i + 1, 7).setValue(newStatus);
+      fixedCount++;
+      Logger.log(">>> [fixInventoryStatus] Fixed row " + (i + 1) + ": status set to " + newStatus);
+    }
+  }
+
+  return responseJSON({
+    status: "success",
+    message: "Đã kiểm tra và sửa " + fixedCount + " dòng trạng thái kho!",
+    fixedCount: fixedCount
+  });
+}
+
+/**
  * ĐỒNG BỘ ĐƠN HOÀN THÀNH SANG DON_HANG_MOI
- * Dùng LockService độc lập, nếu lỗi ghi NHAT_KY_XU_LY và không rollback đơn hàng.
  */
 function syncOrderToDonHangMoi(orderData) {
   var lock = LockService.getScriptLock();
@@ -530,20 +565,22 @@ function resetUserPassword(userId, newPasswordHash) {
 function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var invSheet = ss.getSheetByName("MB_INVENTORY");
+  var headers = ["id", "product_id", "item_data", "slot_type", "max_users", "expire_date", "status", "sold_to_email", "sold_at"];
   
   if (!invSheet) {
     invSheet = ss.insertSheet("MB_INVENTORY");
-    invSheet.appendRow([
-      "id",
-      "product_id",
-      "item_data",
-      "slot_type",
-      "max_users",
-      "expire_date",
-      "status",
-      "sold_to_email",
-      "sold_at"
-    ]);
+    invSheet.appendRow(headers);
+  } else {
+    // Đảm bảo hàng 1 đủ tiêu đề
+    var curH = invSheet.getRange(1, 1, 1, 9).getValues()[0];
+    var needUpdate = false;
+    for (var h = 0; h < headers.length; h++) {
+      if (String(curH[h] || '').trim() !== headers[h]) {
+        curH[h] = headers[h];
+        needUpdate = true;
+      }
+    }
+    if (needUpdate) invSheet.getRange(1, 1, 1, 9).setValues([curH]);
   }
 
   if (!productId) {
@@ -563,7 +600,7 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
       if (!line) continue;
 
       var id = "INV-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
-      invSheet.appendRow([
+      var rowData = [
         id,
         productId,
         line,
@@ -573,7 +610,10 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
         "available",
         "",
         ""
-      ]);
+      ];
+
+      Logger.log(">>> [addInventoryBulk] Appending row " + (i + 1) + ": " + JSON.stringify(rowData));
+      invSheet.appendRow(rowData);
       addedCount++;
       addedIds.push(id);
     }
@@ -581,7 +621,7 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
 
   return {
     status: "success",
-    message: "Đã thêm " + addedCount + " account vào kho thành công",
+    message: "Đã thêm " + addedCount + " account vào kho thành công với status 'available'",
     addedCount: addedCount,
     addedIds: addedIds
   };
@@ -606,20 +646,6 @@ function initMemberSheets() {
       sh = ss.insertSheet(s.name);
       sh.appendRow(s.headers);
       created.push(s.name);
-    } else {
-      // Đảm bảo cập nhật đủ tiêu đề nếu sheet đã có trước đó
-      if (s.name === 'MB_PRODUCTS') {
-        var range = sh.getRange(1, 1, 1, s.headers.length);
-        var cur = range.getValues()[0];
-        var update = false;
-        for (var h = 0; h < s.headers.length; h++) {
-          if (String(cur[h] || '').trim() !== s.headers[h]) {
-            cur[h] = s.headers[h];
-            update = true;
-          }
-        }
-        if (update) range.setValues([cur]);
-      }
     }
   });
 
