@@ -8,7 +8,7 @@
  * Ví dụ: var SPECIFIC_SPREADSHEET_ID = "1ABC123456789xyz...";
  * =========================================================================================
  */
-var SPECIFIC_SPREADSHEET_ID = "";
+var SPECIFIC_SPREADSHEET_ID = "1jIj2Zs_JKbnb2pJPFgXvoqlQ0jQk6HaR1Kp58IkGK1w";
 
 /**
  * 🚀 HÀM KHỞI TẠO DATABASE (BẤM NÚT "CHẠY" / "RUN" NÀY TRONG APPS SCRIPT EDITOR DỂ TẠO CÁC TAB NGAY LẬP TỨC)

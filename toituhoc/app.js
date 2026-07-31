@@ -2,7 +2,7 @@
    TÔI TỰ HỌC - FRONTEND LOGIC (APP.JS)
    ========================================== */
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_placeholder/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxpKFO65imADfV1OU_QXkgqE4AnyL1Z5My33IU5ljBjcVINdQD-Lxlg2dR7LR43QqM/exec";
 
 const state = {
   token: localStorage.getItem('toituhoc_token') || '',
