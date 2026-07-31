@@ -4,10 +4,16 @@
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxpKFO65imADfV1OU_QXkgqE4AnyL1Z5My33IU5ljBjcVINdQD-Lxlg2dR7LR43QqM/exec";
 
+let savedScriptUrl = localStorage.getItem('toituhoc_script_url');
+if (!savedScriptUrl || savedScriptUrl.includes('placeholder')) {
+  savedScriptUrl = DEFAULT_SCRIPT_URL;
+  localStorage.setItem('toituhoc_script_url', DEFAULT_SCRIPT_URL);
+}
+
 const state = {
   token: localStorage.getItem('toituhoc_token') || '',
   userEmail: localStorage.getItem('toituhoc_user_email') || '',
-  scriptUrl: localStorage.getItem('toituhoc_script_url') || DEFAULT_SCRIPT_URL,
+  scriptUrl: savedScriptUrl,
   hasApiKey: false,
   dueVocabList: [],
   allVocabList: [],
