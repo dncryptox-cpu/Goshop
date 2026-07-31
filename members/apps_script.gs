@@ -33,7 +33,7 @@ function doPost(e) {
       return resetUserPassword(data.userId, data.newPasswordHash);
     }
 
-    // --- 6. ACTION: SAVE PRODUCT (WITH SALE FIELDS) ---
+    // --- 6. ACTION: SAVE PRODUCT (WITH SALE FIELDS & END DATE) ---
     if (action === 'save_product') {
       return saveProduct(data.productData);
     }
@@ -79,7 +79,7 @@ function saveProduct(productData) {
   var prodSheet = ss.getSheetByName('MB_PRODUCTS');
   if (!prodSheet) {
     prodSheet = ss.insertSheet('MB_PRODUCTS');
-    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label"]);
+    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"]);
   }
   var prodData = prodSheet.getDataRange().getValues();
   var existingRow = -1;
@@ -96,14 +96,15 @@ function saveProduct(productData) {
   var saleType = productData.sale_type || 'none';
   var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price) !== '') ? productData.sale_price : '';
   var saleLabel = productData.sale_label || '';
+  var saleEndDate = productData.sale_end_date || '';
   var prodId = productData.id || ('PROD-' + Date.now());
 
   if (existingRow > 0) {
-    prodSheet.getRange(existingRow, 1, 1, 13).setValues([[
-      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel
+    prodSheet.getRange(existingRow, 1, 1, 14).setValues([[
+      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate
     ]]);
   } else {
-    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel]);
+    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate]);
   }
   return responseJSON({ status: 'success', id: prodId });
 }
@@ -132,15 +133,28 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Thiếu email hoặc productId' });
     }
 
+    // 1. Lấy thông tin sản phẩm & tính effectivePrice
     var prodData = prodSheet.getDataRange().getValues();
     var product = null;
+    var now = new Date();
+
     for (var p = 1; p < prodData.length; p++) {
       if (String(prodData[p][0]) === String(productId)) {
         var rawSaleType = String(prodData[p][10] || 'none').trim().toLowerCase();
         var rawSalePrice = prodData[p][11];
+        var rawSaleEndDate = prodData[p][13];
         
+        var isSaleValid = rawSaleType !== 'none' && rawSalePrice !== '' && rawSalePrice !== null && rawSalePrice !== undefined;
+        if (isSaleValid && rawSaleEndDate) {
+          try {
+            if (new Date(rawSaleEndDate) < now) {
+              isSaleValid = false; // Sale expired!
+            }
+          } catch(e) {}
+        }
+
         var effectivePrice = parseInt(prodData[p][3]) || 0;
-        if (rawSaleType !== 'none' && rawSalePrice !== '' && rawSalePrice !== null && rawSalePrice !== undefined) {
+        if (isSaleValid) {
           effectivePrice = parseInt(rawSalePrice);
           if (isNaN(effectivePrice)) effectivePrice = 0;
         }
@@ -150,7 +164,7 @@ function purchaseProduct(email, productId) {
           name: prodData[p][1],
           price: parseInt(prodData[p][3]) || 0,
           effectivePrice: effectivePrice,
-          saleType: rawSaleType,
+          saleType: isSaleValid ? rawSaleType : 'none',
           type: prodData[p][4] || 'auto',
           status: prodData[p][6] || 'active'
         };
@@ -162,6 +176,7 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Sản phẩm không khả dụng' });
     }
 
+    // 2. Tính số dư ví hiện tại
     var logData = logSheet.getDataRange().getValues();
     var currentBalance = 0;
     for (var l = 1; l < logData.length; l++) {
@@ -174,10 +189,10 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Số dư ví không đủ (' + currentBalance + ' < ' + product.effectivePrice + ')' });
     }
 
+    // 3. Tìm slot kho khả dụng
     var invData = invSheet.getDataRange().getValues();
     var targetInvRow = -1;
     var targetInvItem = null;
-    var now = new Date();
 
     for (var i = 1; i < invData.length; i++) {
       var rowProdId = String(invData[i][1]);
@@ -201,15 +216,18 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Sản phẩm đã hết hàng trong kho' });
     }
 
+    // 4. Ghi MB_WALLET_LOG (Nếu FREE effectivePrice === 0 thì amount = 0)
     var newBalance = currentBalance - product.effectivePrice;
     var logId = 'LOG-' + Date.now();
     var logNote = product.effectivePrice === 0 ? 'FREE — Hàng cận date (' + product.name + ')' : 'Mua hàng: ' + product.name;
     logSheet.appendRow([logId, cleanEmail, 'purchase', -product.effectivePrice, newBalance, product.id, logNote, new Date().toISOString()]);
 
+    // 5. Cập nhật trạng thái slot kho
     invSheet.getRange(targetInvRow, 5).setValue('sold');
     invSheet.getRange(targetInvRow, 6).setValue(cleanEmail);
     invSheet.getRange(targetInvRow, 7).setValue(new Date().toISOString());
 
+    // 6. Ghi đơn hàng MB_ORDERS
     var orderId = 'ORD-' + Date.now();
     orderSheet.appendRow([orderId, cleanEmail, product.id, product.name, targetInvItem.id, targetInvItem.itemData, product.effectivePrice, 'completed', new Date().toISOString(), product.effectivePrice === 0 ? 'Miễn phí' : 'Thành công']);
 
@@ -423,7 +441,7 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
 function initMemberSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetsToCreate = [
-    { name: "MB_PRODUCTS", headers: ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label"] },
+    { name: "MB_PRODUCTS", headers: ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"] },
     { name: "MB_INVENTORY", headers: ["id", "product_id", "item_data", "slot_type", "max_users", "expire_date", "status", "sold_to_email", "sold_at"] },
     { name: "MB_USERS", headers: ["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"] },
     { name: "MB_WALLET_LOG", headers: ["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"] },

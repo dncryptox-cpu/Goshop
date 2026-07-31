@@ -2397,7 +2397,7 @@ function responseJSON(obj) {
 function initMemberShopSheets() {
   var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
   var schemas = {
-    'MB_PRODUCTS': ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url"],
+    'MB_PRODUCTS': ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"],
     'MB_INVENTORY': ["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"],
     'MB_USERS': ["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"],
     'MB_WALLET_LOG': ["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"],
@@ -2427,7 +2427,7 @@ function saveProduct(productData) {
   var prodSheet = ss.getSheetByName('MB_PRODUCTS');
   if (!prodSheet) {
     prodSheet = ss.insertSheet('MB_PRODUCTS');
-    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label"]);
+    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"]);
   }
   var prodData = prodSheet.getDataRange().getValues();
   var existingRow = -1;
@@ -2444,14 +2444,15 @@ function saveProduct(productData) {
   var saleType = productData.sale_type || 'none';
   var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price) !== '') ? productData.sale_price : '';
   var saleLabel = productData.sale_label || '';
+  var saleEndDate = productData.sale_end_date || '';
   var prodId = productData.id || ('PROD-' + Date.now());
 
   if (existingRow > 0) {
-    prodSheet.getRange(existingRow, 1, 1, 13).setValues([[
-      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel
+    prodSheet.getRange(existingRow, 1, 1, 14).setValues([[
+      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate
     ]]);
   } else {
-    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel]);
+    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate]);
   }
   return responseJSON({ status: 'success', id: prodId });
 }
