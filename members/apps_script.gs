@@ -197,7 +197,7 @@ function purchaseProduct(email, productId) {
     for (var i = 1; i < invData.length; i++) {
       var rowProdId = String(invData[i][1]);
       var rowStatus = String(invData[i][4]);
-      var rowExpire = invData[i][3];
+      var rowExpire = invData[i][3] || invData[i][5];
 
       if (rowProdId === String(productId) && rowStatus === 'available') {
         if (rowExpire && new Date(rowExpire) < now) continue;
@@ -205,6 +205,7 @@ function purchaseProduct(email, productId) {
         targetInvItem = {
           id: invData[i][0],
           itemData: invData[i][2],
+          expireDate: invData[i][3] || invData[i][5] || '',
           slotType: invData[i][7] || 'rieng',
           maxUsers: parseInt(invData[i][8]) || 1
         };
@@ -231,6 +232,15 @@ function purchaseProduct(email, productId) {
     var orderId = 'ORD-' + Date.now();
     orderSheet.appendRow([orderId, cleanEmail, product.id, product.name, targetInvItem.id, targetInvItem.itemData, product.effectivePrice, 'completed', new Date().toISOString(), product.effectivePrice === 0 ? 'Miễn phí' : 'Thành công']);
 
+    // 7. Đồng bộ đơn hoàn thành sang DON_HANG_MOI (Không block đơn hàng nếu lỗi)
+    syncOrderToDonHangMoi({
+      orderId: orderId,
+      email: cleanEmail,
+      productName: product.name,
+      amount: product.effectivePrice,
+      expireDate: targetInvItem.expireDate || ''
+    });
+
     return responseJSON({
       status: 'success',
       orderId: orderId,
@@ -243,6 +253,121 @@ function purchaseProduct(email, productId) {
     return responseJSON({ status: 'error', message: err.toString() });
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * ĐỒNG BỘ ĐƠN HOÀN THÀNH SANG DON_HANG_MOI
+ * Dùng LockService độc lập, nếu lỗi ghi NHAT_KY_XU_LY và không rollback đơn hàng.
+ */
+function syncOrderToDonHangMoi(orderData) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    logErrorToNhatKyXuLy('syncOrderToDonHangMoi: Lock timeout - ' + e.toString());
+    return;
+  }
+
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var dhmSheet = ss.getSheetByName('DON_HANG_MOI');
+    if (!dhmSheet) {
+      logErrorToNhatKyXuLy('syncOrderToDonHangMoi: Sheet DON_HANG_MOI không tồn tại');
+      return;
+    }
+
+    var orderId = String(orderData.orderId || '').trim();
+    var email = String(orderData.email || '').trim().toLowerCase();
+    var productName = String(orderData.productName || '').trim();
+    var amount = parseInt(orderData.amount) || 0;
+    var rawExpireDate = orderData.expireDate;
+
+    // 1. Fetch Zalo phone from MB_USERS matching email (Cột C)
+    var phone = '';
+    try {
+      var userSheet = ss.getSheetByName('MB_USERS');
+      if (userSheet) {
+        var uData = userSheet.getDataRange().getValues();
+        for (var u = 1; u < uData.length; u++) {
+          if (String(uData[u][1]).trim().toLowerCase() === email) {
+            phone = String(uData[u][4] || '').trim();
+            break;
+          }
+        }
+      }
+    } catch (errU) {}
+
+    // 2. Format expireDate & Calculate durationDays (Cột E & J)
+    var durationDays = 30;
+    var expireDateStr = '';
+    if (rawExpireDate) {
+      try {
+        var expD = new Date(rawExpireDate);
+        if (!isNaN(expD.getTime())) {
+          expireDateStr = expD.toISOString().split('T')[0];
+          var nowD = new Date();
+          var diffMs = expD.getTime() - nowD.getTime();
+          var calculatedDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+          if (calculatedDays > 0) durationDays = calculatedDays;
+        } else {
+          expireDateStr = String(rawExpireDate).trim();
+        }
+      } catch (errD) {
+        expireDateStr = String(rawExpireDate).trim();
+      }
+    }
+
+    // 3. Format Date YYYY-MM-DD (Cột H)
+    var now = new Date();
+    var year = now.getFullYear();
+    var month = String(now.getMonth() + 1).padStart(2, '0');
+    var day = String(now.getDate()).padStart(2, '0');
+    var dateYYYYMMDD = year + '-' + month + '-' + day;
+
+    // 4. Format full timestamp YYYY-MM-DD HH:mm:ss (Cột L)
+    var hours = String(now.getHours()).padStart(2, '0');
+    var minutes = String(now.getMinutes()).padStart(2, '0');
+    var seconds = String(now.getSeconds()).padStart(2, '0');
+    var fullTimestamp = dateYYYYMMDD + ' ' + hours + ':' + minutes + ':' + seconds;
+
+    // Mapping Cột A -> L
+    var rowData = [
+      orderId,       // A — Mã ĐH
+      email,         // B — Email
+      phone,         // C — Zalo
+      productName,   // D — Sản phẩm
+      durationDays,  // E — Thời hạn
+      amount,        // F — Số tiền
+      'Done',        // G — Trạng thái
+      dateYYYYMMDD,  // H — Ngày tạo
+      '',            // I — Người giới thiệu
+      expireDateStr, // J — HSD
+      '',            // K — (trống)
+      fullTimestamp  // L — time
+    ];
+
+    dhmSheet.appendRow(rowData);
+  } catch (err) {
+    logErrorToNhatKyXuLy('syncOrderToDonHangMoi error: ' + err.toString());
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch(e) {}
+  }
+}
+
+function logErrorToNhatKyXuLy(errorMsg) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var logSheet = ss.getSheetByName('NHAT_KY_XU_LY');
+    if (!logSheet) {
+      logSheet = ss.insertSheet('NHAT_KY_XU_LY');
+      logSheet.appendRow(['Timestamp', 'Log Level', 'Message']);
+    }
+    logSheet.appendRow([new Date().toISOString(), 'ERROR', String(errorMsg)]);
+  } catch (e) {
+    Logger.log('logErrorToNhatKyXuLy error: ' + e.toString());
   }
 }
 
