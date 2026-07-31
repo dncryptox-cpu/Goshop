@@ -29,6 +29,28 @@ function testRegister() {
 }
 
 /**
+ * 🧪 HÀM TEST THỜI HẠN TOKEN 7 NGÀY
+ */
+function testTokenExpiry() {
+  var ss = getOrCreateSpreadsheet();
+  var usersSheet = ss.getSheetByName('users');
+  var usersData = usersSheet.getDataRange().getValues();
+  if (usersData.length > 1) {
+    var row = usersData[1];
+    var token = row[6];
+    var expiresAt = row[7];
+    var nowMs = new Date().getTime();
+    var expiryMs = new Date(expiresAt).getTime();
+    var isExpired = nowMs > expiryMs;
+
+    var statusMsg = "User: " + row[1] + " | Token: " + token + " | Thời điểm hết hạn (7 ngày): " + expiresAt + " | Trạng thái: " + (isExpired ? "ĐÃ HẾT HẠN ❌" : "CÒN HIỆU LỰC ✅");
+    Logger.log(statusMsg);
+    return statusMsg;
+  }
+  return "Chưa có user nào trong Sheet";
+}
+
+/**
  * 🧪 HÀM TEST GỌI GEMINI 3.6 FLASH VISION
  */
 function testGeminiVision(apiKey) {
@@ -176,8 +198,9 @@ function handleRegister(data) {
   var userId = 'u_' + new Date().getTime();
   var passwordHash = hashPassword(password);
   var todayStr = getTodayDateString();
-  var token = generateToken(email);
+  var tokenObj = generateTokenWithExpiry(email);
 
+  // Ghi vào Sheet users: id | email | password_hash | api_key_gemini | ngày_đăng_ký | role | current_token | token_expires_at
   usersSheet.appendRow([
     userId,
     email,
@@ -185,13 +208,15 @@ function handleRegister(data) {
     apiKeyGemini,
     todayStr,
     'user',
-    token
+    tokenObj.token,
+    tokenObj.expires_at
   ]);
 
   return respondJSON({
     status: 'success',
-    message: 'Đăng ký tài khoản thành công!',
-    token: token,
+    message: 'Đăng ký tài khoản thành công! (Phiên đăng nhập có hiệu lực 7 ngày)',
+    token: tokenObj.token,
+    token_expires_at: tokenObj.expires_at,
     email: email,
     has_api_key: !!apiKeyGemini
   });
@@ -214,14 +239,16 @@ function handleLogin(data) {
     if (usersData[i][1] === email) {
       var storedHash = usersData[i][2];
       if (storedHash === passwordHash) {
-        var token = generateToken(email);
-        usersSheet.getRange(i + 1, 7).setValue(token);
+        var tokenObj = generateTokenWithExpiry(email);
+        usersSheet.getRange(i + 1, 7).setValue(tokenObj.token);
+        usersSheet.getRange(i + 1, 8).setValue(tokenObj.expires_at);
         
         var apiKey = usersData[i][3] || '';
         return respondJSON({
           status: 'success',
-          message: 'Đăng nhập thành công!',
-          token: token,
+          message: 'Đăng nhập thành công! (Phiên đăng nhập có hiệu lực 7 ngày)',
+          token: tokenObj.token,
+          token_expires_at: tokenObj.expires_at,
           email: email,
           has_api_key: !!apiKey
         });
@@ -260,11 +287,22 @@ function getUserByToken(token) {
   var ss = getOrCreateSpreadsheet();
   var usersSheet = ss.getSheetByName('users');
   var usersData = usersSheet.getDataRange().getValues();
+  var nowMs = new Date().getTime();
 
   for (var i = 1; i < usersData.length; i++) {
     var row = usersData[i];
     var storedToken = row[6];
     if (storedToken && storedToken === token) {
+      var expiresAtStr = row[7];
+      // Kiểm tra thời hạn 7 ngày
+      if (expiresAtStr) {
+        var expiryMs = new Date(expiresAtStr).getTime();
+        if (nowMs > expiryMs) {
+          Logger.log("⚠️ Token đã hết hạn 7 ngày cho user: " + row[1] + " (Hết hạn lúc: " + expiresAtStr + ")");
+          return null; // Từ chối request vì token hết hạn!
+        }
+      }
+
       return {
         id: row[0],
         email: row[1],
@@ -272,7 +310,8 @@ function getUserByToken(token) {
         api_key_gemini: row[3],
         ngay_dang_ky: row[4],
         role: row[5],
-        token: row[6]
+        token: row[6],
+        token_expires_at: row[7]
       };
     }
   }
@@ -290,9 +329,9 @@ function hashPassword(password) {
   return hex;
 }
 
-function generateToken(email) {
-  var timestamp = new Date().getTime();
-  var rawStr = email + '_' + timestamp + '_' + Math.random();
+function generateTokenWithExpiry(email) {
+  var nowMs = new Date().getTime();
+  var rawStr = email + '_' + nowMs + '_' + Math.random();
   var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, rawStr, Utilities.Charset.UTF_8);
   var token = '';
   for (var i = 0; i < digest.length; i++) {
@@ -300,7 +339,15 @@ function generateToken(email) {
     if (byteStr.length === 1) byteStr = '0' + byteStr;
     token += byteStr;
   }
-  return token;
+
+  // 7 ngày = 7 * 24 * 60 * 60 * 1000 = 604,800,000 ms
+  var expiryMs = nowMs + (7 * 24 * 60 * 60 * 1000);
+  var expiryDate = new Date(expiryMs);
+
+  return {
+    token: token,
+    expires_at: expiryDate.toISOString()
+  };
 }
 
 // ==========================================
@@ -824,7 +871,7 @@ function getOrCreateSpreadsheet() {
   var usersSheet = ss.getSheetByName('users');
   if (!usersSheet) {
     usersSheet = ss.insertSheet('users');
-    usersSheet.appendRow(['id', 'email', 'password_hash', 'api_key_gemini', 'ngày_đăng_ký', 'role', 'current_token']);
+    usersSheet.appendRow(['id', 'email', 'password_hash', 'api_key_gemini', 'ngày_đăng_ký', 'role', 'current_token', 'token_expires_at']);
   }
 
   // 2. Tab vocab
