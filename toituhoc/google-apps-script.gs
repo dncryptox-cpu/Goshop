@@ -399,7 +399,7 @@ function saveImageToDrive(base64Data, mimeType, fileName) {
 
 function callGeminiVisionAPIWithUserKey(base64Data, mimeType, userApiKey) {
   var cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
-  var modelName = 'gemini-1.5-flash';
+  var modelName = 'gemini-3.6-flash';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
 
   var promptText = "Bạn là một trợ lý giảng dạy tiếng Anh thông minh. Hãy đọc chữ tiếng Anh trong ảnh và trích ra từ 3 đến 8 từ vựng, cụm từ (phrasal verbs, idioms) hoặc cấu trúc ngữ pháp đáng học nhất (BỎ QUA các từ quá cơ bản như 'the', 'is', 'a', 'in', 'on', 'it', 'and').\n" +
