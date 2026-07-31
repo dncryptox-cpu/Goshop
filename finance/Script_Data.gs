@@ -4,6 +4,86 @@ function doPost(e) {
     var action = data.action;
     var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
 
+    // ============================================================
+    // PHẦN 0: CÁC ACTION CHO MEMBER SHOP (MB_) & SHOP SETTINGS
+    // ============================================================
+
+    if (action === 'save_system_config') {
+      var configSheet = ss.getSheetByName("SYSTEM_CONFIG");
+      if (!configSheet) {
+        configSheet = ss.insertSheet("SYSTEM_CONFIG");
+        configSheet.appendRow(["KEY", "VALUE"]);
+      }
+      var configs = data.configs || {};
+      var dataRange = configSheet.getDataRange();
+      var values = dataRange.getValues();
+      
+      for (var key in configs) {
+        var val = String(configs[key] || '').trim();
+        var found = false;
+        for (var i = 1; i < values.length; i++) {
+          if (String(values[i][0] || '').trim().toUpperCase() === key.toUpperCase()) {
+            configSheet.getRange(i + 1, 2).setValue(val);
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          configSheet.appendRow([key, val]);
+        }
+      }
+      return responseJSON({ status: 'success' });
+    }
+
+    if (action === 'init_member_sheets') {
+      return initMemberShopSheets();
+    }
+    if (action === 'save_product') {
+      return saveProduct(data.productData);
+    }
+    if (action === 'submit_topup_request') {
+      return submitTopupRequest(data.email, data.amount, data.proofUrl, data.note);
+    } 
+    if (action === 'topup_wallet') {
+      return topupWallet(data.email, data.amount, data.refId, data.note, data.reviewedBy);
+    } 
+    if (action === 'reject_topup_request') {
+      return rejectTopupRequest(data.reqId, data.note, data.reviewedBy);
+    } 
+    if (action === 'submit_withdraw_request') {
+      return submitWithdrawRequest(data.email, data.amount, data.bankName, data.bankAccount, data.bankOwner, data.note);
+    }
+    if (action === 'approve_withdraw') {
+      return approveWithdraw(data.reqId, data.reviewedBy);
+    }
+    if (action === 'reject_withdraw') {
+      return rejectWithdraw(data.reqId, data.note, data.reviewedBy);
+    }
+    if (action === 'purchase_product') {
+      return purchaseProduct(data.email, data.productId);
+    } 
+    if (action === 'submit_pending_order') {
+      return submitPendingOrder(data.email, data.productId, data.note);
+    } 
+    if (action === 'approve_order') {
+      return approveOrder(data.pendingOrderId);
+    } 
+    if (action === 'reject_order') {
+      return rejectOrder(data.pendingOrderId, data.note);
+    } 
+    if (action === 'adjust_wallet') {
+      return adjustWallet(data.email, data.amount, data.note);
+    } 
+    if (action === 'bulk_add_inventory') {
+      return bulkAddInventory(data.productId, data.items, data.expireDate, data.slotType, data.maxUsers);
+    } 
+    if (action === 'submit_order_report') {
+      return submitOrderReport(data.orderId, data.email, data.productName, data.description);
+    }
+    if (action === 'resolve_order_report') {
+      return resolveOrderReport(data.reportId);
+    }
+
     // 0. Lấy mã OTP theo Customer Key (cho khách hàng)
     if (action === 'get_customer_otp') {
       var customerKey = String(data.customerKey || '').trim().toUpperCase();
@@ -2289,4 +2369,525 @@ function logToKiemSoatRN(frSs, stt, eventType, oldEmail, newEmail, status, expir
   } catch (e) {
     Logger.log("Error logging to KIEM_SOAT_RN: " + e.toString());
   }
+}
+
+// ============================================================
+// CÁC HÀM HELPER HỖ TRỢ MEMBER SHOP (MB_)
+// ============================================================
+
+function responseJSON(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function initMemberShopSheets() {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var schemas = {
+    'MB_PRODUCTS': ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url"],
+    'MB_INVENTORY': ["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"],
+    'MB_WALLET_LOG': ["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"],
+    'MB_TOPUP_REQ': ["id", "email", "amount", "proof_url", "status", "requested_at", "reviewed_at", "reviewed_by", "note"],
+    'MB_WITHDRAW_REQ': ["id", "email", "amount", "bank_name", "bank_account", "bank_owner", "status", "requested_at", "reviewed_at", "note"],
+    'MB_ORDERS': ["id", "email", "product_id", "product_name", "inventory_id", "item_data", "amount", "status", "created_at", "note"],
+    'MB_PENDING_ORDERS': ["id", "email", "product_id", "product_name", "amount", "status", "created_at", "reviewed_at", "note"],
+    'MB_REPORTS': ["id", "order_id", "email", "product_name", "description", "status", "created_at"]
+  };
+  
+  for (var sheetName in schemas) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.appendRow(schemas[sheetName]);
+      sheet.getRange(1, 1, 1, schemas[sheetName].length).setFontWeight("bold").setBackground("#e0e7ff");
+    }
+  }
+  return responseJSON({ status: 'success', message: 'Đã tự động khởi tạo đủ 8 Sheet tab MB_ với tiêu đề chuẩn!' });
+}
+
+function saveProduct(productData) {
+  if (!productData || !productData.name) {
+    return responseJSON({ status: 'error', message: 'Dữ liệu sản phẩm không hợp lệ' });
+  }
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var prodSheet = ss.getSheetByName('MB_PRODUCTS');
+  if (!prodSheet) {
+    prodSheet = ss.insertSheet('MB_PRODUCTS');
+    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url"]);
+  }
+  var prodData = prodSheet.getDataRange().getValues();
+  var existingRow = -1;
+
+  for (var i = 1; i < prodData.length; i++) {
+    if (productData.id && String(prodData[i][0]) === String(productData.id)) {
+      existingRow = i + 1;
+      break;
+    }
+  }
+
+  var slotType = productData.slot_type || 'rieng';
+  var guideUrl = productData.guide_url || '';
+  var prodId = productData.id || ('PROD-' + Date.now());
+
+  if (existingRow > 0) {
+    prodSheet.getRange(existingRow, 1, 1, 10).setValues([[
+      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl
+    ]]);
+  } else {
+    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl]);
+  }
+  return responseJSON({ status: 'success', id: prodId });
+}
+
+function submitOrderReport(orderId, email, productName, description) {
+  if (!orderId || !description) return responseJSON({ status: 'error', message: 'Dữ liệu báo lỗi không hợp lệ' });
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var sheet = ss.getSheetByName('MB_REPORTS');
+  if (!sheet) {
+    sheet = ss.insertSheet('MB_REPORTS');
+    sheet.appendRow(["id", "order_id", "email", "product_name", "description", "status", "created_at"]);
+  }
+  var reportId = 'RP-' + Date.now();
+  sheet.appendRow([reportId, orderId, email || '', productName || '', description, 'open', new Date().toISOString()]);
+  return responseJSON({ status: 'success', reportId: reportId });
+}
+
+function resolveOrderReport(reportId) {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var sheet = ss.getSheetByName('MB_REPORTS');
+  if (sheet) {
+    var data = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(reportId) || String(data[i][1]) === String(reportId)) {
+        sheet.getRange(i + 1, 6).setValue('resolved');
+        return responseJSON({ status: 'success' });
+      }
+    }
+  }
+  return responseJSON({ status: 'error', message: 'Không tìm thấy bản ghi báo lỗi' });
+}
+
+function submitWithdrawRequest(email, amount, bankName, bankAccount, bankOwner, note) {
+  if (!email || !amount || amount <= 0 || !bankName || !bankAccount || !bankOwner) {
+    return responseJSON({ status: 'error', message: 'Dữ liệu rút tiền không hợp lệ' });
+  }
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var sheet = ss.getSheetByName('MB_WITHDRAW_REQ');
+  if (!sheet) {
+    sheet = ss.insertSheet('MB_WITHDRAW_REQ');
+    sheet.appendRow(["id", "email", "amount", "bank_name", "bank_account", "bank_owner", "status", "requested_at", "reviewed_at", "note"]);
+  }
+  var reqId = 'WD-' + Date.now();
+  sheet.appendRow([reqId, String(email).trim().toLowerCase(), amount, bankName, bankAccount, bankOwner, 'pending', new Date().toISOString(), '', note || '']);
+  return responseJSON({ status: 'success', reqId: reqId });
+}
+
+function approveWithdraw(reqId, reviewedBy) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (e) {
+    return responseJSON({ status: 'error', message: 'Hệ thống đang bận, vui lòng thử lại sau!' });
+  }
+  
+  try {
+    var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+    var wdSheet = ss.getSheetByName('MB_WITHDRAW_REQ');
+    var logSheet = ss.getSheetByName('MB_WALLET_LOG');
+    
+    if (!wdSheet || !logSheet) {
+      return responseJSON({ status: 'error', message: 'Sheet dữ liệu chưa tạo' });
+    }
+    
+    var wdData = wdSheet.getDataRange().getValues();
+    var reqRow = -1;
+    var email = '', amount = 0, bankName = '', bankAccount = '', bankOwner = '';
+    
+    for (var i = 1; i < wdData.length; i++) {
+      if (String(wdData[i][0]) === String(reqId)) {
+        if (String(wdData[i][6]) !== 'pending') {
+          return responseJSON({ status: 'error', message: 'Yêu cầu này đã được xử lý trước đó!' });
+        }
+        reqRow = i + 1;
+        email = String(wdData[i][1]).trim().toLowerCase();
+        amount = parseInt(wdData[i][2]) || 0;
+        bankName = wdData[i][3];
+        bankAccount = wdData[i][4];
+        bankOwner = wdData[i][5];
+        break;
+      }
+    }
+    
+    if (reqRow === -1) {
+      return responseJSON({ status: 'error', message: 'Không tìm thấy yêu cầu rút tiền' });
+    }
+    
+    // Tính toán số dư ví khả dụng hiện tại
+    var logData = logSheet.getDataRange().getValues();
+    var currentBalance = 0;
+    for (var j = 1; j < logData.length; j++) {
+      if (String(logData[j][1]).trim().toLowerCase() === email) {
+        var logAmt = parseInt(logData[j][3]) || 0;
+        currentBalance += logAmt;
+      }
+    }
+    
+    if (currentBalance < amount) {
+      wdSheet.getRange(reqRow, 7).setValue('rejected');
+      wdSheet.getRange(reqRow, 8).setValue(new Date().toISOString());
+      wdSheet.getRange(reqRow, 9).setValue(reviewedBy || 'system');
+      wdSheet.getRange(reqRow, 10).setValue('Tự động từ chối: Số dư ví không đủ (' + currentBalance + ' < ' + amount + ')');
+      return responseJSON({ status: 'error', message: 'Số dư ví của khách không đủ! Hệ thống đã từ chối yêu cầu.' });
+    }
+    
+    var newBalance = currentBalance - amount;
+    var logId = 'LOG-' + Date.now();
+    var note = 'Rút tiền ví về ' + bankName + ' (' + bankAccount + ' - ' + bankOwner + ')';
+    logSheet.appendRow([logId, email, 'withdraw', -amount, newBalance, reqId, note, new Date().toISOString()]);
+    
+    wdSheet.getRange(reqRow, 7).setValue('approved');
+    wdSheet.getRange(reqRow, 8).setValue(new Date().toISOString());
+    wdSheet.getRange(reqRow, 9).setValue(reviewedBy || 'admin');
+    
+    return responseJSON({ status: 'success', newBalance: newBalance });
+  } catch (err) {
+    return responseJSON({ status: 'error', message: err.toString() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function rejectWithdraw(reqId, note, reviewedBy) {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var wdSheet = ss.getSheetByName('MB_WITHDRAW_REQ');
+  if (wdSheet) {
+    var data = wdSheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(reqId)) {
+        wdSheet.getRange(i + 1, 7).setValue('rejected');
+        wdSheet.getRange(i + 1, 8).setValue(new Date().toISOString());
+        wdSheet.getRange(i + 1, 9).setValue(reviewedBy || 'admin');
+        wdSheet.getRange(i + 1, 10).setValue(note || 'Từ chối rút tiền');
+        return responseJSON({ status: 'success' });
+      }
+    }
+  }
+  return responseJSON({ status: 'error', message: 'Không tìm thấy yêu cầu rút tiền' });
+}
+
+function bulkAddInventory(productId, items, expireDate, slotType, maxUsers) {
+  return addInventoryBulk(productId, items, slotType, maxUsers, expireDate);
+}
+
+function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var invSheet = ss.getSheetByName("MB_INVENTORY");
+  if (!invSheet) {
+    invSheet = ss.insertSheet("MB_INVENTORY");
+    invSheet.appendRow(["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"]);
+  }
+  if (!productId) {
+    return responseJSON({ status: "error", message: "Thiếu productId" });
+  }
+
+  slotType = slotType || "rieng";
+  maxUsers = parseInt(maxUsers) || (slotType === "gia_dinh" ? 3 : 1);
+  expireDate = expireDate || "";
+
+  var addedCount = 0;
+  var addedIds = [];
+
+  if (Array.isArray(items)) {
+    for (var i = 0; i < items.length; i++) {
+      var line = String(items[i] || "").trim();
+      if (!line) continue;
+
+      var id = "INV-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
+      invSheet.appendRow([
+        id,
+        productId,
+        line,
+        expireDate,
+        "available",
+        "",
+        "",
+        slotType,
+        maxUsers
+      ]);
+      addedCount++;
+      addedIds.push(id);
+    }
+  }
+
+  return responseJSON({
+    status: "success",
+    message: "Đã thêm " + addedCount + " account vào kho thành công",
+    addedCount: addedCount,
+    addedIds: addedIds
+  });
+}
+
+function submitTopupRequest(email, amount, proofUrl, note) {
+  if (!email || !amount || amount <= 0) return responseJSON({ status: 'error', message: 'Dữ liệu nạp tiền không hợp lệ' });
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var sheet = ss.getSheetByName('MB_TOPUP_REQ');
+  if (!sheet) {
+    sheet = ss.insertSheet('MB_TOPUP_REQ');
+    sheet.appendRow(["id", "email", "amount", "proof_url", "status", "requested_at", "reviewed_at", "reviewed_by", "note"]);
+  }
+  var reqId = 'TP-' + Date.now();
+  sheet.appendRow([reqId, String(email).trim().toLowerCase(), amount, proofUrl || '', 'pending', new Date().toISOString(), '', '', note || '']);
+  return responseJSON({ status: 'success', reqId: reqId });
+}
+
+function topupWallet(email, amount, refId, note, reviewedBy) {
+  if (!email || !amount || amount <= 0) return responseJSON({ status: 'error', message: 'Dữ liệu cộng tiền không hợp lệ' });
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var logSheet = ss.getSheetByName('MB_WALLET_LOG');
+  if (!logSheet) {
+    logSheet = ss.insertSheet('MB_WALLET_LOG');
+    logSheet.appendRow(["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"]);
+  }
+  var cleanEmail = String(email).trim().toLowerCase();
+  var logData = logSheet.getDataRange().getValues();
+  var currentBalance = 0;
+  for (var j = 1; j < logData.length; j++) {
+    if (String(logData[j][1]).trim().toLowerCase() === cleanEmail) {
+      currentBalance += (parseInt(logData[j][3]) || 0);
+    }
+  }
+  var newBalance = currentBalance + amount;
+  var logId = 'LOG-' + Date.now();
+  logSheet.appendRow([logId, cleanEmail, 'topup', amount, newBalance, refId || '', note || 'Cộng tiền vào ví', new Date().toISOString()]);
+
+  if (refId) {
+    var tpSheet = ss.getSheetByName('MB_TOPUP_REQ');
+    if (tpSheet) {
+      var tpData = tpSheet.getDataRange().getValues();
+      for (var k = 1; k < tpData.length; k++) {
+        if (String(tpData[k][0]) === String(refId)) {
+          tpSheet.getRange(k + 1, 5).setValue('approved');
+          tpSheet.getRange(k + 1, 7).setValue(new Date().toISOString());
+          tpSheet.getRange(k + 1, 8).setValue(reviewedBy || 'admin');
+          break;
+        }
+      }
+    }
+  }
+  return responseJSON({ status: 'success', newBalance: newBalance });
+}
+
+function rejectTopupRequest(reqId, note, reviewedBy) {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var tpSheet = ss.getSheetByName('MB_TOPUP_REQ');
+  if (tpSheet) {
+    var data = tpSheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(reqId)) {
+        tpSheet.getRange(i + 1, 5).setValue('rejected');
+        tpSheet.getRange(i + 1, 7).setValue(new Date().toISOString());
+        tpSheet.getRange(i + 1, 8).setValue(reviewedBy || 'admin');
+        tpSheet.getRange(i + 1, 9).setValue(note || 'Từ chối nạp tiền');
+        return responseJSON({ status: 'success' });
+      }
+    }
+  }
+  return responseJSON({ status: 'error', message: 'Không tìm thấy yêu cầu nạp tiền' });
+}
+
+function adjustWallet(email, amount, note) {
+  if (!email || amount === 0) return responseJSON({ status: 'error', message: 'Dữ liệu điều chỉnh số dư không hợp lệ' });
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var logSheet = ss.getSheetByName('MB_WALLET_LOG');
+  if (!logSheet) {
+    logSheet = ss.insertSheet('MB_WALLET_LOG');
+    logSheet.appendRow(["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"]);
+  }
+  var cleanEmail = String(email).trim().toLowerCase();
+  var logData = logSheet.getDataRange().getValues();
+  var currentBalance = 0;
+  for (var j = 1; j < logData.length; j++) {
+    if (String(logData[j][1]).trim().toLowerCase() === cleanEmail) {
+      currentBalance += (parseInt(logData[j][3]) || 0);
+    }
+  }
+  var newBalance = currentBalance + amount;
+  var logId = 'LOG-' + Date.now();
+  logSheet.appendRow([logId, cleanEmail, 'adjust', amount, newBalance, '', note || 'Điều chỉnh số dư bởi admin', new Date().toISOString()]);
+  return responseJSON({ status: 'success', newBalance: newBalance });
+}
+
+function purchaseProduct(email, productId) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (e) {
+    return responseJSON({ status: 'error', message: 'Hệ thống đang bận, vui lòng thử lại sau!' });
+  }
+
+  try {
+    var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+    var prodSheet = ss.getSheetByName('MB_PRODUCTS');
+    var invSheet = ss.getSheetByName('MB_INVENTORY');
+    var logSheet = ss.getSheetByName('MB_WALLET_LOG');
+    var orderSheet = ss.getSheetByName('MB_ORDERS');
+
+    if (!prodSheet || !invSheet || !logSheet || !orderSheet) {
+      return responseJSON({ status: 'error', message: 'Sheet hệ thống chưa khởi tạo đầy đủ' });
+    }
+
+    var cleanEmail = String(email || '').trim().toLowerCase();
+    if (!cleanEmail || !productId) {
+      return responseJSON({ status: 'error', message: 'Thiếu email hoặc productId' });
+    }
+
+    var prodData = prodSheet.getDataRange().getValues();
+    var product = null;
+    for (var p = 1; p < prodData.length; p++) {
+      if (String(prodData[p][0]) === String(productId)) {
+        product = {
+          id: prodData[p][0],
+          name: prodData[p][1],
+          price: parseInt(prodData[p][3]) || 0,
+          type: prodData[p][4] || 'auto',
+          status: prodData[p][6] || 'active'
+        };
+        break;
+      }
+    }
+
+    if (!product || product.status !== 'active') {
+      return responseJSON({ status: 'error', message: 'Sản phẩm không khả dụng' });
+    }
+
+    var logData = logSheet.getDataRange().getValues();
+    var currentBalance = 0;
+    for (var l = 1; l < logData.length; l++) {
+      if (String(logData[l][1]).trim().toLowerCase() === cleanEmail) {
+        currentBalance += (parseInt(logData[l][3]) || 0);
+      }
+    }
+
+    if (currentBalance < product.price) {
+      return responseJSON({ status: 'error', message: 'Số dư ví không đủ (' + currentBalance + ' < ' + product.price + ')' });
+    }
+
+    var invData = invSheet.getDataRange().getValues();
+    var targetInvRow = -1;
+    var targetInvItem = null;
+    var now = new Date();
+
+    for (var i = 1; i < invData.length; i++) {
+      var rowProdId = String(invData[i][1]);
+      var rowStatus = String(invData[i][4]);
+      var rowExpire = invData[i][3];
+
+      if (rowProdId === String(productId) && rowStatus === 'available') {
+        if (rowExpire && new Date(rowExpire) < now) continue;
+        targetInvRow = i + 1;
+        targetInvItem = {
+          id: invData[i][0],
+          itemData: invData[i][2],
+          slotType: invData[i][7] || 'rieng',
+          maxUsers: parseInt(invData[i][8]) || 1
+        };
+        break;
+      }
+    }
+
+    if (targetInvRow === -1 || !targetInvItem) {
+      return responseJSON({ status: 'error', message: 'Sản phẩm đã hết hàng trong kho' });
+    }
+
+    var newBalance = currentBalance - product.price;
+    var logId = 'LOG-' + Date.now();
+    var logNote = 'Mua hàng: ' + product.name;
+    logSheet.appendRow([logId, cleanEmail, 'purchase', -product.price, newBalance, product.id, logNote, new Date().toISOString()]);
+
+    invSheet.getRange(targetInvRow, 5).setValue('sold');
+    invSheet.getRange(targetInvRow, 6).setValue(cleanEmail);
+    invSheet.getRange(targetInvRow, 7).setValue(new Date().toISOString());
+
+    var orderId = 'ORD-' + Date.now();
+    orderSheet.appendRow([orderId, cleanEmail, product.id, product.name, targetInvItem.id, targetInvItem.itemData, product.price, 'completed', new Date().toISOString(), 'Thành công']);
+
+    return responseJSON({
+      status: 'success',
+      orderId: orderId,
+      productName: product.name,
+      itemData: targetInvItem.itemData,
+      newBalance: newBalance
+    });
+  } catch (err) {
+    return responseJSON({ status: 'error', message: err.toString() });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function submitPendingOrder(email, productId, note) {
+  if (!email || !productId) return responseJSON({ status: 'error', message: 'Dữ liệu đơn hàng không hợp lệ' });
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var prodSheet = ss.getSheetByName('MB_PRODUCTS');
+  var poSheet = ss.getSheetByName('MB_PENDING_ORDERS');
+  if (!poSheet) {
+    poSheet = ss.insertSheet('MB_PENDING_ORDERS');
+    poSheet.appendRow(["id", "email", "product_id", "product_name", "amount", "status", "created_at", "reviewed_at", "note"]);
+  }
+  var prodName = 'Sản phẩm ' + productId;
+  var prodPrice = 0;
+  if (prodSheet) {
+    var pData = prodSheet.getDataRange().getValues();
+    for (var i = 1; i < pData.length; i++) {
+      if (String(pData[i][0]) === String(productId)) {
+        prodName = pData[i][1];
+        prodPrice = parseInt(pData[i][3]) || 0;
+        break;
+      }
+    }
+  }
+  var poId = 'PO-' + Date.now();
+  poSheet.appendRow([poId, String(email).trim().toLowerCase(), productId, prodName, prodPrice, 'pending', new Date().toISOString(), '', note || 'Đơn chờ duyệt thủ công']);
+  return responseJSON({ status: 'success', pendingOrderId: poId });
+}
+
+function approveOrder(pendingOrderId) {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var poSheet = ss.getSheetByName('MB_PENDING_ORDERS');
+  if (!poSheet) return responseJSON({ status: 'error', message: 'Sheet MB_PENDING_ORDERS chưa khởi tạo' });
+  
+  var poData = poSheet.getDataRange().getValues();
+  var row = -1, email = '', productId = '';
+  for (var i = 1; i < poData.length; i++) {
+    if (String(poData[i][0]) === String(pendingOrderId)) {
+      row = i + 1;
+      email = poData[i][1];
+      productId = poData[i][2];
+      break;
+    }
+  }
+  if (row === -1) return responseJSON({ status: 'error', message: 'Không tìm thấy đơn hàng chờ' });
+  
+  var res = purchaseProduct(email, productId);
+  var resObj = JSON.parse(res.getContent());
+  if (resObj.status === 'success') {
+    poSheet.getRange(row, 6).setValue('approved');
+    poSheet.getRange(row, 8).setValue(new Date().toISOString());
+  }
+  return res;
+}
+
+function rejectOrder(pendingOrderId, note) {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var poSheet = ss.getSheetByName('MB_PENDING_ORDERS');
+  if (poSheet) {
+    var data = poSheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(pendingOrderId)) {
+        poSheet.getRange(i + 1, 6).setValue('rejected');
+        poSheet.getRange(i + 1, 8).setValue(new Date().toISOString());
+        poSheet.getRange(i + 1, 9).setValue(note || 'Từ chối đơn');
+        return responseJSON({ status: 'success' });
+      }
+    }
+  }
+  return responseJSON({ status: 'error', message: 'Không tìm thấy đơn hàng chờ' });
 }
