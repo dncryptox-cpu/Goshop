@@ -17,6 +17,7 @@ const state = {
   hasApiKey: false,
   dueVocabList: [],
   allVocabList: [],
+  userNotesList: [],
   currentReviewIndex: 0,
   selectedImageBase64: null,
   selectedImageMimeType: 'image/jpeg'
@@ -30,6 +31,7 @@ function initApp() {
   setupNavigation();
   setupAuth();
   setupDashboard();
+  setupNotes();
   setupUpload();
   setupReview();
   setupVocabList();
@@ -92,6 +94,8 @@ function showView(viewId) {
 
   if (viewId === 'view-dashboard') {
     fetchDashboardStats();
+  } else if (viewId === 'view-notes') {
+    loadUserNotes();
   } else if (viewId === 'view-review') {
     loadReviewQueue();
   } else if (viewId === 'view-vocab') {
@@ -147,7 +151,6 @@ function setupAuth() {
     formLogin.style.display = 'none';
   });
 
-  // Handle Login Submit
   formLogin.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('input-login-email').value.trim();
@@ -166,7 +169,6 @@ function setupAuth() {
     }
   });
 
-  // Handle Register Submit
   formRegister.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('input-reg-email').value.trim();
@@ -192,7 +194,6 @@ function setupAuth() {
     }
   });
 
-  // Config Backend URL
   const btnSaveScript = document.getElementById('btn-save-script-url');
   if (btnSaveScript) {
     btnSaveScript.addEventListener('click', () => {
@@ -294,6 +295,14 @@ async function checkUserProfile() {
    4. DASHBOARD & STATS
    ========================================== */
 function setupDashboard() {
+  const btnGotoNotes = document.getElementById('btn-goto-notes');
+  if (btnGotoNotes) {
+    btnGotoNotes.addEventListener('click', () => {
+      showView('view-notes');
+      updateNavActive('view-notes');
+    });
+  }
+
   document.getElementById('btn-goto-upload').addEventListener('click', () => {
     showView('view-upload');
     updateNavActive('view-upload');
@@ -327,7 +336,155 @@ async function fetchDashboardStats() {
 }
 
 /* ==========================================
-   5. UPLOAD & GEMINI OCR FLOW
+   5. GHI CHÚ HỌC TIẾNG ANH (NOTES FEATURE)
+   ========================================== */
+function setupNotes() {
+  const btnProcessNote = document.getElementById('btn-process-note');
+  const inputNoteText = document.getElementById('input-note-text');
+  const spinner = document.getElementById('note-loading-spinner');
+  const resultBox = document.getElementById('note-result-box');
+
+  btnProcessNote.addEventListener('click', async () => {
+    const vietnameseText = inputNoteText.value.trim();
+    if (!vietnameseText) {
+      alert('Vui lòng nhập câu hoặc tình huống tiếng Việt bạn muốn học!');
+      return;
+    }
+
+    if (!state.hasApiKey) {
+      alert('⚠️ Bạn chưa cài đặt Gemini API Key cá nhân! Vui lòng vào Cài đặt để thêm API Key của bạn.');
+      showView('view-settings');
+      updateNavActive('view-settings');
+      return;
+    }
+
+    btnProcessNote.style.display = 'none';
+    spinner.style.display = 'flex';
+    resultBox.style.display = 'none';
+
+    try {
+      const res = await callAppsScriptAPI('processNote', { vietnamese_text: vietnameseText });
+      spinner.style.display = 'none';
+      btnProcessNote.style.display = 'flex';
+
+      if (res.status === 'success' && res.data) {
+        renderNoteResult(res.data);
+        resultBox.style.display = 'flex';
+        inputNoteText.value = '';
+        loadUserNotes(); // Refresh history from Sheet
+      } else {
+        alert(res.message || 'Không thể dịch và xử lý câu ghi chú qua AI.');
+      }
+    } catch (err) {
+      spinner.style.display = 'none';
+      btnProcessNote.style.display = 'flex';
+      alert('Đã xảy ra lỗi khi xử lý ghi chú: ' + err.message);
+    }
+  });
+}
+
+function renderNoteResult(data) {
+  // 1. Bản dịch
+  const transEl = document.getElementById('note-result-translation');
+  transEl.innerText = data.ban_dich_tieng_anh || '';
+
+  const btnTtsTrans = document.getElementById('btn-tts-note-translation');
+  btnTtsTrans.onclick = () => speakText(data.ban_dich_tieng_anh);
+
+  // 2. Giải thích
+  const expEl = document.getElementById('note-result-explanation');
+  expEl.innerText = data.giai_thich_cach_dung || 'Không có giải thích chi tiết.';
+
+  // 3. Các cách nói khác
+  const altContainer = document.getElementById('note-result-alternatives');
+  altContainer.innerHTML = '';
+  const alts = data.cach_noi_khac || [];
+  if (alts.length === 0) {
+    altContainer.innerHTML = `<div style="font-size:0.88rem; color:var(--text-muted);">Không có gợi ý thay thế.</div>`;
+  } else {
+    alts.forEach(altStr => {
+      const el = document.createElement('div');
+      el.style.cssText = "display:flex; align-items:center; justify-content:space-between; padding:10px; background:rgba(0,0,0,0.3); border-radius:10px; gap:8px;";
+      el.innerHTML = `
+        <span style="font-size:0.95rem; color:#fff; font-weight:600;">${escapeHTML(altStr)}</span>
+        <button class="tts-btn" style="width:32px; height:32px; font-size:0.9rem;" onclick="speakText('${escapeQuotes(altStr)}')">🔊</button>
+      `;
+      altContainer.appendChild(el);
+    });
+  }
+
+  // 4. Từ vựng liên quan
+  const vocabContainer = document.getElementById('note-result-vocab');
+  vocabContainer.innerHTML = '';
+  const vocabs = data.tu_vung_lien_quan || [];
+  if (vocabs.length === 0) {
+    vocabContainer.innerHTML = `<div style="font-size:0.88rem; color:var(--text-muted);">Không có từ vựng riêng rẽ trong câu.</div>`;
+  } else {
+    vocabs.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'vocab-item';
+      el.innerHTML = `
+        <div class="vocab-main">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="vocab-word">${escapeHTML(item.word)}</span>
+            <span class="pos-tag">${escapeHTML(item.pos || 'Phrase')}</span>
+          </div>
+          <div class="vocab-meaning">${escapeHTML(item.meaning)}</div>
+          <div style="font-size:0.8rem; color:var(--text-sub); font-style:italic;">"${escapeHTML(item.example || '')}"</div>
+        </div>
+        <button class="tts-btn" onclick="speakText('${escapeQuotes(item.word)}')">🔊</button>
+      `;
+      vocabContainer.appendChild(el);
+    });
+  }
+}
+
+async function loadUserNotes() {
+  if (!state.token) return;
+
+  const historyContainer = document.getElementById('note-history-list');
+  try {
+    const res = await callAppsScriptAPI('getUserNotes', {}, 'GET');
+    if (res.status === 'success' && res.data) {
+      state.userNotesList = res.data || [];
+      renderNotesHistory(state.userNotesList);
+    }
+  } catch (err) {
+    console.error('Failed to load user notes history:', err);
+  }
+}
+
+function renderNotesHistory(notes) {
+  const container = document.getElementById('note-history-list');
+  container.innerHTML = '';
+
+  if (!notes || notes.length === 0) {
+    container.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted); font-size:0.9rem;">Chưa có ghi chú nào được lưu trong Sheet.</div>`;
+    return;
+  }
+
+  notes.forEach(note => {
+    const el = document.createElement('div');
+    el.className = 'glass-card';
+    el.style.cssText = "padding: 16px; margin-bottom: 4px;";
+    el.innerHTML = `
+      <div style="display:flex; justify-content:space-between; font-size:0.78rem; color:var(--text-muted); margin-bottom:6px;">
+        <span>📅 ${escapeHTML(note.ngay)}</span>
+        <span style="color:var(--primary);">Sheet Tab 'notes'</span>
+      </div>
+      <div style="font-size:0.9rem; color:var(--text-sub); margin-bottom:4px;">🇻🇳 <em>"${escapeHTML(note.noi_dung_tieng_viet)}"</em></div>
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <div style="font-size:1.1rem; font-weight:700; color:var(--success);">🇺🇸 ${escapeHTML(note.ban_dich_tieng_anh)}</div>
+        <button class="tts-btn" style="width:32px; height:32px; font-size:0.9rem;" onclick="speakText('${escapeQuotes(note.ban_dich_tieng_anh)}')">🔊</button>
+      </div>
+      ${note.giai_thich_cach_dung ? `<div style="font-size:0.85rem; color:var(--text-muted); margin-top:8px; border-top:1px dashed var(--bg-card-border); padding-top:8px;">💡 ${escapeHTML(note.giai_thich_cach_dung)}</div>` : ''}
+    `;
+    container.appendChild(el);
+  });
+}
+
+/* ==========================================
+   6. UPLOAD & GEMINI OCR FLOW
    ========================================== */
 function setupUpload() {
   const trigger = document.getElementById('upload-trigger');
@@ -452,7 +609,7 @@ function renderAIResults(items) {
 }
 
 /* ==========================================
-   6. FLASHCARD REVIEW & SM-2 LOGIC
+   7. FLASHCARD REVIEW & SM-2 LOGIC
    ========================================== */
 function setupReview() {
   const cardEl = document.getElementById('flashcard-element');
@@ -578,7 +735,7 @@ async function submitCardRating(rating) {
 }
 
 /* ==========================================
-   7. KHO TỪ VỰNG (ALL VOCAB LIST)
+   8. KHO TỪ VỰNG (ALL VOCAB LIST)
    ========================================== */
 function setupVocabList() {
   const searchInput = document.getElementById('input-vocab-search');
@@ -636,7 +793,7 @@ function filterAndRenderVocab(query) {
 }
 
 /* ==========================================
-   8. USER SETTINGS
+   9. USER SETTINGS
    ========================================== */
 function setupSettings() {
   const btnSaveApiKey = document.getElementById('btn-save-user-apikey');
@@ -675,7 +832,7 @@ function loadUserSettings() {
 }
 
 /* ==========================================
-   9. WEB SPEECH API (TEXT-TO-SPEECH)
+   10. WEB SPEECH API (TEXT-TO-SPEECH)
    ========================================== */
 function speakText(text) {
   if (!text || !('speechSynthesis' in window)) return;
@@ -695,7 +852,7 @@ function speakText(text) {
 }
 
 /* ==========================================
-   10. UTILITIES
+   11. UTILITIES
    ========================================== */
 function getTodayDateString() {
   const d = new Date();

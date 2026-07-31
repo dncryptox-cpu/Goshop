@@ -1,28 +1,22 @@
 /**
- * TÔI TỰ HỌC - GOOGLE APPS SCRIPT BACKEND (PHIÊN BẢN AUTH RIÊNG & PER-USER API KEY)
+ * TÔI TỰ HỌC - GOOGLE APPS SCRIPT BACKEND (BỔ SUNG TÍNH NĂNG GHI CHÚ HỌC TIẾNG ANH)
  * 
- * =========================================================================================
- * CẤU HÌNH GOOGLE SHEET ID (NẾU DÙNG SCRIPT TÁCH BIỆT HOẶC CẦN CHỈ ĐỊNH CHÍNH XÁC ID SHEET)
- * Nếu bạn để trống (""), script sẽ tự động lấy Google Sheet đang được gắn (Active Sheet).
- * Nếu bạn muốn chỉ định ID Sheet, dán ID Sheet của bạn vào giữa 2 dấu ngoặc kép bên dưới:
- * Ví dụ: var SPECIFIC_SPREADSHEET_ID = "1ABC123456789xyz...";
- * =========================================================================================
+ * SPREADSHEET ID CỦA BẠN:
  */
 var SPECIFIC_SPREADSHEET_ID = "1jIj2Zs_JKbnb2pJPFgXvoqlQ0jQk6HaR1Kp58IkGK1w";
 
 /**
- * 🚀 HÀM KHỞI TẠO DATABASE (BẤM NÚT "CHẠY" / "RUN" NÀY TRONG APPS SCRIPT EDITOR DỂ TẠO CÁC TAB NGAY LẬP TỨC)
- * Nút "Chạy" nằm ở thanh công cụ phía trên. Chọn hàm `setupDatabase` rồi bấm `Chạy`.
+ * 🚀 HÀM KHỞI TẠO DATABASE (BẤM NÚT "CHẠY" / "RUN" NÀY ĐỂ TẠO HOẶC CẬP NHẬT CÁC TAB USERS, VOCAB, REVIEW_LOG, NOTES)
  */
 function setupDatabase() {
   var ss = getOrCreateSpreadsheet();
-  var resultMsg = "🎉 Đã khởi tạo thành công 3 Tab: 'users', 'vocab', và 'review_log' trong Google Sheet: \"" + ss.getName() + "\" (ID: " + ss.getId() + ")";
+  var resultMsg = "🎉 Đã khởi tạo thành công 4 Tab: 'users', 'vocab', 'review_log', và 'notes' trong Google Sheet: \"" + ss.getName() + "\" (ID: " + ss.getId() + ")";
   Logger.log(resultMsg);
   return resultMsg;
 }
 
 /**
- * 🧪 HÀM TEST ĐĂNG KÝ THỬ (Bấm nút "Chạy" hàm này để test trực tiếp ghi dữ liệu vào Sheet)
+ * 🧪 HÀM TEST ĐĂNG KÝ THỬ
  */
 function testRegister() {
   var testResult = handleRegister({
@@ -95,6 +89,11 @@ function doGet(e) {
       });
     }
 
+    if (action === 'getUserNotes') {
+      var notesList = getUserNotes(user.email);
+      return respondJSON({ status: 'success', data: notesList });
+    }
+
     return respondJSON({ status: 'error', message: 'Hành động GET không hợp lệ.' });
   } catch (err) {
     return respondJSON({ status: 'error', message: 'Lỗi server: ' + err.toString() });
@@ -109,7 +108,7 @@ function doPost(e) {
     }
     var action = postData.action;
 
-    // Các hành động công khai (không cần Token)
+    // Public Actions
     if (action === 'register') {
       return handleRegister(postData);
     }
@@ -118,7 +117,7 @@ function doPost(e) {
       return handleLogin(postData);
     }
 
-    // Các hành động yêu cầu Token xác thực
+    // Authenticated Actions
     var token = postData.token;
     var user = getUserByToken(token);
     if (!user) {
@@ -131,6 +130,10 @@ function doPost(e) {
 
     if (action === 'processImage') {
       return handleProcessImage(user, postData);
+    }
+
+    if (action === 'processNote') {
+      return handleProcessNote(user, postData);
     }
 
     if (action === 'submitReview') {
@@ -175,7 +178,6 @@ function handleRegister(data) {
   var todayStr = getTodayDateString();
   var token = generateToken(email);
 
-  // Ghi vào Sheet users: id | email | password_hash | api_key_gemini | ngày_đăng_ký | role | current_token
   usersSheet.appendRow([
     userId,
     email,
@@ -299,6 +301,190 @@ function generateToken(email) {
     token += byteStr;
   }
   return token;
+}
+
+// ==========================================
+// TÍNH NĂNG GHI CHÚ HỌC TIẾNG ANH (PROCESS NOTE)
+// ==========================================
+
+function handleProcessNote(user, data) {
+  var userEmail = user.email;
+  var userApiKey = user.api_key_gemini;
+  var vietnameseText = (data.vietnamese_text || '').trim();
+
+  if (!userApiKey || !userApiKey.trim()) {
+    return respondJSON({
+      status: 'error',
+      code: 'NO_API_KEY',
+      message: 'Bạn chưa cài đặt Gemini API Key cá nhân. Vui lòng vào Cài đặt tài khoản để nhập API Key của bạn.'
+    });
+  }
+
+  if (!vietnameseText) {
+    return respondJSON({ status: 'error', message: 'Vui lòng nhập câu hoặc đoạn tiếng Việt bạn muốn học.' });
+  }
+
+  // 1. Gọi Gemini API 3.6 Flash để phân tích và dịch câu
+  var aiResult = callGeminiNoteAPIWithUserKey(vietnameseText, userApiKey);
+
+  if (!aiResult || !aiResult.english_translation) {
+    return respondJSON({ status: 'error', message: 'Không thể phân tích văn bản qua Gemini AI. Vui lòng thử lại.' });
+  }
+
+  var noteId = 'n_' + new Date().getTime();
+  var todayStr = getTodayDateString();
+  var tomorrowStr = getNextDateString(1);
+
+  var ss = getOrCreateSpreadsheet();
+  var notesSheet = ss.getSheetByName('notes');
+  var vocabSheet = ss.getSheetByName('vocab');
+
+  // 2. GHI NGAY VÀO TAB "notes"
+  // Cấu trúc cột: id | user_email | ngày | nội_dung_tiếng_việt | bản_dịch_tiếng_anh | giải_thích_cách_dùng | cách_nói_khác | từ_vựng_liên_quan
+  var alternativesJSON = JSON.stringify(aiResult.alternatives || []);
+  var vocabularyJSON = JSON.stringify(aiResult.vocabulary || []);
+
+  notesSheet.appendRow([
+    noteId,
+    userEmail,
+    todayStr,
+    vietnameseText,
+    aiResult.english_translation,
+    aiResult.explanation || '',
+    alternativesJSON,
+    vocabularyJSON
+  ]);
+
+  // 3. TỰ ĐỘNG THÊM TỪ VỰNG TRÍCH XUẤT VÀO TAB "vocab" ĐỂ ÔN TAP FLASHCARDS
+  var addedVocabCount = 0;
+  if (aiResult.vocabulary && aiResult.vocabulary.length > 0) {
+    for (var i = 0; i < aiResult.vocabulary.length; i++) {
+      var vItem = aiResult.vocabulary[i];
+      if (!vItem.word) continue;
+
+      var vocabId = 'v_note_' + new Date().getTime() + '_' + i;
+      vocabSheet.appendRow([
+        vocabId,
+        userEmail,
+        todayStr,
+        '', // link_ảnh (rỗng)
+        vItem.word,
+        vItem.pos || 'Phrase',
+        vItem.meaning || '',
+        vItem.example || aiResult.english_translation,
+        vItem.grammar || '',
+        2.5, // ease_factor
+        1,   // interval
+        tomorrowStr // next_review_date
+      ]);
+      addedVocabCount++;
+    }
+  }
+
+  return respondJSON({
+    status: 'success',
+    message: 'Đã phân tích ghi chú, lưu vào Google Sheet và gộp ' + addedVocabCount + ' từ vựng vào Flashcard ôn tập!',
+    data: {
+      id: noteId,
+      user_email: userEmail,
+      ngay: todayStr,
+      noi_dung_tieng_viet: vietnameseText,
+      ban_dich_tieng_anh: aiResult.english_translation,
+      giai_thich_cach_dung: aiResult.explanation || '',
+      cach_noi_khac: aiResult.alternatives || [],
+      tu_vung_lien_quan: aiResult.vocabulary || []
+    }
+  });
+}
+
+function callGeminiNoteAPIWithUserKey(vietnameseText, userApiKey) {
+  var modelName = 'gemini-3.6-flash';
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
+
+  var promptText = "Bạn là một chuyên gia giảng dạy tiếng Anh tự nhiên. Người dùng gõ một câu hoặc đoạn tiếng Việt sau: \"" + vietnameseText + "\"\n" +
+    "Hãy phân tích và trả về DUY NHẤT một JSON Object chứa các thông tin sau:\n" +
+    "{\n" +
+    "  \"english_translation\": \"Bản dịch tiếng Anh tự nhiên, chuẩn bản ngữ, đúng ngữ cảnh (KHÔNG dịch máy word-by-word)\",\n" +
+    "  \"explanation\": \"Giải thích ngắn gọn tại sao dùng cấu trúc/từ đó (ngữ pháp, sắc thái ngữ cảnh, lý do bản ngữ hay nói vậy)\",\n" +
+    "  \"alternatives\": [\"Gợi ý 1-2 cách nói khác cho cùng ý đó (ví dụ: Formal hơn hoặc Casual hơn)\"],\n" +
+    "  \"vocabulary\": [\n" +
+    "    {\n" +
+    "      \"word\": \"từ hoặc cụm từ tiếng Anh đáng học trong câu\",\n" +
+    "      \"pos\": \"loại từ (Noun, Verb, Adjective, Phrase, Idiom)\",\n" +
+    "      \"meaning\": \"nghĩa tiếng Việt ngắn gọn\",\n" +
+    "      \"example\": \"câu ví dụ tiếng Anh tự nhiên chứa từ đó\",\n" +
+    "      \"grammar\": \"ghi chú cách dùng nếu có\"\n" +
+    "    }\n" +
+    "  ]\n" +
+    "}\n" +
+    "LƯU Ý: Chỉ trả về đoạn JSON thuần túy, không kèm bọc ```json hay bất kỳ văn bản giải thích nào khác.";
+
+  var payload = {
+    "contents": [
+      {
+        "parts": [{ "text": promptText }]
+      }
+    ]
+  };
+
+  var options = {
+    "method": "post",
+    "contentType": "application/json",
+    "payload": JSON.stringify(payload),
+    "muteHttpExceptions": true
+  };
+
+  var response = UrlFetchApp.fetch(url, options);
+  var responseCode = response.getResponseCode();
+  var responseText = response.getContentText();
+
+  if (responseCode !== 200) {
+    Logger.log("Lỗi Gemini Note API (" + responseCode + "): " + responseText);
+    throw new Error("Lỗi kết nối Gemini API (kiểm tra lại API Key): " + responseText);
+  }
+
+  var jsonRes = JSON.parse(responseText);
+  var candidateText = "";
+  if (jsonRes.candidates && jsonRes.candidates.length > 0 && jsonRes.candidates[0].content) {
+    candidateText = jsonRes.candidates[0].content.parts[0].text;
+  }
+
+  var cleanJSONStr = candidateText.replace(/```json/gi, '').replace(/```/g, '').trim();
+  try {
+    return JSON.parse(cleanJSONStr);
+  } catch (err) {
+    Logger.log("Lỗi parse JSON Note response: " + cleanJSONStr);
+    return null;
+  }
+}
+
+function getUserNotes(userEmail) {
+  var ss = getOrCreateSpreadsheet();
+  var notesSheet = ss.getSheetByName('notes');
+  var data = notesSheet.getDataRange().getValues();
+  var result = [];
+
+  for (var i = data.length - 1; i >= 1; i--) { // Đảo ngược để lấy mới nhất lên đầu
+    var row = data[i];
+    if (row[1] === userEmail) {
+      var alternatives = [];
+      var vocabulary = [];
+      try { alternatives = JSON.parse(row[6] || '[]'); } catch (e) {}
+      try { vocabulary = JSON.parse(row[7] || '[]'); } catch (e) {}
+
+      result.push({
+        id: row[0],
+        user_email: row[1],
+        ngay: formatDateString(row[2]),
+        noi_dung_tieng_viet: row[3],
+        ban_dich_tieng_anh: row[4],
+        giai_thich_cach_dung: row[5],
+        cach_noi_khac: alternatives,
+        tu_vung_lien_quan: vocabulary
+      });
+    }
+  }
+  return result;
 }
 
 // ==========================================
@@ -631,7 +817,7 @@ function getOrCreateSpreadsheet() {
   }
 
   if (!ss) {
-    throw new Error('Không thể kết nối đến Google Sheet. Nếu dùng Standalone Script, vui lòng nhập SPECIFIC_SPREADSHEET_ID ở đầu file Code.gs.');
+    throw new Error('Không thể kết nối đến Google Sheet. Vui lòng kiểm tra SPECIFIC_SPREADSHEET_ID ở đầu file Code.gs.');
   }
 
   // 1. Tab users
@@ -657,6 +843,17 @@ function getOrCreateSpreadsheet() {
   if (!logSheet) {
     logSheet = ss.insertSheet('review_log');
     logSheet.appendRow(['id', 'user_email', 'vocab_id', 'ngày_ôn', 'kết_quả']);
+  }
+
+  // 4. Tab notes (MỚI)
+  var notesSheet = ss.getSheetByName('notes');
+  if (!notesSheet) {
+    notesSheet = ss.insertSheet('notes');
+    notesSheet.appendRow([
+      'id', 'user_email', 'ngày', 'nội_dung_tiếng_việt', 
+      'bản_dịch_tiếng_anh', 'giải_thích_cách_dùng', 
+      'cách_nói_khác', 'từ_vựng_liên_quan'
+    ]);
   }
 
   return ss;

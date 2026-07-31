@@ -1,40 +1,33 @@
-# 📚 Hướng Dẫn Triển Khai WebApp "Tôi Tự Học" (Kiến Trúc Mới)
+# 📚 Hướng Dẫn Triển Khai WebApp "Tôi Tự Học"
 
-Ứng dụng **"Tôi Tự Học"** với hệ thống Đăng ký / Đăng nhập riêng (Mật khẩu hash SHA-256), Quản lý Session Token, và Mỗi người dùng tự nhập Gemini API Key cá nhân.
-
----
-
-## 🛠️ Hướng Dẫn Dành Cho Admin (Thiết Lập Google Apps Script)
-
-### Bước 1: Tạo Google Sheet Sở Hữu Bởi Admin
-1. Truy cập [Google Drive](https://drive.google.com) và tạo một **Google Sheet** mới.
-2. Đặt tên Sheet là `Tôi Tự Học - Private Database`.
-*(Lưu ý: Bạn sở hữu Sheet này và KHÔNG cho phép public hay clone. Apps Script sẽ tự động tạo 3 Tab: `users`, `vocab`, và `review_log` khi chạy).*
+Ứng dụng **"Tôi Tự Học"** tích hợp Chụp Ảnh OCR, Ghi Chú Học Tiếng Anh qua AI Gemini 3.6 Flash, tự động lưu 100% dữ liệu vào Google Sheet và Ôn Tập Spaced Repetition (SM-2).
 
 ---
 
-### Bước 2: Dán Mã Nguồn Google Apps Script
-1. Trên thanh menu của Google Sheet, chọn **Tiện ích mở rộng** ➔ **Apps Script** (*Extensions ➔ Apps Script*).
-2. Xóa sạch toàn bộ code mặc định trong file `Code.gs`.
-3. Mở file [google-apps-script.gs](file:///Users/dncnguyen/Antigravity/DNC%20Operator/toituhoc/google-apps-script.gs), copy toàn bộ mã nguồn và dán vào Apps Script Editor.
+## 🛠️ Hướng Dẫn Dành Cho Admin (Thiết Lập Google Sheet & Apps Script)
+
+### Bước 1: Mở Google Sheet Sở Hữu Bởi Admin
+1. Mở **Google Sheet**: [`https://docs.google.com/spreadsheets/d/1jIj2Zs_JKbnb2pJPFgXvoqlQ0jQk6HaR1Kp58IkGK1w/edit`](https://docs.google.com/spreadsheets/d/1jIj2Zs_JKbnb2pJPFgXvoqlQ0jQk6HaR1Kp58IkGK1w/edit).
+2. Mã script đã tự động trỏ ID: `1jIj2Zs_JKbnb2pJPFgXvoqlQ0jQk6HaR1Kp58IkGK1w`.
 
 ---
 
-### Bước 3: Deploy Web App
-1. Nhấp vào nút **Deploy** (Triển khai) ➔ chọn **New deployment** (Triển khai mới).
-2. Click biểu tượng bánh răng ⚙️ ➔ Chọn **Web app**.
-3. Cấu hình:
-   - **Execute as** (*Thực thi dưới dạng*): **Me** (*Tôi*)
-   - **Who has access** (*Ai có quyền truy cập*): **Anyone** (*Bất kỳ ai*)
-4. Bấm **Deploy**, cấp quyền (Authorize access) bằng tài khoản Google của Admin.
-5. Sao chép đoạn **Web App URL** thu được (dạng `https://script.google.com/macros/s/AKfycb.../exec`).
+### Bước 2: Cập Nhật Code & Khởi Tạo Database 4 Tab
+1. Mở **Tiện ích mở rộng** ➔ **Apps Script** (*Extensions ➔ Apps Script*).
+2. Copy mã mới nhất từ [google-apps-script.gs](file:///Users/dncnguyen/Antigravity/DNC%20Operator/toituhoc/google-apps-script.gs) dán đè vào `Code.gs` và bấm **Save (Ctrl + S)**.
+3. Tại thanh công cụ trên cùng của Apps Script Editor, nhấp vào danh sách chọn hàm ➔ Chọn hàm **`setupDatabase`** ➔ Bấm **▶️ Chạy (Run)**.
+   *(Apps Script sẽ tự động tạo đủ 4 Tab: `users`, `vocab`, `review_log`, và `notes`)*.
 
 ---
 
-## 👤 Hướng Dẫn Dành Cho Người Dùng (User)
-1. Truy cập WebApp tại `https://godnc.com/toituhoc`.
-2. Dán **Web App URL** ở Bước 3 vào phần Cấu hình Backend trên trang chủ (hoặc Admin cấu hình sẵn).
-3. Chọn tab **Đăng Ký Mới**:
-   - Nhập **Email** và **Mật Khẩu** của bạn.
-   - Nhập **Gemini API Key cá nhân** của bạn (Lấy miễn phí tại [Google AI Studio](https://aistudio.google.com/app/apikey)).
-4. Bấm **Tạo Tài Khoản** và bắt đầu chụp ảnh học từ vựng!
+### Bước 3: Deploy Version Mới
+1. Nhấp vào nút **Deploy (Triển khai)** ➔ chọn **Manage deployments (Quản lý các bản triển khai)**.
+2. Bấm nút **Cái bút ✏️ (Chỉnh sửa)** ➔ Chọn **Version: New version (Phiên bản mới)** ➔ Bấm **Deploy**.
+
+---
+
+## 📝 Cấu Trúc Các Tab Trên Google Sheet
+1. **Tab `users`**: `id` | `email` | `password_hash` | `api_key_gemini` | `ngày_đăng_ký` | `role` | `current_token`
+2. **Tab `vocab`**: `id` | `user_email` | `ngày_thêm` | `link_ảnh` | `từ/cụm` | `loại_từ` | `nghĩa` | `câu_ví_dụ` | `ghi_chú_ngữ_pháp` | `ease_factor` | `interval` | `next_review_date`
+3. **Tab `review_log`**: `id` | `user_email` | `vocab_id` | `ngày_ôn` | `kết_quả`
+4. **Tab `notes` (Mới)**: `id` | `user_email` | `ngày` | `nội_dung_tiếng_việt` | `bản_dịch_tiếng_anh` | `giải_thích_cách_dùng` | `cách_nói_khác` | `từ_vựng_liên_quan`
