@@ -1,20 +1,46 @@
 /**
  * TÔI TỰ HỌC - GOOGLE APPS SCRIPT BACKEND (PHIÊN BẢN AUTH RIÊNG & PER-USER API KEY)
  * 
- * HƯỚNG DẪN DÀNH CHO ADMIN:
- * 1. Mở một Google Sheet mới trên Google Drive (để sở hữu riêng, không public).
- * 2. Mở "Tiện ích mở rộng" -> "Apps Script" (Extensions -> Apps Script).
- * 3. Dán toàn bộ mã nguồn này vào file Code.gs và lưu lại.
- * 4. Deploy Web App:
- *    - Deploy -> New deployment -> Select type: Web app.
- *    - Execute as: Me
- *    - Who has access: Anyone
- * 5. Cung cấp URL nhận được cho người dùng / cấu hình mặc định ở frontend.
+ * =========================================================================================
+ * CẤU HÌNH GOOGLE SHEET ID (NẾU DÙNG SCRIPT TÁCH BIỆT HOẶC CẦN CHỈ ĐỊNH CHÍNH XÁC ID SHEET)
+ * Nếu bạn để trống (""), script sẽ tự động lấy Google Sheet đang được gắn (Active Sheet).
+ * Nếu bạn muốn chỉ định ID Sheet, dán ID Sheet của bạn vào giữa 2 dấu ngoặc kép bên dưới:
+ * Ví dụ: var SPECIFIC_SPREADSHEET_ID = "1ABC123456789xyz...";
+ * =========================================================================================
  */
+var SPECIFIC_SPREADSHEET_ID = "";
+
+/**
+ * 🚀 HÀM KHỞI TẠO DATABASE (BẤM NÚT "CHẠY" / "RUN" NÀY TRONG APPS SCRIPT EDITOR DỂ TẠO CÁC TAB NGAY LẬP TỨC)
+ * Nút "Chạy" nằm ở thanh công cụ phía trên. Chọn hàm `setupDatabase` rồi bấm `Chạy`.
+ */
+function setupDatabase() {
+  var ss = getOrCreateSpreadsheet();
+  var resultMsg = "🎉 Đã khởi tạo thành công 3 Tab: 'users', 'vocab', và 'review_log' trong Google Sheet: \"" + ss.getName() + "\" (ID: " + ss.getId() + ")";
+  Logger.log(resultMsg);
+  return resultMsg;
+}
+
+/**
+ * 🧪 HÀM TEST ĐĂNG KÝ THỬ (Bấm nút "Chạy" hàm này để test trực tiếp ghi dữ liệu vào Sheet)
+ */
+function testRegister() {
+  var testResult = handleRegister({
+    email: "testuser@gmail.com",
+    password: "password123",
+    api_key_gemini: "AIzaSyTestApiKey123456"
+  });
+  Logger.log("Kết quả test đăng ký: " + testResult.getContent());
+  return testResult.getContent();
+}
+
+// ==========================================
+// API ROUTER (GET & POST)
+// ==========================================
 
 function doGet(e) {
   try {
-    var params = e.parameter || {};
+    var params = (e && e.parameter) ? e.parameter : {};
     var action = params.action || 'ping';
 
     if (action === 'ping') {
@@ -62,7 +88,7 @@ function doGet(e) {
 function doPost(e) {
   try {
     var postData = {};
-    if (e.postData && e.postData.contents) {
+    if (e && e.postData && e.postData.contents) {
       postData = JSON.parse(e.postData.contents);
     }
     var action = postData.action;
@@ -171,7 +197,6 @@ function handleLogin(data) {
       var storedHash = usersData[i][2];
       if (storedHash === passwordHash) {
         var token = generateToken(email);
-        // Cập nhật current_token vào cột 7
         usersSheet.getRange(i + 1, 7).setValue(token);
         
         var apiKey = usersData[i][3] || '';
@@ -283,10 +308,7 @@ function handleProcessImage(user, data) {
     return respondJSON({ status: 'error', message: 'Dữ liệu ảnh gửi lên không hợp lệ.' });
   }
 
-  // 1. Upload ảnh lên Google Drive
   var imageUrl = saveImageToDrive(imageBase64, mimeType, fileName);
-
-  // 2. Gọi Gemini API Vision với API Key CỦA CHÍNH USER ĐÓ
   var extractedItems = callGeminiVisionAPIWithUserKey(imageBase64, mimeType, userApiKey);
 
   if (!extractedItems || extractedItems.length === 0) {
@@ -298,7 +320,6 @@ function handleProcessImage(user, data) {
     });
   }
 
-  // 3. Ghi từ vựng vào Tab "vocab"
   var addedVocabList = [];
   var ss = getOrCreateSpreadsheet();
   var vocabSheet = ss.getSheetByName('vocab');
@@ -320,9 +341,9 @@ function handleProcessImage(user, data) {
       item.meaning || '',
       item.example || '',
       item.grammar || '',
-      2.5, // ease_factor
-      1,   // interval
-      tomorrowDateStr // next_review_date
+      2.5,
+      1,
+      tomorrowDateStr
     ];
 
     vocabSheet.appendRow(row);
@@ -582,23 +603,29 @@ function rowToVocabObject(row) {
 }
 
 // ==========================================
-// HÀM TIỆN ÍCH HELPER
+// HÀM TIỆN ÍCH HELPER & KHỞI TẠO SHEET
 // ==========================================
 
 function getOrCreateSpreadsheet() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) {
-    throw new Error('Script này cần được gắn (bound) vào một Google Sheet.');
+  var ss;
+  if (typeof SPECIFIC_SPREADSHEET_ID !== 'undefined' && SPECIFIC_SPREADSHEET_ID && SPECIFIC_SPREADSHEET_ID.trim()) {
+    ss = SpreadsheetApp.openById(SPECIFIC_SPREADSHEET_ID.trim());
+  } else {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
   }
 
-  // 1. Tab users: id | email | password_hash | api_key_gemini | ngày_đăng_ký | role | current_token
+  if (!ss) {
+    throw new Error('Không thể kết nối đến Google Sheet. Nếu dùng Standalone Script, vui lòng nhập SPECIFIC_SPREADSHEET_ID ở đầu file Code.gs.');
+  }
+
+  // 1. Tab users
   var usersSheet = ss.getSheetByName('users');
   if (!usersSheet) {
     usersSheet = ss.insertSheet('users');
     usersSheet.appendRow(['id', 'email', 'password_hash', 'api_key_gemini', 'ngày_đăng_ký', 'role', 'current_token']);
   }
 
-  // 2. Tab vocab: id | user_email | ngày_thêm | link_ảnh | từ/cụm | loại_từ | nghĩa | câu_ví_dụ | ghi_chú_ngữ_pháp | ease_factor | interval | next_review_date
+  // 2. Tab vocab
   var vocabSheet = ss.getSheetByName('vocab');
   if (!vocabSheet) {
     vocabSheet = ss.insertSheet('vocab');
@@ -609,7 +636,7 @@ function getOrCreateSpreadsheet() {
     ]);
   }
 
-  // 3. Tab review_log: id | user_email | vocab_id | ngày_ôn | kết_quả
+  // 3. Tab review_log
   var logSheet = ss.getSheetByName('review_log');
   if (!logSheet) {
     logSheet = ss.insertSheet('review_log');
