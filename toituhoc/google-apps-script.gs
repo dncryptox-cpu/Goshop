@@ -34,6 +34,22 @@ function testRegister() {
   return testResult.getContent();
 }
 
+/**
+ * 🧪 HÀM TEST GỌI GEMINI 3.6 FLASH VISION
+ */
+function testGeminiVision(apiKey) {
+  var testKey = apiKey || "AIzaSy_YOUR_API_KEY";
+  var sampleBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  try {
+    var items = callGeminiVisionAPIWithUserKey(sampleBase64, "image/png", testKey);
+    Logger.log("Kết quả Gemini 3.6 Flash thành công: " + JSON.stringify(items));
+    return items;
+  } catch (e) {
+    Logger.log("Lỗi gọi Gemini 3.6 Flash: " + e.toString());
+    return e.toString();
+  }
+}
+
 // ==========================================
 // API ROUTER (GET & POST)
 // ==========================================
