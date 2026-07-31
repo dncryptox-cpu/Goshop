@@ -10,7 +10,7 @@ function doPost(e) {
 
     // --- 1. ACTION: REGISTER USER (MB_USERS) ---
     if (action === 'register_user') {
-      return registerUser(data.email, data.passwordHash, data.displayName);
+      return registerUser(data.email, data.passwordHash, data.displayName, data.phone);
     }
 
     // --- 2. ACTION: LOGIN USER (MB_USERS) ---
@@ -132,7 +132,6 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Thiếu email hoặc productId' });
     }
 
-    // 1. Lấy thông tin sản phẩm & tính effectivePrice
     var prodData = prodSheet.getDataRange().getValues();
     var product = null;
     for (var p = 1; p < prodData.length; p++) {
@@ -163,7 +162,6 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Sản phẩm không khả dụng' });
     }
 
-    // 2. Tính số dư ví hiện tại
     var logData = logSheet.getDataRange().getValues();
     var currentBalance = 0;
     for (var l = 1; l < logData.length; l++) {
@@ -176,7 +174,6 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Số dư ví không đủ (' + currentBalance + ' < ' + product.effectivePrice + ')' });
     }
 
-    // 3. Tìm slot kho khả dụng
     var invData = invSheet.getDataRange().getValues();
     var targetInvRow = -1;
     var targetInvItem = null;
@@ -204,18 +201,15 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Sản phẩm đã hết hàng trong kho' });
     }
 
-    // 4. Ghi MB_WALLET_LOG (Nếu FREE effectivePrice === 0 thì amount = 0)
     var newBalance = currentBalance - product.effectivePrice;
     var logId = 'LOG-' + Date.now();
     var logNote = product.effectivePrice === 0 ? 'FREE — Hàng cận date (' + product.name + ')' : 'Mua hàng: ' + product.name;
     logSheet.appendRow([logId, cleanEmail, 'purchase', -product.effectivePrice, newBalance, product.id, logNote, new Date().toISOString()]);
 
-    // 5. Cập nhật trạng thái slot kho
     invSheet.getRange(targetInvRow, 5).setValue('sold');
     invSheet.getRange(targetInvRow, 6).setValue(cleanEmail);
     invSheet.getRange(targetInvRow, 7).setValue(new Date().toISOString());
 
-    // 6. Ghi đơn hàng MB_ORDERS
     var orderId = 'ORD-' + Date.now();
     orderSheet.appendRow([orderId, cleanEmail, product.id, product.name, targetInvItem.id, targetInvItem.itemData, product.effectivePrice, 'completed', new Date().toISOString(), product.effectivePrice === 0 ? 'Miễn phí' : 'Thành công']);
 
@@ -234,9 +228,9 @@ function purchaseProduct(email, productId) {
   }
 }
 
-function registerUser(email, passwordHash, displayName) {
-  if (!email || !passwordHash) {
-    return responseJSON({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
+function registerUser(email, passwordHash, displayName, phone) {
+  if (!email || !passwordHash || !phone) {
+    return responseJSON({ status: 'error', message: 'Vui lòng nhập đầy đủ email, mật khẩu và số điện thoại' });
   }
 
   var cleanEmail = String(email).trim().toLowerCase();
@@ -245,12 +239,18 @@ function registerUser(email, passwordHash, displayName) {
     return responseJSON({ status: 'error', message: 'Định dạng email không hợp lệ' });
   }
 
+  var cleanPhone = String(phone).replace(/\s+/g, '').replace(/-/g, '');
+  var phoneRegex = /^0\d{9}$/;
+  if (!phoneRegex.test(cleanPhone)) {
+    return responseJSON({ status: 'error', message: 'Số điện thoại không hợp lệ (cần 10 số, bắt đầu bằng 0)' });
+  }
+
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var userSheet = ss.getSheetByName('MB_USERS');
   if (!userSheet) {
     userSheet = ss.insertSheet('MB_USERS');
-    userSheet.appendRow(["id", "email", "password_hash", "display_name", "created_at", "status", "note"]);
-    userSheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#e0e7ff");
+    userSheet.appendRow(["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"]);
+    userSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#e0e7ff");
   }
 
   var data = userSheet.getDataRange().getValues();
@@ -262,14 +262,15 @@ function registerUser(email, passwordHash, displayName) {
 
   var userId = 'USR-' + Date.now();
   var name = String(displayName || cleanEmail.split('@')[0]).trim();
-  userSheet.appendRow([userId, cleanEmail, String(passwordHash).trim(), name, new Date().toISOString(), 'active', 'Tự đăng ký']);
+  userSheet.appendRow([userId, cleanEmail, String(passwordHash).trim(), name, cleanPhone, new Date().toISOString(), 'active', 'Tự đăng ký']);
 
   return responseJSON({
     status: 'success',
     message: 'Đăng ký tài khoản thành công',
     userId: userId,
     email: cleanEmail,
-    displayName: name
+    displayName: name,
+    phone: cleanPhone
   });
 }
 
@@ -289,7 +290,7 @@ function loginUser(email, passwordHash) {
   for (var i = 1; i < data.length; i++) {
     var rowEmail = String(data[i][1]).trim().toLowerCase();
     var rowHash = String(data[i][2]).trim();
-    var rowStatus = String(data[i][5] || 'active').trim().toLowerCase();
+    var rowStatus = String(data[i][6] || 'active').trim().toLowerCase();
     var rowName = String(data[i][3] || rowEmail.split('@')[0]).trim();
 
     if (rowEmail === cleanEmail) {
@@ -335,7 +336,7 @@ function toggleUserStatus(userId, status) {
     var data = userSheet.getDataRange().getValues();
     for (var i = 1; i < data.length; i++) {
       if (String(data[i][0]) === String(userId) || String(data[i][1]).toLowerCase() === String(userId).toLowerCase()) {
-        userSheet.getRange(i + 1, 6).setValue(status);
+        userSheet.getRange(i + 1, 7).setValue(status);
         return responseJSON({ status: 'success', message: 'Đã cập nhật trạng thái tài khoản' });
       }
     }
@@ -424,7 +425,7 @@ function initMemberSheets() {
   var sheetsToCreate = [
     { name: "MB_PRODUCTS", headers: ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label"] },
     { name: "MB_INVENTORY", headers: ["id", "product_id", "item_data", "slot_type", "max_users", "expire_date", "status", "sold_to_email", "sold_at"] },
-    { name: "MB_USERS", headers: ["id", "email", "password_hash", "display_name", "created_at", "status", "note"] },
+    { name: "MB_USERS", headers: ["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"] },
     { name: "MB_WALLET_LOG", headers: ["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"] },
     { name: "MB_TOPUP_REQ", headers: ["id", "email", "amount", "proof_url", "status", "requested_at", "reviewed_by", "note"] },
     { name: "MB_ORDERS", headers: ["id", "order_code", "email", "product_id", "product_name", "price", "inventory_id", "item_data", "status", "created_at"] },

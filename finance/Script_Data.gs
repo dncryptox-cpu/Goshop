@@ -84,7 +84,7 @@ function doPost(e) {
       return resolveOrderReport(data.reportId);
     }
     if (action === 'register_user') {
-      return registerUser(data.email, data.passwordHash, data.displayName);
+      return registerUser(data.email, data.passwordHash, data.displayName, data.phone);
     }
     if (action === 'login_user') {
       return loginUser(data.email, data.passwordHash);
@@ -2399,7 +2399,7 @@ function initMemberShopSheets() {
   var schemas = {
     'MB_PRODUCTS': ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url"],
     'MB_INVENTORY': ["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"],
-    'MB_USERS': ["id", "email", "password_hash", "display_name", "created_at", "status", "note"],
+    'MB_USERS': ["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"],
     'MB_WALLET_LOG': ["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"],
     'MB_TOPUP_REQ': ["id", "email", "amount", "proof_url", "status", "requested_at", "reviewed_at", "reviewed_by", "note"],
     'MB_WITHDRAW_REQ': ["id", "email", "amount", "bank_name", "bank_account", "bank_owner", "status", "requested_at", "reviewed_at", "note"],
@@ -2911,9 +2911,9 @@ function rejectOrder(pendingOrderId, note) {
   return responseJSON({ status: 'error', message: 'Không tìm thấy đơn hàng chờ' });
 }
 
-function registerUser(email, passwordHash, displayName) {
-  if (!email || !passwordHash) {
-    return responseJSON({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
+function registerUser(email, passwordHash, displayName, phone) {
+  if (!email || !passwordHash || !phone) {
+    return responseJSON({ status: 'error', message: 'Vui lòng nhập đầy đủ email, mật khẩu và số điện thoại' });
   }
 
   var cleanEmail = String(email).trim().toLowerCase();
@@ -2922,12 +2922,18 @@ function registerUser(email, passwordHash, displayName) {
     return responseJSON({ status: 'error', message: 'Định dạng email không hợp lệ' });
   }
 
+  var cleanPhone = String(phone).replace(/\s+/g, '').replace(/-/g, '');
+  var phoneRegex = /^0\d{9}$/;
+  if (!phoneRegex.test(cleanPhone)) {
+    return responseJSON({ status: 'error', message: 'Số điện thoại không hợp lệ (cần 10 số, bắt đầu bằng 0)' });
+  }
+
   var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
   var userSheet = ss.getSheetByName('MB_USERS');
   if (!userSheet) {
     userSheet = ss.insertSheet('MB_USERS');
-    userSheet.appendRow(["id", "email", "password_hash", "display_name", "created_at", "status", "note"]);
-    userSheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#e0e7ff");
+    userSheet.appendRow(["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"]);
+    userSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#e0e7ff");
   }
 
   var data = userSheet.getDataRange().getValues();
@@ -2939,14 +2945,15 @@ function registerUser(email, passwordHash, displayName) {
 
   var userId = 'USR-' + Date.now();
   var name = String(displayName || cleanEmail.split('@')[0]).trim();
-  userSheet.appendRow([userId, cleanEmail, String(passwordHash).trim(), name, new Date().toISOString(), 'active', 'Tự đăng ký']);
+  userSheet.appendRow([userId, cleanEmail, String(passwordHash).trim(), name, cleanPhone, new Date().toISOString(), 'active', 'Tự đăng ký']);
 
   return responseJSON({
     status: 'success',
     message: 'Đăng ký tài khoản thành công',
     userId: userId,
     email: cleanEmail,
-    displayName: name
+    displayName: name,
+    phone: cleanPhone
   });
 }
 
@@ -2966,7 +2973,7 @@ function loginUser(email, passwordHash) {
   for (var i = 1; i < data.length; i++) {
     var rowEmail = String(data[i][1]).trim().toLowerCase();
     var rowHash = String(data[i][2]).trim();
-    var rowStatus = String(data[i][5] || 'active').trim().toLowerCase();
+    var rowStatus = String(data[i][6] || 'active').trim().toLowerCase();
     var rowName = String(data[i][3] || rowEmail.split('@')[0]).trim();
 
     if (rowEmail === cleanEmail) {
