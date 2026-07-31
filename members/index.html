@@ -372,25 +372,24 @@
 
                     <!-- VÙNG TRÊN — HÀNG FREE / QUÀ TẶNG MIỄN PHÍ (NẾU CÓ SP SALE_PRICE = 0) -->
                     <template x-if="freeProducts.length > 0">
-                        <div class="bg-amber-50/90 border border-amber-200/90 rounded-2xl p-5 mb-8 shadow-xs">
-                            <div class="flex items-center gap-2 mb-4 pb-2 border-b border-amber-200/60">
-                                <span class="text-xl">🎁</span>
-                                <h3 class="text-base font-extrabold text-amber-950 uppercase tracking-wide">Quà Tặng Miễn Phí Hôm Nay</h3>
+                        <div class="bg-[#fffbeb] border border-amber-200/60 rounded-xl p-4 mb-8 shadow-xs">
+                            <div class="flex items-center gap-1.5 mb-3">
+                                <span class="text-base">🎁</span>
+                                <h3 class="text-sm font-bold text-[#92400e]">Quà miễn phí hôm nay</h3>
                             </div>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                            <div class="flex flex-wrap gap-2.5 items-center">
                                 <template x-for="p in freeProducts" :key="p.id">
-                                    <div class="bg-[#f0fdf4] border border-[#86efac] rounded-2xl p-4 flex items-center justify-between shadow-xs hover:border-emerald-500 transition-all min-h-[110px]">
-                                        <div class="space-y-1">
-                                            <div class="flex items-center gap-1.5">
-                                                <span class="text-base">🎁</span>
-                                                <h4 class="font-bold text-gray-900 text-sm" x-text="p.name"></h4>
-                                            </div>
-                                            <p class="text-xs text-gray-500 font-medium">30 ngày · Tự động</p>
+                                    <div class="rounded-lg px-4 py-2.5 flex items-center justify-between gap-3 shadow-2xs transition-all border"
+                                        :class="getAvailableStock(p.id) > 0 ? 'bg-white border-emerald-200 hover:border-emerald-400' : 'bg-gray-100 border-gray-200 opacity-75'">
+                                        <div class="flex items-center gap-1.5 text-xs font-bold" :class="getAvailableStock(p.id) > 0 ? 'text-gray-900' : 'text-gray-500 line-through'">
+                                            <span x-text="p.name"></span>
+                                            <span class="text-gray-400 font-normal">· 30 ngày</span>
                                         </div>
                                         <button @click="handleBuyProduct(p)"
                                             :disabled="getAvailableStock(p.id) === 0"
-                                            class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md transition-all shrink-0 flex items-center gap-1">
-                                            <span>Nhận Miễn Phí →</span>
+                                            :class="getAvailableStock(p.id) > 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
+                                            class="px-3 py-1 rounded-md text-xs font-bold transition-all shrink-0">
+                                            <span x-text="getAvailableStock(p.id) > 0 ? 'Nhận →' : 'Hết'"></span>
                                         </button>
                                     </div>
                                 </template>
@@ -3740,6 +3739,14 @@
                 },
 
                 async handleBuyProduct(product) {
+                    console.log('>>> [handleBuyProduct] Buying Product:', product.id, product.name);
+                    if (!product || !product.id) {
+                        this.showToast('Lỗi: Dữ liệu sản phẩm không hợp lệ');
+                        return;
+                    }
+
+                    const effectivePrice = this.getEffectivePrice(product);
+
                     if (product.type === 'manual') {
                         const note = prompt(`Nhập thông tin yêu cầu gia hạn cho gói "${product.name}" (VD: Email YouTube / SĐT):`);
                         if (note === null) return;
@@ -3771,8 +3778,8 @@
                         return;
                     }
 
-                    // Auto Product Purchase
-                    if (this.myWalletBalance < product.price) {
+                    // Auto Product Purchase (Check effectivePrice instead of product.price)
+                    if (effectivePrice > 0 && this.myWalletBalance < effectivePrice) {
                         this.showToast('Số dư ví không đủ! Vui lòng nạp thêm.');
                         return;
                     }
@@ -3782,7 +3789,11 @@
                         return;
                     }
 
-                    if (!confirm(`Xác nhận mua gói "${product.name}" với giá ${this.formatCurrency(product.price)}?`)) return;
+                    const confirmMsg = effectivePrice === 0 
+                        ? `Xác nhận nhận miễn phí gói "${product.name}" (0đ)?` 
+                        : `Xác nhận mua gói "${product.name}" với giá ${this.formatCurrency(effectivePrice)}?`;
+
+                    if (!confirm(confirmMsg)) return;
 
                     try {
                         this.isLoading = true;
@@ -3801,8 +3812,8 @@
 
                             this.purchasedModalData = {
                                 productName: product.name,
-                                price: product.price,
-                                walletBalanceAfter: this.myWalletBalance - product.price,
+                                price: effectivePrice,
+                                walletBalanceAfter: data.newBalance !== undefined ? data.newBalance : (this.myWalletBalance - effectivePrice),
                                 itemData: rawData,
                                 itemDataLines: lines
                             };
