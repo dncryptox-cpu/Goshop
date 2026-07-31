@@ -360,9 +360,17 @@
                             <div class="glass-card rounded-2xl p-6 flex flex-col justify-between hover:border-primary/40 transition-all group shadow-sm hover:shadow-md relative overflow-hidden"
                                 :class="getAvailableStock(p.id) === 0 && p.type === 'auto' ? 'opacity-80 bg-gray-50' : ''">
                                 <div>
-                                    <!-- BADGES (Feature 7) -->
+                                    <!-- BADGES (Feature 7 & Hàng Cận Date Sale Badges) -->
                                     <div class="flex flex-wrap items-center gap-1.5 mb-3">
-                                        <template x-if="isNewProduct(p)">
+                                        <!-- SALE BADGE (Góc Nổi Card) -->
+                                        <template x-if="hasActiveSale(p)">
+                                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider text-white shadow-sm flex items-center gap-0.5"
+                                                :class="(p.sale_type || 'none').toLowerCase() === 'flash' ? 'bg-gradient-to-r from-red-600 to-rose-500' : 'bg-gradient-to-r from-amber-600 to-orange-500'"
+                                                x-text="getSaleBadgeText(p)">
+                                            </span>
+                                        </template>
+
+                                        <template x-if="isNewProduct(p) && !hasActiveSale(p)">
                                             <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm flex items-center gap-0.5">
                                                 🔥 Mới
                                             </span>
@@ -386,9 +394,26 @@
                                         </span>
                                     </div>
 
-                                    <div class="flex items-baseline justify-between mb-2">
+                                    <!-- TITLE & PRICE DISPLAY -->
+                                    <div class="flex items-baseline justify-between mb-2 gap-2">
                                         <h3 class="text-lg font-bold text-gray-900 group-hover:text-primary transition-colors" x-text="p.name"></h3>
-                                        <p class="text-xl font-black text-gray-900" x-text="formatCurrency(p.price)"></p>
+                                        
+                                        <div class="text-right">
+                                            <template x-if="hasActiveSale(p)">
+                                                <div class="flex flex-col items-end">
+                                                    <span class="line-through text-gray-400 text-xs font-semibold" x-text="formatCurrency(p.price)"></span>
+                                                    <template x-if="getEffectivePrice(p) > 0">
+                                                        <span class="text-xl font-black text-red-600" x-text="formatCurrency(getEffectivePrice(p))"></span>
+                                                    </template>
+                                                    <template x-if="getEffectivePrice(p) === 0">
+                                                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs font-black tracking-wider uppercase border border-emerald-200">FREE</span>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                            <template x-if="!hasActiveSale(p)">
+                                                <p class="text-xl font-black text-gray-900" x-text="formatCurrency(p.price)"></p>
+                                            </template>
+                                        </div>
                                     </div>
                                     <p class="text-xs text-gray-600 leading-relaxed mb-4 whitespace-pre-line" x-text="p.description || 'Chính hãng, bảo hành full thời gian'"></p>
 
@@ -408,7 +433,7 @@
                                         </span>
                                     </div>
 
-                                    <!-- MANUAL PRODUCT BUTTON WITH TOOLTIP (Feature 8) -->
+                                    <!-- MANUAL PRODUCT BUTTON -->
                                     <template x-if="p.type === 'manual'">
                                         <div class="relative has-tooltip">
                                             <button @click="handleBuyProduct(p)"
@@ -422,32 +447,42 @@
                                         </div>
                                     </template>
 
-                                    <!-- AUTO PRODUCT BUTTON & PREVIEW BALANCE (Feature 3) -->
+                                    <!-- AUTO PRODUCT BUTTON & PREVIEW BALANCE -->
                                     <template x-if="p.type === 'auto'">
                                         <div>
                                             <button @click="handleBuyProduct(p)"
-                                                :disabled="getAvailableStock(p.id) === 0 || myWalletBalance < p.price"
-                                                :class="getAvailableStock(p.id) === 0 || myWalletBalance < p.price ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-md shadow-primary/20'"
+                                                :disabled="getAvailableStock(p.id) === 0 || (getEffectivePrice(p) > 0 && myWalletBalance < getEffectivePrice(p))"
+                                                :class="getAvailableStock(p.id) === 0 || (getEffectivePrice(p) > 0 && myWalletBalance < getEffectivePrice(p)) ? 'bg-gray-200 text-gray-500 cursor-not-allowed' : (getEffectivePrice(p) === 0 ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20' : 'bg-primary hover:bg-primary-dark text-white shadow-md shadow-primary/20')"
                                                 class="w-full py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2">
                                                 <i data-lucide="shopping-cart" class="w-4 h-4"></i>
-                                                <span x-text="getAvailableStock(p.id) === 0 ? 'Hết Hàng' : 'Mua Ngay'"></span>
+                                                <span x-text="getAvailableStock(p.id) === 0 ? 'Hết Hàng' : (getEffectivePrice(p) === 0 ? 'Nhận Miễn Phí' : 'Mua Ngay')"></span>
                                             </button>
 
-                                            <!-- Preview số dư (Feature 3) -->
+                                            <!-- Preview số dư -->
                                             <div class="mt-2 text-center text-xs">
                                                 <template x-if="getAvailableStock(p.id) > 0">
                                                     <div>
-                                                        <template x-if="myWalletBalance >= p.price">
-                                                            <p class="text-emerald-600 font-semibold">
-                                                                Sau khi mua còn: <span x-text="formatCurrency(myWalletBalance - p.price)"></span>
+                                                        <template x-if="getEffectivePrice(p) === 0">
+                                                            <p class="text-emerald-600 font-bold flex items-center justify-center gap-1">
+                                                                <i data-lucide="gift" class="w-3.5 h-3.5"></i> Miễn phí — không trừ ví
                                                             </p>
                                                         </template>
-                                                        <template x-if="myWalletBalance < p.price">
+                                                        <template x-if="getEffectivePrice(p) > 0 && myWalletBalance >= getEffectivePrice(p)">
+                                                            <p class="text-emerald-600 font-semibold">
+                                                                Sau khi mua còn: <span x-text="formatCurrency(myWalletBalance - getEffectivePrice(p))"></span>
+                                                            </p>
+                                                        </template>
+                                                        <template x-if="getEffectivePrice(p) > 0 && myWalletBalance < getEffectivePrice(p)">
                                                             <div class="flex items-center justify-center gap-1.5">
                                                                 <p class="text-red-500 font-bold">
-                                                                    Thiếu <span x-text="formatCurrency(p.price - myWalletBalance)"></span>
+                                                                    Thiếu <span x-text="formatCurrency(getEffectivePrice(p) - myWalletBalance)"></span>
                                                                 </p>
                                                                 <button @click="currentTab = 'cust_wallet'" class="text-primary hover:underline font-bold text-[11px]">
+                                                                    Nạp thêm →
+                                                                </button>
+                                                            </div>
+                                                        </template>
+                                                    </div>
                                                                     Nạp thêm →
                                                                 </button>
                                                             </div>
@@ -1010,11 +1045,21 @@
                                                     x-text="p.type === 'auto' ? 'Tự Động' : 'Thủ Công'">
                                                 </span>
                                             </td>
-                                            <td class="px-6 py-4 text-center">
-                                                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
-                                                    :class="p.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'"
-                                                    x-text="p.status === 'active' ? 'Mở Bán' : 'Ẩn'">
-                                                </span>
+                                            <td class="px-6 py-4 text-center space-y-1">
+                                                <div>
+                                                    <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
+                                                        :class="p.status === 'active' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'"
+                                                        x-text="p.status === 'active' ? 'Mở Bán' : 'Ẩn'">
+                                                    </span>
+                                                </div>
+                                                <template x-if="hasActiveSale(p)">
+                                                    <div>
+                                                        <span class="px-2 py-0.5 rounded text-[9px] font-black uppercase text-white tracking-wider"
+                                                            :class="(p.sale_type || 'none').toLowerCase() === 'flash' ? 'bg-red-600' : 'bg-amber-600'"
+                                                            x-text="getSaleBadgeText(p)">
+                                                        </span>
+                                                    </div>
+                                                </template>
                                             </td>
                                             <td class="px-6 py-4 text-center">
                                                 <div class="flex items-center justify-center gap-2">
@@ -1901,6 +1946,52 @@
                         <option value="hidden">Ẩn sản phẩm (Hidden)</option>
                     </select>
                 </div>
+
+                <!-- SECTION KHUYẾN MÃI & HÀNG CẬN DATE -->
+                <div class="bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-200/70 space-y-3">
+                    <h4 class="text-xs font-bold uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
+                        <i data-lucide="tag" class="w-4 h-4 text-amber-600"></i> Khuyến Mãi & Hàng Cận Date
+                    </h4>
+                    
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-700 mb-2">Loại Khuyến Mãi</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <label class="flex items-center justify-center gap-1.5 p-2 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-amber-400 transition-all text-xs font-bold text-center"
+                                :class="(productForm.sale_type || 'none') === 'none' ? 'border-primary bg-primary/5 text-primary' : 'text-gray-600'">
+                                <input type="radio" value="none" x-model="productForm.sale_type" class="text-primary focus:ring-0 hidden">
+                                <span>Không có</span>
+                            </label>
+                            <label class="flex items-center justify-center gap-1.5 p-2 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-amber-400 transition-all text-xs font-bold text-center"
+                                :class="productForm.sale_type === 'flash' ? 'border-red-500 bg-red-50 text-red-600' : 'text-gray-600'">
+                                <input type="radio" value="flash" x-model="productForm.sale_type" class="text-red-600 focus:ring-0 hidden">
+                                <span>Flash Sale ⚡</span>
+                            </label>
+                            <label class="flex items-center justify-center gap-1.5 p-2 bg-white border border-gray-200 rounded-xl cursor-pointer hover:border-amber-400 transition-all text-xs font-bold text-center"
+                                :class="productForm.sale_type === 'clearance' ? 'border-amber-600 bg-amber-50 text-amber-700' : 'text-gray-600'">
+                                <input type="radio" value="clearance" x-model="productForm.sale_type" class="text-amber-600 focus:ring-0 hidden">
+                                <span>Cận Date 🔥</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Input Giá Sale & Nhãn khi chọn Flash / Cận Date -->
+                    <div x-show="(productForm.sale_type || 'none') !== 'none'" x-cloak class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-xs font-semibold text-gray-700">Giá Sale (VNĐ)</label>
+                                <span class="text-[10px] font-bold text-amber-800" x-text="calcDiscountText(productForm.price, productForm.sale_price)"></span>
+                            </div>
+                            <input type="number" x-model.number="productForm.sale_price" min="0" step="1000" placeholder="Để trống = giữ giá gốc, 0 = FREE"
+                                class="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-3.5 text-sm font-extrabold text-red-600 focus:outline-none focus:border-red-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Nhãn Hiển Thị (Tùy chọn)</label>
+                            <input type="text" x-model="productForm.sale_label" placeholder="VD: FREE hôm nay · Còn 3 slot"
+                                class="w-full bg-white border border-gray-200 rounded-xl py-2.5 px-3.5 text-sm font-semibold focus:outline-none focus:border-amber-500">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="flex justify-end gap-3 pt-3">
                     <button type="button" @click="showProductModal = false" class="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
                     <button type="submit" class="px-6 py-2.5 bg-primary hover:bg-primary-dark text-white text-xs font-bold rounded-xl shadow-md">Lưu Sản Phẩm</button>
@@ -2215,7 +2306,7 @@
 
                 // ADMIN FORMS
                 showProductModal: false,
-                productForm: { id: '', name: '', category: '', description: '', price: 0, type: 'auto', status: 'active', slot_type: 'rieng' },
+                productForm: { id: '', name: '', category: '', description: '', price: 0, type: 'auto', status: 'active', slot_type: 'rieng', guide_url: '', sale_type: 'none', sale_price: '', sale_label: '' },
 
                 showViewInvModal: false,
                 selectedProdInv: null,
@@ -2257,7 +2348,14 @@
 
                 // COMPUTED PROPERTIES
                 get activeProducts() {
-                    return this.products.filter(p => p.status === 'active');
+                    const prods = this.products.filter(p => p.status === 'active');
+                    return prods.sort((a, b) => {
+                        const order = { 'flash': 1, 'clearance': 2, 'none': 3 };
+                        const typeA = order[(a.sale_type || 'none').toLowerCase()] || 3;
+                        const typeB = order[(b.sale_type || 'none').toLowerCase()] || 3;
+                        if (typeA !== typeB) return typeA - typeB;
+                        return 0;
+                    });
                 },
 
                 get myWalletBalance() {
@@ -2403,7 +2501,41 @@
                     });
                 },
 
-                // PRODUCT HELPER FUNCTIONS
+                // PRODUCT HELPER FUNCTIONS & SALE LOGIC
+                getEffectivePrice(p) {
+                    if (!p) return 0;
+                    const st = (p.sale_type || 'none').toLowerCase();
+                    if (st !== 'none' && p.sale_price !== undefined && p.sale_price !== null && String(p.sale_price).trim() !== '') {
+                        const sp = parseInt(p.sale_price);
+                        return isNaN(sp) ? 0 : sp;
+                    }
+                    return p.price || 0;
+                },
+
+                hasActiveSale(p) {
+                    if (!p) return false;
+                    const st = (p.sale_type || 'none').toLowerCase();
+                    return st !== 'none' && p.sale_price !== undefined && p.sale_price !== null && String(p.sale_price).trim() !== '';
+                },
+
+                getSaleBadgeText(p) {
+                    if (!p) return '';
+                    if (p.sale_label && p.sale_label.trim()) return p.sale_label.trim();
+                    const st = (p.sale_type || 'none').toLowerCase();
+                    if (st === 'flash') return '⚡ Flash Sale';
+                    if (st === 'clearance') return '🔥 Cận Date';
+                    return '';
+                },
+
+                calcDiscountText(originalPrice, salePrice) {
+                    if (salePrice === 0 || salePrice === '0') return 'Miễn phí 100%';
+                    const orig = parseInt(originalPrice) || 0;
+                    const sale = parseInt(salePrice) || 0;
+                    if (orig <= 0 || sale < 0 || sale >= orig) return '';
+                    const pct = Math.round(((orig - sale) / orig) * 100);
+                    return `Giảm ${pct}% so với giá gốc`;
+                },
+
                 getStockBreakdownText(productId) {
                     const p = this.products.find(prod => String(prod.id) === String(productId));
                     if (!p) return 'Hết hàng';
@@ -2905,7 +3037,10 @@
                                 status: this.getField(r, ['status', 'Status']) || 'active',
                                 createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString(),
                                 slot_type: this.getField(r, ['slot_type', 'SlotType']) || 'rieng',
-                                guide_url: this.getField(r, ['guide_url', 'GuideUrl', 'Guide_Url']) || ''
+                                guide_url: this.getField(r, ['guide_url', 'GuideUrl', 'Guide_Url']) || '',
+                                sale_type: this.getField(r, ['sale_type', 'SaleType', 'Sale_Type']) || 'none',
+                                sale_price: this.getField(r, ['sale_price', 'SalePrice', 'Sale_Price']),
+                                sale_label: this.getField(r, ['sale_label', 'SaleLabel', 'Sale_Label']) || ''
                             })).filter(p => p.id && p.name);
                         }
 
@@ -3780,9 +3915,29 @@
 
                 openProductModal(prod = null) {
                     if (prod) {
-                        this.productForm = { slot_type: 'rieng', guide_url: '', ...prod };
+                        this.productForm = {
+                            slot_type: 'rieng',
+                            guide_url: '',
+                            sale_type: 'none',
+                            sale_price: '',
+                            sale_label: '',
+                            ...prod
+                        };
                     } else {
-                        this.productForm = { id: '', name: '', category: '', description: '', price: 0, type: 'auto', status: 'active', slot_type: 'rieng', guide_url: '' };
+                        this.productForm = {
+                            id: '',
+                            name: '',
+                            category: '',
+                            description: '',
+                            price: 0,
+                            type: 'auto',
+                            status: 'active',
+                            slot_type: 'rieng',
+                            guide_url: '',
+                            sale_type: 'none',
+                            sale_price: '',
+                            sale_label: ''
+                        };
                     }
                     this.showProductModal = true;
                 },

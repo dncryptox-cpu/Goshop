@@ -2427,7 +2427,7 @@ function saveProduct(productData) {
   var prodSheet = ss.getSheetByName('MB_PRODUCTS');
   if (!prodSheet) {
     prodSheet = ss.insertSheet('MB_PRODUCTS');
-    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url"]);
+    prodSheet.appendRow(["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label"]);
   }
   var prodData = prodSheet.getDataRange().getValues();
   var existingRow = -1;
@@ -2441,14 +2441,17 @@ function saveProduct(productData) {
 
   var slotType = productData.slot_type || 'rieng';
   var guideUrl = productData.guide_url || '';
+  var saleType = productData.sale_type || 'none';
+  var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price) !== '') ? productData.sale_price : '';
+  var saleLabel = productData.sale_label || '';
   var prodId = productData.id || ('PROD-' + Date.now());
 
   if (existingRow > 0) {
-    prodSheet.getRange(existingRow, 1, 1, 10).setValues([[
-      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl
+    prodSheet.getRange(existingRow, 1, 1, 13).setValues([[
+      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel
     ]]);
   } else {
-    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl]);
+    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel]);
   }
   return responseJSON({ status: 'success', id: prodId });
 }
