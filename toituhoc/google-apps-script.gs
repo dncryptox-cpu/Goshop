@@ -580,6 +580,18 @@ function handleProcessImage(user, data) {
   var todayDateStr = getTodayDateString();
   var tomorrowDateStr = getNextDateString(1);
 
+  // 3. TẠO ẢNH CHÚ THÍCH BẰNG AI (NANO BANANA / GEMINI FLASH IMAGE) NẾU ĐƯỢC BẬT
+  var annotatedImageUrl = '';
+  var enableAnnotatedImage = (data.enable_annotated_image !== false); // Mặc định true nếu không truyền
+
+  if (enableAnnotatedImage) {
+    try {
+      annotatedImageUrl = callGeminiAnnotatedImageAPI(base64Data, mimeType, userApiKey);
+    } catch (eAnnotated) {
+      Logger.log('Bỏ qua tạo ảnh chú thích vì lỗi: ' + eAnnotated.toString());
+    }
+  }
+
   for (var i = 0; i < extractedItems.length; i++) {
     var item = extractedItems[i];
     var vocabId = 'v_' + new Date().getTime() + '_' + Math.floor(Math.random() * 1000);
@@ -597,7 +609,8 @@ function handleProcessImage(user, data) {
       2.5,
       1,
       tomorrowDateStr,
-      item.phien_am || ''
+      item.phien_am || '',
+      annotatedImageUrl
     ];
 
     vocabSheet.appendRow(row);
@@ -607,6 +620,7 @@ function handleProcessImage(user, data) {
       user_email: userEmail,
       ngay_them: todayDateStr,
       link_anh: imageUrl,
+      link_anh_chu_thich: annotatedImageUrl,
       tu_cum: item.word,
       phien_am: item.phien_am || '',
       loai_tu: item.pos,
@@ -623,6 +637,7 @@ function handleProcessImage(user, data) {
     status: 'success',
     message: 'Đã phân tích ảnh và lưu ' + addedVocabList.length + ' từ vựng vào danh sách ôn tập!',
     imageUrl: imageUrl,
+    annotatedImageUrl: annotatedImageUrl,
     data: addedVocabList
   });
 }
@@ -716,6 +731,79 @@ function callGeminiVisionAPIWithUserKey(base64Data, mimeType, userApiKey) {
   } catch (err) {
     Logger.log("Lỗi parse JSON Gemini response: " + cleanJSONStr);
     return [];
+  }
+}
+
+/**
+ * 🎨 HÀM GỌI GEMINI MODEL TẠO ẢNH CHÚ THÍCH (NANO BANANA / GEMINI FLASH IMAGE)
+ */
+function callGeminiAnnotatedImageAPI(base64Data, mimeType, userApiKey) {
+  try {
+    var cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    var modelName = 'gemini-2.5-flash-image';
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
+
+    var promptText = "Bạn là một nhà thiết kế đồ họa giáo dục tiếng Anh chuyên nghiệp. Dựa trên bức ảnh được cung cấp, hãy tạo ra 1 BỨC ẢNH MỚI được vẽ chú thích phong cách infographic / sketch giáo dục sinh động:\n" +
+      "1. Xác định 3 đến 8 vật thể hoặc chi tiết đáng học tiếng Anh nhất trong ảnh.\n" +
+      "2. Vẽ các mũi tên màu sắc nổi bật (đỏ, vàng, xanh neon) chỉ rõ ràng vào từng vật thể (không đè lên mặt người/chi tiết chính, các đường không đè chéo lên nhau).\n" +
+      "3. Ở đầu mỗi mũi tên, viết nhãn từ vựng tiếng Anh kèm loại từ và nghĩa tiếng Việt ngắn gọn tại các khoảng trống trên ảnh.\n" +
+      "4. Giữ nét ảnh sắc nét, bố cục khoa học, phong cách sơ đồ giáo dục trực quan dễ học.";
+
+    var payload = {
+      "contents": [
+        {
+          "parts": [
+            { "text": promptText },
+            {
+              "inlineData": {
+                "mimeType": mimeType,
+                "data": cleanBase64
+              }
+            }
+          ]
+        }
+      ],
+      "generationConfig": {
+        "responseMimeType": "image/jpeg"
+      }
+    };
+
+    var options = {
+      "method": "post",
+      "contentType": "application/json",
+      "payload": JSON.stringify(payload),
+      "muteHttpExceptions": true
+    };
+
+    var response = UrlFetchApp.fetch(url, options);
+    var responseCode = response.getResponseCode();
+    var responseText = response.getContentText();
+
+    if (responseCode !== 200) {
+      Logger.log("⚠️ Lỗi Gemini Annotated Image API (" + responseCode + "): " + responseText);
+      return '';
+    }
+
+    var jsonRes = JSON.parse(responseText);
+    var imageBase64 = '';
+
+    if (jsonRes.candidates && jsonRes.candidates.length > 0 && jsonRes.candidates[0].content) {
+      var parts = jsonRes.candidates[0].content.parts || [];
+      for (var p = 0; p < parts.length; p++) {
+        if (parts[p].inlineData && parts[p].inlineData.data) {
+          imageBase64 = 'data:' + (parts[p].inlineData.mimeType || 'image/jpeg') + ';base64,' + parts[p].inlineData.data;
+          break;
+        }
+      }
+    }
+
+    if (imageBase64) {
+      return saveImageToDrive(imageBase64, 'image/jpeg', 'annotated_' + new Date().getTime() + '.jpg');
+    }
+    return '';
+  } catch (err) {
+    Logger.log('⚠️ Lỗi tạo ảnh chú thích AI: ' + err.toString());
+    return '';
   }
 }
 
@@ -855,7 +943,8 @@ function rowToVocabObject(row) {
     ease_factor: row[9],
     interval: row[10],
     next_review_date: formatDateString(row[11]),
-    phien_am: row[12] || ''
+    phien_am: row[12] || '',
+    link_anh_chu_thich: row[13] || ''
   };
 }
 
@@ -974,7 +1063,7 @@ function getOrCreateSpreadsheet() {
     vocabSheet.appendRow([
       'id', 'user_email', 'ngày_thêm', 'link_ảnh', 'từ/cụm', 
       'loại_từ', 'nghĩa', 'câu_ví_dụ', 'ghi_chú_ngữ_pháp', 
-      'ease_factor', 'interval', 'next_review_date', 'phien_am'
+      'ease_factor', 'interval', 'next_review_date', 'phien_am', 'link_anh_chu_thich'
     ]);
   }
 

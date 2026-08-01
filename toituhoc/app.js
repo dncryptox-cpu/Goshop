@@ -625,17 +625,21 @@ function setupUpload() {
     btnProcess.style.display = 'none';
     spinner.style.display = 'flex';
 
+    const chkAnnotated = document.getElementById('chk-enable-annotated-image');
+    const enableAnnotated = chkAnnotated ? chkAnnotated.checked : true;
+
     try {
       const result = await callAppsScriptAPI('processImage', {
         image_base64: state.selectedImageBase64,
         mime_type: state.selectedImageMimeType,
+        enable_annotated_image: enableAnnotated,
         file_name: `photo_${Date.now()}.jpg`
       });
 
       spinner.style.display = 'none';
 
       if (result.status === 'success' && result.data) {
-        renderAIResults(result.data);
+        renderAIResults(result.data, result.imageUrl, result.annotatedImageUrl);
         resultsContainer.style.display = 'flex';
       } else {
         alert(result.message || 'Không thể trích xuất từ vựng từ ảnh.');
@@ -685,9 +689,57 @@ function compressAndReadImage(file, callback) {
   reader.readAsDataURL(file);
 }
 
-function renderAIResults(items) {
+function renderAIResults(items, originalUrl, annotatedUrl) {
   const container = document.getElementById('ai-results-list');
   container.innerHTML = '';
+
+  const annotatedBox = document.getElementById('ai-annotated-image-box');
+  const annotatedImg = document.getElementById('ai-annotated-img-preview');
+  const btnAnnotated = document.getElementById('btn-show-annotated');
+  const btnOriginal = document.getElementById('btn-show-original');
+
+  if (annotatedBox && annotatedImg) {
+    const hasAnnotated = !!(annotatedUrl && annotatedUrl.trim());
+    const hasOriginal = !!(originalUrl && originalUrl.trim());
+
+    if (hasAnnotated || hasOriginal) {
+      annotatedBox.style.display = 'block';
+
+      if (hasAnnotated) {
+        annotatedImg.src = annotatedUrl;
+        if (btnAnnotated) btnAnnotated.style.display = 'inline-block';
+      } else {
+        annotatedImg.src = originalUrl;
+        if (btnAnnotated) btnAnnotated.style.display = 'none';
+      }
+
+      if (btnAnnotated) {
+        btnAnnotated.onclick = () => {
+          if (annotatedUrl) annotatedImg.src = annotatedUrl;
+          btnAnnotated.style.background = 'rgba(192, 132, 252, 0.35)';
+          btnAnnotated.style.borderColor = '#c084fc';
+          if (btnOriginal) {
+            btnOriginal.style.background = 'rgba(99, 102, 241, 0.2)';
+            btnOriginal.style.borderColor = 'var(--primary)';
+          }
+        };
+      }
+
+      if (btnOriginal) {
+        btnOriginal.onclick = () => {
+          if (originalUrl) annotatedImg.src = originalUrl;
+          btnOriginal.style.background = 'rgba(99, 102, 241, 0.4)';
+          btnOriginal.style.borderColor = '#a5b4fc';
+          if (btnAnnotated) {
+            btnAnnotated.style.background = 'rgba(192, 132, 252, 0.15)';
+            btnAnnotated.style.borderColor = 'rgba(192, 132, 252, 0.4)';
+          }
+        };
+      }
+    } else {
+      annotatedBox.style.display = 'none';
+    }
+  }
 
   items.forEach(item => {
     const el = document.createElement('div');
@@ -817,12 +869,24 @@ function renderCurrentCard() {
     grammarBox.style.display = 'none';
   }
 
+  const annotatedLink = document.getElementById('card-annotated-link');
+  if (annotatedLink) {
+    if (item.link_anh_chu_thich && item.link_anh_chu_thich.trim()) {
+      annotatedLink.href = item.link_anh_chu_thich;
+      annotatedLink.style.display = 'inline-block';
+    } else {
+      annotatedLink.style.display = 'none';
+    }
+  }
+
   const photoLink = document.getElementById('card-photo-link');
-  if (item.link_anh) {
-    photoLink.href = item.link_anh;
-    photoLink.style.display = 'inline-block';
-  } else {
-    photoLink.style.display = 'none';
+  if (photoLink) {
+    if (item.link_anh && item.link_anh.trim()) {
+      photoLink.href = item.link_anh;
+      photoLink.style.display = 'inline-block';
+    } else {
+      photoLink.style.display = 'none';
+    }
   }
 
   setTimeout(() => speakText(item.tu_cum), 300);
@@ -899,9 +963,10 @@ function filterAndRenderVocab(query) {
           <span class="pos-tag">${escapeHTML(item.loai_tu)}</span>
         </div>
         <div class="vocab-meaning">${escapeHTML(item.nghia)}</div>
-        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
-          📅 Ôn tiếp: <strong style="color:var(--primary);">${escapeHTML(item.next_review_date)}</strong> 
-          (Ease: ${item.ease_factor || 2.5}, Inter: ${item.interval || 1}d)
+        <div style="font-size:0.75rem; color:var(--text-muted); margin-top:4px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+          <span>📅 Ôn tiếp: <strong style="color:var(--primary);">${escapeHTML(item.next_review_date)}</strong></span>
+          ${item.link_anh_chu_thich ? `<a href="${item.link_anh_chu_thich}" target="_blank" style="color:#c084fc; text-decoration:underline; font-weight:600;">🎨 Ảnh AI Chú Thích ↗</a>` : ''}
+          ${item.link_anh ? `<a href="${item.link_anh}" target="_blank" style="color:#a5b4fc; text-decoration:underline;">🖼️ Ảnh Gốc ↗</a>` : ''}
         </div>
       </div>
       <button class="tts-btn" onclick="speakText('${escapeQuotes(item.tu_cum)}')">🔊</button>
