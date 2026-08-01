@@ -915,13 +915,13 @@
                                                 }">
                                                 <!-- Proof Image Thumbnail & Manual Badge -->
                                                 <td class="px-4 py-3 shrink-0">
-                                                    <template x-if="tr.proofUrl === 'manual_request' || (tr.note && tr.note.includes('[THỦ CÔNG]'))">
-                                                        <div class="w-14 h-14 rounded-xl bg-orange-100 border border-orange-200 flex flex-col items-center justify-center p-1 text-center shadow-sm">
-                                                            <span class="text-[9px] font-black text-orange-700 uppercase tracking-tighter">THỦ CÔNG</span>
-                                                            <i data-lucide="alert-triangle" class="w-4 h-4 text-orange-600 mt-0.5 animate-bounce"></i>
+                                                    <template x-if="tr.proofUrl === 'manual_zalo' || tr.proofUrl === 'manual' || tr.proofUrl === 'manual_request' || !tr.proofUrl || (tr.note && tr.note.includes('[THỦ CÔNG]'))">
+                                                        <div class="w-14 h-14 rounded-xl bg-amber-100 border border-amber-300 flex flex-col items-center justify-center p-1 text-center shadow-2xs">
+                                                            <span class="text-[9px] font-black text-amber-800 uppercase tracking-tighter">Chờ ảnh Zalo</span>
+                                                            <i data-lucide="message-square" class="w-4 h-4 text-amber-600 mt-0.5"></i>
                                                         </div>
                                                     </template>
-                                                    <template x-if="tr.proofUrl !== 'manual_request' && (!tr.note || !tr.note.includes('[THỦ CÔNG]'))">
+                                                    <template x-if="tr.proofUrl && tr.proofUrl !== 'manual_zalo' && tr.proofUrl !== 'manual' && tr.proofUrl !== 'manual_request' && (!tr.note || !tr.note.includes('[THỦ CÔNG]'))">
                                                         <div class="relative group w-14 h-14 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 cursor-pointer shadow-sm" @click="openLightbox(tr.proofUrl)">
                                                             <img :src="tr.proofUrl" alt="Hóa đơn CK" class="w-full h-full object-cover group-hover:scale-110 transition-transform">
                                                             <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
@@ -1592,6 +1592,14 @@
                                 <input type="file" accept="image/*" capture="environment" class="hidden" @change="handleFileUpload($event)">
                             </label>
                         </template>
+                    </div>
+
+                    <!-- FALLBACK OPTION: CHECKBOX GỬI QUA ZALO -->
+                    <div class="mt-2.5 bg-amber-50/80 border border-amber-200/80 rounded-xl p-3 flex items-center justify-between gap-2 text-xs">
+                        <label class="flex items-center gap-2 cursor-pointer font-bold text-amber-950 select-none">
+                            <input type="checkbox" x-model="sendViaZaloOption" @change="toggleZaloOption()" class="w-4 h-4 text-amber-600 rounded focus:ring-amber-500">
+                            <span>Tôi sẽ gửi ảnh hóa đơn qua Zalo cho admin (0398.057.191)</span>
+                        </label>
                     </div>
                 </div>
 
@@ -2378,6 +2386,7 @@
                 // TOP-UP MODAL & UPLOADING STATE
                 showTopupModal: false,
                 currentProofUrl: '',
+                sendViaZaloOption: false,
                 topupReqForm: { amount: 100000, proofUrl: '', note: '' },
                 activeQuickAmount: 100000,
                 uploadingState: {
@@ -3481,45 +3490,65 @@
                     await this.uploadToCloudinary(this.uploadingState.file);
                 },
 
+                toggleZaloOption() {
+                    if (this.sendViaZaloOption) {
+                        this.currentProofUrl = 'manual_zalo';
+                        this.topupReqForm.proofUrl = 'manual_zalo';
+                        this.uploadingState.isUploading = false;
+                        this.uploadingState.isError = false;
+                    } else {
+                        if (this.currentProofUrl === 'manual_zalo') {
+                            this.currentProofUrl = '';
+                            this.topupReqForm.proofUrl = '';
+                        }
+                    }
+                    this.saveTopupDraft();
+                },
+
                 async uploadToCloudinary(file) {
-                    const cloudName = this.systemConfig.CLOUDINARY_CLOUD_NAME || 'dncryptox';
-                    const preset = this.systemConfig.CLOUDINARY_UPLOAD_PRESET || 'goshop_preset';
+                    const cloudName = String(this.systemConfig.CLOUDINARY_CLOUD_NAME || '').trim();
+                    const preset = String(this.systemConfig.CLOUDINARY_UPLOAD_PRESET || '').trim();
+
+                    console.log('Cloud:', cloudName);
+                    console.log('Preset:', preset);
+
+                    const activeCloudName = cloudName || 'dncryptox';
+                    const activePreset = preset || 'goshop_preset';
 
                     this.uploadingState.isUploading = true;
                     this.uploadingState.isError = false;
                     this.uploadingState.isSuccess = false;
-                    this.currentProofUrl = '';
-                    this.topupReqForm.proofUrl = '';
 
                     try {
                         const formData = new FormData();
                         formData.append('file', file);
-                        formData.append('upload_preset', preset);
+                        formData.append('upload_preset', activePreset);
 
-                        const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+                        const res = await fetch(`https://api.cloudinary.com/v1_1/${activeCloudName}/image/upload`, {
                             method: 'POST',
                             body: formData
                         });
                         const data = await res.json();
-                        
-                        if (data.secure_url && data.secure_url.startsWith('https://')) {
+                        console.log('Cloudinary response:', data);
+
+                        if (data.secure_url && data.secure_url.startsWith('http')) {
                             this.uploadingState.isUploading = false;
                             this.uploadingState.isSuccess = true;
                             this.currentProofUrl = data.secure_url;
                             this.topupReqForm.proofUrl = data.secure_url;
+                            this.sendViaZaloOption = false;
                             this.saveTopupDraft();
                             this.showToast('✓ Tải ảnh hóa đơn lên Cloudinary thành công!');
                         } else {
-                            throw new Error(data.error?.message || 'Không nhận được secure_url từ Cloudinary');
+                            const errorMsg = data.error?.message || 'Không nhận được secure_url từ Cloudinary';
+                            throw new Error(errorMsg);
                         }
                     } catch(err) {
                         console.error('Cloudinary upload error:', err);
                         this.uploadingState.isUploading = false;
                         this.uploadingState.isError = true;
-                        this.uploadingState.errorMessage = 'Upload thất bại: ' + (err.message || 'Vui lòng thử lại');
-                        this.currentProofUrl = '';
-                        this.topupReqForm.proofUrl = '';
-                        this.showToast('Upload ảnh thất bại, vui lòng bấm thử lại');
+                        this.uploadingState.errorMessage = 'Upload thất bại: ' + err.message;
+                        this.showToast('Upload thất bại: ' + err.message);
                     }
                 },
 
