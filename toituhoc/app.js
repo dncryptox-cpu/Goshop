@@ -36,6 +36,7 @@ function initApp() {
   setupReview();
   setupVocabList();
   setupSettings();
+  setupApiKeyGuideToggles();
   
   const inputUrl = document.getElementById('input-script-url');
   if (inputUrl) {
@@ -1038,6 +1039,24 @@ function setupSettings() {
 
 function loadUserSettings() {
   checkUserProfile();
+}
+
+function setupApiKeyGuideToggles() {
+  const guideBtns = document.querySelectorAll('.btn-toggle-apikey-guide');
+  guideBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const parent = btn.closest('.apikey-guide-accordion');
+      if (!parent) return;
+      const content = parent.querySelector('.apikey-guide-content');
+      const arrow = parent.querySelector('.guide-arrow');
+      if (content) {
+        const isHidden = content.style.display === 'none' || !content.style.display;
+        content.style.display = isHidden ? 'block' : 'none';
+        if (arrow) arrow.innerText = isHidden ? '▴' : '▾';
+      }
+    });
+  });
 }
 
 /* ==========================================
