@@ -153,18 +153,15 @@ function saveProduct(productData) {
 }
 
 function submitTopupRequest(email, amount, proofUrl, note) {
-  Logger.log('>>> [submitTopupRequest] Received: email=' + email + ', amount=' + amount + ', proofUrl=' + proofUrl + ', note=' + note);
+  Logger.log('>>> [submitTopupRequest] Received: email=' + email + ', amount=' + amount + ', proofUrl=' + (proofUrl || '(trống)') + ', note=' + note);
 
   if (!email || !amount || parseInt(amount) <= 0) {
     return responseJSON({ status: 'error', message: 'Dữ liệu số tiền nạp không hợp lệ' });
   }
 
   var cleanProofUrl = String(proofUrl || '').trim();
-  Logger.log('>>> [submitTopupRequest] Validating proofUrl: ' + cleanProofUrl);
-
-  if (!cleanProofUrl || cleanProofUrl.indexOf('https://') !== 0) {
-    Logger.log('>>> [submitTopupRequest] REJECTED: proofUrl is not a valid https Cloudinary URL!');
-    return responseJSON({ status: 'error', message: 'Ảnh hóa đơn không hợp lệ. Vui lòng chờ upload ảnh Cloudinary thành công!' });
+  if (cleanProofUrl && cleanProofUrl.indexOf('https://') !== 0) {
+    cleanProofUrl = '';
   }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
