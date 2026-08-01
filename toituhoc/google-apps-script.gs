@@ -587,13 +587,17 @@ function handleProcessImage(user, data) {
 
   // 3. TẠO ẢNH CHÚ THÍCH BẰNG AI (NANO BANANA / GEMINI FLASH IMAGE) NẾU ĐƯỢC BẬT
   var annotatedImageUrl = '';
-  var enableAnnotatedImage = (data.enable_annotated_image !== false); // Mặc định true nếu không truyền
+  var annotatedImageError = '';
+  var enableAnnotatedImage = (data.enable_annotated_image === true);
 
   if (enableAnnotatedImage) {
     try {
-      annotatedImageUrl = callGeminiAnnotatedImageAPI(base64Data, mimeType, userApiKey);
+      var resAnnotated = callGeminiAnnotatedImageAPI(base64Data, mimeType, userApiKey);
+      annotatedImageUrl = resAnnotated.url || '';
+      annotatedImageError = resAnnotated.error || '';
     } catch (eAnnotated) {
-      Logger.log('Bỏ qua tạo ảnh chú thích vì lỗi: ' + eAnnotated.toString());
+      annotatedImageError = eAnnotated.toString();
+      Logger.log('Bỏ qua tạo ảnh chú thích vì lỗi: ' + annotatedImageError);
     }
   }
 
@@ -643,6 +647,7 @@ function handleProcessImage(user, data) {
     message: 'Đã phân tích ảnh và lưu ' + addedVocabList.length + ' từ vựng vào danh sách ôn tập!',
     imageUrl: imageUrl,
     annotatedImageUrl: annotatedImageUrl,
+    annotatedImageError: annotatedImageError,
     data: addedVocabList
   });
 }
@@ -743,73 +748,116 @@ function callGeminiVisionAPIWithUserKey(base64Data, mimeType, userApiKey) {
  * 🎨 HÀM GỌI GEMINI MODEL TẠO ẢNH CHÚ THÍCH (NANO BANANA / GEMINI FLASH IMAGE)
  */
 function callGeminiAnnotatedImageAPI(base64Data, mimeType, userApiKey) {
-  try {
-    var cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
-    var modelName = 'gemini-2.5-flash-image';
-    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
+  var cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
+  var modelsToTry = [
+    { name: 'gemini-2.5-flash-image', type: 'gemini' },
+    { name: 'gemini-3.1-flash-image', type: 'gemini' },
+    { name: 'imagen-3.0-generate-002', type: 'imagen' }
+  ];
 
-    var promptText = "Bạn là một nhà thiết kế đồ họa giáo dục tiếng Anh chuyên nghiệp. Dựa trên bức ảnh được cung cấp, hãy tạo ra 1 BỨC ẢNH MỚI được vẽ chú thích phong cách infographic / sketch giáo dục sinh động:\n" +
-      "1. Xác định 3 đến 8 vật thể hoặc chi tiết đáng học tiếng Anh nhất trong ảnh.\n" +
-      "2. Vẽ các mũi tên màu sắc nổi bật (đỏ, vàng, xanh neon) chỉ rõ ràng vào từng vật thể (không đè lên mặt người/chi tiết chính, các đường không đè chéo lên nhau).\n" +
-      "3. Ở đầu mỗi mũi tên, viết nhãn từ vựng tiếng Anh kèm loại từ và nghĩa tiếng Việt ngắn gọn tại các khoảng trống trên ảnh.\n" +
-      "4. Giữ nét ảnh sắc nét, bố cục khoa học, phong cách sơ đồ giáo dục trực quan dễ học.";
+  var lastErrorMsg = '';
 
-    var payload = {
-      "contents": [
-        {
-          "parts": [
-            { "text": promptText },
-            {
-              "inlineData": {
-                "mimeType": mimeType,
-                "data": cleanBase64
+  for (var m = 0; m < modelsToTry.length; m++) {
+    var modelInfo = modelsToTry[m];
+    try {
+      if (modelInfo.type === 'imagen') {
+        var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelInfo.name + ':generateImages?key=' + userApiKey;
+        var promptText = "Infographic educational diagram showing English vocabulary labels with bright colorful arrows pointing to objects in the scene.";
+        var payload = {
+          "prompt": promptText,
+          "numberOfImages": 1,
+          "outputMimeType": "image/jpeg",
+          "aspectRatio": "1:1"
+        };
+        var options = {
+          "method": "post",
+          "contentType": "application/json",
+          "payload": JSON.stringify(payload),
+          "muteHttpExceptions": true
+        };
+
+        var response = UrlFetchApp.fetch(url, options);
+        var code = response.getResponseCode();
+        var text = response.getContentText();
+
+        if (code === 200) {
+          var json = JSON.parse(text);
+          if (json.generatedImages && json.generatedImages.length > 0) {
+            var imgData = json.generatedImages[0].image.imageBytes;
+            var imgBase64 = 'data:image/jpeg;base64,' + imgData;
+            var driveUrl = saveImageToDrive(imgBase64, 'image/jpeg', 'annotated_' + new Date().getTime() + '.jpg');
+            return { url: driveUrl, error: '' };
+          }
+        } else {
+          var errMsg = parseGoogleApiError(code, text);
+          Logger.log("⚠️ Imagen API (" + modelInfo.name + ") Code " + code + ": " + errMsg);
+          lastErrorMsg = "Model " + modelInfo.name + " (" + code + "): " + errMsg;
+        }
+      } else {
+        var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelInfo.name + ':generateContent?key=' + userApiKey;
+        var promptText = "Bạn là nhà thiết kế đồ họa giáo dục tiếng Anh. Vẽ các mũi tên màu sắc kèm nhãn từ vựng tiếng Anh + nghĩa tiếng Việt chỉ vào từng vật thể trong ảnh.";
+        var payload = {
+          "contents": [{
+            "parts": [
+              { "text": promptText },
+              { "inlineData": { "mimeType": mimeType, "data": cleanBase64 } }
+            ]
+          }]
+        };
+        var options = {
+          "method": "post",
+          "contentType": "application/json",
+          "payload": JSON.stringify(payload),
+          "muteHttpExceptions": true
+        };
+
+        var response = UrlFetchApp.fetch(url, options);
+        var code = response.getResponseCode();
+        var text = response.getContentText();
+
+        if (code === 200) {
+          var jsonRes = JSON.parse(text);
+          var imageBase64 = '';
+          if (jsonRes.candidates && jsonRes.candidates.length > 0 && jsonRes.candidates[0].content) {
+            var parts = jsonRes.candidates[0].content.parts || [];
+            for (var p = 0; p < parts.length; p++) {
+              if (parts[p].inlineData && parts[p].inlineData.data) {
+                imageBase64 = 'data:' + (parts[p].inlineData.mimeType || 'image/jpeg') + ';base64,' + parts[p].inlineData.data;
+                break;
               }
             }
-          ]
-        }
-      ],
-      "generationConfig": {
-        "responseMimeType": "image/jpeg"
-      }
-    };
+          }
 
-    var options = {
-      "method": "post",
-      "contentType": "application/json",
-      "payload": JSON.stringify(payload),
-      "muteHttpExceptions": true
-    };
-
-    var response = UrlFetchApp.fetch(url, options);
-    var responseCode = response.getResponseCode();
-    var responseText = response.getContentText();
-
-    if (responseCode !== 200) {
-      Logger.log("⚠️ Lỗi Gemini Annotated Image API (" + responseCode + "): " + responseText);
-      return '';
-    }
-
-    var jsonRes = JSON.parse(responseText);
-    var imageBase64 = '';
-
-    if (jsonRes.candidates && jsonRes.candidates.length > 0 && jsonRes.candidates[0].content) {
-      var parts = jsonRes.candidates[0].content.parts || [];
-      for (var p = 0; p < parts.length; p++) {
-        if (parts[p].inlineData && parts[p].inlineData.data) {
-          imageBase64 = 'data:' + (parts[p].inlineData.mimeType || 'image/jpeg') + ';base64,' + parts[p].inlineData.data;
-          break;
+          if (imageBase64) {
+            var driveUrl = saveImageToDrive(imageBase64, 'image/jpeg', 'annotated_' + new Date().getTime() + '.jpg');
+            return { url: driveUrl, error: '' };
+          } else {
+            lastErrorMsg = "Model " + modelInfo.name + " không trả về dữ liệu ảnh trong response.";
+          }
+        } else {
+          var errMsg = parseGoogleApiError(code, text);
+          Logger.log("⚠️ Gemini Image API (" + modelInfo.name + ") Code " + code + ": " + errMsg);
+          lastErrorMsg = "Model " + modelInfo.name + " (" + code + "): " + errMsg;
         }
       }
+    } catch (e) {
+      lastErrorMsg = e.toString();
+      Logger.log("⚠️ Exception calling " + modelInfo.name + ": " + e.toString());
     }
-
-    if (imageBase64) {
-      return saveImageToDrive(imageBase64, 'image/jpeg', 'annotated_' + new Date().getTime() + '.jpg');
-    }
-    return '';
-  } catch (err) {
-    Logger.log('⚠️ Lỗi tạo ảnh chú thích AI: ' + err.toString());
-    return '';
   }
+
+  return { url: '', error: lastErrorMsg || 'Không thể tạo ảnh chú thích AI.' };
+}
+
+function parseGoogleApiError(code, text) {
+  try {
+    var json = JSON.parse(text);
+    if (json.error) {
+      if (json.error.message) return json.error.message;
+      if (json.error.status) return json.error.status;
+    }
+  } catch (e) {}
+  return (text || '').substring(0, 200);
 }
 
 // ==========================================

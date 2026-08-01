@@ -666,7 +666,10 @@ function setupUpload() {
       spinner.style.display = 'none';
 
       if (result.status === 'success' && result.data) {
-        renderAIResults(result.data, result.imageUrl, result.annotatedImageUrl);
+        if (enableAnnotated && result.annotatedImageError) {
+          alert(`⚠️ Không thể tạo ảnh chú thích AI: ${result.annotatedImageError}\n\n(Ảnh gốc và danh sách từ vựng vẫn được trích xuất và lưu thành công!)`);
+        }
+        renderAIResults(result.data, result.imageUrl, result.annotatedImageUrl, result.annotatedImageError);
         resultsContainer.style.display = 'flex';
       } else {
         alert(result.message || 'Không thể trích xuất từ vựng từ ảnh.');
@@ -716,7 +719,7 @@ function compressAndReadImage(file, callback) {
   reader.readAsDataURL(file);
 }
 
-function renderAIResults(items, originalUrl, annotatedUrl) {
+function renderAIResults(items, originalUrl, annotatedUrl, annotatedError) {
   const container = document.getElementById('ai-results-list');
   container.innerHTML = '';
 
@@ -729,8 +732,20 @@ function renderAIResults(items, originalUrl, annotatedUrl) {
     const hasAnnotated = !!(annotatedUrl && annotatedUrl.trim());
     const hasOriginal = !!(originalUrl && originalUrl.trim());
 
-    if (hasAnnotated || hasOriginal) {
+    if (hasAnnotated || hasOriginal || annotatedError) {
       annotatedBox.style.display = 'block';
+
+      // Remove existing error alerts if any
+      const existingErrorBanner = annotatedBox.querySelector('.ai-annotated-error-banner');
+      if (existingErrorBanner) existingErrorBanner.remove();
+
+      if (annotatedError) {
+        const errDiv = document.createElement('div');
+        errDiv.className = 'ai-annotated-error-banner';
+        errDiv.style.cssText = 'padding: 10px 14px; background: rgba(239, 68, 68, 0.18); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 10px; color: #fca5a5; font-size: 0.8rem; margin-bottom: 10px; text-align: left; line-height: 1.4;';
+        errDiv.innerHTML = `⚠️ <strong>Không thể tạo ảnh chú thích AI:</strong> ${escapeHTML(annotatedError)}<br><span style="font-size: 0.74rem; color: #cbd5e1; display: block; margin-top: 4px;">* Ảnh gốc và từ vựng của bạn vẫn được lưu bình thường.</span>`;
+        annotatedBox.insertBefore(errDiv, annotatedBox.firstChild);
+      }
 
       if (hasAnnotated) {
         annotatedImg.src = annotatedUrl;
