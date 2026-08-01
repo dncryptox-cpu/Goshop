@@ -33,6 +33,16 @@ function doPost(e) {
       return resetUserPassword(data.userId, data.newPasswordHash);
     }
 
+    // --- 5.1. ACTION: SUBMIT RESET PASSWORD REQUEST (CUSTOMER) ---
+    if (action === 'submit_reset_password_request') {
+      return submitResetPasswordRequest(data.email, data.phone);
+    }
+
+    // --- 5.2. ACTION: PROCESS RESET PASSWORD REQUEST (ADMIN) ---
+    if (action === 'process_reset_password_request') {
+      return processResetPasswordRequest(data.reqId, data.email, data.newPasswordHash);
+    }
+
     // --- 6. ACTION: SAVE PRODUCT (WITH SALE FIELDS & END DATE) ---
     if (action === 'save_product') {
       return saveProduct(data.productData);
@@ -759,4 +769,54 @@ function initMemberSheets() {
   });
 
   return { status: "success", message: "Đã kiểm tra/khởi tạo xong " + created.length + " sheet tab MB_", createdSheets: created };
+}
+
+function submitResetPasswordRequest(email, phone) {
+  if (!email || !phone) return responseJSON({ status: 'error', message: 'Vui lòng nhập đầy đủ email và số điện thoại' });
+  var cleanEmail = String(email).trim().toLowerCase();
+  var cleanPhone = String(phone).replace(/\s+/g, '').replace(/-/g, '');
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('MB_RESET_REQ');
+  if (!sheet) {
+    sheet = ss.insertSheet('MB_RESET_REQ');
+    sheet.appendRow(["id", "email", "phone", "status", "requested_at", "reset_at"]);
+    sheet.getRange(1, 1, 1, 6).setFontWeight("bold").setBackground("#fef3c7");
+  }
+
+  var reqId = 'RST-' + Date.now();
+  sheet.appendRow([reqId, cleanEmail, cleanPhone, 'pending', new Date().toISOString(), '']);
+  return responseJSON({ status: 'success', reqId: reqId, message: 'Đã gửi yêu cầu. Admin sẽ liên hệ Zalo của bạn trong thời gian sớm nhất.' });
+}
+
+function processResetPasswordRequest(reqId, email, newPasswordHash) {
+  if (!email || !newPasswordHash) return responseJSON({ status: 'error', message: 'Thiếu dữ liệu' });
+  var cleanEmail = String(email).trim().toLowerCase();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // 1. Update MB_USERS
+  var userSheet = ss.getSheetByName('MB_USERS');
+  if (userSheet) {
+    var uData = userSheet.getDataRange().getValues();
+    for (var i = 1; i < uData.length; i++) {
+      if (String(uData[i][1]).trim().toLowerCase() === cleanEmail) {
+        userSheet.getRange(i + 1, 3).setValue(newPasswordHash);
+        break;
+      }
+    }
+  }
+
+  // 2. Update MB_RESET_REQ status = 'done'
+  var resetSheet = ss.getSheetByName('MB_RESET_REQ');
+  if (resetSheet) {
+    var rData = resetSheet.getDataRange().getValues();
+    for (var j = 1; j < rData.length; j++) {
+      if (String(rData[j][0]) === String(reqId) || String(rData[j][1]).trim().toLowerCase() === cleanEmail) {
+        resetSheet.getRange(j + 1, 4).setValue('done');
+        resetSheet.getRange(j + 1, 6).setValue(new Date().toISOString());
+      }
+    }
+  }
+
+  return responseJSON({ status: 'success', message: 'Đã tạo mật khẩu mới thành công' });
 }
