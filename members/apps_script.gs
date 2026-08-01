@@ -160,7 +160,7 @@ function submitTopupRequest(email, amount, proofUrl, note) {
   }
 
   var cleanProofUrl = String(proofUrl || '').trim();
-  if (cleanProofUrl && cleanProofUrl.indexOf('https://') !== 0) {
+  if (cleanProofUrl === 'https://goshop.vn/no-proof-image' || cleanProofUrl.indexOf('https://') !== 0) {
     cleanProofUrl = '';
   }
 
