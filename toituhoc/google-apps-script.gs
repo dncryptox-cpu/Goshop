@@ -698,7 +698,7 @@ function handleProcessImage(user, data) {
 
   if (enableAnnotatedImage) {
     try {
-      var resAnnotated = callGeminiAnnotatedImageAPI(base64Data, mimeType, userApiKey);
+      var resAnnotated = callGeminiAnnotatedImageAPI(imageBase64, mimeType, userApiKey);
       annotatedImageUrl = resAnnotated.url || '';
       annotatedImageError = resAnnotated.error || '';
     } catch (eAnnotated) {
