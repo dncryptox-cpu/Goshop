@@ -1487,31 +1487,29 @@
                     </template>
                 </div>
 
-                <!-- DIRECT FILE UPLOAD WITH DRAG & DROP & PASTE SUPPORT (Vấn đề 1) -->
+                <!-- DIRECT FILE UPLOAD WITH DRAG & DROP & PASTE SUPPORT -->
                 <div>
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tải Ảnh Hóa Đơn Chuyển Khoản</label>
                     
                     <div class="border-2 border-dashed rounded-2xl p-4 text-center transition-all relative overflow-hidden"
-                        :class="isDragging ? 'border-primary bg-primary/10 scale-[1.01]' : (uploadingState.isSuccess || topupReqForm.proofUrl ? 'border-emerald-400 bg-emerald-50/30' : (uploadingState.isError ? 'border-red-300 bg-red-50/30' : 'border-gray-300 hover:border-primary bg-gray-50/50'))"
+                        :class="isDragging ? 'border-primary bg-primary/10 scale-[1.01]' : (currentProofUrl ? 'border-emerald-400 bg-emerald-50/30' : (uploadingState.isError ? 'border-red-300 bg-red-50/30' : 'border-gray-300 hover:border-primary bg-gray-50/50'))"
                         @dragover.prevent="isDragging = true"
                         @dragleave.prevent="isDragging = false"
                         @drop.prevent="handleDrop($event)">
                         
-                        <!-- Uploading State -->
+                        <!-- Uploading Spinner State (Hiện spinner Đang tải ảnh... NGAY LẬP TỨC khi upload) -->
                         <template x-if="uploadingState.isUploading">
-                            <div class="py-4 flex flex-col items-center justify-center text-gray-500">
+                            <div class="py-6 flex flex-col items-center justify-center text-gray-500">
                                 <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-primary mb-2"></i>
                                 <span class="text-xs font-bold text-gray-700">Đang tải ảnh hóa đơn lên Cloudinary...</span>
                             </div>
                         </template>
 
-                        <!-- Upload Success Preview & Priority Display (Thumbnail > Link > Clear Button) -->
-                        <template x-if="(uploadingState.isSuccess || topupReqForm.proofUrl) && !uploadingState.isUploading">
+                        <!-- Upload Success Preview from Cloudinary URL (currentProofUrl) -->
+                        <template x-if="currentProofUrl && !uploadingState.isUploading">
                             <div class="flex flex-col sm:flex-row items-center justify-between gap-3 p-1">
                                 <div class="flex items-center gap-3">
-                                    <template x-if="uploadingState.previewUrl || topupReqForm.proofUrl">
-                                        <img :src="uploadingState.previewUrl || topupReqForm.proofUrl" class="w-16 h-16 object-cover rounded-xl shadow-md border border-emerald-200 shrink-0">
-                                    </template>
+                                    <img :src="currentProofUrl" class="w-16 h-16 object-cover rounded-xl shadow-md border border-emerald-200 shrink-0">
                                     <div class="text-left">
                                         <span class="inline-flex items-center gap-1 text-xs font-black text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-md">
                                             ✓ Đã nhận ảnh hóa đơn
@@ -1527,9 +1525,9 @@
                         </template>
 
                         <!-- Error State -->
-                        <template x-if="uploadingState.isError && !uploadingState.isUploading">
+                        <template x-if="uploadingState.isError && !uploadingState.isUploading && !currentProofUrl">
                             <div class="py-2 flex flex-col items-center">
-                                <span class="text-xs font-bold text-red-600 mb-2">Upload thất bại, thử lại</span>
+                                <span class="text-xs font-bold text-red-600 mb-2" x-text="uploadingState.errorMessage || 'Upload thất bại, thử lại'"></span>
                                 <button type="button" @click="retryUpload()" class="px-3 py-1 bg-red-600 text-white rounded-lg text-xs font-bold shadow-sm">
                                     Thử lại Upload
                                 </button>
@@ -1537,7 +1535,7 @@
                         </template>
 
                         <!-- Initial Idle State (Click / Paste Ctrl+V / Drag & Drop) -->
-                        <template x-if="!uploadingState.isUploading && !uploadingState.isSuccess && !topupReqForm.proofUrl && !uploadingState.isError">
+                        <template x-if="!uploadingState.isUploading && !currentProofUrl && !uploadingState.isError">
                             <label class="cursor-pointer flex flex-col items-center py-4">
                                 <i data-lucide="upload-cloud" class="w-10 h-10 text-primary mb-2" :class="isDragging ? 'animate-bounce' : ''"></i>
                                 <span class="text-xs font-bold text-gray-800" x-text="isDragging ? 'Thả ảnh vào đây!' : 'Bấm để chụp ảnh hoặc chọn file hóa đơn'"></span>
@@ -1546,13 +1544,6 @@
                             </label>
                         </template>
                     </div>
-
-                    <!-- Fallback Link Input if Cloudinary not configured -->
-                    <template x-if="!systemConfig.CLOUDINARY_CLOUD_NAME">
-                        <div class="mt-2">
-                            <input type="url" x-model="topupReqForm.proofUrl" @input="saveTopupDraft()" placeholder="Hoặc dán link ảnh trực tiếp (http...)" class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2 px-3 text-xs">
-                        </div>
-                    </template>
                 </div>
 
                 <!-- OPTIONAL NOTE FIELD (Feature 4) -->
@@ -1563,8 +1554,9 @@
 
                 <div class="flex justify-end gap-3 pt-2">
                     <button type="button" @click="closeTopupModalWithConfirm()" class="px-5 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
-                    <button type="submit" :disabled="!topupReqForm.proofUrl || !topupReqForm.proofUrl.startsWith('http') || uploadingState.isUploading" 
-                        :class="!topupReqForm.proofUrl || !topupReqForm.proofUrl.startsWith('http') || uploadingState.isUploading ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-lg shadow-primary/20'"
+                    <button type="submit"
+                        :disabled="!currentProofUrl || !currentProofUrl.startsWith('https://') || !topupReqForm.amount || Number(topupReqForm.amount) <= 0 || uploadingState.isUploading" 
+                        :class="!currentProofUrl || !currentProofUrl.startsWith('https://') || !topupReqForm.amount || Number(topupReqForm.amount) <= 0 || uploadingState.isUploading ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-lg shadow-primary/20 font-bold'"
                         class="px-6 py-3 text-xs font-bold rounded-xl transition-all">
                         <span x-text="uploadingState.isUploading ? 'Đang tải ảnh...' : 'Gửi Yêu Cầu Nạp'"></span>
                     </button>
@@ -2334,8 +2326,9 @@
                 allOrders: [],
                 pendingOrders: [],
 
-                // TOP-UP MODAL & UPLOADING STATE (Feature 1, 2, 3, 4)
+                // TOP-UP MODAL & UPLOADING STATE
                 showTopupModal: false,
+                currentProofUrl: '',
                 topupReqForm: { amount: 100000, proofUrl: '', note: '' },
                 activeQuickAmount: 100000,
                 uploadingState: {
@@ -2343,7 +2336,6 @@
                     isSuccess: false,
                     isError: false,
                     errorMessage: '',
-                    previewUrl: '',
                     file: null
                 },
 
@@ -3392,16 +3384,17 @@
 
                 processImageFile(file) {
                     this.uploadingState.file = file;
-                    this.uploadingState.previewUrl = URL.createObjectURL(file);
-                    this.uploadingState.isUploading = false;
+                    this.uploadingState.isUploading = true;
                     this.uploadingState.isSuccess = false;
                     this.uploadingState.isError = false;
+                    this.currentProofUrl = '';
+                    this.topupReqForm.proofUrl = '';
                     this.uploadToCloudinary(file);
-                    this.saveTopupDraft();
                 },
 
                 clearUpload() {
-                    this.uploadingState = { isUploading: false, isSuccess: false, isError: false, errorMessage: '', previewUrl: '', file: null };
+                    this.uploadingState = { isUploading: false, isSuccess: false, isError: false, errorMessage: '', file: null };
+                    this.currentProofUrl = '';
                     this.topupReqForm.proofUrl = '';
                     this.saveTopupDraft();
                 },
@@ -3412,20 +3405,16 @@
                 },
 
                 async uploadToCloudinary(file) {
-                    const cloudName = this.systemConfig.CLOUDINARY_CLOUD_NAME;
-                    const preset = this.systemConfig.CLOUDINARY_UPLOAD_PRESET;
+                    const cloudName = this.systemConfig.CLOUDINARY_CLOUD_NAME || 'dncryptox';
+                    const preset = this.systemConfig.CLOUDINARY_UPLOAD_PRESET || 'goshop_preset';
 
-                    if (!cloudName || !preset) {
-                        this.uploadingState.isUploading = false;
-                        this.uploadingState.isError = true;
-                        this.uploadingState.errorMessage = 'Chưa cấu hình Cloudinary trong SYSTEM_CONFIG. Vui lòng dán link ảnh trực tiếp bên dưới.';
-                        this.showToast('Chưa cấu hình Cloudinary. Vui lòng dán link ảnh trực tiếp!');
-                        return;
-                    }
+                    this.uploadingState.isUploading = true;
+                    this.uploadingState.isError = false;
+                    this.uploadingState.isSuccess = false;
+                    this.currentProofUrl = '';
+                    this.topupReqForm.proofUrl = '';
 
                     try {
-                        this.uploadingState.isUploading = true;
-                        this.uploadingState.isError = false;
                         const formData = new FormData();
                         formData.append('file', file);
                         formData.append('upload_preset', preset);
@@ -3436,21 +3425,23 @@
                         });
                         const data = await res.json();
                         
-                        if (data.secure_url) {
+                        if (data.secure_url && data.secure_url.startsWith('https://')) {
                             this.uploadingState.isUploading = false;
                             this.uploadingState.isSuccess = true;
-                            this.uploadingState.previewUrl = data.secure_url;
+                            this.currentProofUrl = data.secure_url;
                             this.topupReqForm.proofUrl = data.secure_url;
                             this.saveTopupDraft();
-                            this.showToast('✓ Tải ảnh lên Cloudinary thành công!');
+                            this.showToast('✓ Tải ảnh hóa đơn lên Cloudinary thành công!');
                         } else {
-                            throw new Error(data.error?.message || 'Lỗi upload ảnh');
+                            throw new Error(data.error?.message || 'Không nhận được secure_url từ Cloudinary');
                         }
                     } catch(err) {
                         console.error('Cloudinary upload error:', err);
                         this.uploadingState.isUploading = false;
                         this.uploadingState.isError = true;
-                            this.uploadingState.errorMessage = 'Upload thất bại: ' + err.message;
+                        this.uploadingState.errorMessage = 'Upload thất bại: ' + (err.message || 'Vui lòng thử lại');
+                        this.currentProofUrl = '';
+                        this.topupReqForm.proofUrl = '';
                         this.showToast('Upload ảnh thất bại, vui lòng bấm thử lại');
                     }
                 },
@@ -3458,8 +3449,7 @@
                 // LOCALSTORAGE DRAFT HANDLERS
                 closeTopupModalWithConfirm() {
                     const hasData = (this.topupReqForm.amount && Number(this.topupReqForm.amount) !== 100000) || 
-                                    (this.topupReqForm.proofUrl && this.topupReqForm.proofUrl.trim() !== '') || 
-                                    (this.uploadingState.previewUrl && this.uploadingState.previewUrl.trim() !== '') || 
+                                    (this.currentProofUrl && this.currentProofUrl.trim() !== '') || 
                                     (this.topupReqForm.note && this.topupReqForm.note.trim() !== '');
 
                     if (hasData) {
@@ -3472,27 +3462,95 @@
                     this.showTopupModal = false;
                 },
 
+                saveTopupDraft() {
+                    if (!this.currentUser) return;
+                    try {
+                        const draft = {
+                            amount: this.topupReqForm.amount,
+                            proofUrl: this.currentProofUrl || '',
+                            note: this.topupReqForm.note,
+                            timestamp: Date.now()
+                        };
+                        localStorage.setItem('mb_topup_draft_' + this.currentUser.email, JSON.stringify(draft));
+                    } catch(e) {}
+                },
+
+                checkTopupDraft() {
+                    if (!this.currentUser) return;
+                    const raw = localStorage.getItem('mb_topup_draft_' + this.currentUser.email);
+                    if (!raw) return;
+                    try {
+                        const draft = JSON.parse(raw);
+                        const age = Date.now() - (draft.timestamp || 0);
+                        if (age < 2 * 3600 * 1000 && (draft.amount || draft.proofUrl || draft.note)) {
+                            this.topupDraft = draft;
+                            this.showDraftBanner = true;
+                        } else {
+                            localStorage.removeItem('mb_topup_draft_' + this.currentUser.email);
+                        }
+                    } catch(e) {}
+                },
+
+                restoreTopupDraft() {
+                    if (!this.topupDraft) return;
+                    this.topupReqForm.amount = this.topupDraft.amount || 100000;
+                    const url = (this.topupDraft.proofUrl || '').trim();
+                    if (url && url.startsWith('https://')) {
+                        this.currentProofUrl = url;
+                        this.topupReqForm.proofUrl = url;
+                        this.uploadingState.isSuccess = true;
+                    }
+                    this.topupReqForm.note = this.topupDraft.note || '';
+                    this.showDraftBanner = false;
+                    this.showToast('Đã khôi phục bản nháp!');
+                },
+
+                discardTopupDraft() {
+                    if (this.currentUser) {
+                        localStorage.removeItem('mb_topup_draft_' + this.currentUser.email);
+                    }
+                    this.topupDraft = null;
+                    this.showDraftBanner = false;
+                    this.currentProofUrl = '';
+                    this.topupReqForm = { amount: 100000, proofUrl: '', note: '' };
+                    this.uploadingState = { isUploading: false, isSuccess: false, isError: false, errorMessage: '', file: null };
+                },
+
+                // CUSTOMER TOP-UP MODAL OPEN & SUBMIT
+                openTopupModal() {
+                    this.topupReqForm = { amount: 100000, proofUrl: '', note: '' };
+                    this.activeQuickAmount = 100000;
+                    this.currentProofUrl = '';
+                    this.uploadingState = { isUploading: false, isSuccess: false, isError: false, errorMessage: '', file: null };
+                    this.showDraftBanner = false;
+                    this.topupDraft = null;
+                    this.checkTopupDraft();
+                    this.showTopupModal = true;
+                },
+
                 async submitTopupRequest() {
                     if (this.uploadingState.isUploading) {
-                        this.showToast('Ảnh hóa đơn đang được tải lên, vui lòng chờ trong giây lát!');
+                        this.showToast('Ảnh hóa đơn đang được tải lên Cloudinary, vui lòng chờ trong giây lát!');
                         return;
                     }
 
-                    if (this.topupReqForm.amount <= 0) {
-                        this.showToast('Vui lòng nhập số tiền nạp hợp lệ');
+                    const amountNum = Number(this.topupReqForm.amount);
+                    if (!amountNum || amountNum <= 0) {
+                        this.showToast('Vui lòng nhập số tiền nạp hợp lệ (> 0đ)');
                         return;
                     }
 
-                    if (!this.topupReqForm.proofUrl || !this.topupReqForm.proofUrl.startsWith('http')) {
-                        this.showToast('Vui lòng chờ tải ảnh hóa đơn lên hệ thống thành công trước khi gửi!');
+                    const proofUrl = (this.currentProofUrl || this.topupReqForm.proofUrl || '').trim();
+                    if (!proofUrl || !proofUrl.startsWith('https://')) {
+                        this.showToast('Vui lòng chờ tải ảnh hóa đơn lên Cloudinary thành công trước khi gửi!');
                         return;
                     }
 
                     const payload = {
                         action: 'submit_topup_request',
                         email: this.currentUser.email,
-                        amount: this.topupReqForm.amount,
-                        proofUrl: this.topupReqForm.proofUrl,
+                        amount: amountNum,
+                        proofUrl: proofUrl, // ALWAYS Cloudinary secure_url!
                         note: this.topupReqForm.note || ''
                     };
                     console.log('>>> [submitTopupRequest] Payload sending to Apps Script:', payload);
@@ -3520,12 +3578,12 @@
                                 show: true,
                                 reqId: data.reqId,
                                 status: 'pending',
-                                amount: this.topupReqForm.amount,
+                                amount: amountNum,
                                 note: ''
                             };
                             this.fetchData();
                         } else {
-                            throw new Error(data.message || 'Lỗi gửi yêu cầu nạp tiền');
+                            throw new Error(data.message || 'Lỗi từ Google Sheets Apps Script');
                         }
                     } catch (err) {
                         console.error('Submit topup error:', err);
@@ -3533,20 +3591,6 @@
                     } finally {
                         this.isLoading = false;
                     }
-                },
-
-                saveTopupDraft() {
-                    if (!this.currentUser) return;
-                    try {
-                        const draft = {
-                            amount: this.topupReqForm.amount,
-                            proofUrl: this.topupReqForm.proofUrl,
-                            note: this.topupReqForm.note,
-                            previewUrl: this.uploadingState.previewUrl,
-                            timestamp: Date.now()
-                        };
-                        localStorage.setItem('mb_topup_draft_' + this.currentUser.email, JSON.stringify(draft));
-                    } catch(e) {}
                 },
 
                 checkTopupDraft() {

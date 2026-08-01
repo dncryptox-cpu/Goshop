@@ -160,8 +160,11 @@ function submitTopupRequest(email, amount, proofUrl, note) {
   }
 
   var cleanProofUrl = String(proofUrl || '').trim();
-  if (!cleanProofUrl || cleanProofUrl.indexOf('http') !== 0) {
-    return responseJSON({ status: 'error', message: 'Ảnh hóa đơn không hợp lệ. Vui lòng chờ upload ảnh thành công!' });
+  Logger.log('>>> [submitTopupRequest] Validating proofUrl: ' + cleanProofUrl);
+
+  if (!cleanProofUrl || cleanProofUrl.indexOf('https://') !== 0) {
+    Logger.log('>>> [submitTopupRequest] REJECTED: proofUrl is not a valid https Cloudinary URL!');
+    return responseJSON({ status: 'error', message: 'Ảnh hóa đơn không hợp lệ. Vui lòng chờ upload ảnh Cloudinary thành công!' });
   }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -172,7 +175,7 @@ function submitTopupRequest(email, amount, proofUrl, note) {
   }
 
   var reqId = 'TP-' + Date.now();
-  sheet.appendRow([
+  var rowData = [
     reqId,
     String(email).trim().toLowerCase(),
     parseInt(amount) || 0,
@@ -182,9 +185,11 @@ function submitTopupRequest(email, amount, proofUrl, note) {
     '',
     '',
     String(note || '').trim()
-  ]);
+  ];
 
-  Logger.log('>>> [submitTopupRequest] Appended row to MB_TOPUP_REQ successfully with reqId=' + reqId);
+  Logger.log('>>> [submitTopupRequest] Appended row to MB_TOPUP_REQ successfully: ' + JSON.stringify(rowData));
+  sheet.appendRow(rowData);
+
   return responseJSON({ status: 'success', reqId: reqId });
 }
 
