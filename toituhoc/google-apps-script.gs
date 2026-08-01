@@ -923,6 +923,9 @@ function callGeminiAnnotatedImageAPI(base64Data, mimeType, userApiKey) {
 }
 
 function parseGoogleApiError(code, text) {
+  if (code === 429 || (text && (text.indexOf('limit: 0') !== -1 || text.indexOf('Quota exceeded') !== -1))) {
+    return 'Tài khoản Google API Key miễn phí (Free Tier) có hạn mức tạo ảnh AI = 0 (limit: 0). Google AI Studio yêu cầu tài khoản Google Cloud có bật Billing (Pay-as-you-go) cho tính năng sinh ảnh này. (Bạn vẫn có thể trích từ vựng từ ảnh hoàn toàn miễn phí 100%!)';
+  }
   try {
     var json = JSON.parse(text);
     if (json.error) {
