@@ -177,7 +177,11 @@ function setupAuth() {
     const password = document.getElementById('input-login-password').value;
 
     try {
-      const res = await callAppsScriptAPI('login', { email, password });
+      const res = await callAppsScriptAPI('login', {
+        email,
+        password,
+        user_agent: navigator.userAgent
+      });
       if (res.status === 'success' && res.token) {
         state.hasApiKey = !!res.has_api_key;
         onUserAuthenticated(res.token, res.email, res.token_expires_at);
@@ -199,7 +203,8 @@ function setupAuth() {
       const res = await callAppsScriptAPI('register', {
         email,
         password,
-        api_key_gemini: apiKey
+        api_key_gemini: apiKey,
+        user_agent: navigator.userAgent
       });
 
       if (res.status === 'success' && res.token) {
@@ -250,6 +255,8 @@ function onUserAuthenticated(token, email, tokenExpiresAt) {
 }
 
 function logout() {
+  const currentToken = state.token;
+
   state.token = '';
   state.userEmail = '';
   state.tokenExpiresAt = '';
@@ -264,6 +271,13 @@ function logout() {
 
   document.getElementById('bottom-navigation').style.display = 'none';
   showView('view-auth');
+
+  // Gửi thông báo đến Server xóa session của riêng thiết bị này
+  if (currentToken) {
+    callAppsScriptAPI('logout', { token: currentToken }).catch(err => {
+      console.log('Session logout notified:', err.message);
+    });
+  }
 }
 
 /* ==========================================

@@ -141,6 +141,10 @@ function doPost(e) {
       return handleLogin(postData);
     }
 
+    if (action === 'logout') {
+      return handleLogout(postData);
+    }
+
     // Authenticated Actions
     var token = postData.token;
     var user = getUserByToken(token);
@@ -171,8 +175,52 @@ function doPost(e) {
 }
 
 // ==========================================
-// THAO TÁC AUTH, MẬT KHẨU & TOKEN
+// THAO TÁC AUTH, MẬT KHẨU & MULTI-SESSION
 // ==========================================
+
+function createSession(ss, email, userAgent) {
+  var tokenObj = generateTokenWithExpiry(email);
+  var sessionsSheet = ss.getSheetByName('sessions');
+  if (!sessionsSheet) {
+    sessionsSheet = ss.insertSheet('sessions');
+    sessionsSheet.appendRow(['token', 'user_email', 'ngày_tạo', 'ngày_hết_hạn', 'thiết_bị']);
+  }
+
+  var createdAtStr = new Date().toISOString();
+  var deviceStr = userAgent || 'Web App Browser';
+
+  // 1. Dọn dẹp sơ bộ các session đã quá hạn (đảm bảo tab sessions không bị phình to)
+  cleanupExpiredSessions(sessionsSheet);
+
+  // 2. Tạo dòng phiên đăng nhập mới cho thiết bị này
+  sessionsSheet.appendRow([
+    tokenObj.token,
+    email,
+    createdAtStr,
+    tokenObj.expires_at,
+    deviceStr
+  ]);
+
+  return tokenObj;
+}
+
+function cleanupExpiredSessions(sessionsSheet) {
+  try {
+    var data = sessionsSheet.getDataRange().getValues();
+    var nowMs = new Date().getTime();
+    for (var i = data.length - 1; i >= 1; i--) {
+      var expiresAtVal = data[i][3];
+      if (expiresAtVal) {
+        var expiryMs = (expiresAtVal instanceof Date) ? expiresAtVal.getTime() : new Date(expiresAtVal).getTime();
+        if (!isNaN(expiryMs) && expiryMs > 0 && nowMs > expiryMs) {
+          sessionsSheet.deleteRow(i + 1);
+        }
+      }
+    }
+  } catch (e) {
+    Logger.log("Bỏ qua cleanup sessions: " + e.toString());
+  }
+}
 
 function handleRegister(data) {
   var email = (data.email || '').trim().toLowerCase();
@@ -200,7 +248,7 @@ function handleRegister(data) {
   var userId = 'u_' + new Date().getTime();
   var passwordHash = hashPassword(password);
   var todayStr = getTodayDateString();
-  var tokenObj = generateTokenWithExpiry(email);
+  var tokenObj = createSession(ss, email, data.user_agent);
 
   // Ghi vào Sheet users: id | email | password_hash | api_key_gemini | ngày_đăng_ký | role | current_token | token_expires_at
   usersSheet.appendRow([
@@ -241,14 +289,16 @@ function handleLogin(data) {
     if (usersData[i][1] === email) {
       var storedHash = usersData[i][2];
       if (storedHash === passwordHash) {
-        var tokenObj = generateTokenWithExpiry(email);
+        var tokenObj = createSession(ss, email, data.user_agent);
+        
+        // Cập nhật lại token mới nhất vào row user để tiện tham chiếu
         usersSheet.getRange(i + 1, 7).setValue(tokenObj.token);
         usersSheet.getRange(i + 1, 8).setValue(tokenObj.expires_at);
         
         var apiKey = usersData[i][3] || '';
         return respondJSON({
           status: 'success',
-          message: 'Đăng nhập thành công! (Phiên đăng nhập có hiệu lực 7 ngày)',
+          message: 'Đăng nhập thành công! (Phiên đăng nhập hỗ trợ đồng thời nhiều thiết bị)',
           token: tokenObj.token,
           token_expires_at: tokenObj.expires_at,
           email: email,
@@ -261,6 +311,27 @@ function handleLogin(data) {
   }
 
   return respondJSON({ status: 'error', message: 'Tài khoản không tồn tại trên hệ thống.' });
+}
+
+function handleLogout(data) {
+  var token = (data.token || '').trim();
+  if (!token) {
+    return respondJSON({ status: 'success', message: 'Đã đăng xuất.' });
+  }
+
+  var ss = getOrCreateSpreadsheet();
+  var sessionsSheet = ss.getSheetByName('sessions');
+  if (sessionsSheet) {
+    var sessionsData = sessionsSheet.getDataRange().getValues();
+    for (var i = sessionsData.length - 1; i >= 1; i--) {
+      if (String(sessionsData[i][0]).trim() === token) {
+        sessionsSheet.deleteRow(i + 1);
+        break;
+      }
+    }
+  }
+
+  return respondJSON({ status: 'success', message: 'Đã hủy phiên đăng nhập thiết bị này thành công.' });
 }
 
 function handleUpdateApiKey(userEmail, newApiKey) {
@@ -284,32 +355,66 @@ function handleUpdateApiKey(userEmail, newApiKey) {
 }
 
 function getUserByToken(token) {
-  if (!token || typeof token !== 'string') return null;
+  if (!token || typeof token !== 'string' || !token.trim()) return null;
 
+  var cleanToken = token.trim();
   var ss = getOrCreateSpreadsheet();
-  var usersSheet = ss.getSheetByName('users');
-  var usersData = usersSheet.getDataRange().getValues();
   var nowMs = new Date().getTime();
 
-  for (var i = 1; i < usersData.length; i++) {
-    var row = usersData[i];
-    var storedToken = row[6];
-    if (storedToken && String(storedToken).trim() === token.trim()) {
-      var expiresAtVal = row[7];
-      if (expiresAtVal) {
-        var expiryMs = 0;
-        if (expiresAtVal instanceof Date) {
-          expiryMs = expiresAtVal.getTime();
-        } else {
-          expiryMs = new Date(expiresAtVal).getTime();
-        }
+  // 1. Kiểm tra trong tab `sessions` (Mô hình Multi-Session)
+  var sessionsSheet = ss.getSheetByName('sessions');
+  var matchedEmail = null;
+  var tokenExpiresAt = null;
 
-        if (!isNaN(expiryMs) && expiryMs > 0 && nowMs > expiryMs) {
-          Logger.log("⚠️ Token đã hết hạn 7 ngày cho user: " + row[1] + " (Hết hạn lúc: " + expiresAtVal + ")");
-          return null; // Từ chối request vì token đã quá 7 ngày!
+  if (sessionsSheet) {
+    var sessionsData = sessionsSheet.getDataRange().getValues();
+    for (var s = 1; s < sessionsData.length; s++) {
+      var sRow = sessionsData[s];
+      if (sRow[0] && String(sRow[0]).trim() === cleanToken) {
+        var expiresAtVal = sRow[3];
+        if (expiresAtVal) {
+          var expiryMs = (expiresAtVal instanceof Date) ? expiresAtVal.getTime() : new Date(expiresAtVal).getTime();
+          if (!isNaN(expiryMs) && expiryMs > 0 && nowMs > expiryMs) {
+            Logger.log("⚠️ Token phiên đăng nhập đã hết hạn 7 ngày cho user: " + sRow[1]);
+            return null; // Token expired!
+          }
         }
+        matchedEmail = sRow[1];
+        tokenExpiresAt = sRow[3];
+        break;
       }
+    }
+  }
 
+  // 2. Fallback đối soát ngược với tab `users` nếu là token cũ
+  if (!matchedEmail) {
+    var usersSheet = ss.getSheetByName('users');
+    var usersData = usersSheet.getDataRange().getValues();
+    for (var u = 1; u < usersData.length; u++) {
+      var uRow = usersData[u];
+      if (uRow[6] && String(uRow[6]).trim() === cleanToken) {
+        var uExpiresVal = uRow[7];
+        if (uExpiresVal) {
+          var uExpiryMs = (uExpiresVal instanceof Date) ? uExpiresVal.getTime() : new Date(uExpiresVal).getTime();
+          if (!isNaN(uExpiryMs) && uExpiryMs > 0 && nowMs > uExpiryMs) {
+            return null;
+          }
+        }
+        matchedEmail = uRow[1];
+        tokenExpiresAt = uRow[7];
+        break;
+      }
+    }
+  }
+
+  if (!matchedEmail) return null;
+
+  // Lấy chi tiết thông tin người dùng từ tab `users`
+  var usersSheet2 = ss.getSheetByName('users');
+  var usersData2 = usersSheet2.getDataRange().getValues();
+  for (var i = 1; i < usersData2.length; i++) {
+    var row = usersData2[i];
+    if (row[1] && String(row[1]).trim().toLowerCase() === String(matchedEmail).trim().toLowerCase()) {
       return {
         id: row[0],
         email: row[1],
@@ -317,11 +422,12 @@ function getUserByToken(token) {
         api_key_gemini: row[3],
         ngay_dang_ky: row[4],
         role: row[5],
-        token: row[6],
-        token_expires_at: row[7]
+        token: cleanToken,
+        token_expires_at: tokenExpiresAt
       };
     }
   }
+
   return null;
 }
 
@@ -1127,7 +1233,7 @@ function getOrCreateSpreadsheet() {
     logSheet.appendRow(['id', 'user_email', 'vocab_id', 'ngày_ôn', 'kết_quả']);
   }
 
-  // 4. Tab notes (MỚI)
+  // 4. Tab notes
   var notesSheet = ss.getSheetByName('notes');
   if (!notesSheet) {
     notesSheet = ss.insertSheet('notes');
@@ -1136,6 +1242,13 @@ function getOrCreateSpreadsheet() {
       'bản_dịch_tiếng_anh', 'giải_thích_cách_dùng', 
       'cách_nói_khác', 'từ_vựng_liên_quan'
     ]);
+  }
+
+  // 5. Tab sessions (MỚI - Quản lý Multi-Session nhiều thiết bị đồng thời)
+  var sessionsSheet = ss.getSheetByName('sessions');
+  if (!sessionsSheet) {
+    sessionsSheet = ss.insertSheet('sessions');
+    sessionsSheet.appendRow(['token', 'user_email', 'ngày_tạo', 'ngày_hết_hạn', 'thiết_bị']);
   }
 
   return ss;
