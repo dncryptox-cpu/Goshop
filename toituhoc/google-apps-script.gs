@@ -424,7 +424,8 @@ function handleProcessNote(user, data) {
         vItem.grammar || '',
         2.5, // ease_factor
         1,   // interval
-        tomorrowStr // next_review_date
+        tomorrowStr, // next_review_date
+        vItem.phien_am || ''
       ]);
       addedVocabCount++;
     }
@@ -459,6 +460,7 @@ function callGeminiNoteAPIWithUserKey(vietnameseText, userApiKey) {
     "  \"vocabulary\": [\n" +
     "    {\n" +
     "      \"word\": \"từ hoặc cụm từ tiếng Anh đáng học trong câu\",\n" +
+    "      \"phien_am\": \"phiên âm quốc tế IPA (ví dụ: /ɪɡˈzæmpəl/)\",\n" +
     "      \"pos\": \"loại từ (Noun, Verb, Adjective, Phrase, Idiom)\",\n" +
     "      \"meaning\": \"nghĩa tiếng Việt ngắn gọn\",\n" +
     "      \"example\": \"câu ví dụ tiếng Anh tự nhiên chứa từ đó\",\n" +
@@ -594,7 +596,8 @@ function handleProcessImage(user, data) {
       item.grammar || '',
       2.5,
       1,
-      tomorrowDateStr
+      tomorrowDateStr,
+      item.phien_am || ''
     ];
 
     vocabSheet.appendRow(row);
@@ -605,6 +608,7 @@ function handleProcessImage(user, data) {
       ngay_them: todayDateStr,
       link_anh: imageUrl,
       tu_cum: item.word,
+      phien_am: item.phien_am || '',
       loai_tu: item.pos,
       nghia: item.meaning,
       cau_vi_du: item.example,
@@ -658,6 +662,7 @@ function callGeminiVisionAPIWithUserKey(base64Data, mimeType, userApiKey) {
     "[\n" +
     "  {\n" +
     "    \"word\": \"từ hoặc cụm từ tiếng Anh\",\n" +
+    "    \"phien_am\": \"phiên âm quốc tế IPA (ví dụ: /ɪɡˈzæmpəl/)\",\n" +
     "    \"pos\": \"loại từ (ví dụ: Noun, Verb, Adjective, Phrase, Idiom, Grammar)\",\n" +
     "    \"meaning\": \"dịch nghĩa tiếng Việt ngắn gọn, rõ ràng\",\n" +
     "    \"example\": \"câu ví dụ tiếng Anh tự nhiên chứa từ/cụm từ đó\",\n" +
@@ -849,7 +854,8 @@ function rowToVocabObject(row) {
     ghi_chu_ngu_phap: row[8],
     ease_factor: row[9],
     interval: row[10],
-    next_review_date: formatDateString(row[11])
+    next_review_date: formatDateString(row[11]),
+    phien_am: row[12] || ''
   };
 }
 
@@ -968,7 +974,7 @@ function getOrCreateSpreadsheet() {
     vocabSheet.appendRow([
       'id', 'user_email', 'ngày_thêm', 'link_ảnh', 'từ/cụm', 
       'loại_từ', 'nghĩa', 'câu_ví_dụ', 'ghi_chú_ngữ_pháp', 
-      'ease_factor', 'interval', 'next_review_date'
+      'ease_factor', 'interval', 'next_review_date', 'phien_am'
     ]);
   }
 

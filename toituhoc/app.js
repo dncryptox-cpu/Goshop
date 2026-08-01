@@ -444,12 +444,13 @@ function renderNoteResult(data) {
       el.className = 'vocab-item';
       el.innerHTML = `
         <div class="vocab-main">
-          <div style="display:flex; align-items:center; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <span class="vocab-word">${escapeHTML(item.word)}</span>
+            ${item.phien_am ? `<span style="color:#a5b4fc; font-size:0.85rem; font-style:italic; font-family:monospace;">${escapeHTML(item.phien_am)}</span>` : ''}
             <span class="pos-tag">${escapeHTML(item.pos || 'Phrase')}</span>
           </div>
           <div class="vocab-meaning">${escapeHTML(item.meaning)}</div>
-          <div style="font-size:0.8rem; color:var(--text-sub); font-style:italic;">"${escapeHTML(item.example || '')}"</div>
+          ${item.example ? `<div style="font-size:0.8rem; color:var(--text-sub); font-style:italic;">"${escapeHTML(item.example)}"</div>` : ''}
         </div>
         <button class="tts-btn" onclick="speakText('${escapeQuotes(item.word)}')">🔊</button>
       `;
@@ -693,8 +694,9 @@ function renderAIResults(items) {
     el.className = 'vocab-item';
     el.innerHTML = `
       <div class="vocab-main">
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="vocab-word">${escapeHTML(item.tu_cum)}</span>
+          ${item.phien_am ? `<span style="color:#a5b4fc; font-size:0.88rem; font-style:italic; font-family:monospace;">${escapeHTML(item.phien_am)}</span>` : ''}
           <span class="pos-tag">${escapeHTML(item.loai_tu)}</span>
         </div>
         <div class="vocab-meaning">${escapeHTML(item.nghia)}</div>
@@ -792,6 +794,17 @@ function renderCurrentCard() {
   document.getElementById('card-pos').innerText = item.loai_tu || 'NOUN';
   document.getElementById('card-word').innerText = item.tu_cum || '';
 
+  const cardIpa = document.getElementById('card-ipa');
+  if (cardIpa) {
+    if (item.phien_am && item.phien_am.trim()) {
+      cardIpa.innerText = item.phien_am;
+      cardIpa.style.display = 'block';
+    } else {
+      cardIpa.innerText = '';
+      cardIpa.style.display = 'none';
+    }
+  }
+
   document.getElementById('card-pos-back').innerText = item.loai_tu || 'NOUN';
   document.getElementById('card-meaning').innerText = item.nghia || '';
   document.getElementById('card-example').innerText = `"${item.cau_vi_du || ''}"`;
@@ -819,28 +832,34 @@ async function submitCardRating(rating) {
   const currentItem = state.dueVocabList[state.currentReviewIndex];
   if (!currentItem) return;
 
-  state.currentReviewIndex++;
-  renderCurrentCard();
-
   try {
-    await callAppsScriptAPI('submitReview', {
+    const res = await callAppsScriptAPI('reviewVocab', {
       vocab_id: currentItem.id,
-      rating: rating
+      rating: parseInt(rating)
     });
+
+    if (res.status === 'success') {
+      state.currentReviewIndex++;
+      renderCurrentCard();
+      fetchDashboardStats();
+    } else {
+      alert(res.message || 'Lỗi lưu kết quả ôn tập.');
+    }
   } catch (err) {
-    console.error('Failed to submit rating:', err);
+    alert('Không thể lưu kết quả ôn tập: ' + err.message);
   }
 }
 
 /* ==========================================
-   8. KHO TỪ VỰNG (ALL VOCAB LIST)
+   8. VOCABULARY LIBRARY (KHO TỪ)
    ========================================== */
 function setupVocabList() {
-  const searchInput = document.getElementById('input-vocab-search');
-  searchInput.addEventListener('input', (e) => {
-    const query = e.target.value.toLowerCase().trim();
-    filterAndRenderVocab(query);
-  });
+  const searchInput = document.getElementById('input-search-vocab');
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      filterAndRenderVocab(e.target.value.trim().toLowerCase());
+    });
+  }
 }
 
 async function loadAllVocab() {
@@ -874,8 +893,9 @@ function filterAndRenderVocab(query) {
     el.className = 'vocab-item';
     el.innerHTML = `
       <div class="vocab-main">
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <span class="vocab-word">${escapeHTML(item.tu_cum)}</span>
+          ${item.phien_am ? `<span style="color:#a5b4fc; font-size:0.85rem; font-style:italic; font-family:monospace;">${escapeHTML(item.phien_am)}</span>` : ''}
           <span class="pos-tag">${escapeHTML(item.loai_tu)}</span>
         </div>
         <div class="vocab-meaning">${escapeHTML(item.nghia)}</div>
