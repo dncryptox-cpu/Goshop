@@ -2762,6 +2762,42 @@
                     return this.allOrders.filter(o => String(o.inventoryId) === String(invId)).length;
                 },
 
+                async init() {
+                    // Đọc session từ localStorage ngay lập tức khi khởi tạo app
+                    const saved = localStorage.getItem('mb_user') || localStorage.getItem('members_crm_user');
+                    if (saved) {
+                        try {
+                            const user = JSON.parse(saved);
+                            if (user && user.email) {
+                                this.currentUser = user;
+                                this.isLoggedIn = true;
+                                this.currentTab = user.role === 'admin' ? 'admin_topup_approval' : 'cust_products';
+                            }
+                        } catch(e) {
+                            console.error('Lỗi khi khôi phục session', e);
+                        }
+                    }
+
+                    await this.fetchSystemConfig();
+                    await this.fetchData();
+
+                    // Polling for topup status (Feature 5) - every 30s
+                    setInterval(() => {
+                        if (this.isLoggedIn && this.currentUser?.role !== 'admin') {
+                            this.pollTopupStatus();
+                        }
+                    }, 30000);
+
+                    // Polling for admin pending count (Feature 7) - every 60s
+                    setInterval(() => {
+                        if (this.isLoggedIn && this.currentUser?.role === 'admin') {
+                            this.fetchData();
+                        }
+                    }, 60000);
+
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
                 onBulkProdChange() {
                     if (!this.bulkInvForm.productId) return;
                     const p = this.products.find(prod => String(prod.id) === String(this.bulkInvForm.productId));
@@ -3178,6 +3214,7 @@
                     this.isLoggedIn = true;
                     this.loginError = '';
                     this.currentTab = user.role === 'admin' ? 'admin_topup_approval' : 'cust_products';
+                    localStorage.setItem('mb_user', JSON.stringify(user));
                     localStorage.setItem('members_crm_user', JSON.stringify(user));
                     this.fetchData();
                     this.$nextTick(() => lucide.createIcons());
@@ -3187,6 +3224,7 @@
                     this.isLoggedIn = false;
                     this.currentUser = null;
                     this.loginForm = { email: '', password: '' };
+                    localStorage.removeItem('mb_user');
                     localStorage.removeItem('members_crm_user');
                 },
 
