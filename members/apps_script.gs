@@ -1,6 +1,6 @@
 /**
  * GO SHOP MEMBER SYSTEM - GOOGLE APPS SCRIPT BACKEND
- * Sheet target: MB_INVENTORY, MB_PRODUCTS, MB_ORDERS, MB_WALLET_LOG, MB_USERS, etc.
+ * Sheet target: MB_INVENTORY, MB_PRODUCTS, MB_ORDERS, MB_WALLET_LOG, MB_USERS, MB_TOPUP_REQ, etc.
  */
 
 function doPost(e) {
@@ -64,6 +64,21 @@ function doPost(e) {
     // --- 10. ACTION: FIX INVENTORY STATUS ---
     if (action === 'fix_inventory_status') {
       return fixInventoryStatus();
+    }
+
+    // --- 11. ACTION: SUBMIT TOPUP REQUEST ---
+    if (action === 'submit_topup_request') {
+      return submitTopupRequest(data.email, data.amount, data.proofUrl, data.note);
+    }
+
+    // --- 12. ACTION: TOPUP WALLET (ADMIN APPROVE) ---
+    if (action === 'topup_wallet') {
+      return topupWallet(data.email, data.amount, data.refId, data.note, data.reviewedBy);
+    }
+
+    // --- 13. ACTION: REJECT TOPUP REQUEST (ADMIN REJECT) ---
+    if (action === 'reject_topup_request') {
+      return rejectTopupRequest(data.reqId, data.note, data.reviewedBy);
     }
 
     return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Action không hợp lệ: ' + action })).setMimeType(ContentService.MimeType.JSON);
@@ -135,6 +150,99 @@ function saveProduct(productData) {
   }
 
   return responseJSON({ status: 'success', id: prodId });
+}
+
+function submitTopupRequest(email, amount, proofUrl, note) {
+  Logger.log('>>> [submitTopupRequest] Received: email=' + email + ', amount=' + amount + ', proofUrl=' + proofUrl + ', note=' + note);
+
+  if (!email || !amount || parseInt(amount) <= 0) {
+    return responseJSON({ status: 'error', message: 'Dữ liệu số tiền nạp không hợp lệ' });
+  }
+
+  var cleanProofUrl = String(proofUrl || '').trim();
+  if (!cleanProofUrl || cleanProofUrl.indexOf('http') !== 0) {
+    return responseJSON({ status: 'error', message: 'Ảnh hóa đơn không hợp lệ. Vui lòng chờ upload ảnh thành công!' });
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('MB_TOPUP_REQ');
+  if (!sheet) {
+    sheet = ss.insertSheet('MB_TOPUP_REQ');
+    sheet.appendRow(["id", "email", "amount", "proof_url", "status", "requested_at", "reviewed_at", "reviewed_by", "note"]);
+  }
+
+  var reqId = 'TP-' + Date.now();
+  sheet.appendRow([
+    reqId,
+    String(email).trim().toLowerCase(),
+    parseInt(amount) || 0,
+    cleanProofUrl,
+    'pending',
+    new Date().toISOString(),
+    '',
+    '',
+    String(note || '').trim()
+  ]);
+
+  Logger.log('>>> [submitTopupRequest] Appended row to MB_TOPUP_REQ successfully with reqId=' + reqId);
+  return responseJSON({ status: 'success', reqId: reqId });
+}
+
+function topupWallet(email, amount, refId, note, reviewedBy) {
+  if (!email || !amount || parseInt(amount) <= 0) {
+    return responseJSON({ status: 'error', message: 'Dữ liệu cộng tiền không hợp lệ' });
+  }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var logSheet = ss.getSheetByName('MB_WALLET_LOG');
+  if (!logSheet) {
+    logSheet = ss.insertSheet('MB_WALLET_LOG');
+    logSheet.appendRow(["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"]);
+  }
+  var cleanEmail = String(email).trim().toLowerCase();
+  var logData = logSheet.getDataRange().getValues();
+  var currentBalance = 0;
+  for (var j = 1; j < logData.length; j++) {
+    if (String(logData[j][1]).trim().toLowerCase() === cleanEmail) {
+      currentBalance += (parseInt(logData[j][3]) || 0);
+    }
+  }
+  var newBalance = currentBalance + parseInt(amount);
+  var logId = 'LOG-' + Date.now();
+  logSheet.appendRow([logId, cleanEmail, 'topup', parseInt(amount), newBalance, refId || '', note || 'Cộng tiền vào ví', new Date().toISOString()]);
+
+  if (refId) {
+    var tpSheet = ss.getSheetByName('MB_TOPUP_REQ');
+    if (tpSheet) {
+      var tpData = tpSheet.getDataRange().getValues();
+      for (var k = 1; k < tpData.length; k++) {
+        if (String(tpData[k][0]) === String(refId)) {
+          tpSheet.getRange(k + 1, 5).setValue('approved');
+          tpSheet.getRange(k + 1, 7).setValue(new Date().toISOString());
+          tpSheet.getRange(k + 1, 8).setValue(reviewedBy || 'admin');
+          break;
+        }
+      }
+    }
+  }
+  return responseJSON({ status: 'success', newBalance: newBalance });
+}
+
+function rejectTopupRequest(reqId, note, reviewedBy) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var tpSheet = ss.getSheetByName('MB_TOPUP_REQ');
+  if (tpSheet) {
+    var data = tpSheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(reqId)) {
+        tpSheet.getRange(i + 1, 5).setValue('rejected');
+        tpSheet.getRange(i + 1, 7).setValue(new Date().toISOString());
+        tpSheet.getRange(i + 1, 8).setValue(reviewedBy || 'admin');
+        tpSheet.getRange(i + 1, 9).setValue(note || 'Từ chối nạp tiền');
+        return responseJSON({ status: 'success' });
+      }
+    }
+  }
+  return responseJSON({ status: 'error', message: 'Không tìm thấy yêu cầu nạp tiền' });
 }
 
 function purchaseProduct(email, productId) {
@@ -571,7 +679,6 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
     invSheet = ss.insertSheet("MB_INVENTORY");
     invSheet.appendRow(headers);
   } else {
-    // Đảm bảo hàng 1 đủ tiêu đề
     var curH = invSheet.getRange(1, 1, 1, 9).getValues()[0];
     var needUpdate = false;
     for (var h = 0; h < headers.length; h++) {

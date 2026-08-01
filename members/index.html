@@ -1438,10 +1438,10 @@
 
     <!-- CUSTOMER TOP-UP REQUEST MODAL WITH CLOUDINARY & QUICK PILLS (Feature 1, 2, 3, 4) -->
     <div x-show="showTopupModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" x-cloak>
-        <div @click.away="showTopupModal = false" class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 sm:p-8 text-left">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 sm:p-8 text-left">
             <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
                 <h3 class="text-xl font-bold text-gray-900">Gửi Yêu Cầu Nạp Tiền Vào Ví</h3>
-                <button @click="showTopupModal = false" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+                <button type="button" @click="closeTopupModalWithConfirm()" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
 
             <!-- DRAFT RESTORE BANNER (Vấn đề 2) -->
@@ -1562,11 +1562,11 @@
                 </div>
 
                 <div class="flex justify-end gap-3 pt-2">
-                    <button type="button" @click="showTopupModal = false" class="px-5 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
-                    <button type="submit" :disabled="!topupReqForm.proofUrl || uploadingState.isUploading" 
-                        :class="!topupReqForm.proofUrl || uploadingState.isUploading ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-lg shadow-primary/20'"
+                    <button type="button" @click="closeTopupModalWithConfirm()" class="px-5 py-2.5 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-xl">Hủy</button>
+                    <button type="submit" :disabled="!topupReqForm.proofUrl || !topupReqForm.proofUrl.startsWith('http') || uploadingState.isUploading" 
+                        :class="!topupReqForm.proofUrl || !topupReqForm.proofUrl.startsWith('http') || uploadingState.isUploading ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-primary hover:bg-primary-dark text-white shadow-lg shadow-primary/20'"
                         class="px-6 py-3 text-xs font-bold rounded-xl transition-all">
-                        Gửi Yêu Cầu Nạp
+                        <span x-text="uploadingState.isUploading ? 'Đang tải ảnh...' : 'Gửi Yêu Cầu Nạp'"></span>
                     </button>
                 </div>
             </form>
@@ -1699,7 +1699,7 @@
         </div>
     </div>
 
-    <!-- PURCHASE SUCCESSFUL MODAL -->
+    <!-- PURCHASE SUCCESS MODAL -->
     <div x-show="showPurchaseSuccessModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" x-cloak>
         <div @click.away="showPurchaseSuccessModal = false" class="bg-white rounded-3xl shadow-2xl w-full max-w-lg p-6 sm:p-8 text-left border border-emerald-100">
             <div class="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/10">
@@ -2258,9 +2258,11 @@
                 </div>
             </form>
         </div>
+    </div>
+
     <!-- Reset Password Modal (Admin) -->
     <div x-show="resetPasswordModal.show" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm" x-cloak>
-        <div @click.away="resetPasswordModal.show = false" class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 text-left">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 text-left">
             <div class="flex items-center justify-between pb-3 mb-4 border-b border-gray-100">
                 <h3 class="text-base font-bold text-gray-900">Reset Mật Khẩu Thành Viên</h3>
                 <button @click="resetPasswordModal.show = false" class="text-gray-400 hover:text-gray-600"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -3414,15 +3416,16 @@
                     const preset = this.systemConfig.CLOUDINARY_UPLOAD_PRESET;
 
                     if (!cloudName || !preset) {
-                        this.topupReqForm.proofUrl = this.uploadingState.previewUrl;
-                        this.uploadingState.isSuccess = true;
-                        this.saveTopupDraft();
-                        this.showToast('Đã nhận ảnh hóa đơn!');
+                        this.uploadingState.isUploading = false;
+                        this.uploadingState.isError = true;
+                        this.uploadingState.errorMessage = 'Chưa cấu hình Cloudinary trong SYSTEM_CONFIG. Vui lòng dán link ảnh trực tiếp bên dưới.';
+                        this.showToast('Chưa cấu hình Cloudinary. Vui lòng dán link ảnh trực tiếp!');
                         return;
                     }
 
                     try {
                         this.uploadingState.isUploading = true;
+                        this.uploadingState.isError = false;
                         const formData = new FormData();
                         formData.append('file', file);
                         formData.append('upload_preset', preset);
@@ -3447,12 +3450,91 @@
                         console.error('Cloudinary upload error:', err);
                         this.uploadingState.isUploading = false;
                         this.uploadingState.isError = true;
-                        this.uploadingState.errorMessage = 'Upload thất bại, thử lại';
-                        this.showToast('Upload ảnh thất bại, bấm thử lại');
+                            this.uploadingState.errorMessage = 'Upload thất bại: ' + err.message;
+                        this.showToast('Upload ảnh thất bại, vui lòng bấm thử lại');
                     }
                 },
 
-                // LOCALSTORAGE DRAFT HANDLERS (Vấn đề 2)
+                // LOCALSTORAGE DRAFT HANDLERS
+                closeTopupModalWithConfirm() {
+                    const hasData = (this.topupReqForm.amount && Number(this.topupReqForm.amount) !== 100000) || 
+                                    (this.topupReqForm.proofUrl && this.topupReqForm.proofUrl.trim() !== '') || 
+                                    (this.uploadingState.previewUrl && this.uploadingState.previewUrl.trim() !== '') || 
+                                    (this.topupReqForm.note && this.topupReqForm.note.trim() !== '');
+
+                    if (hasData) {
+                        this.saveTopupDraft();
+                        const confirmClose = confirm("Bạn có chắc muốn hủy? Thông tin đã nhập sẽ bị mất.");
+                        if (!confirmClose) {
+                            return; // User clicked "Tiếp tục nhập"
+                        }
+                    }
+                    this.showTopupModal = false;
+                },
+
+                async submitTopupRequest() {
+                    if (this.uploadingState.isUploading) {
+                        this.showToast('Ảnh hóa đơn đang được tải lên, vui lòng chờ trong giây lát!');
+                        return;
+                    }
+
+                    if (this.topupReqForm.amount <= 0) {
+                        this.showToast('Vui lòng nhập số tiền nạp hợp lệ');
+                        return;
+                    }
+
+                    if (!this.topupReqForm.proofUrl || !this.topupReqForm.proofUrl.startsWith('http')) {
+                        this.showToast('Vui lòng chờ tải ảnh hóa đơn lên hệ thống thành công trước khi gửi!');
+                        return;
+                    }
+
+                    const payload = {
+                        action: 'submit_topup_request',
+                        email: this.currentUser.email,
+                        amount: this.topupReqForm.amount,
+                        proofUrl: this.topupReqForm.proofUrl,
+                        note: this.topupReqForm.note || ''
+                    };
+                    console.log('>>> [submitTopupRequest] Payload sending to Apps Script:', payload);
+
+                    try {
+                        this.isLoading = true;
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await res.json();
+                        console.log('>>> [submitTopupRequest] Response from Apps Script:', data);
+
+                        if (data.status === 'success') {
+                            this.showToast('✓ Đã gửi yêu cầu nạp tiền thành công!');
+                            this.showTopupModal = false;
+
+                            // Clear draft after successful submit
+                            if (this.currentUser) {
+                                localStorage.removeItem('mb_topup_draft_' + this.currentUser.email);
+                            }
+
+                            // Show sticky banner
+                            this.activeTopupBanner = {
+                                show: true,
+                                reqId: data.reqId,
+                                status: 'pending',
+                                amount: this.topupReqForm.amount,
+                                note: ''
+                            };
+                            this.fetchData();
+                        } else {
+                            throw new Error(data.message || 'Lỗi gửi yêu cầu nạp tiền');
+                        }
+                    } catch (err) {
+                        console.error('Submit topup error:', err);
+                        this.showToast('Lỗi: ' + (err.message || 'Có lỗi xảy ra khi gửi yêu cầu nạp tiền'));
+                    } finally {
+                        this.isLoading = false;
+                    }
+                },
+
                 saveTopupDraft() {
                     if (!this.currentUser) return;
                     try {
