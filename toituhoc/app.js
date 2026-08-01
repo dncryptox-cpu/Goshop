@@ -44,7 +44,17 @@ function initApp() {
 
   // Check login state via Token
   if (state.token && state.userEmail) {
-    onUserAuthenticated(state.token, state.userEmail);
+    const expiresAt = localStorage.getItem('toituhoc_token_expires_at');
+    if (expiresAt) {
+      const expiryMs = new Date(expiresAt).getTime();
+      if (!isNaN(expiryMs) && expiryMs > 0 && Date.now() > expiryMs) {
+        console.log("Local token expired after 7 days:", expiresAt);
+        logout();
+        alert('Phiên đăng nhập của bạn đã hết hạn (sau 7 ngày kể từ lúc đăng nhập). Vui lòng đăng nhập lại!');
+        return;
+      }
+    }
+    onUserAuthenticated(state.token, state.userEmail, expiresAt);
   } else {
     showView('view-auth');
     document.getElementById('bottom-navigation').style.display = 'none';
@@ -87,43 +97,52 @@ function showView(viewId) {
   const views = document.querySelectorAll('.view-section');
   views.forEach(v => v.classList.remove('active'));
 
-  const activeView = document.getElementById(viewId);
-  if (activeView) {
-    activeView.classList.add('active');
-  }
+  const target = document.getElementById(viewId);
+  if (target) {
+    target.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
-  if (viewId === 'view-dashboard') {
-    fetchDashboardStats();
-  } else if (viewId === 'view-notes') {
-    loadUserNotes();
-  } else if (viewId === 'view-review') {
-    loadReviewQueue();
-  } else if (viewId === 'view-vocab') {
-    loadAllVocab();
-  } else if (viewId === 'view-settings') {
-    loadUserSettings();
+    if (viewId === 'view-dashboard') {
+      fetchDashboardStats();
+    } else if (viewId === 'view-review') {
+      loadReviewQueue();
+    } else if (viewId === 'view-vocab') {
+      loadAllVocab();
+    } else if (viewId === 'view-notes') {
+      fetchUserNotes();
+    } else if (viewId === 'view-settings') {
+      checkUserProfile();
+    }
   }
 }
 
-function updateNavActive(targetView) {
-  const items = document.querySelectorAll('.nav-item');
-  items.forEach(n => {
-    if (n.getAttribute('data-target') === targetView) {
-      n.classList.add('active');
+function updateNavActive(viewId) {
+  const navItems = document.querySelectorAll('.nav-item');
+  navItems.forEach(item => {
+    if (item.getAttribute('data-target') === viewId) {
+      item.classList.add('active');
     } else {
-      n.classList.remove('active');
+      item.classList.remove('active');
     }
   });
 }
 
 /* ==========================================
-   2. AUTHENTICATION (REGISTER & LOGIN)
+   2. AUTHENTICATION & LOGIN FLOW
    ========================================== */
 function setupAuth() {
   const tabBtnLogin = document.getElementById('tab-btn-login');
   const tabBtnRegister = document.getElementById('tab-btn-register');
   const formLogin = document.getElementById('form-login');
   const formRegister = document.getElementById('form-register');
+  const btnLogout = document.getElementById('btn-logout');
+
+  if (btnLogout) {
+    btnLogout.addEventListener('click', () => {
+      logout();
+      alert('Đã đăng xuất tài khoản!');
+    });
+  }
 
   tabBtnLogin.addEventListener('click', () => {
     tabBtnLogin.classList.add('active');
@@ -160,7 +179,7 @@ function setupAuth() {
       const res = await callAppsScriptAPI('login', { email, password });
       if (res.status === 'success' && res.token) {
         state.hasApiKey = !!res.has_api_key;
-        onUserAuthenticated(res.token, res.email);
+        onUserAuthenticated(res.token, res.email, res.token_expires_at);
       } else {
         alert(res.message || 'Đăng nhập thất bại.');
       }
@@ -184,8 +203,8 @@ function setupAuth() {
 
       if (res.status === 'success' && res.token) {
         state.hasApiKey = !!res.has_api_key;
-        alert('Đăng ký tài khoản thành công!');
-        onUserAuthenticated(res.token, res.email);
+        alert('Đăng ký tài khoản thành công! (Phiên đăng nhập có hiệu lực 7 ngày)');
+        onUserAuthenticated(res.token, res.email, res.token_expires_at);
       } else {
         alert(res.message || 'Đăng ký thất bại.');
       }
@@ -209,11 +228,16 @@ function setupAuth() {
   }
 }
 
-function onUserAuthenticated(token, email) {
+function onUserAuthenticated(token, email, tokenExpiresAt) {
   state.token = token;
   state.userEmail = email;
+  state.tokenExpiresAt = tokenExpiresAt || localStorage.getItem('toituhoc_token_expires_at') || '';
+  
   localStorage.setItem('toituhoc_token', token);
   localStorage.setItem('toituhoc_user_email', email);
+  if (tokenExpiresAt) {
+    localStorage.setItem('toituhoc_token_expires_at', tokenExpiresAt);
+  }
 
   document.getElementById('user-email-display').innerText = email;
   document.getElementById('user-avatar-initial').innerText = email.charAt(0).toUpperCase();
@@ -227,9 +251,11 @@ function onUserAuthenticated(token, email) {
 function logout() {
   state.token = '';
   state.userEmail = '';
+  state.tokenExpiresAt = '';
   state.hasApiKey = false;
   localStorage.removeItem('toituhoc_token');
   localStorage.removeItem('toituhoc_user_email');
+  localStorage.removeItem('toituhoc_token_expires_at');
 
   document.getElementById('user-email-display').innerText = 'Chưa đăng nhập';
   document.getElementById('user-avatar-initial').innerText = '?';

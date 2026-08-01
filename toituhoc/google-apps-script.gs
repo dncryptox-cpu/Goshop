@@ -284,7 +284,7 @@ function handleUpdateApiKey(userEmail, newApiKey) {
 }
 
 function getUserByToken(token) {
-  if (!token) return null;
+  if (!token || typeof token !== 'string') return null;
 
   var ss = getOrCreateSpreadsheet();
   var usersSheet = ss.getSheetByName('users');
@@ -294,14 +294,19 @@ function getUserByToken(token) {
   for (var i = 1; i < usersData.length; i++) {
     var row = usersData[i];
     var storedToken = row[6];
-    if (storedToken && storedToken === token) {
-      var expiresAtStr = row[7];
-      // Kiểm tra thời hạn 7 ngày
-      if (expiresAtStr) {
-        var expiryMs = new Date(expiresAtStr).getTime();
-        if (nowMs > expiryMs) {
-          Logger.log("⚠️ Token đã hết hạn 7 ngày cho user: " + row[1] + " (Hết hạn lúc: " + expiresAtStr + ")");
-          return null; // Từ chối request vì token hết hạn!
+    if (storedToken && String(storedToken).trim() === token.trim()) {
+      var expiresAtVal = row[7];
+      if (expiresAtVal) {
+        var expiryMs = 0;
+        if (expiresAtVal instanceof Date) {
+          expiryMs = expiresAtVal.getTime();
+        } else {
+          expiryMs = new Date(expiresAtVal).getTime();
+        }
+
+        if (!isNaN(expiryMs) && expiryMs > 0 && nowMs > expiryMs) {
+          Logger.log("⚠️ Token đã hết hạn 7 ngày cho user: " + row[1] + " (Hết hạn lúc: " + expiresAtVal + ")");
+          return null; // Từ chối request vì token đã quá 7 ngày!
         }
       }
 
