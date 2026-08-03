@@ -468,99 +468,107 @@ function generateTokenWithExpiry(email) {
 // ==========================================
 
 function handleProcessNote(user, data) {
-  var userEmail = user.email;
-  var userApiKey = user.api_key_gemini;
-  var vietnameseText = (data.vietnamese_text || '').trim();
+  try {
+    var userEmail = user.email;
+    var userApiKey = user.api_key_gemini;
+    var vietnameseText = (data.vietnamese_text || '').trim();
 
-  if (!userApiKey || !userApiKey.trim()) {
+    if (!userApiKey || !userApiKey.trim()) {
+      return respondJSON({
+        status: 'error',
+        code: 'NO_API_KEY',
+        message: 'Bạn chưa cài đặt Gemini API Key cá nhân. Vui lòng vào Cài đặt tài khoản để nhập API Key của bạn.'
+      });
+    }
+
+    if (!vietnameseText) {
+      return respondJSON({ status: 'error', message: 'Vui lòng nhập câu hoặc đoạn tiếng Việt bạn muốn học.' });
+    }
+
+    // 1. Gọi Gemini API để phân tích và dịch câu
+    var aiResult = callGeminiNoteAPIWithUserKey(vietnameseText, userApiKey);
+
+    if (!aiResult || !aiResult.english_translation) {
+      return respondJSON({ status: 'error', message: 'Không thể phân tích văn bản qua Gemini AI. Vui lòng kiểm tra lại Gemini API Key cá nhân.' });
+    }
+
+    var noteId = 'n_' + new Date().getTime();
+    var todayStr = getTodayDateString();
+    var tomorrowStr = getNextDateString(1);
+
+    var ss = getOrCreateSpreadsheet();
+    var notesSheet = ss.getSheetByName('notes');
+    var vocabSheet = ss.getSheetByName('vocab');
+
+    // 2. GHI NGAY VÀO TAB "notes"
+    var alternativesJSON = JSON.stringify(aiResult.alternatives || []);
+    var vocabularyJSON = JSON.stringify(aiResult.vocabulary || []);
+
+    notesSheet.appendRow([
+      noteId,
+      userEmail,
+      todayStr,
+      vietnameseText,
+      aiResult.english_translation,
+      aiResult.explanation || '',
+      alternativesJSON,
+      vocabularyJSON
+    ]);
+
+    // 3. TỰ ĐỘNG THÊM TỪ VỰNG TRÍCH XUẤT VÀO TAB "vocab" ĐỂ ÔN TẬP FLASHCARDS
+    var addedVocabCount = 0;
+    if (aiResult.vocabulary && aiResult.vocabulary.length > 0) {
+      for (var i = 0; i < aiResult.vocabulary.length; i++) {
+        var vItem = aiResult.vocabulary[i];
+        if (!vItem.word) continue;
+
+        var vocabId = 'v_note_' + new Date().getTime() + '_' + i;
+        vocabSheet.appendRow([
+          vocabId,
+          userEmail,
+          todayStr,
+          '', // link_ảnh (rỗng)
+          vItem.word,
+          vItem.pos || 'Phrase',
+          vItem.meaning || '',
+          vItem.example || aiResult.english_translation,
+          vItem.grammar || '',
+          2.5, // ease_factor
+          1,   // interval
+          tomorrowStr, // next_review_date
+          vItem.phien_am || '',
+          ''   // link_anh_chu_thich
+        ]);
+        addedVocabCount++;
+      }
+    }
+
+    return respondJSON({
+      status: 'success',
+      message: 'Đã phân tích ghi chú, lưu vào Google Sheet và gộp ' + addedVocabCount + ' từ vựng vào Flashcard ôn tập!',
+      data: {
+        id: noteId,
+        user_email: userEmail,
+        ngay: todayStr,
+        noi_dung_tieng_viet: vietnameseText,
+        ban_dich_tieng_anh: aiResult.english_translation,
+        giai_thich_cach_dung: aiResult.explanation || '',
+        cach_noi_khac: aiResult.alternatives || [],
+        tu_vung_lien_quan: aiResult.vocabulary || []
+      }
+    });
+  } catch (eNote) {
+    Logger.log("⚠️ Lỗi handleProcessNote: " + eNote.toString());
     return respondJSON({
       status: 'error',
-      code: 'NO_API_KEY',
-      message: 'Bạn chưa cài đặt Gemini API Key cá nhân. Vui lòng vào Cài đặt tài khoản để nhập API Key của bạn.'
+      message: 'Đã có lỗi xảy ra khi xử lý ghi chú: ' + eNote.toString()
     });
   }
-
-  if (!vietnameseText) {
-    return respondJSON({ status: 'error', message: 'Vui lòng nhập câu hoặc đoạn tiếng Việt bạn muốn học.' });
-  }
-
-  // 1. Gọi Gemini API 3.6 Flash để phân tích và dịch câu
-  var aiResult = callGeminiNoteAPIWithUserKey(vietnameseText, userApiKey);
-
-  if (!aiResult || !aiResult.english_translation) {
-    return respondJSON({ status: 'error', message: 'Không thể phân tích văn bản qua Gemini AI. Vui lòng thử lại.' });
-  }
-
-  var noteId = 'n_' + new Date().getTime();
-  var todayStr = getTodayDateString();
-  var tomorrowStr = getNextDateString(1);
-
-  var ss = getOrCreateSpreadsheet();
-  var notesSheet = ss.getSheetByName('notes');
-  var vocabSheet = ss.getSheetByName('vocab');
-
-  // 2. GHI NGAY VÀO TAB "notes"
-  // Cấu trúc cột: id | user_email | ngày | nội_dung_tiếng_việt | bản_dịch_tiếng_anh | giải_thích_cách_dùng | cách_nói_khác | từ_vựng_liên_quan
-  var alternativesJSON = JSON.stringify(aiResult.alternatives || []);
-  var vocabularyJSON = JSON.stringify(aiResult.vocabulary || []);
-
-  notesSheet.appendRow([
-    noteId,
-    userEmail,
-    todayStr,
-    vietnameseText,
-    aiResult.english_translation,
-    aiResult.explanation || '',
-    alternativesJSON,
-    vocabularyJSON
-  ]);
-
-  // 3. TỰ ĐỘNG THÊM TỪ VỰNG TRÍCH XUẤT VÀO TAB "vocab" ĐỂ ÔN TAP FLASHCARDS
-  var addedVocabCount = 0;
-  if (aiResult.vocabulary && aiResult.vocabulary.length > 0) {
-    for (var i = 0; i < aiResult.vocabulary.length; i++) {
-      var vItem = aiResult.vocabulary[i];
-      if (!vItem.word) continue;
-
-      var vocabId = 'v_note_' + new Date().getTime() + '_' + i;
-      vocabSheet.appendRow([
-        vocabId,
-        userEmail,
-        todayStr,
-        '', // link_ảnh (rỗng)
-        vItem.word,
-        vItem.pos || 'Phrase',
-        vItem.meaning || '',
-        vItem.example || aiResult.english_translation,
-        vItem.grammar || '',
-        2.5, // ease_factor
-        1,   // interval
-        tomorrowStr, // next_review_date
-        vItem.phien_am || ''
-      ]);
-      addedVocabCount++;
-    }
-  }
-
-  return respondJSON({
-    status: 'success',
-    message: 'Đã phân tích ghi chú, lưu vào Google Sheet và gộp ' + addedVocabCount + ' từ vựng vào Flashcard ôn tập!',
-    data: {
-      id: noteId,
-      user_email: userEmail,
-      ngay: todayStr,
-      noi_dung_tieng_viet: vietnameseText,
-      ban_dich_tieng_anh: aiResult.english_translation,
-      giai_thich_cach_dung: aiResult.explanation || '',
-      cach_noi_khac: aiResult.alternatives || [],
-      tu_vung_lien_quan: aiResult.vocabulary || []
-    }
-  });
 }
 
 function callGeminiNoteAPIWithUserKey(vietnameseText, userApiKey) {
-  var modelName = 'gemini-3.6-flash';
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
+  var modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+  var lastErrorMsg = '';
 
   var promptText = "Bạn là một chuyên gia giảng dạy tiếng Anh tự nhiên. Người dùng gõ một câu hoặc đoạn tiếng Việt sau: \"" + vietnameseText + "\"\n" +
     "Hãy phân tích và trả về DUY NHẤT một JSON Object chứa các thông tin sau:\n" +
@@ -589,35 +597,46 @@ function callGeminiNoteAPIWithUserKey(vietnameseText, userApiKey) {
     ]
   };
 
-  var options = {
-    "method": "post",
-    "contentType": "application/json",
-    "payload": JSON.stringify(payload),
-    "muteHttpExceptions": true
-  };
+  for (var m = 0; m < modelsToTry.length; m++) {
+    var modelName = modelsToTry[m];
+    try {
+      var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
+      var options = {
+        "method": "post",
+        "contentType": "application/json",
+        "payload": JSON.stringify(payload),
+        "muteHttpExceptions": true
+      };
 
-  var response = UrlFetchApp.fetch(url, options);
-  var responseCode = response.getResponseCode();
-  var responseText = response.getContentText();
+      var response = UrlFetchApp.fetch(url, options);
+      var responseCode = response.getResponseCode();
+      var responseText = response.getContentText();
 
-  if (responseCode !== 200) {
-    Logger.log("Lỗi Gemini Note API (" + responseCode + "): " + responseText);
-    throw new Error("Lỗi kết nối Gemini API (kiểm tra lại API Key): " + responseText);
+      if (responseCode === 200) {
+        var jsonRes = JSON.parse(responseText);
+        var candidateText = "";
+        if (jsonRes.candidates && jsonRes.candidates.length > 0 && jsonRes.candidates[0].content) {
+          candidateText = jsonRes.candidates[0].content.parts[0].text;
+        }
+
+        var cleanJSONStr = candidateText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        var parsedObj = JSON.parse(cleanJSONStr);
+        if (parsedObj && parsedObj.english_translation) {
+          return parsedObj;
+        }
+      } else {
+        var errMsg = parseGoogleApiError(responseCode, responseText);
+        Logger.log("⚠️ Gemini Note API (" + modelName + ") Code " + responseCode + ": " + errMsg);
+        lastErrorMsg = "Model " + modelName + " (" + responseCode + "): " + errMsg;
+      }
+    } catch (e) {
+      lastErrorMsg = e.toString();
+      Logger.log("⚠️ Lỗi gọi " + modelName + ": " + e.toString());
+    }
   }
 
-  var jsonRes = JSON.parse(responseText);
-  var candidateText = "";
-  if (jsonRes.candidates && jsonRes.candidates.length > 0 && jsonRes.candidates[0].content) {
-    candidateText = jsonRes.candidates[0].content.parts[0].text;
-  }
-
-  var cleanJSONStr = candidateText.replace(/```json/gi, '').replace(/```/g, '').trim();
-  try {
-    return JSON.parse(cleanJSONStr);
-  } catch (err) {
-    Logger.log("Lỗi parse JSON Note response: " + cleanJSONStr);
-    return null;
-  }
+  throw new Error("Lỗi kết nối Gemini API: " + lastErrorMsg);
+}
 }
 
 function getUserNotes(userEmail) {
@@ -785,8 +804,8 @@ function saveImageToDrive(base64Data, mimeType, fileName) {
 
 function callGeminiVisionAPIWithUserKey(base64Data, mimeType, userApiKey) {
   var cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
-  var modelName = 'gemini-3.6-flash';
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
+  var modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+  var lastErrorMsg = '';
 
   var promptText = "Bạn là một trợ lý giảng dạy tiếng Anh thông minh. Hãy đọc chữ tiếng Anh trong ảnh và trích ra từ 3 đến 8 từ vựng, cụm từ (phrasal verbs, idioms) hoặc cấu trúc ngữ pháp đáng học nhất (BỎ QUA các từ quá cơ bản như 'the', 'is', 'a', 'in', 'on', 'it', 'and').\n" +
     "Trả về kết quả duy nhất ở dạng một JSON Array chứa các đối tượng có cấu trúc chính xác như sau:\n" +
@@ -818,36 +837,45 @@ function callGeminiVisionAPIWithUserKey(base64Data, mimeType, userApiKey) {
     ]
   };
 
-  var options = {
-    "method": "post",
-    "contentType": "application/json",
-    "payload": JSON.stringify(payload),
-    "muteHttpExceptions": true
-  };
+  for (var m = 0; m < modelsToTry.length; m++) {
+    var modelName = modelsToTry[m];
+    try {
+      var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + userApiKey;
+      var options = {
+        "method": "post",
+        "contentType": "application/json",
+        "payload": JSON.stringify(payload),
+        "muteHttpExceptions": true
+      };
 
-  var response = UrlFetchApp.fetch(url, options);
-  var responseCode = response.getResponseCode();
-  var responseText = response.getContentText();
+      var response = UrlFetchApp.fetch(url, options);
+      var responseCode = response.getResponseCode();
+      var responseText = response.getContentText();
 
-  if (responseCode !== 200) {
-    Logger.log("Lỗi gọi Gemini API với User Key (" + responseCode + "): " + responseText);
-    throw new Error("Lỗi Gemini API (kiểm tra lại API Key cá nhân): " + responseText);
+      if (responseCode === 200) {
+        var jsonRes = JSON.parse(responseText);
+        var candidateText = "";
+        if (jsonRes.candidates && jsonRes.candidates.length > 0 && jsonRes.candidates[0].content) {
+          candidateText = jsonRes.candidates[0].content.parts[0].text;
+        }
+
+        var cleanJSONStr = candidateText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        var items = JSON.parse(cleanJSONStr);
+        if (items && items.length >= 0) {
+          return items;
+        }
+      } else {
+        var errMsg = parseGoogleApiError(responseCode, responseText);
+        Logger.log("⚠️ Gemini Vision API (" + modelName + ") Code " + responseCode + ": " + errMsg);
+        lastErrorMsg = "Model " + modelName + " (" + responseCode + "): " + errMsg;
+      }
+    } catch (e) {
+      lastErrorMsg = e.toString();
+      Logger.log("⚠️ Lỗi gọi " + modelName + ": " + e.toString());
+    }
   }
 
-  var jsonRes = JSON.parse(responseText);
-  var candidateText = "";
-  if (jsonRes.candidates && jsonRes.candidates.length > 0 && jsonRes.candidates[0].content) {
-    candidateText = jsonRes.candidates[0].content.parts[0].text;
-  }
-
-  var cleanJSONStr = candidateText.replace(/```json/gi, '').replace(/```/g, '').trim();
-  try {
-    var items = JSON.parse(cleanJSONStr);
-    return items;
-  } catch (err) {
-    Logger.log("Lỗi parse JSON Gemini response: " + cleanJSONStr);
-    return [];
-  }
+  throw new Error("Lỗi Gemini Vision API (kiểm tra lại API Key cá nhân): " + lastErrorMsg);
 }
 
 /**
