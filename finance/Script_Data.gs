@@ -183,10 +183,49 @@ function doPost(e) {
       var sheet = ss.getSheetByName("YEU_CAU");
       if (!sheet) {
         sheet = ss.insertSheet("YEU_CAU");
-        sheet.appendRow(["ID", "Email", "HSD Cũ", "Tháng Gia Hạn", "HSD Mới", "CTV Yêu Cầu", "Thời Gian", "Trạng Thái"]);
+        sheet.appendRow(["ID", "Email", "HSD Cũ", "Tháng Gia Hạn", "HSD Mới", "CTV Yêu Cầu", "Thời Gian", "Trạng Thái", "Loại", "Ghi Chú"]);
       }
       var req = data.requestData;
-      sheet.appendRow([req.id, req.email, req.oldExpiry, req.months, req.newExpiry, req.staff, req.createdAt, "Chờ Duyệt"]);
+      sheet.appendRow([req.id, req.email, req.oldExpiry, req.months, req.newExpiry, req.staff, req.createdAt, "Chờ Duyệt", "Gia Hạn", req.note || ""]);
+      return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // 1b. Xử lý Ghi Chú Trạng Thái CTV (save_ctv_note) - Ghi đè 1 dòng duy nhất/email
+    if (action === 'save_ctv_note') {
+      var sheet = ss.getSheetByName("YEU_CAU");
+      if (!sheet) {
+        sheet = ss.insertSheet("YEU_CAU");
+        sheet.appendRow(["ID", "Email", "HSD Cũ", "Tháng Gia Hạn", "HSD Mới", "CTV Yêu Cầu", "Thời Gian", "Trạng Thái", "Loại", "Ghi Chú"]);
+      }
+      var targetEmail = String(data.email || '').trim().toLowerCase();
+      var status = data.status || '';
+      var note = data.note || '';
+      var staff = data.staff || '';
+      var nowStr = new Date().toLocaleDateString('vi-VN');
+
+      var dataRange = sheet.getDataRange();
+      var values = dataRange.getValues();
+      var foundIndex = -1;
+
+      for (var i = 1; i < values.length; i++) {
+        var rowEmail = String(values[i][1] || '').trim().toLowerCase();
+        var rowType = String(values[i][8] || '').trim(); // Cột I (index 8)
+        if (rowEmail === targetEmail && rowType === "Ghi Chú") {
+          foundIndex = i + 1;
+          break;
+        }
+      }
+
+      if (foundIndex > -1) {
+        sheet.getRange(foundIndex, 6).setValue(staff);
+        sheet.getRange(foundIndex, 7).setValue(nowStr);
+        sheet.getRange(foundIndex, 8).setValue(status);
+        sheet.getRange(foundIndex, 10).setValue(note);
+      } else {
+        var reqId = Date.now();
+        sheet.appendRow([reqId, data.email, "", "", "", staff, nowStr, status, "Ghi Chú", note]);
+      }
+
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
