@@ -3983,34 +3983,90 @@
 
                 // ITEM DATA PARSING & MODAL HELPERS (Upgraded Modal)
                 parseItemData(rawText) {
+                    console.log('>>> [parseItemData] Input rawText:', rawText);
                     if (!rawText) return [];
                     let text = String(rawText).trim();
-                    if (text.includes('|')) {
-                        text = text.split('|').join('\n');
-                    }
-                    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-                    
+                    if (!text) return [];
+
                     const parsed = [];
-                    lines.forEach((line, index) => {
-                        let label = '';
-                        let isPassword = false;
-                        if (index === 0) {
-                            label = 'Email / Tài khoản';
-                        } else if (index === 1) {
-                            label = 'Mật khẩu';
-                            isPassword = true;
-                        } else if (index === 2) {
-                            label = 'Ghi chú';
+
+                    if (text.includes('|')) {
+                        const parts = text.split('|').map(p => p.trim());
+                        if (parts.length === 1) {
+                            parsed.push({
+                                id: 'line_0',
+                                label: 'Thông tin tài khoản',
+                                value: parts[0],
+                                isPassword: false
+                            });
                         } else {
-                            label = `Thông tin thêm ${index - 2}`;
+                            if (parts[0]) {
+                                parsed.push({
+                                    id: 'line_0',
+                                    label: 'Email / Tài khoản',
+                                    value: parts[0],
+                                    isPassword: false
+                                });
+                            }
+                            if (parts[1]) {
+                                parsed.push({
+                                    id: 'line_1',
+                                    label: 'Mật khẩu',
+                                    value: parts[1],
+                                    isPassword: true
+                                });
+                            }
+                            if (parts[2]) {
+                                parsed.push({
+                                    id: 'line_2',
+                                    label: 'Mã 2FA / Ghi chú',
+                                    value: parts[2],
+                                    isPassword: false
+                                });
+                            }
+                            for (let i = 3; i < parts.length; i++) {
+                                if (parts[i]) {
+                                    parsed.push({
+                                        id: 'line_' + i,
+                                        label: `Thông tin thêm ${i - 2}`,
+                                        value: parts[i],
+                                        isPassword: false
+                                    });
+                                }
+                            }
                         }
-                        parsed.push({
-                            id: 'line_' + index,
-                            label: label,
-                            value: line,
-                            isPassword: isPassword
+                    } else if (text.includes('\n')) {
+                        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+                        lines.forEach((line, index) => {
+                            let label = '';
+                            let isPassword = false;
+                            if (index === 0) {
+                                label = 'Email / Tài khoản';
+                            } else if (index === 1) {
+                                label = 'Mật khẩu';
+                                isPassword = true;
+                            } else if (index === 2) {
+                                label = 'Mã 2FA / Ghi chú';
+                            } else {
+                                label = `Thông tin thêm ${index - 2}`;
+                            }
+                            parsed.push({
+                                id: 'line_' + index,
+                                label: label,
+                                value: line,
+                                isPassword: isPassword
+                            });
                         });
-                    });
+                    } else {
+                        parsed.push({
+                            id: 'line_0',
+                            label: 'Thông tin tài khoản',
+                            value: text,
+                            isPassword: false
+                        });
+                    }
+
+                    console.log('>>> [parseItemData] Parsed output:', parsed);
                     return parsed;
                 },
 
@@ -4069,9 +4125,11 @@
                 },
 
                 showItemDataModal(order) {
+                    console.log('>>> [showItemDataModal] Selected Order:', JSON.parse(JSON.stringify(order || {})));
+                    console.log('>>> [showItemDataModal] Raw order.itemData:', order ? order.itemData : undefined);
                     this.selectedModalOrder = order;
-                    this.currentItemData = order.itemData || 'Không có thông tin chi tiết';
-                    this.currentItemParsedLines = this.parseItemData(order.itemData);
+                    this.currentItemData = order ? (order.itemData || 'Không có thông tin chi tiết') : '';
+                    this.currentItemParsedLines = this.parseItemData(order ? order.itemData : '');
                     this.showPasswordState = {};
                     this.showReportInlineForm = false;
                     this.reportDescription = '';

@@ -422,8 +422,15 @@ function fixInventoryStatus() {
     var status = String(data[i][6] || "").trim().toLowerCase();
     var soldEmail = String(data[i][7] || "").trim();
 
-    if (status === "" || status === "null" || status === "undefined") {
-      var newStatus = (soldEmail !== "") ? "sold" : "available";
+    // Sửa dòng bị ghi đè nhầm slot_type ("rieng"/"gia_dinh") vào vị trí sold_to_email (cột 8 / H)
+    if (soldEmail.toLowerCase() === "rieng" || soldEmail.toLowerCase() === "gia_dinh") {
+      invSheet.getRange(i + 1, 8).setValue("");
+      soldEmail = "";
+      fixedCount++;
+    }
+
+    if (status === "" || status === "null" || status === "undefined" || status.indexOf('t') === 0 || status.indexOf('202') === 0) {
+      var newStatus = (soldEmail !== "" && soldEmail.indexOf('@') !== -1) ? "sold" : "available";
       invSheet.getRange(i + 1, 7).setValue(newStatus);
       fixedCount++;
       Logger.log(">>> [fixInventoryStatus] Fixed row " + (i + 1) + ": status set to " + newStatus);

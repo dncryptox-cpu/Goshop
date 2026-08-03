@@ -2889,9 +2889,9 @@ function purchaseProduct(email, productId) {
     var logNote = 'Mua hàng: ' + product.name;
     logSheet.appendRow([logId, cleanEmail, 'purchase', -product.price, newBalance, product.id, logNote, new Date().toISOString()]);
 
-    invSheet.getRange(targetInvRow, 5).setValue('sold');
-    invSheet.getRange(targetInvRow, 6).setValue(cleanEmail);
-    invSheet.getRange(targetInvRow, 7).setValue(new Date().toISOString());
+    invSheet.getRange(targetInvRow, 7).setValue('sold');
+    invSheet.getRange(targetInvRow, 8).setValue(cleanEmail);
+    invSheet.getRange(targetInvRow, 9).setValue(new Date().toISOString());
 
     var orderId = 'ORD-' + Date.now();
     orderSheet.appendRow([orderId, cleanEmail, product.id, product.name, targetInvItem.id, targetInvItem.itemData, product.effectivePrice || product.price, 'completed', new Date().toISOString(), 'Thành công']);
