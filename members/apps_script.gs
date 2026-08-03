@@ -348,8 +348,8 @@ function purchaseProduct(email, productId) {
 
     for (var i = 1; i < invData.length; i++) {
       var rowProdId = String(invData[i][1] || '').trim().toLowerCase();
-      var rowStatus = String(invData[i][6] || invData[i][4] || '').trim().toLowerCase();
-      var rowExpire = invData[i][5] || invData[i][3];
+      var rowStatus = String(invData[i][4] || '').trim().toLowerCase();
+      var rowExpire = invData[i][3]; // cột D = expire_date
 
       if (rowProdId === cleanProductId && rowStatus === 'available') {
         if (rowExpire && new Date(rowExpire) < now) continue;
@@ -357,9 +357,9 @@ function purchaseProduct(email, productId) {
         targetInvItem = {
           id: invData[i][0],
           itemData: invData[i][2],
-          expireDate: invData[i][5] || invData[i][3] || '',
-          slotType: invData[i][3] || invData[i][7] || 'rieng',
-          maxUsers: parseInt(invData[i][4] || invData[i][8]) || 1
+          expireDate: invData[i][3] || '',
+          slotType: invData[i][7] || 'rieng',
+          maxUsers: parseInt(invData[i][8]) || 1
         };
         break;
       }
@@ -375,10 +375,10 @@ function purchaseProduct(email, productId) {
     var logNote = product.effectivePrice === 0 ? 'FREE — Hàng cận date (' + product.name + ')' : 'Mua hàng: ' + product.name;
     logSheet.appendRow([logId, cleanEmail, 'purchase', -product.effectivePrice, newBalance, product.id, logNote, new Date().toISOString()]);
 
-    // 5. Cập nhật trạng thái slot kho (Cột 7 là status: sold)
-    invSheet.getRange(targetInvRow, 7).setValue('sold');
-    invSheet.getRange(targetInvRow, 8).setValue(cleanEmail);
-    invSheet.getRange(targetInvRow, 9).setValue(new Date().toISOString());
+    // 5. Cập nhật trạng thái slot kho (Cột 5 là status: sold)
+    invSheet.getRange(targetInvRow, 5).setValue('sold');
+    invSheet.getRange(targetInvRow, 6).setValue(cleanEmail);
+    invSheet.getRange(targetInvRow, 7).setValue(new Date().toISOString());
 
     // 6. Ghi đơn hàng MB_ORDERS
     var orderId = 'ORD-' + Date.now();

@@ -2896,8 +2896,8 @@ function purchaseProduct(email, productId) {
 
     for (var i = 1; i < invData.length; i++) {
       var rowProdId = String(invData[i][1] || '').trim().toLowerCase();
-      var rowStatus = String(invData[i][6] || invData[i][4] || '').trim().toLowerCase();
-      var rowExpire = invData[i][5] || invData[i][3];
+      var rowStatus = String(invData[i][4] || '').trim().toLowerCase();
+      var rowExpire = invData[i][3]; // cột D = expire_date
 
       if (rowProdId === cleanProductId && rowStatus === 'available') {
         if (rowExpire && new Date(rowExpire) < now) continue;
@@ -2905,7 +2905,7 @@ function purchaseProduct(email, productId) {
         targetInvItem = {
           id: invData[i][0],
           itemData: invData[i][2],
-          expireDate: invData[i][3] || invData[i][5] || '',
+          expireDate: invData[i][3] || '',
           slotType: invData[i][7] || 'rieng',
           maxUsers: parseInt(invData[i][8]) || 1
         };
@@ -2922,9 +2922,9 @@ function purchaseProduct(email, productId) {
     var logNote = 'Mua hàng: ' + product.name;
     logSheet.appendRow([logId, cleanEmail, 'purchase', -product.price, newBalance, product.id, logNote, new Date().toISOString()]);
 
-    invSheet.getRange(targetInvRow, 7).setValue('sold');
-    invSheet.getRange(targetInvRow, 8).setValue(cleanEmail);
-    invSheet.getRange(targetInvRow, 9).setValue(new Date().toISOString());
+    invSheet.getRange(targetInvRow, 5).setValue('sold');
+    invSheet.getRange(targetInvRow, 6).setValue(cleanEmail);
+    invSheet.getRange(targetInvRow, 7).setValue(new Date().toISOString());
 
     var orderId = 'ORD-' + Date.now();
     orderSheet.appendRow([orderId, cleanEmail, product.id, product.name, targetInvItem.id, targetInvItem.itemData, product.effectivePrice || product.price, 'completed', new Date().toISOString(), 'Thành công']);
