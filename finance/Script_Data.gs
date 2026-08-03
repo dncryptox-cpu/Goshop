@@ -2675,13 +2675,36 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
   maxUsers = parseInt(maxUsers) || (slotType === "gia_dinh" ? 3 : 1);
   expireDate = expireDate || "";
 
+  // Đọc dữ liệu hiện có trong MB_INVENTORY để kiểm tra trùng lặp
+  var existingData = invSheet.getDataRange().getValues();
+  var existingMap = {};
+  var cleanTargetProdId = String(productId).trim().toLowerCase();
+
+  for (var k = 1; k < existingData.length; k++) {
+    var exProdId = String(existingData[k][1] || "").trim().toLowerCase(); // Cột B (product_id)
+    var exItemData = String(existingData[k][2] || "").trim().toLowerCase(); // Cột C (item_data)
+    if (exProdId === cleanTargetProdId && exItemData !== "") {
+      existingMap[exItemData] = true;
+    }
+  }
+
   var addedCount = 0;
+  var skippedCount = 0;
   var addedIds = [];
 
   if (Array.isArray(items)) {
     for (var i = 0; i < items.length; i++) {
       var line = String(items[i] || "").trim();
       if (!line) continue;
+
+      var cleanLineKey = line.toLowerCase();
+
+      // Kiểm tra trùng item_data cho cùng productId (so sánh Cột C)
+      if (existingMap[cleanLineKey]) {
+        Logger.log(">>> [addInventoryBulk] Skipping duplicate item_data: '" + line + "' for product_id: " + productId);
+        skippedCount++;
+        continue;
+      }
 
       var id = "INV-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
       var rowData = [
@@ -2699,13 +2722,20 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
       invSheet.appendRow(rowData);
       addedCount++;
       addedIds.push(id);
+      existingMap[cleanLineKey] = true; // Lưu key vào map để chống trùng nội bộ trong cùng đợt bulk
     }
+  }
+
+  var msg = "Đã thêm " + addedCount + " account vào kho thành công!";
+  if (skippedCount > 0) {
+    msg += " (Đã bỏ qua " + skippedCount + " account trùng)";
   }
 
   return responseJSON({
     status: "success",
-    message: "Đã thêm " + addedCount + " account vào kho thành công với status 'available'",
+    message: msg,
     addedCount: addedCount,
+    skippedCount: skippedCount,
     addedIds: addedIds
   });
 }
