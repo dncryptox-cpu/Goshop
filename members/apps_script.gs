@@ -110,13 +110,13 @@ function saveProduct(productData) {
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var prodSheet = ss.getSheetByName('MB_PRODUCTS');
-  var expectedHeaders = ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"];
+  var expectedHeaders = ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date", "product_notes"];
 
   if (!prodSheet) {
     prodSheet = ss.insertSheet('MB_PRODUCTS');
     prodSheet.appendRow(expectedHeaders);
   } else {
-    var currentHeaders = prodSheet.getRange(1, 1, 1, 14).getValues()[0];
+    var currentHeaders = prodSheet.getRange(1, 1, 1, 15).getValues()[0];
     var needUpdateHeader = false;
     for (var h = 0; h < expectedHeaders.length; h++) {
       if (String(currentHeaders[h] || '').trim() !== expectedHeaders[h]) {
@@ -125,7 +125,7 @@ function saveProduct(productData) {
       }
     }
     if (needUpdateHeader) {
-      prodSheet.getRange(1, 1, 1, 14).setValues([currentHeaders]);
+      prodSheet.getRange(1, 1, 1, 15).setValues([currentHeaders]);
     }
   }
 
@@ -145,18 +145,19 @@ function saveProduct(productData) {
   var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price).trim() !== '') ? productData.sale_price : '';
   var saleLabel = String(productData.sale_label || '').trim();
   var saleEndDate = String(productData.sale_end_date || '').trim();
+  var productNotes = String(productData.product_notes || '').trim();
   var prodId = productData.id || ('PROD-' + Date.now());
 
-  Logger.log('>>> [saveProduct] Writing 14 fields: ' + JSON.stringify([
-    prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate
+  Logger.log('>>> [saveProduct] Writing 15 fields: ' + JSON.stringify([
+    prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate, productNotes
   ]));
 
   if (existingRow > 0) {
-    prodSheet.getRange(existingRow, 1, 1, 14).setValues([[
-      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate
+    prodSheet.getRange(existingRow, 1, 1, 15).setValues([[
+      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate, productNotes
     ]]);
   } else {
-    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate]);
+    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate, productNotes]);
   }
 
   return responseJSON({ status: 'success', id: prodId });
@@ -749,7 +750,7 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
 function initMemberSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetsToCreate = [
-    { name: "MB_PRODUCTS", headers: ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"] },
+    { name: "MB_PRODUCTS", headers: ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date", "product_notes"] },
     { name: "MB_INVENTORY", headers: ["id", "product_id", "item_data", "slot_type", "max_users", "expire_date", "status", "sold_to_email", "sold_at"] },
     { name: "MB_USERS", headers: ["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"] },
     { name: "MB_WALLET_LOG", headers: ["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"] },
