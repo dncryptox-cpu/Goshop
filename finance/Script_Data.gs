@@ -2898,14 +2898,15 @@ function purchaseProduct(email, productId) {
     var invData = invSheet.getDataRange().getValues();
     var targetInvRow = -1;
     var targetInvItem = null;
-    var now = new Date();
+    var cleanProductId = String(productId || '').trim().toLowerCase();
+    Logger.log('>>> [purchaseProduct] Looking for available slot with product_id: "' + cleanProductId + '"');
 
     for (var i = 1; i < invData.length; i++) {
-      var rowProdId = String(invData[i][1]);
-      var rowStatus = String(invData[i][4]);
-      var rowExpire = invData[i][3];
+      var rowProdId = String(invData[i][1] || '').trim().toLowerCase();
+      var rowStatus = String(invData[i][6] || invData[i][4] || '').trim().toLowerCase();
+      var rowExpire = invData[i][5] || invData[i][3];
 
-      if (rowProdId === String(productId) && rowStatus === 'available') {
+      if (rowProdId === cleanProductId && rowStatus === 'available') {
         if (rowExpire && new Date(rowExpire) < now) continue;
         targetInvRow = i + 1;
         targetInvItem = {
