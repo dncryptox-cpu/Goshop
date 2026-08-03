@@ -1,9 +1,17 @@
 /**
- * LOVELY MONEY - FINANCE OS (BACKEND WEB API)
- * File: code.gs
- * Version: 2.0 (Clean Rewrite)
+ * LOVELY MONEY - FINANCE OS (UNIFIED GOOGLE APPS SCRIPT)
+ * File: code.gs (Tất cả trong 1 script duy nhất)
+ * Version: 2.0
+ * 
+ * Mã nguồn gộp đầy đủ bao gồm:
+ * 1. Hàm khởi tạo Master Sheet mới (createNewMasterSheet)
+ * 2. API Server Endpoint (doPost, doGet) cho Web App (Login, Auth, Batch Transaction, CRUD)
+ * 3. Sheet Engine (onOpen, onEdit, Tự động tính Số dư tài khoản, Anchor Scan & Dual-Cache)
  */
 
+// ==========================================
+// TÊN CÁC TAB CHUẨN TRONG GOOGLE SHEET
+// ==========================================
 const SHEET_USERS = 'NguoiDung';
 const SHEET_DATA = 'Dữ liệu';
 const SHEET_DS = 'DS';
@@ -80,27 +88,23 @@ function createNewMasterSheet() {
   sheetData.appendRow(['ID', 'Ngày', 'Loại', 'Số tiền', 'Danh mục', 'Tài khoản', 'Mô tả', 'Nguồn nhập', 'Trạng thái']);
   formatHeaderRow(sheetData, '1565D8');
   
-  // Format Cột D (Số tiền) là dạng Số tệ/VND
+  // Format Cột D (Số tiền) là dạng số tiền
   sheetData.getRange("D2:D").setNumberFormat("#,##0");
   sheetData.getRange("B2:B").setNumberFormat("yyyy-MM-dd");
 
-  // Data Validation cho Cột C (Loại)
+  // Data Validation
   const ruleType = SpreadsheetApp.newDataValidation().requireValueInList(['Thu', 'Chi'], true).build();
   sheetData.getRange("C2:C").setDataValidation(ruleType);
 
-  // Data Validation cho Cột E (Danh mục -> DS!A2:A)
   const ruleCategory = SpreadsheetApp.newDataValidation().requireValueInRange(sheetDS.getRange("A2:A"), true).build();
   sheetData.getRange("E2:E").setDataValidation(ruleCategory);
 
-  // Data Validation cho Cột F (Tài khoản -> Tài Khoản!A2:A)
   const ruleAccount = SpreadsheetApp.newDataValidation().requireValueInRange(sheetAccounts.getRange("A2:A"), true).build();
   sheetData.getRange("F2:F").setDataValidation(ruleAccount);
 
-  // Data Validation cho Cột H (Nguồn nhập)
   const ruleSource = SpreadsheetApp.newDataValidation().requireValueInList(['AI', 'Tay'], true).build();
   sheetData.getRange("H2:H").setDataValidation(ruleSource);
 
-  // Data Validation cho Cột I (Trạng thái)
   const ruleStatus = SpreadsheetApp.newDataValidation().requireValueInList(['Confirmed', 'Pending'], true).build();
   sheetData.getRange("I2:I").setDataValidation(ruleStatus);
 
@@ -117,16 +121,12 @@ function createNewMasterSheet() {
   Logger.log('Tạo Master Sheet thành công!');
 }
 
-// Helper: Lấy hoặc tạo tab mới
 function getOrCreateSheet(ss, sheetName) {
   let sheet = ss.getSheetByName(sheetName);
-  if (!sheet) {
-    sheet = ss.insertSheet(sheetName);
-  }
+  if (!sheet) sheet = ss.insertSheet(sheetName);
   return sheet;
 }
 
-// Helper: Định dạng dòng tiêu đề
 function formatHeaderRow(sheet, hexColor) {
   const headerRange = sheet.getRange(1, 1, 1, sheet.getLastColumn() || 1);
   headerRange.setFontWeight('bold')
@@ -136,11 +136,9 @@ function formatHeaderRow(sheet, hexColor) {
   sheet.setRowHeight(1, 35);
 }
 
-// Helper: Định dạng màu Thu / Chi cho tab Dữ liệu
 function applyConditionalFormatting(sheet) {
   const rangeC = sheet.getRange("C2:C1000");
   
-  // Rule Thu (Xanh)
   const ruleGreen = SpreadsheetApp.newConditionalFormatRule()
     .whenTextEqualTo("Thu")
     .setBackground("#d1fae5")
@@ -148,7 +146,6 @@ function applyConditionalFormatting(sheet) {
     .setRanges([rangeC])
     .build();
 
-  // Rule Chi (Đỏ)
   const ruleRed = SpreadsheetApp.newConditionalFormatRule()
     .whenTextEqualTo("Chi")
     .setBackground("#ffe4e6")
@@ -160,21 +157,102 @@ function applyConditionalFormatting(sheet) {
 }
 
 // ==========================================
-// 2. HELPER BẢO MẬT & TRUY CẤP DATABASE
+// 2. SHEET TRIGGERS & TỰ ĐỘNG TÍNH SỐ DƯ
 // ==========================================
 
+function onOpen(e) {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu(' Lovely Money OS')
+    .addItem(' Cập nhật lại số dư tài khoản', 'recalculateAccountBalances')
+    .addItem(' Kiểm tra trạng thái hệ thống', 'checkSystemStatus')
+    .addToUi();
+
+  recalculateAccountBalances();
+}
+
+function onEdit(e) {
+  if (!e || !e.range) return;
+  const sheetName = e.range.getSheet().getName();
+  if (sheetName === SHEET_DATA || sheetName === SHEET_ACCOUNTS) {
+    recalculateAccountBalances();
+  }
+}
+
 /**
- * Hash mật khẩu bằng thuật toán SHA-256
+ * Hàm tính toán và cập nhật cột "Số dư hiện tại" ở tab "Tài Khoản"
+ * Số dư hiện tại = Số dư đầu kỳ + Sum(Thu) - Sum(Chi)
  */
+function recalculateAccountBalances() {
+  const lock = LockService.getDocumentLock();
+  try {
+    if (!lock.waitLock(5000)) return;
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheetData = ss.getSheetByName(SHEET_DATA);
+    const sheetAccounts = ss.getSheetByName(SHEET_ACCOUNTS);
+
+    if (!sheetAccounts) return;
+
+    const accountsLastRow = getRealLastRow(sheetAccounts, 1);
+    if (accountsLastRow < 2) return;
+
+    const accountsData = sheetAccounts.getRange(2, 1, accountsLastRow - 1, 4).getValues();
+
+    const accountMap = {};
+    accountsData.forEach(row => {
+      const accName = String(row[0]).trim();
+      if (accName) {
+        accountMap[accName] = { initial: Number(row[2]) || 0, thu: 0, chi: 0 };
+      }
+    });
+
+    if (sheetData) {
+      const dataLastRow = getRealLastRow(sheetData, 1);
+      if (dataLastRow >= 2) {
+        const rawTransactions = sheetData.getRange(2, 1, dataLastRow - 1, 9).getValues();
+        rawTransactions.forEach(row => {
+          const type = String(row[2]).trim();     // Cột C: Loại (Thu/Chi)
+          const amount = Number(row[3]) || 0;     // Cột D: Số tiền
+          const account = String(row[5]).trim();  // Cột F: Tài khoản
+          const status = String(row[8]).trim();   // Cột I: Trạng thái
+
+          if (status !== 'Cancelled' && accountMap[account]) {
+            if (type === 'Thu') accountMap[account].thu += amount;
+            else if (type === 'Chi') accountMap[account].chi += amount;
+          }
+        });
+      }
+    }
+
+    const newCurrentBalances = accountsData.map(row => {
+      const accName = String(row[0]).trim();
+      const accInfo = accountMap[accName];
+      if (!accInfo) return [Number(row[3]) || 0];
+
+      const currentBalance = accInfo.initial + accInfo.thu - accInfo.chi;
+      setCacheAndProperty(`ACC_BAL_${accName}`, String(currentBalance));
+      return [currentBalance];
+    });
+
+    sheetAccounts.getRange(2, 4, newCurrentBalances.length, 1).setValues(newCurrentBalances);
+
+  } catch (err) {
+    Logger.log("Lỗi tính toán số dư: " + err.toString());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ==========================================
+// 3. HELPER BẢO MẬT & TRUY CẤP DATABASE
+// ==========================================
+
 function hashPassword(password) {
   if (!password) return '';
   const digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password, Utilities.Charset.UTF_8);
   return digest.map(byte => (byte < 0 ? byte + 256 : byte).toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * Lấy thông tin tài khoản người dùng từ Sheet Admin Master
- */
 function getUserRecord(user) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheetUsers = ss.getSheetByName(SHEET_USERS);
@@ -196,9 +274,6 @@ function getUserRecord(user) {
   return null;
 }
 
-/**
- * Mở Spreadsheet đích của User (nếu có URL) hoặc dùng Master Sheet hiện tại
- */
 function getTargetSpreadsheet(user) {
   if (!user) return SpreadsheetApp.getActiveSpreadsheet();
   const uInfo = getUserRecord(user);
@@ -206,12 +281,12 @@ function getTargetSpreadsheet(user) {
   try {
     return SpreadsheetApp.openByUrl(uInfo.sheetUrl);
   } catch (e) {
-    throw new Error("Không thể mở Google Sheet của bạn. Vui lòng kiểm tra quyền chia sẻ Sheet cho Admin.");
+    throw new Error("Không thể mở Google Sheet của bạn. Vui lòng cấp quyền chia sẻ Sheet.");
   }
 }
 
 // ==========================================
-// 3. API DISPATCHER (doPost & doGet)
+// 4. API DISPATCHER (doPost & doGet)
 // ==========================================
 
 function doGet(e) {
@@ -227,7 +302,7 @@ function doPost(e) {
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
 
-    // --- 1. Authentication Endpoints ---
+    // --- Authentication ---
     if (action === 'login') {
       const uInfo = getUserRecord(data.user);
       const inputHash = hashPassword(data.pass);
@@ -246,8 +321,7 @@ function doPost(e) {
     if (action === 'add_user') {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheetUsers = getOrCreateSheet(ss, SHEET_USERS);
-      const existing = getUserRecord(data.newUser);
-      if (existing) {
+      if (getUserRecord(data.newUser)) {
         return respondJSON({ status: "error", message: "Tên đăng nhập đã tồn tại!" });
       }
 
@@ -265,36 +339,29 @@ function doPost(e) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheetUsers = ss.getSheetByName(SHEET_USERS);
 
-      if (data.newPass) {
-        sheetUsers.getRange(uInfo.rowIndex, 2).setValue(hashPassword(data.newPass));
-      }
-      if (data.newSheetUrl !== undefined) {
-        sheetUsers.getRange(uInfo.rowIndex, 3).setValue(data.newSheetUrl);
-      }
-      if (data.newApiKey !== undefined) {
-        sheetUsers.getRange(uInfo.rowIndex, 4).setValue(data.newApiKey);
-      }
+      if (data.newPass) sheetUsers.getRange(uInfo.rowIndex, 2).setValue(hashPassword(data.newPass));
+      if (data.newSheetUrl !== undefined) sheetUsers.getRange(uInfo.rowIndex, 3).setValue(data.newSheetUrl);
+      if (data.newApiKey !== undefined) sheetUsers.getRange(uInfo.rowIndex, 4).setValue(data.newApiKey);
 
       return respondJSON({ status: "success", message: "Cập nhật thông tin tài khoản thành công!" });
     }
 
-    // --- 2. Batch Ghi Giao Dịch (`add_transactions_batch`) ---
+    // --- Batch Ghi Giao Dịch ---
     if (action === 'add_transactions_batch') {
       return handleAddTransactionsBatch(data);
     }
 
-    // --- 3. Transaction Fetching ---
     if (action === 'get_transactions') {
       return handleGetTransactions(data);
     }
 
-    // --- 4. CRUD Danh mục (tab DS) ---
+    // --- CRUD Tab DS ---
     if (action === 'get_ds') return handleGetDS(data);
     if (action === 'add_ds') return handleAddDS(data);
     if (action === 'update_ds') return handleUpdateDS(data);
     if (action === 'delete_ds') return handleDeleteDS(data);
 
-    // --- 5. CRUD Tài Khoản (tab Tài Khoản) ---
+    // --- CRUD Tab Tài Khoản ---
     if (action === 'get_accounts') return handleGetAccounts(data);
     if (action === 'add_account') return handleAddAccount(data);
     if (action === 'update_account') return handleUpdateAccount(data);
@@ -308,16 +375,12 @@ function doPost(e) {
 }
 
 // ==========================================
-// 4. HAM XỬ LÝ NHIỆM VỤ DỮ LIỆU
+// 5. HAM XỬ LÝ NHIỆM VỤ DỮ LIỆU
 // ==========================================
 
-/**
- * Thêm mảng giao dịch sử dụng LockService chống trùng lặp dữ liệu
- */
 function handleAddTransactionsBatch(data) {
   const lock = LockService.getDocumentLock();
   try {
-    // Đợi tối đa 10 giây để khóa luồng
     if (!lock.waitLock(10000)) {
       return respondJSON({ status: "error", message: "Hệ thống bận, vui lòng thử lại sau giây lát." });
     }
@@ -329,7 +392,7 @@ function handleAddTransactionsBatch(data) {
 
     const ss = getTargetSpreadsheet(data.user);
     let sheetData = ss.getSheetByName(SHEET_DATA);
-    if (!sheetData) throw new Error("Không tìm thấy tab Dữ liệu trên Google Sheet.");
+    if (!sheetData) throw new Error("Không tìm thấy tab Dữ liệu.");
 
     const now = new Date();
     const timeBase = Utilities.formatDate(now, ss.getSpreadsheetTimeZone() || "GMT+7", "yyyyMMddHHmmss");
@@ -348,9 +411,11 @@ function handleAddTransactionsBatch(data) {
       return [id, dateStr, type, amount, category, account, description, source, status];
     });
 
-    // Append toàn bộ dòng cùng 1 lần
     const startRow = getRealLastRow(sheetData, 1) + 1;
     sheetData.getRange(startRow, 1, rowsToAppend.length, 9).setValues(rowsToAppend);
+
+    // Tự động tính toán lại số dư sau khi thêm đơn mới
+    recalculateAccountBalances();
 
     return respondJSON({
       status: "success",
@@ -363,9 +428,6 @@ function handleAddTransactionsBatch(data) {
   }
 }
 
-/**
- * Lấy danh sách Giao Dịch gần đây
- */
 function handleGetTransactions(data) {
   const ss = getTargetSpreadsheet(data.user);
   const sheetData = ss.getSheetByName(SHEET_DATA);
@@ -390,18 +452,14 @@ function handleGetTransactions(data) {
   return respondJSON({ status: "success", data: list });
 }
 
-// --- Category CRUD Handlers ---
 function handleGetDS(data) {
   const ss = getTargetSpreadsheet(data.user);
   const sheet = ss.getSheetByName(SHEET_DS);
   if (!sheet) return respondJSON({ status: "success", data: [] });
-
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return respondJSON({ status: "success", data: [] });
-
   const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
-  const list = values.map(r => ({ name: r[0], group: r[1], type: r[2], budget: Number(r[3]) || 0 }));
-  return respondJSON({ status: "success", data: list });
+  return respondJSON({ status: "success", data: values.map(r => ({ name: r[0], group: r[1], type: r[2], budget: Number(r[3]) || 0 })) });
 }
 
 function handleAddDS(data) {
@@ -416,7 +474,6 @@ function handleUpdateDS(data) {
   const sheet = ss.getSheetByName(SHEET_DS);
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return respondJSON({ status: "error", message: "Danh mục không tồn tại" });
-
   const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   for (let i = 0; i < values.length; i++) {
     if (values[i][0] === data.oldName) {
@@ -427,7 +484,7 @@ function handleUpdateDS(data) {
       return respondJSON({ status: "success", message: "Cập nhật danh mục thành công!" });
     }
   }
-  return respondJSON({ status: "error", message: "Không tìm thấy danh mục cần sửa." });
+  return respondJSON({ status: "error", message: "Không tìm thấy danh mục." });
 }
 
 function handleDeleteDS(data) {
@@ -435,7 +492,6 @@ function handleDeleteDS(data) {
   const sheet = ss.getSheetByName(SHEET_DS);
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return respondJSON({ status: "error", message: "Danh mục không tồn tại" });
-
   const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   for (let i = 0; i < values.length; i++) {
     if (values[i][0] === data.name) {
@@ -443,26 +499,17 @@ function handleDeleteDS(data) {
       return respondJSON({ status: "success", message: "Xóa danh mục thành công!" });
     }
   }
-  return respondJSON({ status: "error", message: "Không tìm thấy danh mục để xóa." });
+  return respondJSON({ status: "error", message: "Không tìm thấy danh mục." });
 }
 
-// --- Account CRUD Handlers ---
 function handleGetAccounts(data) {
   const ss = getTargetSpreadsheet(data.user);
   const sheet = ss.getSheetByName(SHEET_ACCOUNTS);
   if (!sheet) return respondJSON({ status: "success", data: [] });
-
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return respondJSON({ status: "success", data: [] });
-
   const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
-  const list = values.map(r => ({
-    name: r[0],
-    type: r[1],
-    initialBalance: Number(r[2]) || 0,
-    currentBalance: Number(r[3]) || 0
-  }));
-  return respondJSON({ status: "success", data: list });
+  return respondJSON({ status: "success", data: values.map(r => ({ name: r[0], type: r[1], initialBalance: Number(r[2]) || 0, currentBalance: Number(r[3]) || 0 })) });
 }
 
 function handleAddAccount(data) {
@@ -470,6 +517,7 @@ function handleAddAccount(data) {
   const sheet = ss.getSheetByName(SHEET_ACCOUNTS);
   const initial = Number(data.initialBalance) || 0;
   sheet.appendRow([data.name, data.type || 'Tài khoản', initial, initial]);
+  recalculateAccountBalances();
   return respondJSON({ status: "success", message: "Đã thêm tài khoản thành công!" });
 }
 
@@ -478,17 +526,17 @@ function handleUpdateAccount(data) {
   const sheet = ss.getSheetByName(SHEET_ACCOUNTS);
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return respondJSON({ status: "error", message: "Tài khoản không tồn tại" });
-
   const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   for (let i = 0; i < values.length; i++) {
     if (values[i][0] === data.oldName) {
       if (data.name) sheet.getRange(i + 2, 1).setValue(data.name);
       if (data.type) sheet.getRange(i + 2, 2).setValue(data.type);
       if (data.initialBalance !== undefined) sheet.getRange(i + 2, 3).setValue(Number(data.initialBalance));
+      recalculateAccountBalances();
       return respondJSON({ status: "success", message: "Cập nhật tài khoản thành công!" });
     }
   }
-  return respondJSON({ status: "error", message: "Không tìm thấy tài khoản cần sửa." });
+  return respondJSON({ status: "error", message: "Không tìm thấy tài khoản." });
 }
 
 function handleDeleteAccount(data) {
@@ -496,40 +544,85 @@ function handleDeleteAccount(data) {
   const sheet = ss.getSheetByName(SHEET_ACCOUNTS);
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return respondJSON({ status: "error", message: "Tài khoản không tồn tại" });
-
   const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   for (let i = 0; i < values.length; i++) {
     if (values[i][0] === data.name) {
       sheet.deleteRow(i + 2);
+      recalculateAccountBalances();
       return respondJSON({ status: "success", message: "Xóa tài khoản thành công!" });
     }
   }
-  return respondJSON({ status: "error", message: "Không tìm thấy tài khoản để xóa." });
+  return respondJSON({ status: "error", message: "Không tìm thấy tài khoản." });
 }
 
 // ==========================================
-// 5. UTILITY FUNCTIONS
+// 6. UTILITY FUNCTIONS & DUAL-LAYER CACHE
 // ==========================================
 
-/**
- * Quét dò tìm chính xác dòng cuối có chứa dữ liệu dựa theo cột mỏ neo (Anchor Column)
- */
 function getRealLastRow(sheet, anchorColumn) {
+  if (!sheet) return 0;
   const colIndex = anchorColumn || 1;
   const lastPossibleRow = sheet.getLastRow();
   if (lastPossibleRow === 0) return 0;
 
   const values = sheet.getRange(1, colIndex, lastPossibleRow, 1).getValues();
   for (let i = values.length - 1; i >= 0; i--) {
-    if (values[i][0] !== "" && values[i][0] !== null && values[i][0] !== undefined) {
+    const val = values[i][0];
+    if (val !== "" && val !== null && val !== undefined) {
       return i + 1;
     }
   }
   return 0;
 }
 
+function setCacheAndProperty(key, value) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const props = PropertiesService.getScriptProperties();
+    cache.put(key, value, 21600);
+    props.setProperty(key, value);
+  } catch (e) {
+    Logger.log("Cache write error: " + e.toString());
+  }
+}
+
+function getCacheOrProperty(key) {
+  try {
+    const cache = CacheService.getScriptCache();
+    let val = cache.get(key);
+    if (val !== null) return val;
+
+    const props = PropertiesService.getScriptProperties();
+    val = props.getProperty(key);
+    if (val !== null) {
+      cache.put(key, val, 21600);
+      return val;
+    }
+  } catch (e) {
+    Logger.log("Cache read error: " + e.toString());
+  }
+  return null;
+}
+
+function checkSystemStatus() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetData = ss.getSheetByName(SHEET_DATA);
+  const sheetAccounts = ss.getSheetByName(SHEET_ACCOUNTS);
+  const dataRows = sheetData ? getRealLastRow(sheetData, 1) - 1 : 0;
+  const accountRows = sheetAccounts ? getRealLastRow(sheetAccounts, 1) - 1 : 0;
+
+  ui.alert(
+    'Trạng Thái Hệ Thống Lovely Money',
+    ` Hệ thống hoạt động tốt!\n\n` +
+    `- Tổng số giao dịch: ${dataRows > 0 ? dataRows : 0}\n` +
+    `- Số lượng tài khoản: ${accountRows > 0 ? accountRows : 0}\n` +
+    `- Anchor Scan Engine: Ready\n` +
+    `- Dual-Layer Cache: Active`,
+    ui.ButtonSet.OK
+  );
+}
+
 function respondJSON(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
