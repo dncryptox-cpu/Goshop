@@ -637,7 +637,6 @@ function callGeminiNoteAPIWithUserKey(vietnameseText, userApiKey) {
 
   throw new Error("Lỗi kết nối Gemini API: " + lastErrorMsg);
 }
-}
 
 function getUserNotes(userEmail) {
   var ss = getOrCreateSpreadsheet();
