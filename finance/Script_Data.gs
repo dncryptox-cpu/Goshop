@@ -180,23 +180,15 @@ function doPost(e) {
 
     // 1. Xử lý Gửi Yêu cầu gia hạn từ CTV
     if (action === 'request_update_hsd') {
-      var sheet = ss.getSheetByName("YEU_CAU");
-      if (!sheet) {
-        sheet = ss.insertSheet("YEU_CAU");
-        sheet.appendRow(["ID", "Email", "HSD Cũ", "Tháng Gia Hạn", "HSD Mới", "CTV Yêu Cầu", "Thời Gian", "Trạng Thái", "Loại", "Ghi Chú"]);
-      }
+      var sheet = getOrInitYeuCauSheet(ss);
       var req = data.requestData;
-      sheet.appendRow([req.id, req.email, req.oldExpiry, req.months, req.newExpiry, req.staff, req.createdAt, "Chờ Duyệt", "Gia Hạn", req.note || ""]);
+      sheet.appendRow([req.id, req.email, req.oldExpiry, req.months, req.newExpiry, req.staff, req.createdAt, "Chờ Duyệt", req.note || ""]);
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
     }
 
     // 1b. Xử lý Ghi Chú Trạng Thái CTV (save_ctv_note) - Ghi đè 1 dòng duy nhất/email
     if (action === 'save_ctv_note') {
-      var sheet = ss.getSheetByName("YEU_CAU");
-      if (!sheet) {
-        sheet = ss.insertSheet("YEU_CAU");
-        sheet.appendRow(["ID", "Email", "HSD Cũ", "Tháng Gia Hạn", "HSD Mới", "CTV Yêu Cầu", "Thời Gian", "Trạng Thái", "Loại", "Ghi Chú"]);
-      }
+      var sheet = getOrInitYeuCauSheet(ss);
       var targetEmail = String(data.email || '').trim().toLowerCase();
       var status = data.status || '';
       var note = data.note || '';
@@ -207,10 +199,11 @@ function doPost(e) {
       var values = dataRange.getValues();
       var foundIndex = -1;
 
+      // Dòng Ghi Chú là dòng có Cột D (Tháng Gia Hạn - index 3) rỗng
       for (var i = 1; i < values.length; i++) {
         var rowEmail = String(values[i][1] || '').trim().toLowerCase();
-        var rowType = String(values[i][8] || '').trim(); // Cột I (index 8)
-        if (rowEmail === targetEmail && rowType === "Ghi Chú") {
+        var rowMonths = String(values[i][3] || '').trim();
+        if (rowEmail === targetEmail && rowMonths === "") {
           foundIndex = i + 1;
           break;
         }
@@ -220,10 +213,10 @@ function doPost(e) {
         sheet.getRange(foundIndex, 6).setValue(staff);
         sheet.getRange(foundIndex, 7).setValue(nowStr);
         sheet.getRange(foundIndex, 8).setValue(status);
-        sheet.getRange(foundIndex, 10).setValue(note);
+        sheet.getRange(foundIndex, 9).setValue(note);
       } else {
         var reqId = Date.now();
-        sheet.appendRow([reqId, data.email, "", "", "", staff, nowStr, status, "Ghi Chú", note]);
+        sheet.appendRow([reqId, data.email, "", "", "", staff, nowStr, status, note]);
       }
 
       return ContentService.createTextOutput(JSON.stringify({status: 'success'})).setMimeType(ContentService.MimeType.JSON);
@@ -231,7 +224,7 @@ function doPost(e) {
 
     // 2. Admin đổi Trạng thái tự do hoặc CTV Hủy yêu cầu
     if (action === 'cancel_request' || action === 'change_request_status') {
-      var sheet = ss.getSheetByName("YEU_CAU");
+      var sheet = getOrInitYeuCauSheet(ss);
       if (sheet) {
         var reqId = data.reqId;
         var dataRange = sheet.getDataRange();
@@ -3273,4 +3266,38 @@ function resetUserPassword(userId, newPasswordHash) {
     }
   }
   return responseJSON({ status: 'error', message: 'Không tìm thấy người dùng' });
+}
+
+function getOrInitYeuCauSheet(ss) {
+  var sheet = ss.getSheetByName("YEU_CAU");
+  var headers = ["ID", "Email", "HSD Cũ", "Tháng Gia Hạn", "HSD Mới", "CTV Yêu Cầu", "Thời Gian", "Trạng Thái", "Ghi Chú"];
+  if (!sheet) {
+    sheet = ss.insertSheet("YEU_CAU");
+    sheet.appendRow(headers);
+    return sheet;
+  }
+
+  var dataRange = sheet.getDataRange();
+  var values = dataRange.getValues();
+  if (values.length > 0) {
+    var row0 = values[0];
+    // Nếu sheet có >= 10 cột và cột 9 (index 8) có tiêu đề "Loại"
+    if (row0.length >= 10 && String(row0[8] || '').trim() === "Loại") {
+      // Migrate dữ liệu: Chuyển nội dung ghi chú ở cột J (index 9) sang cột I (index 8) cho các dòng Ghi Chú
+      for (var i = 1; i < values.length; i++) {
+        var colIVal = String(values[i][8] || '').trim();
+        var colJVal = String(values[i][9] || '').trim();
+        if (colIVal === "Ghi Chú") {
+          sheet.getRange(i + 1, 9).setValue(colJVal);
+        }
+      }
+      // Đổi tiêu đề cột I thành "Ghi Chú"
+      sheet.getRange(1, 9).setValue("Ghi Chú");
+      // Xóa cột J (cột 10)
+      sheet.deleteColumn(10);
+    } else if (String(row0[8] || '').trim() !== "Ghi Chú") {
+      sheet.getRange(1, 9).setValue("Ghi Chú");
+    }
+  }
+  return sheet;
 }
