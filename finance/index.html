@@ -475,6 +475,9 @@
                     <button class="ai-toggle-btn active" id="tabSingleBtn" onclick="switchAiMode('single')">Chế Độ Single (1 Dòng / 1 Ảnh)</button>
                     <button class="ai-toggle-btn" id="tabBatchBtn" onclick="switchAiMode('batch')">Chế Độ Batch (Nhiều Dòng / Hóa Đơn)</button>
                 </div>
+                <div id="aiQuotaTip" style="font-size: 0.78rem; color: var(--text-muted); margin-top: -0.75rem; margin-bottom: 1rem; font-style: italic; font-weight: 500;">
+                    💡 <span>Dùng Batch cuối ngày để tiết kiệm quota AI (free tier)</span>
+                </div>
 
                 <!-- 1. SINGLE MODE CONTAINER -->
                 <div id="singleModeContainer">
@@ -488,7 +491,7 @@
                             <button class="btn btn-secondary" onclick="document.getElementById('quickSingleFile').click()" title="Đính kèm bill">
                                 <i data-lucide="paperclip" class="w-4 h-4"></i> <span id="fileNameLabel">Ảnh</span>
                             </button>
-                            <button class="btn btn-primary-sm" onclick="parseAiSingle()"><i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích AI</button>
+                            <button class="btn btn-primary-sm" id="btnParseSingle" onclick="parseAiSingle()"><i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích AI</button>
                         </div>
                     </div>
 
@@ -543,7 +546,7 @@
                             <button class="btn btn-secondary" onclick="document.getElementById('quickBatchFiles').click()">
                                 <i data-lucide="images" class="w-4 h-4"></i> Chọn Nhiều Ảnh (<span id="batchFileCount">0</span>)
                             </button>
-                            <button class="btn btn-primary-sm" onclick="parseAiBatch()"><i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Bằng AI</button>
+                            <button class="btn btn-primary-sm" id="btnParseBatch" onclick="parseAiBatch()"><i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Bằng AI</button>
                         </div>
                     </div>
 
@@ -947,23 +950,65 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             document.getElementById('addTxModal').classList.remove('active');
         }
 
+        let quotaCountdownTimer = null;
+
         function switchAiMode(mode) {
             const singleBtn = document.getElementById('tabSingleBtn');
             const batchBtn = document.getElementById('tabBatchBtn');
             const singleCont = document.getElementById('singleModeContainer');
             const batchCont = document.getElementById('batchModeContainer');
+            const tip = document.getElementById('aiQuotaTip');
 
             if (mode === 'single') {
                 singleBtn.classList.add('active');
                 batchBtn.classList.remove('active');
                 singleCont.style.display = 'block';
                 batchCont.style.display = 'none';
+                if (tip) tip.style.display = 'block';
             } else {
                 batchBtn.classList.add('active');
                 singleBtn.classList.remove('active');
                 batchCont.style.display = 'block';
                 singleCont.style.display = 'none';
+                if (tip) tip.style.display = 'none';
             }
+        }
+
+        // Helper: Extract retry seconds from 429 Rate Limit Error
+        function extractRetrySeconds(errMessage) {
+            if (!errMessage) return 60;
+            const match = errMessage.match(/retry in (\d+(\.\d+)?)s/i) || errMessage.match(/(\d+(\.\d+)?)s/i);
+            if (match && match[1]) {
+                return Math.ceil(parseFloat(match[1]));
+            }
+            return 60;
+        }
+
+        // Helper: Start Quota 429 Countdown Timer on AI Buttons
+        function startQuotaCountdown(seconds) {
+            let remaining = seconds;
+            const singleBtn = document.getElementById('btnParseSingle');
+            const batchBtn = document.getElementById('btnParseBatch');
+
+            if (singleBtn) { singleBtn.disabled = true; singleBtn.innerText = `Thử lại sau (${remaining}s)`; }
+            if (batchBtn) { batchBtn.disabled = true; batchBtn.innerText = `Thử lại sau (${remaining}s)`; }
+
+            if (quotaCountdownTimer) clearInterval(quotaCountdownTimer);
+
+            quotaCountdownTimer = setInterval(() => {
+                remaining--;
+                if (remaining <= 0) {
+                    clearInterval(quotaCountdownTimer);
+                    quotaCountdownTimer = null;
+                    if (singleBtn) { singleBtn.disabled = false; singleBtn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích AI'; }
+                    if (batchBtn) { batchBtn.disabled = false; batchBtn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Bằng AI'; }
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                } else {
+                    const label = `Thử lại sau (${remaining}s)`;
+                    if (singleBtn) singleBtn.innerText = label;
+                    if (batchBtn) batchBtn.innerText = label;
+                }
+            }, 1000);
         }
 
         function handleSingleFileSelected(e) {
@@ -1083,13 +1128,21 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
-        // Parse AI Single
+        // Parse AI Single (Optimized for Free Tier)
         async function parseAiSingle() {
             const text = document.getElementById('quickSingleText').value.trim();
             if (!text && !singleFileBase64) {
                 alert("Vui lòng nhập text ghi nhanh hoặc đính kèm 1 ảnh bill!");
                 return;
             }
+
+            const btn = document.getElementById('btnParseSingle');
+            if (btn.disabled) return;
+
+            // 1. Disable nút & Hiện trạng thái loading
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang phân tích...';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
 
             try {
                 const imgs = singleFileBase64 ? [{ mimeType: "image/jpeg", data: singleFileBase64 }] : [];
@@ -1111,8 +1164,23 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                         if (matchedAcc) document.getElementById('txSource').value = matchedAcc.name;
                     }
                 }
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích AI';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
             } catch (e) {
-                alert("Lỗi phân tích AI: " + e.message);
+                console.error("[parseAiSingle Exception]", e);
+                // 2. Parse số giây đếm ngược nếu gặp lỗi 429 Quota Rate Limit
+                if (e.message && e.message.includes('429')) {
+                    const sec = extractRetrySeconds(e.message);
+                    alert(`Lỗi 429 (Hết Quota Free Tier): Nút AI bị khóa tạm thời. Vui lòng thử lại sau ${sec} giây.`);
+                    startQuotaCountdown(sec);
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích AI';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                    alert("Lỗi phân tích AI: " + e.message);
+                }
             }
         }
 
@@ -1142,7 +1210,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
-        // Parse AI Batch
+        // Parse AI Batch (Optimized for Free Tier: Single Payload Call)
         async function parseAiBatch() {
             const text = document.getElementById('quickBatchText').value.trim();
             if (!text && batchFilesBase64.length === 0) {
@@ -1150,14 +1218,37 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 return;
             }
 
+            const btn = document.getElementById('btnParseBatch');
+            if (btn.disabled) return;
+
+            // 1. Disable nút & Hiện trạng thái loading
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang phân tích...';
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+
             try {
+                // XÁC NHẬN: Gộp TOÀN BỘ các dòng text và TẤT CẢ các ảnh vào ĐÚNG 1 LẦN GỌI API DUY NHẤT (Single payload)
                 const result = await callGeminiApi(text, batchFilesBase64);
                 if (Array.isArray(result)) {
                     batchReviewItems = result;
                     renderBatchReviewTable();
                 }
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Bằng AI';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
             } catch (e) {
-                alert("Lỗi phân tích AI Batch: " + e.message);
+                console.error("[parseAiBatch Exception]", e);
+                if (e.message && e.message.includes('429')) {
+                    const sec = extractRetrySeconds(e.message);
+                    alert(`Lỗi 429 (Hết Quota Free Tier): Nút AI bị khóa tạm thời. Vui lòng thử lại sau ${sec} giây.`);
+                    startQuotaCountdown(sec);
+                } else {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Bằng AI';
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                    alert("Lỗi phân tích AI Batch: " + e.message);
+                }
             }
         }
 
