@@ -1081,64 +1081,70 @@ function rowToVocabObject(row) {
 // TÍNH TOÁN STREAK CHUỖI NGÀY HỌC LIÊN TỤC
 // ==========================================
 
+// ==========================================
+// TÍNH TOÁN STREAK CHUỖI NGÀY HỌC LIÊN TỤC (UTC+7 ASIA/HO_CHI_MINH)
+// ==========================================
+
 function calculateUserStreak(userEmail) {
   if (!userEmail) return 0;
 
   var ss = getOrCreateSpreadsheet();
   var activeDates = {};
+  var targetEmail = String(userEmail).trim().toLowerCase();
 
-  // 1. Thu thập ngày từ Tab vocab (ngày_thêm)
+  // 1. Thu thập danh sách NGÀY DUY NHẤT (unique dates) từ Tab vocab (ngày_thêm)
   var vocabSheet = ss.getSheetByName('vocab');
   if (vocabSheet) {
     var vocabData = vocabSheet.getDataRange().getValues();
     for (var i = 1; i < vocabData.length; i++) {
-      if (vocabData[i][1] === userEmail) {
+      var rowEmail = vocabData[i][1];
+      if (rowEmail && String(rowEmail).trim().toLowerCase() === targetEmail) {
         var dateStr = formatDateString(vocabData[i][2]);
-        if (dateStr) {
-          activeDates[dateStr] = true;
+        if (dateStr && dateStr.length === 10) {
+          activeDates[dateStr] = true; // Chỉ đánh dấu ngày có hoạt động, không cộng trùng!
         }
       }
     }
   }
 
-  // 2. Thu thập ngày từ Tab review_log (ngày_ôn)
+  // 2. Thu thập danh sách NGÀY DUY NHẤT từ Tab review_log (ngày_ôn)
   var logSheet = ss.getSheetByName('review_log');
   if (logSheet) {
     var logData = logSheet.getDataRange().getValues();
     for (var j = 1; j < logData.length; j++) {
-      if (logData[j][1] === userEmail) {
+      var logEmail = logData[j][1];
+      if (logEmail && String(logEmail).trim().toLowerCase() === targetEmail) {
         var dateStr = formatDateString(logData[j][3]);
-        if (dateStr) {
+        if (dateStr && dateStr.length === 10) {
           activeDates[dateStr] = true;
         }
       }
     }
   }
 
-  // 3. Tính chuỗi liên tiếp từ Hôm nay hoặc Hôm qua
-  var today = new Date();
-  var todayStr = formatDate(today);
+  // 3. Tính chuỗi liên tiếp từ Hôm nay hoặc Hôm qua theo giờ Việt Nam (Asia/Ho_Chi_Minh)
+  var now = new Date();
+  var todayStr = Utilities.formatDate(now, "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
 
-  var yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-  var yesterdayStr = formatDate(yesterday);
+  var yesterdayMs = now.getTime() - (24 * 60 * 60 * 1000);
+  var yesterdayStr = Utilities.formatDate(new Date(yesterdayMs), "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
 
   var streak = 0;
-  var startDate = null;
+  var currentCheckTime = null;
 
   if (activeDates[todayStr]) {
-    startDate = today;
+    currentCheckTime = now.getTime();
   } else if (activeDates[yesterdayStr]) {
-    startDate = yesterday;
+    currentCheckTime = yesterdayMs;
   }
 
-  if (startDate) {
-    var checkDate = new Date(startDate.getTime());
+  if (currentCheckTime !== null) {
+    var checkTime = currentCheckTime;
     while (true) {
-      var checkStr = formatDate(checkDate);
-      if (activeDates[checkStr]) {
+      var checkDateStr = Utilities.formatDate(new Date(checkTime), "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
+      if (activeDates[checkDateStr]) {
         streak++;
-        checkDate.setDate(checkDate.getDate() - 1);
+        checkTime -= (24 * 60 * 60 * 1000); // Lùi đúng 1 ngày
       } else {
         break;
       }
@@ -1155,7 +1161,7 @@ function testStreak() {
   if (usersData.length > 1) {
     var email = usersData[1][1];
     var streak = calculateUserStreak(email);
-    var msg = "User: " + email + " | Streak học liên tục: 🔥 " + streak + " ngày";
+    var msg = "User: " + email + " | Streak học liên tục theo giờ VN: 🔥 " + streak + " ngày";
     Logger.log(msg);
     return msg;
   }
@@ -1214,7 +1220,7 @@ function getOrCreateSpreadsheet() {
     ]);
   }
 
-  // 5. Tab sessions (MỚI - Quản lý Multi-Session nhiều thiết bị đồng thời)
+  // 5. Tab sessions (Quản lý Multi-Session nhiều thiết bị)
   var sessionsSheet = ss.getSheetByName('sessions');
   if (!sessionsSheet) {
     sessionsSheet = ss.insertSheet('sessions');
@@ -1225,33 +1231,36 @@ function getOrCreateSpreadsheet() {
 }
 
 function getTodayDateString() {
-  var d = new Date();
-  return formatDate(d);
+  return Utilities.formatDate(new Date(), "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
 }
 
 function getNextDateString(daysToAdd) {
-  var d = new Date();
-  d.setDate(d.getDate() + daysToAdd);
-  return formatDate(d);
+  var targetMs = new Date().getTime() + (daysToAdd * 24 * 60 * 60 * 1000);
+  return Utilities.formatDate(new Date(targetMs), "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
 }
 
 function formatDate(d) {
-  var month = '' + (d.getMonth() + 1);
-  var day = '' + d.getDate();
-  var year = d.getFullYear();
-
-  if (month.length < 2) month = '0' + month;
-  if (day.length < 2) day = '0' + day;
-
-  return [year, month, day].join('-');
+  if (!d) return '';
+  if (!(d instanceof Date)) {
+    d = new Date(d);
+  }
+  if (isNaN(d.getTime())) return '';
+  return Utilities.formatDate(d, "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
 }
 
 function formatDateString(val) {
   if (!val) return '';
   if (val instanceof Date) {
-    return formatDate(val);
+    return Utilities.formatDate(val, "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
   }
-  return String(val).substring(0, 10);
+  var str = String(val).trim();
+  if (str.length > 10 || str.indexOf('T') !== -1) {
+    var parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      return Utilities.formatDate(parsed, "Asia/Ho_Chi_Minh", "yyyy-MM-dd");
+    }
+  }
+  return str.substring(0, 10);
 }
 
 function respondJSON(obj) {

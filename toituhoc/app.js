@@ -110,7 +110,7 @@ function showView(viewId) {
     } else if (viewId === 'view-vocab') {
       loadAllVocab();
     } else if (viewId === 'view-notes') {
-      fetchUserNotes();
+      loadUserNotes();
     } else if (viewId === 'view-settings') {
       checkUserProfile();
     }
@@ -974,7 +974,7 @@ async function submitCardRating(rating) {
    8. VOCABULARY LIBRARY (KHO TỪ)
    ========================================== */
 function setupVocabList() {
-  const searchInput = document.getElementById('input-search-vocab');
+  const searchInput = document.getElementById('input-vocab-search') || document.getElementById('input-search-vocab');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
       filterAndRenderVocab(e.target.value.trim().toLowerCase());
