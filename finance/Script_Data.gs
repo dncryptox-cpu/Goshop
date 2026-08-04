@@ -68,6 +68,9 @@ function doPost(e) {
     if (action === 'approve_order') {
       return approveOrder(data.pendingOrderId);
     } 
+    if (action === 'approve_manual_order') {
+      return approveManualOrder(data.pendingOrderId, data.itemData, data.note);
+    } 
     if (action === 'reject_order') {
       return rejectOrder(data.pendingOrderId, data.note);
     } 
@@ -3147,6 +3150,76 @@ function approveOrder(pendingOrderId) {
     poSheet.getRange(row, 8).setValue(new Date().toISOString());
   }
   return res;
+}
+
+function approveManualOrder(pendingOrderId, itemData, note) {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch(e) {
+    return responseJSON({ status: 'error', message: 'Hệ thống bận, thử lại sau' });
+  }
+  try {
+    var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+    var poSheet = ss.getSheetByName('MB_PENDING_ORDERS');
+    var orderSheet = ss.getSheetByName('MB_ORDERS');
+    var logSheet = ss.getSheetByName('MB_WALLET_LOG');
+
+    if (!poSheet || !orderSheet || !logSheet) {
+      return responseJSON({ status: 'error', message: 'Sheet chưa khởi tạo đầy đủ' });
+    }
+
+    // Tìm đơn pending
+    var poData = poSheet.getDataRange().getValues();
+    var poRow = -1, email = '', productId = '', productName = '', amount = 0;
+    for (var i = 1; i < poData.length; i++) {
+      if (String(poData[i][0]) === String(pendingOrderId)) {
+        if (String(poData[i][5]) !== 'pending') {
+          return responseJSON({ status: 'error', message: 'Đơn này đã được xử lý rồi' });
+        }
+        poRow = i + 1;
+        email = String(poData[i][1]).trim().toLowerCase();
+        productId = String(poData[i][2]).trim();
+        productName = String(poData[i][3]).trim();
+        amount = parseInt(poData[i][4]) || 0;
+        break;
+      }
+    }
+    if (poRow === -1) return responseJSON({ status: 'error', message: 'Không tìm thấy đơn hàng' });
+
+    // Kiểm tra số dư ví
+    var logData = logSheet.getDataRange().getValues();
+    var currentBalance = 0;
+    for (var j = 1; j < logData.length; j++) {
+      if (String(logData[j][1]).trim().toLowerCase() === email) {
+        currentBalance += (parseInt(logData[j][3]) || 0);
+      }
+    }
+    if (currentBalance < amount) {
+      return responseJSON({ status: 'error', message: 'Số dư ví khách không đủ (' + currentBalance + ' < ' + amount + ')' });
+    }
+
+    // Trừ ví + ghi log
+    var newBalance = currentBalance - amount;
+    var logId = 'LOG-' + Date.now();
+    logSheet.appendRow([logId, email, 'purchase', -amount, newBalance, pendingOrderId, 'Mua hàng (duyệt tay): ' + productName, new Date().toISOString()]);
+
+    // Ghi MB_ORDERS
+    var orderId = 'ORD-' + Date.now();
+    orderSheet.appendRow([orderId, email, productId, productName, '', itemData || '', amount, 'completed', new Date().toISOString(), note || 'Duyệt tay bởi admin']);
+
+    // Cập nhật MB_PENDING_ORDERS status = approved
+    poSheet.getRange(poRow, 6).setValue('approved');
+    poSheet.getRange(poRow, 8).setValue(new Date().toISOString());
+    poSheet.getRange(poRow, 9).setValue('Đã giao: ' + (note || ''));
+
+    // Đồng bộ sang DON_HANG_MOI
+    syncOrderToDonHangMoi({ orderId: orderId, email: email, productName: productName, amount: amount, expireDate: '' });
+
+    return responseJSON({ status: 'success', orderId: orderId, newBalance: newBalance });
+  } catch(err) {
+    return responseJSON({ status: 'error', message: err.toString() });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function rejectOrder(pendingOrderId, note) {
