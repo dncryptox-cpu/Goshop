@@ -569,7 +569,7 @@
                                 <tbody id="batchReviewBody"></tbody>
                             </table>
                         </div>
-                        <button class="btn btn-primary-sm" style="width: 100%; justify-content: center; margin-top: 1rem; padding: 0.8rem;" onclick="submitBatchSave()">Lưu tất cả</button>
+                        <button class="btn btn-primary-sm" id="btnSubmitBatchSave" style="width: 100%; justify-content: center; margin-top: 1rem; padding: 0.8rem;" onclick="submitBatchSave()">Lưu tất cả</button>
                     </div>
                 </div>
 
@@ -1308,9 +1308,16 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
-        // Single Submit Transaction
+        // Single Submit Transaction (Calls Apps Script add_transactions_batch)
         async function submitAddTx(e) {
             e.preventDefault();
+            const btn = document.getElementById('btnSubmitTx');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang ghi nhận...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+
             const date = document.getElementById('txDate').value;
             const type = document.getElementById('txType').value;
             const amount = Number(document.getElementById('txAmount').value) || 0;
@@ -1324,13 +1331,37 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 items: [{ date, type, amount, category, account, description, source: 'AI', status: 'Confirmed' }]
             };
 
-            const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(r => r.json());
-            if (res.status === 'success') {
-                alert("Đã thêm giao dịch thành công!");
-                closeAddTxModal();
-                fetchData();
-            } else {
-                alert("Lỗi: " + res.message);
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    console.error("[Backend Save Tx HTTP Error]", response.status, errText);
+                    throw new Error(`Lỗi kết nối Server Apps Script (HTTP ${response.status}): ${errText}`);
+                }
+
+                const res = await response.json();
+                console.log("[Backend Save Tx Response]", res);
+
+                if (res.status === 'success') {
+                    alert("Đã thêm giao dịch thành công!");
+                    closeAddTxModal();
+                    fetchData();
+                } else {
+                    console.error("[Backend Save Tx Logic Error]", res);
+                    alert("Lỗi Ghi Nhận (Apps Script Backend): " + (res.message || "Không thể lưu dữ liệu"));
+                }
+            } catch (err) {
+                console.error("[submitAddTx Exception]", err);
+                alert("Lỗi Gửi Dữ Liệu (Backend): " + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Ghi nhận';
+                }
             }
         }
 
@@ -1432,15 +1463,26 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             renderBatchReviewTable();
         }
 
+        // Batch Submit Transactions (Calls Apps Script add_transactions_batch)
         async function submitBatchSave() {
-            if (batchReviewItems.length === 0) return;
+            if (batchReviewItems.length === 0) {
+                alert("Danh sách giao dịch rỗng.");
+                return;
+            }
+
+            const btn = document.getElementById('btnSubmitBatchSave');
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang lưu tất cả...';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
 
             const formattedItems = batchReviewItems.map(item => ({
                 date: item.date || new Date().toISOString().split('T')[0],
-                type: item.type === 'thu' ? 'Thu' : 'Chi',
+                type: item.type === 'Thu' || item.type === 'thu' ? 'Thu' : 'Chi',
                 amount: Number(item.amount) || 0,
                 category: item.category || 'Khác',
-                account: item.account || (allAccounts[0] ? allAccounts[0].name : 'Tiền mặt'),
+                account: item.account || (allAccounts[0] ? allAccounts[0].name : 'Tài khoản Ngân hàng'),
                 description: item.description || '',
                 source: 'AI',
                 status: 'Confirmed'
@@ -1452,13 +1494,37 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 items: formattedItems
             };
 
-            const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(r => r.json());
-            if (res.status === 'success') {
-                alert(`Đã lưu ${res.addedCount} giao dịch thành công!`);
-                closeAddTxModal();
-                fetchData();
-            } else {
-                alert("Lỗi: " + res.message);
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    console.error("[Backend Batch Save HTTP Error]", response.status, errText);
+                    throw new Error(`Lỗi kết nối Server Apps Script (HTTP ${response.status}): ${errText}`);
+                }
+
+                const res = await response.json();
+                console.log("[Backend Batch Save Response]", res);
+
+                if (res.status === 'success') {
+                    alert(`Đã lưu ${res.addedCount || formattedItems.length} giao dịch thành công!`);
+                    closeAddTxModal();
+                    fetchData();
+                } else {
+                    console.error("[Backend Batch Save Logic Error]", res);
+                    alert("Lỗi Lưu Batch (Apps Script Backend): " + (res.message || "Không thể lưu danh sách giao dịch"));
+                }
+            } catch (err) {
+                console.error("[submitBatchSave Exception]", err);
+                alert("Lỗi Gửi Dữ Liệu Batch (Backend): " + err.message);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = 'Lưu tất cả';
+                }
             }
         }
 
