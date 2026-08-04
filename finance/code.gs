@@ -182,12 +182,11 @@ function onEdit(e) {
  * Hàm tính toán và cập nhật cột "Số dư hiện tại" ở tab "Tài Khoản"
  * Số dư hiện tại = Số dư đầu kỳ + Sum(Thu) - Sum(Chi)
  */
-function recalculateAccountBalances() {
-  const lock = LockService.getDocumentLock();
+function recalculateAccountBalances(ssInput) {
   try {
-    if (!lock.waitLock(5000)) return;
+    const ss = ssInput || SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) return;
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetData = ss.getSheetByName(SHEET_DATA);
     const sheetAccounts = ss.getSheetByName(SHEET_ACCOUNTS);
 
@@ -238,6 +237,8 @@ function recalculateAccountBalances() {
 
   } catch (err) {
     Logger.log("Lỗi tính toán số dư: " + err.toString());
+  }
+}
   } finally {
     lock.releaseLock();
   }
@@ -379,12 +380,14 @@ function doPost(e) {
 // ==========================================
 
 function handleAddTransactionsBatch(data) {
-  const lock = LockService.getDocumentLock();
+  const lock = LockService.getScriptLock();
   try {
-    if (!lock.waitLock(10000)) {
-      return respondJSON({ status: "error", message: "Hệ thống bận, vui lòng thử lại sau giây lát." });
-    }
+    lock.waitLock(15000);
+  } catch (e) {
+    return respondJSON({ status: "error", message: "Hệ thống bận (Lock timeout), vui lòng thử lại sau giây lát." });
+  }
 
+  try {
     const items = data.items;
     if (!Array.isArray(items) || items.length === 0) {
       return respondJSON({ status: "error", message: "Danh sách giao dịch rỗng." });
@@ -403,7 +406,7 @@ function handleAddTransactionsBatch(data) {
       const type = item.type === 'Thu' ? 'Thu' : 'Chi';
       const amount = Number(item.amount) || 0;
       const category = item.category || 'Khác';
-      const account = item.account || 'Tiền mặt';
+      const account = item.account || 'Tài khoản Ngân hàng';
       const description = item.description || '';
       const source = item.source || 'Tay';
       const status = item.status || 'Confirmed';
@@ -414,8 +417,8 @@ function handleAddTransactionsBatch(data) {
     const startRow = getRealLastRow(sheetData, 1) + 1;
     sheetData.getRange(startRow, 1, rowsToAppend.length, 9).setValues(rowsToAppend);
 
-    // Tự động tính toán lại số dư sau khi thêm đơn mới
-    recalculateAccountBalances();
+    // Tự động tính toán lại số dư sau khi thêm đơn mới (Truyền tham số ss để không bị null trong Web App)
+    recalculateAccountBalances(ss);
 
     return respondJSON({
       status: "success",
@@ -423,8 +426,10 @@ function handleAddTransactionsBatch(data) {
       message: `Đã lưu thành công ${rowsToAppend.length} giao dịch!`
     });
 
+  } catch (err) {
+    return respondJSON({ status: "error", message: err.toString() });
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e) {}
   }
 }
 
