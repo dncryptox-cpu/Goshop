@@ -1049,8 +1049,8 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
 
             const categoryKeywords = [
                 { cat: 'Cà phê sáng', keywords: ['cf', 'cà phê', 'cafe', 'highland', 'starbucks', 'phúc long'] },
-                { cat: 'Ăn trưa ngoài', keywords: ['cơm', 'ăn trưa', 'bún', 'phở', 'bánh mì', 'hủ tiếu', 'cơm gà'] },
-                { cat: 'Ăn tối', keywords: ['ăn tối', 'lẩu', 'nướng', 'nhậu', 'buffet'] },
+                { cat: 'Ăn trưa ngoài', keywords: ['cơm gà', 'cơm', 'ăn trưa', 'trưa', 'bún', 'bánh mì', 'hủ tiếu'] },
+                { cat: 'Ăn tối', keywords: ['tối', 'phở', 'ăn tối', 'lẩu', 'nướng', 'nhậu', 'buffet'] },
                 { cat: 'Ăn vặt khác', keywords: ['trà sữa', 'ăn vặt', 'chè', 'bánh', 'snack', 'kem'] },
                 { cat: 'Doanh thu bán Premium', keywords: ['bán premium', 'doanh thu', 'bán hàng', 'khách chuyển'] },
                 { cat: 'Giá vốn gia hạn subscription', keywords: ['gia hạn', 'sub', 'subscription'] },
@@ -1069,12 +1069,20 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             ];
 
             const accountKeywords = [
-                { acc: 'Tài khoản Ngân hàng', keywords: ['vcb', 'vietcombank', 'acb', 'techcombank', 'tcb', 'mb', 'mbbank', 'tpbank', 'bank', 'ck', 'chuyển khoản'] },
-                { acc: 'Ví Ví Momo/ZaloPay', keywords: ['momo', 'zalopay', 'zalo', 'vnpay', 'vi'] },
+                { acc: 'Tài khoản Ngân hàng', keywords: ['vcb', 'vietcombank', 'acb', 'techcombank', 'tcb', 'mb', 'mbbank', 'tpbank', 'bank', 'ck', 'chuyển khoản', 'ngân hàng'] },
+                { acc: 'Ví Ví Momo/ZaloPay', keywords: ['momo', 'zalopay', 'zalo', 'vnpay', 'ví'] },
                 { acc: 'Tiền mặt', keywords: ['tiền mặt', 'tm', 'cash'] }
             ];
 
             const todayStr = new Date().toISOString().split('T')[0];
+
+            // Mặc định ưu tiên Tài khoản Ngân hàng (chuyển khoản) nếu người dùng không gõ ví
+            let defaultAccountName = 'Tài khoản Ngân hàng';
+            if (allAccounts && allAccounts.length > 0) {
+                const bankAcc = allAccounts.find(a => a.name.toLowerCase().includes('ngân hàng') || a.type.toLowerCase().includes('ngân hàng'));
+                if (bankAcc) defaultAccountName = bankAcc.name;
+                else defaultAccountName = allAccounts[0].name;
+            }
 
             rawChunks.forEach(chunk => {
                 let amount = 0;
@@ -1109,7 +1117,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                     }
                 }
 
-                let account = (allAccounts && allAccounts[0]) ? allAccounts[0].name : 'Tiền mặt';
+                let account = defaultAccountName;
                 for (const item of accountKeywords) {
                     if (item.keywords.some(kw => lowerChunk.includes(kw))) {
                         account = item.acc;
@@ -1226,7 +1234,6 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const btn = document.getElementById('btnParseSingle');
             if (btn.disabled) return;
 
-            // 1. Thử phân tích nhanh bằng Smart Offline Parser trước (0ms, 0 Quota)
             let localParsed = parseLocalText(text);
             if (localParsed.length > 0) {
                 const item = localParsed[0];
@@ -1245,7 +1252,6 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 }
 
                 if (localParsed.length > 1) {
-                    // Nếu nhập nhiều giao dịch ở chế độ Single (vd: cf sáng 38, cơm gà trưa 40)
                     if (confirm(`Đã phân tích nhanh ${localParsed.length} giao dịch! Bạn có muốn chuyển sang Chế Độ Batch để lưu cả ${localParsed.length} giao dịch này cùng lúc không?`)) {
                         switchAiMode('batch');
                         document.getElementById('quickBatchText').value = text;
@@ -1256,7 +1262,6 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 }
             }
 
-            // 2. Gọi Gemini API nếu có ảnh hoặc để làm giàu thông tin thêm
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang phân tích...';
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1291,7 +1296,6 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích AI';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
 
-                // Nếu đã phân tích bằng offline thành công trước đó thì không popup lỗi Gemini
                 if (localParsed.length === 0) {
                     if (e.message && e.message.includes('429')) {
                         const sec = extractRetrySeconds(e.message);
@@ -1341,7 +1345,6 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const btn = document.getElementById('btnParseBatch');
             if (btn.disabled) return;
 
-            // 1. Phân tích offline trước
             let localParsed = parseLocalText(text);
             if (localParsed.length > 0) {
                 batchReviewItems = localParsed;
@@ -1385,16 +1388,22 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const tbody = document.getElementById('batchReviewBody');
             sec.style.display = 'block';
 
-            const catOptions = allCategories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-            const accOptions = allAccounts.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
+            tbody.innerHTML = batchReviewItems.map((item, idx) => {
+                const catOptions = allCategories.map(c => 
+                    `<option value="${c.name}" ${item.category && item.category.toLowerCase() === c.name.toLowerCase() ? 'selected' : ''}>${c.name}</option>`
+                ).join('');
 
-            tbody.innerHTML = batchReviewItems.map((item, idx) => `
+                const accOptions = allAccounts.map(a => 
+                    `<option value="${a.name}" ${item.account && (item.account.toLowerCase() === a.name.toLowerCase() || a.name.toLowerCase().includes(item.account.toLowerCase())) ? 'selected' : ''}>${a.name}</option>`
+                ).join('');
+
+                return `
                 <tr>
                     <td><input type="date" value="${item.date || new Date().toISOString().split('T')[0]}" onchange="updateBatchItem(${idx}, 'date', this.value)"></td>
                     <td>
                         <select onchange="updateBatchItem(${idx}, 'type', this.value)">
-                            <option value="Chi" ${item.type === 'chi' ? 'selected' : ''}>Chi</option>
-                            <option value="Thu" ${item.type === 'thu' ? 'selected' : ''}>Thu</option>
+                            <option value="Chi" ${item.type === 'Chi' || item.type === 'chi' ? 'selected' : ''}>Chi</option>
+                            <option value="Thu" ${item.type === 'Thu' || item.type === 'thu' ? 'selected' : ''}>Thu</option>
                         </select>
                     </td>
                     <td><input type="number" value="${item.amount || 0}" onchange="updateBatchItem(${idx}, 'amount', Number(this.value))"></td>
@@ -1411,7 +1420,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                     <td><input type="text" value="${item.description || ''}" onchange="updateBatchItem(${idx}, 'description', this.value)"></td>
                     <td><button style="color:var(--berry-alert); background:none;" onclick="removeBatchItem(${idx})">&times;</button></td>
                 </tr>
-            `).join('');
+            `}).join('');
         }
 
         function updateBatchItem(idx, key, val) {
