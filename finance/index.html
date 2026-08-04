@@ -1040,7 +1040,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             });
         }
 
-        // Call Gemini API Function (Detailed Error Handling & Diagnostic Logging)
+        // Call Gemini API Function (Mô hình gemini-2.0-flash chuẩn theo version toituhoc với fallback loop)
         async function callGeminiApi(userPrompt, images = []) {
             if (!geminiApiKey) {
                 geminiApiKey = prompt("Vui lòng nhập Gemini API Key để sử dụng tính năng AI phân tích:");
@@ -1061,24 +1061,44 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 }
             });
 
-            // Endpoint mô hình Gemini GA hiện hành: gemini-3.6-flash
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${geminiApiKey}`;
+            // Danh sách các model thử nghiệm tương tự dự án toituhoc (Ưu tiên gemini-2.0-flash)
+            const modelsToTry = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.5-flash'];
+            let lastError = null;
 
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{ parts: parts }],
-                        generationConfig: { response_mime_type: "application/json" }
-                    })
-                });
+            for (let m = 0; m < modelsToTry.length; m++) {
+                const modelName = modelsToTry[m];
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
 
-                if (!response.ok) {
+                try {
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: parts }],
+                            generationConfig: { response_mime_type: "application/json" }
+                        })
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log(`[Gemini API (${modelName}) Response Success]`, data);
+
+                        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
+                            const textContent = data.candidates[0].content.parts[0].text;
+                            try {
+                                return JSON.parse(textContent);
+                            } catch (jsonErr) {
+                                console.error("[Gemini API JSON Parse Failure]", jsonErr, textContent);
+                                throw new Error("Phản hồi từ Gemini không đúng định dạng JSON: " + textContent.substring(0, 100));
+                            }
+                        }
+                        throw new Error("Cấu trúc phản hồi từ Gemini API không đúng định dạng mong đợi.");
+                    }
+
                     let errMessage = `HTTP ${response.status}`;
                     try {
                         const errJson = await response.json();
-                        console.error("[Gemini API Error Response]", response.status, errJson);
+                        console.error(`[Gemini API (${modelName}) Error Response]`, response.status, errJson);
                         if (errJson.error && errJson.error.message) {
                             errMessage = errJson.error.message;
                         } else {
@@ -1086,46 +1106,31 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                         }
                     } catch (e) {
                         const errText = await response.text();
-                        console.error("[Gemini API Raw Error Text]", response.status, errText);
+                        console.error(`[Gemini API (${modelName}) Raw Error Text]`, response.status, errText);
                         if (errText) errMessage = errText;
                     }
 
-                    if (response.status === 400) {
-                        throw new Error(`Lỗi 400 (Yêu cầu không hợp lệ): ${errMessage}`);
+                    if (response.status === 429) {
+                        throw new Error(`Lỗi 429 (Hết Quota / Vượt hạn ngạch rate limit): ${errMessage}`);
                     } else if (response.status === 403) {
                         throw new Error(`Lỗi 403 (API Key bị từ chối / Không hợp lệ): ${errMessage}`);
-                    } else if (response.status === 404) {
-                        throw new Error(`Lỗi 404 (Không tìm thấy Model / Model bị shutdown): ${errMessage}`);
-                    } else if (response.status === 429) {
-                        throw new Error(`Lỗi 429 (Hết Quota / Vượt hạn ngạch rate limit): ${errMessage}`);
-                    } else if (response.status >= 500) {
-                        throw new Error(`Lỗi ${response.status} (Server Gemini gặp sự cố): ${errMessage}`);
-                    } else {
-                        throw new Error(`Lỗi ${response.status}: ${errMessage}`);
                     }
-                }
 
-                const data = await response.json();
-                console.log("[Gemini API Response Success]", data);
+                    lastError = new Error(`Model ${modelName} (${response.status}): ${errMessage}`);
 
-                if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0]) {
-                    const textContent = data.candidates[0].content.parts[0].text;
-                    try {
-                        return JSON.parse(textContent);
-                    } catch (jsonErr) {
-                        console.error("[Gemini API JSON Parse Failure]", jsonErr, textContent);
-                        throw new Error("Phản hồi từ Gemini không đúng định dạng JSON: " + textContent.substring(0, 100));
+                } catch (err) {
+                    console.error(`[callGeminiApi Exception for ${modelName}]`, err);
+                    if (err.message && (err.message.includes('429') || err.message.includes('403'))) {
+                        throw err;
                     }
+                    if (err.name === 'TypeError' && (err.message.includes('Fetch') || err.message.includes('NetworkError') || err.message.includes('Failed to fetch'))) {
+                        throw new Error("Lỗi CORS / Mạng: Trình duyệt bị chặn khi kết nối trực tiếp đến generativelanguage.googleapis.com (Failed to fetch).");
+                    }
+                    lastError = err;
                 }
-                throw new Error("Cấu trúc phản hồi từ Gemini API không đúng định dạng mong đợi (thiếu candidates).");
-
-            } catch (err) {
-                console.error("[callGeminiApi Exception]", err);
-                if (err.name === 'TypeError' && (err.message.includes('Fetch') || err.message.includes('NetworkError') || err.message.includes('Failed to fetch'))) {
-                    throw new Error("Lỗi CORS / Mạng: Trình duyệt bị chặn khi kết nối trực tiếp đến generativelanguage.googleapis.com (Failed to fetch).");
-                }
-                throw err;
             }
+
+            throw lastError || new Error("Không thể kết nối thành công đến các model Gemini.");
         }
 
         // Parse AI Single (Optimized for Free Tier)
