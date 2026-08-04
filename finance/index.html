@@ -1040,6 +1040,99 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             });
         }
 
+        // Smart Offline Rule-based Text Parser (Instant 0ms, Zero Quota Usage)
+        function parseLocalText(text) {
+            if (!text || typeof text !== 'string') return [];
+            
+            const rawChunks = text.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+            const items = [];
+
+            const categoryKeywords = [
+                { cat: 'Cà phê sáng', keywords: ['cf', 'cà phê', 'cafe', 'highland', 'starbucks', 'phúc long'] },
+                { cat: 'Ăn trưa ngoài', keywords: ['cơm', 'ăn trưa', 'bún', 'phở', 'bánh mì', 'hủ tiếu', 'cơm gà'] },
+                { cat: 'Ăn tối', keywords: ['ăn tối', 'lẩu', 'nướng', 'nhậu', 'buffet'] },
+                { cat: 'Ăn vặt khác', keywords: ['trà sữa', 'ăn vặt', 'chè', 'bánh', 'snack', 'kem'] },
+                { cat: 'Doanh thu bán Premium', keywords: ['bán premium', 'doanh thu', 'bán hàng', 'khách chuyển'] },
+                { cat: 'Giá vốn gia hạn subscription', keywords: ['gia hạn', 'sub', 'subscription'] },
+                { cat: 'Chi phí CTV', keywords: ['ctv', 'cộng tác viên', 'hoa hồng'] },
+                { cat: 'Chi phí vận hành khác', keywords: ['vận hành', 'server', 'domain', 'host'] },
+                { cat: 'Phí giải đấu', keywords: ['giải đấu', 'bib', 'trail', 'run'] },
+                { cat: 'Trang thiết bị', keywords: ['giày', 'áo', 'balo', 'gậy', 'đồng hồ'] },
+                { cat: 'Dinh dưỡng & gel', keywords: ['gel', 'electrolytes', 'dinh dưỡng', 'muối'] },
+                { cat: 'Coaching/PT', keywords: ['coaching', 'pt', 'tập luyện'] },
+                { cat: 'Hồi phục', keywords: ['massage', 'ngâm đá', 'hồi phục', 'sp'] },
+                { cat: 'Di chuyển tới giải', keywords: ['vé máy bay', 'xe khách', 'vé xe'] },
+                { cat: 'Thuê nhà', keywords: ['thuê nhà', 'tiền nhà', 'trọ'] },
+                { cat: 'Điện nước', keywords: ['điện', 'nước', 'wifi', 'mạng', 'internet'] },
+                { cat: 'Di chuyển hàng ngày', keywords: ['xăng', 'grab', 'gojek', 'rửa xe', 'gửi xe', 'tài'] },
+                { cat: 'Giải trí', keywords: ['phim', 'nhạc', 'chơi', 'game', 'du lịch'] }
+            ];
+
+            const accountKeywords = [
+                { acc: 'Tài khoản Ngân hàng', keywords: ['vcb', 'vietcombank', 'acb', 'techcombank', 'tcb', 'mb', 'mbbank', 'tpbank', 'bank', 'ck', 'chuyển khoản'] },
+                { acc: 'Ví Ví Momo/ZaloPay', keywords: ['momo', 'zalopay', 'zalo', 'vnpay', 'vi'] },
+                { acc: 'Tiền mặt', keywords: ['tiền mặt', 'tm', 'cash'] }
+            ];
+
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            rawChunks.forEach(chunk => {
+                let amount = 0;
+                const amountMatch = chunk.match(/(\d+[\d\.,]*)\s*(k|tr|triệu|trieu|d|đ|vnd)?/i);
+                
+                if (amountMatch) {
+                    let numRaw = amountMatch[1].replace(/\./g, '').replace(',', '.');
+                    let num = parseFloat(numRaw) || 0;
+                    const unit = (amountMatch[2] || '').toLowerCase();
+                    
+                    if (unit === 'k') {
+                        num = num * 1000;
+                    } else if (unit === 'tr' || unit === 'triệu' || unit === 'trieu') {
+                        num = num * 1000000;
+                    } else if (!unit && num < 1000 && num > 0) {
+                        num = num * 1000; // Quy đổi viết tắt 38 -> 38,000 VND
+                    }
+                    amount = num;
+                }
+
+                let type = 'Chi';
+                if (/thu|lương|luong|thưởng|bán|nhận|cong|cộng|\+/i.test(chunk)) {
+                    type = 'Thu';
+                }
+
+                let category = 'Khác';
+                const lowerChunk = chunk.toLowerCase();
+                for (const item of categoryKeywords) {
+                    if (item.keywords.some(kw => lowerChunk.includes(kw))) {
+                        category = item.cat;
+                        break;
+                    }
+                }
+
+                let account = (allAccounts && allAccounts[0]) ? allAccounts[0].name : 'Tiền mặt';
+                for (const item of accountKeywords) {
+                    if (item.keywords.some(kw => lowerChunk.includes(kw))) {
+                        account = item.acc;
+                        break;
+                    }
+                }
+
+                if (amount > 0 || chunk.length > 2) {
+                    items.push({
+                        date: todayStr,
+                        amount: amount,
+                        type: type,
+                        category: category,
+                        account: account,
+                        description: chunk,
+                        confidence: amount > 0 ? 'high' : 'low'
+                    });
+                }
+            });
+
+            return items;
+        }
+
         // Call Gemini API Function (Optimized for Free Tier Rate Limit Bucket)
         async function callGeminiApi(userPrompt, images = []) {
             if (!geminiApiKey) {
@@ -1061,7 +1154,6 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 }
             });
 
-            // Sử dụng trực tiếp mô hình gemini-2.0-flash
             const modelName = 'gemini-2.0-flash';
             const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`;
 
@@ -1106,7 +1198,6 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                     if (errText) errMessage = errText;
                 }
 
-                // Nếu đụng 429 Quota hoặc 403 Key Error -> DỪNG NGAY LẬP TỨC để đếm ngược
                 if (response.status === 429) {
                     throw new Error(`Lỗi 429 (Hết Quota / Vượt hạn ngạch rate limit): ${errMessage}`);
                 } else if (response.status === 403) {
@@ -1124,7 +1215,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
-        // Parse AI Single (Optimized for Free Tier)
+        // Parse AI Single (Hybrid Offline/Online Parsing)
         async function parseAiSingle() {
             const text = document.getElementById('quickSingleText').value.trim();
             if (!text && !singleFileBase64) {
@@ -1135,7 +1226,37 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const btn = document.getElementById('btnParseSingle');
             if (btn.disabled) return;
 
-            // 1. Disable nút & Hiện trạng thái loading
+            // 1. Thử phân tích nhanh bằng Smart Offline Parser trước (0ms, 0 Quota)
+            let localParsed = parseLocalText(text);
+            if (localParsed.length > 0) {
+                const item = localParsed[0];
+                if (item.date) document.getElementById('txDate').value = item.date;
+                if (item.type) document.getElementById('txType').value = item.type;
+                if (item.amount) document.getElementById('txAmount').value = item.amount;
+                if (item.description) document.getElementById('txNote').value = item.description;
+
+                if (item.category) {
+                    const matchedCat = allCategories.find(c => c.name.toLowerCase() === item.category.toLowerCase());
+                    if (matchedCat) document.getElementById('txCat').value = matchedCat.name;
+                }
+                if (item.account) {
+                    const matchedAcc = allAccounts.find(a => a.name.toLowerCase().includes(item.account.toLowerCase()));
+                    if (matchedAcc) document.getElementById('txSource').value = matchedAcc.name;
+                }
+
+                if (localParsed.length > 1) {
+                    // Nếu nhập nhiều giao dịch ở chế độ Single (vd: cf sáng 38, cơm gà trưa 40)
+                    if (confirm(`Đã phân tích nhanh ${localParsed.length} giao dịch! Bạn có muốn chuyển sang Chế Độ Batch để lưu cả ${localParsed.length} giao dịch này cùng lúc không?`)) {
+                        switchAiMode('batch');
+                        document.getElementById('quickBatchText').value = text;
+                        batchReviewItems = localParsed;
+                        renderBatchReviewTable();
+                        return;
+                    }
+                }
+            }
+
+            // 2. Gọi Gemini API nếu có ảnh hoặc để làm giàu thông tin thêm
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang phân tích...';
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1166,16 +1287,19 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
 
             } catch (e) {
                 console.error("[parseAiSingle Exception]", e);
-                // 2. Parse số giây đếm ngược nếu gặp lỗi 429 Quota Rate Limit
-                if (e.message && e.message.includes('429')) {
-                    const sec = extractRetrySeconds(e.message);
-                    alert(`Lỗi 429 (Hết Quota Free Tier): Nút AI bị khóa tạm thời. Vui lòng thử lại sau ${sec} giây.`);
-                    startQuotaCountdown(sec);
-                } else {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích AI';
-                    if (typeof lucide !== 'undefined') lucide.createIcons();
-                    alert("Lỗi phân tích AI: " + e.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích AI';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                // Nếu đã phân tích bằng offline thành công trước đó thì không popup lỗi Gemini
+                if (localParsed.length === 0) {
+                    if (e.message && e.message.includes('429')) {
+                        const sec = extractRetrySeconds(e.message);
+                        alert(`Lỗi 429 (Hết Quota Free Tier): Nút AI bị khóa tạm thời. Vui lòng thử lại sau ${sec} giây.`);
+                        startQuotaCountdown(sec);
+                    } else {
+                        alert("Lỗi phân tích AI: " + e.message);
+                    }
                 }
             }
         }
@@ -1206,7 +1330,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
-        // Parse AI Batch (Optimized for Free Tier: Single Payload Call)
+        // Parse AI Batch (Hybrid Offline/Online Parsing)
         async function parseAiBatch() {
             const text = document.getElementById('quickBatchText').value.trim();
             if (!text && batchFilesBase64.length === 0) {
@@ -1217,15 +1341,20 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const btn = document.getElementById('btnParseBatch');
             if (btn.disabled) return;
 
-            // 1. Disable nút & Hiện trạng thái loading
+            // 1. Phân tích offline trước
+            let localParsed = parseLocalText(text);
+            if (localParsed.length > 0) {
+                batchReviewItems = localParsed;
+                renderBatchReviewTable();
+            }
+
             btn.disabled = true;
             btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Đang phân tích...';
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
             try {
-                // XÁC NHẬN: Gộp TOÀN BỘ các dòng text và TẤT CẢ các ảnh vào ĐÚNG 1 LẦN GỌI API DUY NHẤT (Single payload)
                 const result = await callGeminiApi(text, batchFilesBase64);
-                if (Array.isArray(result)) {
+                if (Array.isArray(result) && result.length > 0) {
                     batchReviewItems = result;
                     renderBatchReviewTable();
                 }
@@ -1235,15 +1364,18 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
 
             } catch (e) {
                 console.error("[parseAiBatch Exception]", e);
-                if (e.message && e.message.includes('429')) {
-                    const sec = extractRetrySeconds(e.message);
-                    alert(`Lỗi 429 (Hết Quota Free Tier): Nút AI bị khóa tạm thời. Vui lòng thử lại sau ${sec} giây.`);
-                    startQuotaCountdown(sec);
-                } else {
-                    btn.disabled = false;
-                    btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Bằng AI';
-                    if (typeof lucide !== 'undefined') lucide.createIcons();
-                    alert("Lỗi phân tích AI Batch: " + e.message);
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Bằng AI';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                if (localParsed.length === 0) {
+                    if (e.message && e.message.includes('429')) {
+                        const sec = extractRetrySeconds(e.message);
+                        alert(`Lỗi 429 (Hết Quota Free Tier): Nút AI bị khóa tạm thời. Vui lòng thử lại sau ${sec} giây.`);
+                        startQuotaCountdown(sec);
+                    } else {
+                        alert("Lỗi phân tích AI Batch: " + e.message);
+                    }
                 }
             }
         }
