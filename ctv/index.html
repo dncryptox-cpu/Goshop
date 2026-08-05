@@ -138,6 +138,12 @@
                     class="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full"
                     x-text="getPendingRequestsCount()"></span>
             </button>
+            <button @click="currentTab = 'forecast'"
+                :class="currentTab === 'forecast' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="px-4 py-3 font-bold text-sm border-b-2 transition-all flex items-center gap-2">
+                <i data-lucide="trending-up" class="w-4 h-4"></i>
+                Dự Báo Đến Hạn
+            </button>
         </div>
     </div>
 
@@ -279,6 +285,19 @@
                         </button>
                     </template>
                 </div>
+
+                <template x-if="forecastMonthFilter">
+                    <div class="px-6 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between text-xs text-blue-900 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="trending-up" class="w-4 h-4 text-primary"></i>
+                            <span>Đang lọc theo dự báo: <strong class="text-primary" x-text="forecastMonthFilter === 'overdue' ? 'Đã quá hạn' : forecastMonthFilter.label"></strong></span>
+                        </span>
+                        <button @click="forecastMonthFilter = null" class="px-2.5 py-1 bg-white border border-blue-200 rounded-lg text-blue-700 hover:bg-blue-100 text-xs font-bold transition-all flex items-center gap-1 shadow-sm">
+                            <span>Xóa lọc</span>
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </template>
 
                 <div class="overflow-x-auto">
                     <table class="w-full text-left">
@@ -474,6 +493,121 @@
         </div>
     </main>
 
+    <!-- Forecast Tab -->
+    <main x-show="isLoggedIn && currentTab === 'forecast'" x-cloak class="max-w-7xl mx-auto p-4 md:p-8 pt-6">
+        <div x-show="isLoading" class="flex flex-col items-center justify-center py-20 text-gray-400">
+            <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-primary mb-4"></i>
+            <p class="font-medium text-sm">Đang tải dữ liệu từ Google Sheets...</p>
+        </div>
+
+        <div x-show="!isLoading" x-cloak class="space-y-6">
+            <!-- Controls & Header -->
+            <div class="bg-white rounded-2xl border border-gray-100 p-6 card-shadow flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <i data-lucide="trending-up" class="w-5 h-5 text-primary"></i>
+                        Dự Báo Khách Đến Hạn Theo Tháng
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Thống kê số lượng khách hàng đến hạn theo từng tháng để chuẩn bị Fam/Slot kho & kế hoạch gia hạn.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-4">
+                    <!-- CTV Selector indicator -->
+                    <div class="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                        <i data-lucide="user" class="w-4 h-4 text-blue-600"></i>
+                        <span class="text-xs font-bold text-gray-700">CTV:</span>
+                        <select x-model="ytbFilterStaff" :disabled="currentUser?.role !== 'admin'"
+                            class="bg-transparent text-xs font-bold text-gray-900 focus:outline-none cursor-pointer">
+                            <option value="all">Tất cả CTV & Nhân viên</option>
+                            <option value="Tuan">CTV Tuấn</option>
+                            <option value="Vuong">CTV Vương</option>
+                            <option value="Dnc">Dnc</option>
+                            <option value="Loc">Lộc</option>
+                        </select>
+                    </div>
+
+                    <!-- Forecast Range selector -->
+                    <div class="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                        <i data-lucide="calendar" class="w-4 h-4 text-primary"></i>
+                        <span class="text-xs font-bold text-gray-700">Dự báo:</span>
+                        <select x-model.number="forecastMonthsCount"
+                            class="bg-transparent text-xs font-bold text-primary focus:outline-none cursor-pointer">
+                            <option :value="3">3 tháng tới</option>
+                            <option :value="6">6 tháng tới</option>
+                            <option :value="12">12 tháng tới</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Card -->
+            <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            <tr>
+                                <th class="px-6 py-4">Tháng</th>
+                                <th class="px-6 py-4 text-center">Tổng Khách</th>
+                                <template x-for="planName in getForecastPlans()" :key="planName">
+                                    <th class="px-6 py-4 text-center" x-text="planName"></th>
+                                </template>
+                                <th class="px-6 py-4 text-right">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <template x-for="row in getForecastRows()" :key="row.id">
+                                <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer"
+                                    :class="row.type === 'overdue' ? 'bg-red-50/20' : (row.isCurrentMonth ? 'bg-blue-50/20 font-medium' : '')"
+                                    @click="filterByForecastRow(row)">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center gap-2.5">
+                                            <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs"
+                                                :class="row.type === 'overdue' ? 'bg-red-100 text-red-600' : (row.isCurrentMonth ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700')">
+                                                <i x-show="row.type === 'overdue'" data-lucide="alert-triangle" class="w-4 h-4"></i>
+                                                <span x-show="row.type !== 'overdue'" x-text="row.month || '?'"></span>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-bold text-gray-900 flex items-center gap-2" x-text="row.label">
+                                                </p>
+                                                <span x-show="row.isCurrentMonth" class="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">Tháng hiện tại</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <div class="inline-flex flex-col items-center">
+                                            <span class="text-base font-black" :class="row.type === 'overdue' ? 'text-red-600' : 'text-gray-900'" x-text="row.total"></span>
+                                            <div class="w-16 bg-gray-100 h-1.5 rounded-full overflow-hidden mt-1">
+                                                <div class="h-full rounded-full transition-all duration-500"
+                                                    :class="row.type === 'overdue' ? 'bg-red-500' : 'bg-primary'"
+                                                    :style="`width: ${row.percentage}%`"></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <template x-for="planName in getForecastPlans()" :key="planName">
+                                        <td class="px-6 py-4 text-center">
+                                            <span class="text-xs font-bold px-2.5 py-1 rounded-md"
+                                                :class="row.planCounts[planName] > 0 ? (row.type === 'overdue' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-gray-100 text-gray-800') : 'text-gray-300'"
+                                                x-text="row.planCounts[planName] || 0"></span>
+                                        </td>
+                                    </template>
+                                    <td class="px-6 py-4 text-right">
+                                        <button @click.stop="filterByForecastRow(row)"
+                                            class="px-3 py-1.5 rounded-xl bg-white border border-gray-200 hover:border-primary text-gray-700 hover:text-primary text-xs font-bold transition-all shadow-sm inline-flex items-center gap-1">
+                                            <span>Xem chi tiết</span>
+                                            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
     <!-- Update Modal -->
     <div x-show="showModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
         <div @click="showModal = false" class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"></div>
@@ -613,6 +747,8 @@
                 renewalRequests: [],
                 selectedDateFilter: null,
                 dateOptions: [],
+                forecastMonthsCount: 6,
+                forecastMonthFilter: null,
                 isMaintenanceMode: false,
 
                 async initApp() {
@@ -766,7 +902,7 @@
 
                         appData.forEach((r, index) => {
                             const email = this.getField(r, ['Email khách', 'Email', 'Mail']);
-                            if (!email) return;
+                            if (!email || !email.includes('@')) return;
 
                             const emailLower = email.toLowerCase();
                             let daysRaw = this.getField(r, ['Số ngày còn lại', 'Ngày còn lại', 'Days Left', 'Days']);
@@ -969,7 +1105,21 @@
                         filtered = filtered.filter(c => (c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn') && this.isToday(c.updatedAt));
                     }
 
-                    const isDefaultView = !this.searchQuery && this.selectedDateFilter === null && this.ytbFilterStatus === 'all' && !this.summaryCardFilter;
+                    if (this.forecastMonthFilter) {
+                        if (this.forecastMonthFilter === 'overdue') {
+                            const isDone = (c) => c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn';
+                            filtered = filtered.filter(c => c.days < 0 && !isDone(c));
+                        } else if (typeof this.forecastMonthFilter === 'object') {
+                            const targetM = this.forecastMonthFilter.month;
+                            const targetY = this.forecastMonthFilter.year;
+                            filtered = filtered.filter(c => {
+                                const my = this.getCustomerExpiryMonthYear(c);
+                                return my && my.month === targetM && my.year === targetY;
+                            });
+                        }
+                    }
+
+                    const isDefaultView = !this.searchQuery && this.selectedDateFilter === null && this.ytbFilterStatus === 'all' && !this.summaryCardFilter && !this.forecastMonthFilter;
 
                     if (isDefaultView) {
                         const isDone = (c) => c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn';
@@ -989,6 +1139,161 @@
                     }
 
                     return filtered.slice().sort((a, b) => a.days - b.days);
+                },
+
+                getForecastPlans() {
+                    const staffCustomers = this.getStaffCustomers();
+                    const plansSet = new Set();
+                    staffCustomers.forEach(c => {
+                        const p = (c.plan || 'Chưa phân loại').trim();
+                        if (p) plansSet.add(p);
+                    });
+                    const list = Array.from(plansSet);
+                    return list.length > 0 ? list.sort() : ['Mặc định'];
+                },
+
+                getForecastRows() {
+                    const staffCustomers = this.getStaffCustomers();
+                    const plans = this.getForecastPlans();
+                    const totalValidCustomers = staffCustomers.length || 1;
+
+                    const isDone = (c) => c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn';
+                    const overdueCustomers = staffCustomers.filter(c => c.days < 0 && !isDone(c));
+                    
+                    const overduePlanCounts = {};
+                    plans.forEach(p => overduePlanCounts[p] = 0);
+                    overdueCustomers.forEach(c => {
+                        const p = (c.plan || 'Chưa phân loại').trim();
+                        overduePlanCounts[p] = (overduePlanCounts[p] || 0) + 1;
+                    });
+
+                    const rows = [
+                        {
+                            id: 'overdue',
+                            type: 'overdue',
+                            label: 'Đã quá hạn',
+                            month: null,
+                            year: null,
+                            isCurrentMonth: false,
+                            total: overdueCustomers.length,
+                            percentage: Math.min(100, Math.round((overdueCustomers.length / totalValidCustomers) * 100)),
+                            planCounts: overduePlanCounts
+                        }
+                    ];
+
+                    const now = new Date();
+                    const currentYear = now.getFullYear();
+                    const currentMonth = now.getMonth() + 1;
+                    const count = this.forecastMonthsCount || 6;
+
+                    const nonOverdueCustomers = staffCustomers.filter(c => !(c.days < 0 && !isDone(c)));
+
+                    for (let i = 0; i < count; i++) {
+                        const d = new Date(currentYear, currentMonth - 1 + i, 1);
+                        const m = d.getMonth() + 1;
+                        const y = d.getFullYear();
+                        const label = `Tháng ${String(m).padStart(2, '0')}/${y}`;
+
+                        const matchingCustomers = nonOverdueCustomers.filter(c => {
+                            const my = this.getCustomerExpiryMonthYear(c);
+                            return my && my.month === m && my.year === y;
+                        });
+
+                        const monthPlanCounts = {};
+                        plans.forEach(p => monthPlanCounts[p] = 0);
+                        matchingCustomers.forEach(c => {
+                            const p = (c.plan || 'Chưa phân loại').trim();
+                            monthPlanCounts[p] = (monthPlanCounts[p] || 0) + 1;
+                        });
+
+                        rows.push({
+                            id: `month_${y}_${m}`,
+                            type: 'month',
+                            label: label,
+                            month: m,
+                            year: y,
+                            isCurrentMonth: i === 0,
+                            total: matchingCustomers.length,
+                            percentage: Math.min(100, Math.round((matchingCustomers.length / totalValidCustomers) * 100)),
+                            planCounts: monthPlanCounts
+                        });
+                    }
+
+                    const processedCustomerSet = new Set();
+                    overdueCustomers.forEach(c => processedCustomerSet.add(c.email));
+                    rows.forEach(r => {
+                        if (r.type === 'month') {
+                            nonOverdueCustomers.forEach(c => {
+                                const my = this.getCustomerExpiryMonthYear(c);
+                                if (my && my.month === r.month && my.year === r.year) {
+                                    processedCustomerSet.add(c.email);
+                                }
+                            });
+                        }
+                    });
+
+                    const unknownCustomers = staffCustomers.filter(c => !processedCustomerSet.has(c.email));
+                    if (unknownCustomers.length > 0) {
+                        const unknownPlanCounts = {};
+                        plans.forEach(p => unknownPlanCounts[p] = 0);
+                        unknownCustomers.forEach(c => {
+                            const p = (c.plan || 'Chưa phân loại').trim();
+                            unknownPlanCounts[p] = (unknownPlanCounts[p] || 0) + 1;
+                        });
+
+                        rows.push({
+                            id: 'unknown',
+                            type: 'unknown',
+                            label: 'Khác / Không xác định',
+                            month: null,
+                            year: null,
+                            isCurrentMonth: false,
+                            total: unknownCustomers.length,
+                            percentage: Math.min(100, Math.round((unknownCustomers.length / totalValidCustomers) * 100)),
+                            planCounts: unknownPlanCounts
+                        });
+                    }
+
+                    return rows;
+                },
+
+                getCustomerExpiryMonthYear(c) {
+                    if (!c.expiry || c.expiry === '--') return null;
+                    const str = String(c.expiry).trim();
+                    if (str.includes('/')) {
+                        const parts = str.split('/');
+                        if (parts.length >= 3) {
+                            const m = parseInt(parts[1], 10);
+                            const y = parseInt(parts[2], 10);
+                            if (!isNaN(m) && !isNaN(y)) return { month: m, year: y };
+                        }
+                    }
+                    if (str.includes('-')) {
+                        const parts = str.split('-');
+                        if (parts.length >= 3) {
+                            const y = parseInt(parts[0], 10);
+                            const m = parseInt(parts[1], 10);
+                            if (!isNaN(m) && !isNaN(y)) return { month: m, year: y };
+                        }
+                    }
+                    return null;
+                },
+
+                filterByForecastRow(row) {
+                    this.currentTab = 'customers';
+                    this.summaryCardFilter = null;
+                    this.searchQuery = '';
+                    this.selectedDateFilter = null;
+                    this.ytbFilterStatus = 'all';
+
+                    if (row.type === 'overdue') {
+                        this.forecastMonthFilter = 'overdue';
+                    } else if (row.type === 'month') {
+                        this.forecastMonthFilter = { month: row.month, year: row.year, label: row.label };
+                    } else {
+                        this.forecastMonthFilter = null;
+                    }
+                    this.$nextTick(() => lucide.createIcons());
                 },
 
                 async saveStatus(email, status, note = '') {
