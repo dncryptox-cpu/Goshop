@@ -396,7 +396,9 @@
                                     <p class="text-xs text-gray-500 mt-0.5" x-text="req.createdAt"></p>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <p class="text-sm font-bold text-gray-900" x-text="req.email"></p>
+                                    <p class="text-sm font-bold text-gray-900 cursor-pointer hover:text-primary hover:underline transition-all"
+                                        @click="copyText(req.email)" title="Nhấn để copy"
+                                        x-text="req.email"></p>
                                     <template x-if="req.months > 0">
                                         <p class="text-xs text-gray-500 mt-0.5">Từ <span x-text="req.oldExpiry || '--'"></span> lên
                                             <span class="font-bold text-green-600" x-text="req.newExpiry || '--'"></span></p>
@@ -478,7 +480,9 @@
                     </button>
                 </div>
                 <h2 class="text-xl font-bold text-gray-900">Cập Nhật Khách Hàng</h2>
-                <p class="text-sm text-gray-500 mt-1" x-text="updateForm.email"></p>
+                <p class="text-sm text-gray-500 mt-1 cursor-pointer hover:text-primary hover:underline transition-all inline-block font-medium"
+                    @click="copyText(updateForm.email)" title="Nhấn để copy"
+                    x-text="updateForm.email"></p>
 
                 <!-- Modal Mode Selector -->
                 <div class="flex bg-gray-100 p-1 rounded-xl mt-4">
@@ -1228,8 +1232,32 @@
                 },
 
                 copyText(text) {
-                    navigator.clipboard.writeText(text);
-                    this.showToast('Đã copy: ' + text);
+                    if (!text || text === '--') return;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            this.showToast('Đã sao chép: ' + text);
+                        }).catch(() => {
+                            this.fallbackCopyText(text);
+                        });
+                    } else {
+                        this.fallbackCopyText(text);
+                    }
+                },
+
+                fallbackCopyText(text) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        this.showToast('Đã sao chép: ' + text);
+                    } catch (err) {
+                        console.error('Fallback copy error:', err);
+                    }
+                    document.body.removeChild(textarea);
                 },
 
                 showToast(message) {
