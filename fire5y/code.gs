@@ -239,10 +239,6 @@ function recalculateAccountBalances(ssInput) {
     Logger.log("Lỗi tính toán số dư: " + err.toString());
   }
 }
-  } finally {
-    lock.releaseLock();
-  }
-}
 
 // ==========================================
 // 3. HELPER BẢO MẬT & TRUY CẤP DATABASE
@@ -381,10 +377,9 @@ function doPost(e) {
 
 function handleAddTransactionsBatch(data) {
   const lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(15000);
-  } catch (e) {
-    return respondJSON({ status: "error", message: "Hệ thống bận (Lock timeout), vui lòng thử lại sau giây lát." });
+  const acquired = lock.tryLock(5000);
+  if (!acquired) {
+    return respondJSON({ status: "error", message: "Lỗi Backend Apps Script: Lock timeout (5s - khóa ghi dữ liệu đang bận). Vui lòng thử lại sau giây lát." });
   }
 
   try {
