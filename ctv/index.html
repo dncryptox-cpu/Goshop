@@ -148,6 +148,48 @@
         </div>
 
         <div x-show="!isLoading" x-cloak>
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                <!-- Card 1: Quá hạn chưa xử lý -->
+                <div @click="summaryCardFilter = summaryCardFilter === 'overdue' ? null : 'overdue'"
+                    :class="summaryCardFilter === 'overdue' ? 'ring-2 ring-red-500 bg-red-50/80 shadow-md' : 'bg-white hover:border-red-200 hover:shadow-sm'"
+                    class="rounded-2xl border border-gray-100 p-5 transition-all cursor-pointer flex items-center justify-between group">
+                    <div>
+                        <p class="text-xs font-bold text-red-500 uppercase tracking-wider mb-1">Quá hạn chưa xử lý</p>
+                        <p class="text-3xl font-black text-red-600" x-text="getOverdueUnhandledCount()"></p>
+                    </div>
+                    <div class="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform">
+                        <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+                    </div>
+                </div>
+
+                <!-- Card 2: Sắp hết hạn (<=3 ngày) -->
+                <div @click="summaryCardFilter = summaryCardFilter === 'expiring_soon' ? null : 'expiring_soon'"
+                    :class="summaryCardFilter === 'expiring_soon' ? 'ring-2 ring-orange-500 bg-orange-50/80 shadow-md' : 'bg-white hover:border-orange-200 hover:shadow-sm'"
+                    class="rounded-2xl border border-gray-100 p-5 transition-all cursor-pointer flex items-center justify-between group">
+                    <div>
+                        <p class="text-xs font-bold text-orange-500 uppercase tracking-wider mb-1">Sắp hết hạn (≤3 ngày)</p>
+                        <p class="text-3xl font-black text-orange-600" x-text="getExpiringSoonCount()"></p>
+                    </div>
+                    <div class="w-12 h-12 rounded-2xl bg-orange-50 flex items-center justify-center text-orange-500 group-hover:scale-110 transition-transform">
+                        <i data-lucide="clock" class="w-6 h-6"></i>
+                    </div>
+                </div>
+
+                <!-- Card 3: Đã gia hạn hôm nay -->
+                <div @click="summaryCardFilter = summaryCardFilter === 'renewed_today' ? null : 'renewed_today'"
+                    :class="summaryCardFilter === 'renewed_today' ? 'ring-2 ring-green-500 bg-green-50/80 shadow-md' : 'bg-white hover:border-green-200 hover:shadow-sm'"
+                    class="rounded-2xl border border-gray-100 p-5 transition-all cursor-pointer flex items-center justify-between group">
+                    <div>
+                        <p class="text-xs font-bold text-green-600 uppercase tracking-wider mb-1">Đã gia hạn hôm nay</p>
+                        <p class="text-3xl font-black text-green-600" x-text="getRenewedTodayCount()"></p>
+                    </div>
+                    <div class="w-12 h-12 rounded-2xl bg-green-50 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform">
+                        <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                    </div>
+                </div>
+            </div>
+
             <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
                 <div
                     class="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-6 bg-gray-50/50">
@@ -546,6 +588,7 @@
                 searchQuery: '',
                 ytbFilterStaff: 'all', // Default to all
                 ytbFilterStatus: 'all',
+                summaryCardFilter: null,
                 ctvNotesMap: {},
                 showModal: false,
                 updateForm: { email: '', oldExpiry: '', months: 1, newExpiry: '', mode: 'note', status: 'Còn HSD', note: '' },
@@ -754,6 +797,7 @@
                             const noteInfo = this.ctvNotesMap[emailLower];
                             const renewalStatus = noteInfo ? noteInfo.status : (days > 0 ? 'Còn HSD' : 'Chờ GH');
                             const note = noteInfo ? noteInfo.note : '';
+                            const updatedAt = noteInfo ? noteInfo.updatedAt : '';
 
                             const customerObj = {
                                 email: email,
@@ -764,7 +808,8 @@
                                 days: days,
                                 staff: staff,
                                 renewalStatus: renewalStatus,
-                                note: note
+                                note: note,
+                                updatedAt: updatedAt
                             };
 
                             if (!customerMap[emailLower]) {
@@ -791,6 +836,69 @@
                     }
                 },
 
+                getStaffCustomers() {
+                    let list = this.customers;
+                    if (this.ytbFilterStaff !== 'all') {
+                        const staffLower = this.ytbFilterStaff.toLowerCase();
+                        list = list.filter(c => (c.staff || '').toLowerCase().includes(staffLower));
+                    }
+                    return list;
+                },
+
+                getOverdueUnhandledCount() {
+                    return this.getStaffCustomers().filter(c => 
+                        c.days < 0 && 
+                        c.renewalStatus !== 'Đã GH' && 
+                        c.renewalStatus !== 'Đã Gia Hạn'
+                    ).length;
+                },
+
+                getExpiringSoonCount() {
+                    return this.getStaffCustomers().filter(c => 
+                        c.days >= 0 && c.days <= 3 && 
+                        c.renewalStatus !== 'Đã GH' && 
+                        c.renewalStatus !== 'Đã Gia Hạn'
+                    ).length;
+                },
+
+                getRenewedTodayCount() {
+                    return this.getStaffCustomers().filter(c => 
+                        (c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn') && 
+                        this.isToday(c.updatedAt)
+                    ).length;
+                },
+
+                isToday(dateStr) {
+                    if (!dateStr || dateStr === '--') return false;
+                    const str = String(dateStr).trim();
+                    const today = new Date();
+                    const todayDd = String(today.getDate()).padStart(2, '0');
+                    const todayMm = String(today.getMonth() + 1).padStart(2, '0');
+                    const todayYyyy = String(today.getFullYear());
+                    
+                    if (str.includes('/')) {
+                        const parts = str.split('/');
+                        if (parts.length >= 3) {
+                            const d = String(parseInt(parts[0])).padStart(2, '0');
+                            const m = String(parseInt(parts[1])).padStart(2, '0');
+                            const y = parts[2].substring(0, 4);
+                            return d === todayDd && m === todayMm && y === todayYyyy;
+                        }
+                    }
+                    
+                    if (str.includes('-')) {
+                        const parts = str.split('-');
+                        if (parts.length >= 3) {
+                            const y = parts[0];
+                            const m = String(parseInt(parts[1])).padStart(2, '0');
+                            const d = String(parseInt(parts[2])).padStart(2, '0');
+                            return d === todayDd && m === todayMm && y === todayYyyy;
+                        }
+                    }
+                    
+                    return false;
+                },
+
                 getYoutubeCustomers() {
                     let filtered = this.customers;
 
@@ -813,14 +921,43 @@
                         filtered = filtered.filter(c => c.days === this.selectedDateFilter);
                     }
 
-                    return filtered.sort((a, b) => a.days - b.days);
+                    if (this.summaryCardFilter === 'overdue') {
+                        filtered = filtered.filter(c => c.days < 0 && c.renewalStatus !== 'Đã GH' && c.renewalStatus !== 'Đã Gia Hạn');
+                    } else if (this.summaryCardFilter === 'expiring_soon') {
+                        filtered = filtered.filter(c => c.days >= 0 && c.days <= 3 && c.renewalStatus !== 'Đã GH' && c.renewalStatus !== 'Đã Gia Hạn');
+                    } else if (this.summaryCardFilter === 'renewed_today') {
+                        filtered = filtered.filter(c => (c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn') && this.isToday(c.updatedAt));
+                    }
+
+                    const isDefaultView = !this.searchQuery && this.selectedDateFilter === null && this.ytbFilterStatus === 'all' && !this.summaryCardFilter;
+
+                    if (isDefaultView) {
+                        const isDone = (c) => c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn';
+                        const isOverdue = (c) => c.days < 0 && !isDone(c);
+                        const isExpiringSoon = (c) => c.days >= 0 && c.days <= 3 && !isDone(c);
+
+                        return filtered.slice().sort((a, b) => {
+                            const aGroup = isOverdue(a) ? 1 : (isExpiringSoon(a) ? 2 : 3);
+                            const bGroup = isOverdue(b) ? 1 : (isExpiringSoon(b) ? 2 : 3);
+
+                            if (aGroup !== bGroup) {
+                                return aGroup - bGroup;
+                            }
+
+                            return a.days - b.days;
+                        });
+                    }
+
+                    return filtered.slice().sort((a, b) => a.days - b.days);
                 },
 
                 async saveStatus(email, status, note = '') {
+                    const todayStr = new Date().toLocaleDateString('vi-VN');
                     const c = this.customers.find(x => x.email === email);
                     if (c) {
                         c.renewalStatus = status;
                         c.note = note;
+                        c.updatedAt = todayStr;
                     }
 
                     if (this.CONFIG.WEBAPP_URL) {
