@@ -550,6 +550,8 @@
                             <tr>
                                 <th class="px-6 py-4">Tháng</th>
                                 <th class="px-6 py-4 text-center">Tổng Khách</th>
+                                <th class="px-6 py-4 text-center text-blue-600 bg-blue-50/40">Gói Thường</th>
+                                <th class="px-6 py-4 text-center text-purple-600 bg-purple-50/40">Gói Plus</th>
                                 <template x-for="planName in getForecastPlans()" :key="planName">
                                     <th class="px-6 py-4 text-center" x-text="planName"></th>
                                 </template>
@@ -584,6 +586,14 @@
                                                     :style="`width: ${row.percentage}%`"></div>
                                             </div>
                                         </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center bg-blue-50/20">
+                                        <span class="text-xs font-bold px-2.5 py-1 rounded-md bg-blue-100/70 text-blue-800"
+                                            x-text="row.normalCount || 0"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-center bg-purple-50/20">
+                                        <span class="text-xs font-bold px-2.5 py-1 rounded-md bg-purple-100/70 text-purple-800"
+                                            x-text="row.plusCount || 0"></span>
                                     </td>
                                     <template x-for="planName in getForecastPlans()" :key="planName">
                                         <td class="px-6 py-4 text-center">
@@ -1141,6 +1151,11 @@
                     return filtered.slice().sort((a, b) => a.days - b.days);
                 },
 
+                isPlusPlan(planStr) {
+                    if (!planStr) return false;
+                    return String(planStr).toLowerCase().includes('plus');
+                },
+
                 getForecastPlans() {
                     const staffCustomers = this.getStaffCustomers();
                     const plansSet = new Set();
@@ -1162,9 +1177,17 @@
                     
                     const overduePlanCounts = {};
                     plans.forEach(p => overduePlanCounts[p] = 0);
+                    let overdueNormalCount = 0;
+                    let overduePlusCount = 0;
+
                     overdueCustomers.forEach(c => {
                         const p = (c.plan || 'Chưa phân loại').trim();
                         overduePlanCounts[p] = (overduePlanCounts[p] || 0) + 1;
+                        if (this.isPlusPlan(c.plan)) {
+                            overduePlusCount++;
+                        } else {
+                            overdueNormalCount++;
+                        }
                     });
 
                     const rows = [
@@ -1176,6 +1199,8 @@
                             year: null,
                             isCurrentMonth: false,
                             total: overdueCustomers.length,
+                            normalCount: overdueNormalCount,
+                            plusCount: overduePlusCount,
                             percentage: Math.min(100, Math.round((overdueCustomers.length / totalValidCustomers) * 100)),
                             planCounts: overduePlanCounts
                         }
@@ -1201,9 +1226,17 @@
 
                         const monthPlanCounts = {};
                         plans.forEach(p => monthPlanCounts[p] = 0);
+                        let monthNormalCount = 0;
+                        let monthPlusCount = 0;
+
                         matchingCustomers.forEach(c => {
                             const p = (c.plan || 'Chưa phân loại').trim();
                             monthPlanCounts[p] = (monthPlanCounts[p] || 0) + 1;
+                            if (this.isPlusPlan(c.plan)) {
+                                monthPlusCount++;
+                            } else {
+                                monthNormalCount++;
+                            }
                         });
 
                         rows.push({
@@ -1214,6 +1247,8 @@
                             year: y,
                             isCurrentMonth: i === 0,
                             total: matchingCustomers.length,
+                            normalCount: monthNormalCount,
+                            plusCount: monthPlusCount,
                             percentage: Math.min(100, Math.round((matchingCustomers.length / totalValidCustomers) * 100)),
                             planCounts: monthPlanCounts
                         });
@@ -1236,9 +1271,17 @@
                     if (unknownCustomers.length > 0) {
                         const unknownPlanCounts = {};
                         plans.forEach(p => unknownPlanCounts[p] = 0);
+                        let unknownNormalCount = 0;
+                        let unknownPlusCount = 0;
+
                         unknownCustomers.forEach(c => {
                             const p = (c.plan || 'Chưa phân loại').trim();
                             unknownPlanCounts[p] = (unknownPlanCounts[p] || 0) + 1;
+                            if (this.isPlusPlan(c.plan)) {
+                                unknownPlusCount++;
+                            } else {
+                                unknownNormalCount++;
+                            }
                         });
 
                         rows.push({
@@ -1249,6 +1292,8 @@
                             year: null,
                             isCurrentMonth: false,
                             total: unknownCustomers.length,
+                            normalCount: unknownNormalCount,
+                            plusCount: unknownPlusCount,
                             percentage: Math.min(100, Math.round((unknownCustomers.length / totalValidCustomers) * 100)),
                             planCounts: unknownPlanCounts
                         });
