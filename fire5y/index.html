@@ -382,6 +382,53 @@
                     </div>
                 </div>
 
+                <!-- Special Persona Widgets: Ultra Trail & DNC P&L -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+                    <!-- Widget 1: Ultra Trail Budget -->
+                    <div class="card" style="border-left: 4px solid var(--dawn-gold);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                            <span style="font-weight: 700; font-size: 0.95rem; color: var(--ocean-deep); display: flex; align-items: center; gap: 6px;">
+                                <i data-lucide="trophy" class="w-4 h-4" style="color: var(--dawn-gold);"></i> 🏃 Ngân Sách Ultra Trail Tháng Này
+                            </span>
+                            <span style="font-size: 0.78rem; font-weight: 600; color: var(--dawn-gold); background: rgba(227, 167, 59, 0.15); padding: 2px 8px; border-radius: 99px;" id="ultraTrailUsagePercent">0%</span>
+                        </div>
+                        <div style="font-size: 1.3rem; font-weight: 700; color: var(--ink-teal); margin-bottom: 0.5rem;" class="amount-number" id="ultraTrailSpent">
+                            0 / 10.000.000 ₫
+                        </div>
+                        <div class="station-bar-bg" style="height: 10px; margin-bottom: 0.75rem;">
+                            <div class="station-bar-fill" id="ultraTrailBar" style="width: 0%; background: var(--dawn-gold);"></div>
+                        </div>
+                        <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+                            <span>Phí race, gear, gel, di chuyển, hồi phục</span>
+                            <span id="ultraTrailRemaining">Còn lại 10.000.000 ₫</span>
+                        </div>
+                    </div>
+
+                    <!-- Widget 2: DNC P&L -->
+                    <div class="card" style="border-left: 4px solid var(--trail-moss);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                            <span style="font-weight: 700; font-size: 0.95rem; color: var(--ocean-deep); display: flex; align-items: center; gap: 6px;">
+                                <i data-lucide="briefcase" class="w-4 h-4" style="color: var(--trail-moss);"></i> 💼 P&L Kinh Doanh DNC
+                            </span>
+                            <span style="font-size: 0.78rem; font-weight: 600; color: var(--trail-moss); background: #e8f5e9; padding: 2px 8px; border-radius: 99px;" id="dncMarginPercent">Biên LN: 0%</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.5rem;">
+                            <div>
+                                <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Doanh thu Premium</span>
+                                <span style="font-weight: 700; color: var(--trail-moss); font-size: 1.05rem;" class="amount-number" id="dncRevenue">+0 ₫</span>
+                            </div>
+                            <div>
+                                <span style="font-size: 0.75rem; color: var(--text-muted); display: block;">Chi phí (Vốn + CTV)</span>
+                                <span style="font-weight: 700; color: var(--berry-alert); font-size: 1.05rem;" class="amount-number" id="dncCost">-0 ₫</span>
+                            </div>
+                        </div>
+                        <div style="font-size: 0.8rem; color: var(--ink-teal); font-weight: 600; border-top: 1px dashed var(--border); padding-top: 0.5rem; display: flex; justify-content: space-between;">
+                            <span>Lợi Nhuận Ròng DNC:</span>
+                            <span class="amount-number" id="dncProfit" style="color: var(--trail-moss);">0 ₫</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Trạm Ngân Sách Preview -->
                 <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--ocean-deep);">Trạm Tiếp Nước (Ngân Sách Danh Mục)</h3>
                 <div class="station-grid" id="dashboardStationGrid"></div>
@@ -743,7 +790,86 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             document.getElementById('totalExpense').innerText = '-' + formatMoney(totalExpense);
 
             renderElevationChart();
+            renderSpecialWidgets();
             renderStationGrid('dashboardStationGrid', 4);
+        }
+
+        // Calculate Ultra Trail & DNC P&L Widgets
+        function renderSpecialWidgets() {
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+
+            const thisMonthTxs = allTransactions.filter(t => {
+                if (!t.date) return false;
+                const d = new Date(t.date);
+                return d.getMonth() === currentMonth && d.getFullYear() === currentYear && t.status !== 'Cancelled';
+            });
+
+            // 1. Ultra Trail Widget
+            const ultraTrailCats = ['Phí giải đấu', 'Trang thiết bị', 'Dinh dưỡng & gel', 'Coaching/PT', 'Hồi phục', 'Di chuyển tới giải'];
+            let ultraTrailSpent = 0;
+            const ultraTrailLimit = 10000000;
+
+            thisMonthTxs.forEach(t => {
+                if (t.type === 'Chi' && ultraTrailCats.includes(t.category)) {
+                    ultraTrailSpent += (Number(t.amount) || 0);
+                }
+            });
+
+            const ultraPct = Math.min(100, Math.round((ultraTrailSpent / ultraTrailLimit) * 100));
+            const ultraRem = ultraTrailLimit - ultraTrailSpent;
+
+            const spentEl = document.getElementById('ultraTrailSpent');
+            const pctEl = document.getElementById('ultraTrailUsagePercent');
+            const barEl = document.getElementById('ultraTrailBar');
+            const remEl = document.getElementById('ultraTrailRemaining');
+
+            if (spentEl) spentEl.innerText = formatMoney(ultraTrailSpent) + " / " + formatMoney(ultraTrailLimit);
+            if (pctEl) pctEl.innerText = ultraPct + "%";
+            if (barEl) {
+                barEl.style.width = ultraPct + "%";
+                barEl.style.background = ultraPct > 90 ? "var(--berry-alert)" : "var(--dawn-gold)";
+            }
+            if (remEl) {
+                if (ultraRem >= 0) remEl.innerText = "Còn lại " + formatMoney(ultraRem);
+                else remEl.innerText = "Vượt hạn ngạch " + formatMoney(Math.abs(ultraRem));
+            }
+
+            // 2. DNC P&L Widget
+            let dncRev = 0;
+            let dncCost = 0;
+
+            const dncRevCats = ['Doanh thu bán Premium'];
+            const dncCostCats = ['Giá vốn gia hạn subscription', 'Chi phí CTV', 'Chi phí vận hành khác'];
+
+            thisMonthTxs.forEach(t => {
+                if (dncRevCats.includes(t.category)) {
+                    dncRev += (Number(t.amount) || 0);
+                } else if (dncCostCats.includes(t.category)) {
+                    dncCost += (Number(t.amount) || 0);
+                }
+            });
+
+            const dncProfit = dncRev - dncCost;
+            const dncMargin = dncRev > 0 ? Math.round((dncProfit / dncRev) * 100) : 0;
+
+            const revEl = document.getElementById('dncRevenue');
+            const costEl = document.getElementById('dncCost');
+            const profitEl = document.getElementById('dncProfit');
+            const marginEl = document.getElementById('dncMarginPercent');
+
+            if (revEl) revEl.innerText = "+" + formatMoney(dncRev);
+            if (costEl) costEl.innerText = "-" + formatMoney(dncCost);
+            if (profitEl) {
+                profitEl.innerText = (dncProfit >= 0 ? "+" : "") + formatMoney(dncProfit);
+                profitEl.style.color = dncProfit >= 0 ? "var(--trail-moss)" : "var(--berry-alert)";
+            }
+            if (marginEl) {
+                marginEl.innerText = "Biên LN: " + dncMargin + "%";
+                marginEl.style.background = dncMargin >= 0 ? "#e8f5e9" : "#fce8ec";
+                marginEl.style.color = dncMargin >= 0 ? "var(--trail-moss)" : "var(--berry-alert)";
+            }
         }
 
         // Elevation Profile Chart (Chart.js)
