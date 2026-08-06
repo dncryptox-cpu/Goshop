@@ -1,6 +1,6 @@
 # HƯỚNG DẪN TRIỂN KHAI — HLV DINH DƯỠNG ULTRA RUNNER (`godnc.com/hlvdinhduong`)
 
-Ứng dụng web cá nhân **HLV Dinh Dưỡng** giúp tự theo dõi dinh dưỡng và tập luyện cho ultra runner với tính năng tự động điều chỉnh target theo **Loại ngày** (Rest / Thường / Vert Nặng / Peak).
+Ứng dụng web cá nhân **HLV Dinh Dưỡng** giúp tự theo dõi dinh dưỡng và tập luyện cho ultra runner với tính năng tự động điều chỉnh target theo **Loại ngày** (Rest / Thường / Vert Nặng / Peak) và **Gợi ý thực đơn khắc phục tự động bằng AI hàng tuần**.
 
 ---
 
@@ -12,7 +12,7 @@
 
 ---
 
-## ⚡ Bước 2: Deploy Google Apps Script Web App
+## ⚡ Bước 2: Deploy Google Apps Script Web App & Tạo Trigger Tự Động
 
 1. Trong file Google Sheet mới vừa tạo, vào menu **Tiện ích mở rộng** (Extensions) ➔ chọn **Apps Script**.
 2. Xóa hết mã mặc định trong file `Mã.gs` (`Code.gs`).
@@ -22,11 +22,16 @@
 6. Chọn loại triển khai: **Web App** (Ứng dụng web).
    - **Mô tả:** `HLV Dinh Duong API v1`
    - **Execute as (Thực thi dưới dạng):** `Me` (Tôi)
-   - **Who has access (Ai có quyền truy cập):** `Anyone` (Bất kỳ ai) hoặc `Anyone with Google Account`.
+   - **Who has access (Ai có quyền truy cập):** `Anyone` (Bất kỳ ai).
 7. Bấm **Deploy**. Cấp quyền khi Google hỏi xác nhận.
 8. Copy đoạn **Web App URL** (Dạng `https://script.google.com/macros/s/AKfycb.../exec`).
 
-> **Ghi chú:** Đợt chạy đầu tiên, Google Apps Script sẽ tự động tạo đủ 3 sheet `TAP_LUYEN`, `DINH_DUONG`, và `MUC_TIEU_NGAY` với tiêu đề cột và các giá trị target mặc định.
+### ⏰ Thiết lập Trigger Tự Động Phân Tích Tuần (Server-side Time-driven Trigger):
+1. Trong màn hình Apps Script, chọn biểu tượng **Đồng hồ ⏰ (Triggers/Trình kích hoạt)** ở menu bên trái.
+2. Chọn `createWeeklyTrigger` trong danh sách hàm và bấm **Run (Chạy)**.
+3. Google sẽ tự động tạo một trigger chạy hàm `weeklyReview()` vào mỗi **Chủ Nhật lúc 8:00 sáng** hoàn toàn tự động từ server (ngay cả khi bạn tắt máy tính).
+
+> **Ghi chú:** Đợt chạy đầu tiên, Google Apps Script sẽ tự động tạo đủ 5 sheet: `TAP_LUYEN`, `DINH_DUONG`, `MUC_TIEU_NGAY`, `NGUOI_DUNG`, và `GOI_Y_THUC_DON`.
 
 ---
 

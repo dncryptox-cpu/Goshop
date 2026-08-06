@@ -1,6 +1,6 @@
 /**
  * HLV DINH DƯỠNG ULTRA RUNNER - APPLICATION CONTROLLER
- * Điều khiển UI, State, Tính toán Calo/Carb Real-time, Nhật ký Đủ/Thiếu & Chỉnh sửa Dữ liệu
+ * Điều khiển UI, State, Tính toán Calo/Carb Real-time, Nhật ký Đủ/Thiếu & AI Weekly Review
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -12,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     pendingAiParsedResult: null,
     currentImageBase64: null,
     currentImageMime: null,
+    latestWeeklyReview: null,
 
     init() {
       this.cacheDom();
@@ -19,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
       this.loadSettings();
       this.updateCloudStatusBadge();
       this.loadTodayData();
+      this.loadWeeklyReview();
       this.updateSyncLinkUI();
     },
 
@@ -27,6 +29,19 @@ document.addEventListener('DOMContentLoaded', () => {
       this.cloudStatusBadge = document.getElementById('cloudStatusBadge');
       this.headerUserName = document.getElementById('headerUserName');
       this.btnUserBadge = document.getElementById('btnUserBadge');
+
+      // AI Weekly Review Banner & Modal
+      this.aiWeeklyReviewBanner = document.getElementById('aiWeeklyReviewBanner');
+      this.weeklyReviewMeta = document.getElementById('weeklyReviewMeta');
+      this.weeklyReviewDeficitText = document.getElementById('weeklyReviewDeficitText');
+      this.btnViewWeeklyMenu = document.getElementById('btnViewWeeklyMenu');
+      this.btnTriggerWeeklyReview = document.getElementById('btnTriggerWeeklyReview');
+      this.btnTriggerWeeklyReviewUser = document.getElementById('btnTriggerWeeklyReviewUser');
+      
+      this.weeklyMenuModal = document.getElementById('weeklyMenuModal');
+      this.weeklyMenuModalBody = document.getElementById('weeklyMenuModalBody');
+      this.btnCloseWeeklyMenuModal = document.getElementById('btnCloseWeeklyMenuModal');
+      this.btnDismissWeeklyMenuModal = document.getElementById('btnDismissWeeklyMenuModal');
 
       // Date Picker & Day Type
       this.dateInput = document.getElementById('dateInput');
@@ -226,6 +241,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
 
+      // Weekly Review Modal & Triggers
+      this.btnViewWeeklyMenu.addEventListener('click', () => this.openWeeklyMenuModal());
+      this.btnTriggerWeeklyReview.addEventListener('click', () => this.runManualWeeklyReview());
+      if (this.btnTriggerWeeklyReviewUser) {
+        this.btnTriggerWeeklyReviewUser.addEventListener('click', () => this.runManualWeeklyReview());
+      }
+      this.btnCloseWeeklyMenuModal.addEventListener('click', () => this.weeklyMenuModal.classList.remove('active'));
+      this.btnDismissWeeklyMenuModal.addEventListener('click', () => this.weeklyMenuModal.classList.remove('active'));
+
       // Header Badges click
       this.btnUserBadge.addEventListener('click', () => {
         const userTab = Array.from(this.mainTabBtns).find(b => b.dataset.view === 'user');
@@ -322,6 +346,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       this.loadTodayData();
+      this.loadWeeklyReview();
     },
 
     updateSyncLinkUI() {
@@ -349,6 +374,7 @@ document.addEventListener('DOMContentLoaded', () => {
           alert('Dữ liệu trên máy này đã đồng bộ hoàn toàn với Google Sheets.');
         }
         this.loadTodayData();
+        this.loadWeeklyReview();
       } catch (err) {
         alert('Lỗi đẩy dữ liệu: ' + err.message);
       }
@@ -405,8 +431,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
         alert('☁️ Đã đồng bộ cấu hình từ Google Sheets về thiết bị này thành công!');
         this.loadTodayData();
+        this.loadWeeklyReview();
       } catch (err) {
         alert('Lỗi đồng bộ: ' + err.message);
+      }
+    },
+
+    /**
+     * Tải gợi ý thực đơn tuần mới nhất từ Sheet GOI_Y_THUC_DON
+     */
+    async loadWeeklyReview() {
+      try {
+        const data = await window.hlvApi.get('get_weekly_review');
+        if (data && data.latestReview && data.latestReview.menuResult) {
+          this.latestWeeklyReview = data.latestReview;
+          this.renderWeeklyReviewBanner(data.latestReview);
+        } else {
+          this.aiWeeklyReviewBanner.classList.add('hidden');
+        }
+      } catch (err) {
+        console.error('Lỗi load Weekly Review:', err);
+      }
+    },
+
+    renderWeeklyReviewBanner(review) {
+      if (!review) return;
+      this.aiWeeklyReviewBanner.classList.remove('hidden');
+      this.weeklyReviewMeta.textContent = `Tạo ngày: ${review.ngayTao || 'Gần đây'} • Kỳ phân tích: ${review.kyPhanTich || '7 ngày'}`;
+      this.weeklyReviewDeficitText.textContent = `🔍 Điểm hụt chính: ${review.diemHutChinh || 'Cần chú ý bù thêm Carb ngày tập leo dốc'}`;
+    },
+
+    openWeeklyMenuModal() {
+      if (!this.latestWeeklyReview || !this.latestWeeklyReview.menuResult) {
+        alert('Chưa có phân tích thực đơn mẫu. Bấm "⚡ Phân Tích Ngay" để khởi tạo!');
+        return;
+      }
+
+      const res = this.latestWeeklyReview.menuResult;
+      const suggestions = res.loaiNgaySuggest || [];
+
+      let html = `
+        <div style="background:var(--bg-input); padding:12px; border-radius:8px; border:1px solid var(--accent-carb); margin-bottom:14px;">
+          <strong style="color:var(--accent-kcal);">🎯 Điểm hụt chính tuần qua:</strong>
+          <div style="font-size:0.875rem; color:var(--text-main); margin-top:4px;">${res.diemHutChinh || 'Cần chú ý bổ sung Carb vào ngày Vert Nặng'}</div>
+        </div>
+      `;
+
+      suggestions.forEach(s => {
+        html += `
+          <div style="background:var(--bg-card); border:1px solid var(--border-color); border-radius:12px; padding:14px; margin-bottom:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <span class="badge badge-vert" style="font-size:0.85rem; padding:4px 10px;">Loại Ngày: ${s.loaiNgay || 'VertNang'}</span>
+            </div>
+            <p style="font-size:0.825rem; color:var(--text-muted); margin-bottom:10px;">💡 <em>${s.loiKhuyen || ''}</em></p>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              ${(s.thucDon || []).map(m => `
+                <div style="display:flex; justify-content:space-between; background:var(--bg-input); padding:8px 10px; border-radius:6px; font-size:0.825rem;">
+                  <span><strong>[${m.bua}]</strong> ${m.tenMon}</span>
+                  <span class="mono" style="color:var(--accent-carb);">${m.kcal || 0} kcal • ${m.carbG || 0}g Carb</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      });
+
+      this.weeklyMenuModalBody.innerHTML = html;
+      this.weeklyMenuModal.classList.add('active');
+    },
+
+    async runManualWeeklyReview() {
+      this.btnTriggerWeeklyReview.disabled = true;
+      this.btnTriggerWeeklyReview.textContent = '⏳ Đang phân tích...';
+
+      try {
+        const res = await window.hlvApi.post('run_weekly_review', { daysLimit: 7 });
+        if (res) {
+          const data = await window.hlvApi.get('get_weekly_review');
+          if (data && data.latestReview) {
+            this.latestWeeklyReview = data.latestReview;
+            this.renderWeeklyReviewBanner(data.latestReview);
+            this.openWeeklyMenuModal();
+          }
+        }
+        alert('🎉 Phân tích AI Weekly Review hoàn tất! Thực đơn gợi ý đã sẵn sàng.');
+      } catch (err) {
+        alert('Lỗi chạy phân tích: ' + err.message);
+      } finally {
+        this.btnTriggerWeeklyReview.disabled = false;
+        this.btnTriggerWeeklyReview.textContent = '⚡ Phân Tích Ngay';
       }
     },
 
@@ -836,9 +949,6 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
 
-    /**
-     * Hiển thị Preview Box kết quả AI cho phép chỉnh sửa trực tiếp số liệu trước khi nhấn Lưu!
-     */
     showAiReviewPreview(parsedJson) {
       this.pendingAiParsedResult = parsedJson;
       this.reviewBox.style.display = 'block';
@@ -910,7 +1020,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         if (data.type === 'DINH_DUONG') {
-          // Read live edited items from preview inputs
           const editedItems = (data.items || []).map((item, idx) => {
             const bua = document.getElementById(`aiEditBua_${idx}`)?.value || item.bua;
             const tenMon = document.getElementById(`aiEditTen_${idx}`)?.value.trim() || item.tenMon;

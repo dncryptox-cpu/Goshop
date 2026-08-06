@@ -1,6 +1,6 @@
 /**
  * Google Apps Script Web App API Interface
- * Gửi và nhận dữ liệu từ Google Sheets độc lập + Đồng bộ đa thiết bị
+ * Gửi và nhận dữ liệu từ Google Sheets độc lập + Đồng bộ đa thiết bị + AI Weekly Review
  */
 
 class HlvApi {
@@ -205,7 +205,8 @@ class HlvApi {
         Peak: { loaiNgay: 'Peak', kcalTarget: 5000, carbTargetG: 800, proteinTargetG: 130, fatTargetG: 85 }
       },
       nutritionLogs: [],
-      workoutLogs: []
+      workoutLogs: [],
+      latestWeeklyReview: null
     };
   }
 
@@ -226,6 +227,10 @@ class HlvApi {
   getLocalMockData(action, params) {
     const state = this.getLocalState();
     const dateStr = params.date || new Date().toISOString().split('T')[0];
+
+    if (action === 'get_weekly_review') {
+      return { latestReview: state.latestWeeklyReview };
+    }
 
     const nutritionToday = state.nutritionLogs.filter(item => item.ngay === dateStr);
     const workoutsToday = state.workoutLogs.filter(w => w.ngay === dateStr);
@@ -315,6 +320,28 @@ class HlvApi {
       state.workoutLogs = state.workoutLogs.filter((_, idx) => idx !== payload.rowIndex);
     } else if (action === 'save_user_config') {
       state.userConfig = { ...state.userConfig, ...(payload.config || {}) };
+    } else if (action === 'run_weekly_review') {
+      state.latestWeeklyReview = {
+        ngayTao: dateStr,
+        kyPhanTich: '7 ngày (' + dateStr + ')',
+        diemHutChinh: 'Hụt Carb nhẹ ở ngày VertNang',
+        menuResult: {
+          diemHutChinh: 'Hụt Carb nhẹ ở ngày VertNang',
+          loaiNgaySuggest: [
+            {
+              loaiNgay: 'VertNang',
+              loiKhuyen: 'Bổ sung thêm 1 ly sữa đạm vinamilk + 2 quả chuối vào bữa phụ trước dốc.',
+              thucDon: [
+                { bua: 'Sáng', tenMon: '1 tô Bún bò nạm (lớn)', kcal: 650, carbG: 75 },
+                { bua: 'Phụ', tenMon: '1 ly Sữa đạm vinamilk + 2 quả chuối', kcal: 280, carbG: 45 },
+                { bua: 'Tối', tenMon: '3 chén cơm trắng + 200g Thịt gà kho', kcal: 850, carbG: 120 }
+              ]
+            }
+          ]
+        }
+      };
+      this.saveLocalState(state);
+      return { latestReview: state.latestWeeklyReview };
     }
 
     this.saveLocalState(state);

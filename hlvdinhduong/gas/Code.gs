@@ -1,9 +1,10 @@
 /**
  * HLV DINH DƯỠNG ULTRA RUNNER - GOOGLE APPS SCRIPT BACKEND
  * Web App Endpoint riêng biệt cho godnc.com/hlvdinhduong
+ * Tích hợp AI Weekly Review tự động bằng Server-side Time-driven Trigger & Gemini API
  */
 
-// Đảm bảo tạo đủ 4 sheet nếu chưa tồn tại
+// Đảm bảo tạo đủ 5 sheet nếu chưa tồn tại
 function setupSheets() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   
@@ -55,6 +56,16 @@ function setupSheets() {
     sheetNguoiDung.appendRow(['WEIGHT_GOAL', '+0.3kg/tuần', 'Mục tiêu tăng cân']);
     sheetNguoiDung.appendRow(['GEMINI_API_KEY', '', 'Gemini API Key lưu mã hóa/đồng bộ']);
   }
+
+  // 5. GOI_Y_THUC_DON (AI Weekly Review)
+  var sheetGoiY = ss.getSheetByName('GOI_Y_THUC_DON');
+  if (!sheetGoiY) {
+    sheetGoiY = ss.insertSheet('GOI_Y_THUC_DON');
+    sheetGoiY.appendRow([
+      'NgayTao', 'KyPhanTich', 'LoaiNgay', 'ThucDonJSON', 'DiemHutChinh'
+    ]);
+    sheetGoiY.getRange('1:1').setFontWeight('bold').setBackground('#1f2937').setFontColor('#ffffff');
+  }
   
   var defaultSheet = ss.getSheetByName('Sheet1') || ss.getSheetByName('Trang tính1');
   if (defaultSheet && ss.getSheets().length > 1) {
@@ -80,6 +91,8 @@ function doGet(e) {
       responseData = { targets: getTargets() };
     } else if (action === 'get_user_config') {
       responseData = { userConfig: getUserConfig() };
+    } else if (action === 'get_weekly_review') {
+      responseData = getLatestWeeklyReview();
     } else {
       responseData = { error: 'Invalid GET action' };
     }
@@ -115,6 +128,8 @@ function doPost(e) {
       result = deleteWorkoutRow(contents.date, contents.rowIndex);
     } else if (action === 'save_user_config') {
       result = saveUserConfig(contents.config || {});
+    } else if (action === 'run_weekly_review') {
+      result = weeklyReview(contents.daysLimit || 7);
     } else {
       result = { error: 'Invalid POST action' };
     }
@@ -311,7 +326,7 @@ function editNutritionRow(dateStr, rowIndex, item) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('DINH_DUONG');
   if (rowIndex > 0) {
-    var sheetRow = rowIndex + 1; // 1-indexed header
+    var sheetRow = rowIndex + 1;
     sheet.getRange(sheetRow, 2).setValue(item.bua || 'Phụ');
     sheet.getRange(sheetRow, 3).setValue(item.tenMon || '');
     sheet.getRange(sheetRow, 4).setValue(Number(item.kcal) || 0);
@@ -426,7 +441,6 @@ function getHistoryData() {
   
   var daysMap = {};
   
-  // Aggregate workouts
   for (var i = 1; i < dataTL.length; i++) {
     var dStr = formatDateValue(dataTL[i][0]);
     if (!dStr) continue;
@@ -471,7 +485,6 @@ function getHistoryData() {
     }
   }
   
-  // Aggregate nutrition
   for (var j = 1; j < dataDD.length; j++) {
     var dStr2 = formatDateValue(dataDD[j][0]);
     if (!dStr2) continue;
@@ -523,6 +536,233 @@ function getHistoryData() {
   });
   
   return { historyLogs: historyList, allTargets: targets };
+}
+
+/* ========================================================================== */
+/* SECTION 6: AI WEEKLY REVIEW & AUTOMATIC MENU SUGGESTIONS                  */
+/* Server-side Time-driven Trigger & Manual Trigger                            */
+/* ========================================================================== */
+
+/**
+ * Hàm phân tích tuần tự động chạy từ Apps Script Trigger (Server-side)
+ * Hoặc gọi từ nút "Phân tích ngay" trên UI.
+ */
+function weeklyReview(daysLimit) {
+  setupSheets();
+  daysLimit = daysLimit || 7;
+
+  var historyRes = getHistoryData();
+  var logs = historyRes.historyLogs || [];
+  var targets = historyRes.allTargets || getTargets();
+
+  if (logs.length === 0) {
+    return {
+      message: 'Chưa có đủ dữ liệu lịch sử để phân tích tuần này.',
+      latestReview: null
+    };
+  }
+
+  var recentLogs = logs.slice(0, daysLimit);
+  var userConfig = getUserConfig();
+  var geminiApiKey = userConfig.GEMINI_API_KEY || '';
+
+  // 1. Phân tích hụt chỉ số tách biệt theo Loại ngày
+  var dayTypeStats = {};
+  var familiarDishes = {};
+
+  recentLogs.forEach(function(day) {
+    var lNgay = day.loaiNgay || 'Thuong';
+    if (!dayTypeStats[lNgay]) {
+      dayTypeStats[lNgay] = {
+        count: 0,
+        totalKcal: 0,
+        totalCarb: 0,
+        totalProtein: 0,
+        totalFat: 0,
+        kcalTarget: day.target?.kcalTarget || 3500,
+        carbTarget: day.target?.carbTargetG || 525,
+        proteinTarget: day.target?.proteinTargetG || 120,
+        fatTarget: day.target?.fatTargetG || 75
+      };
+    }
+
+    dayTypeStats[lNgay].count++;
+    dayTypeStats[lNgay].totalKcal += day.totalKcalEaten;
+    dayTypeStats[lNgay].totalCarb += day.totalCarbG;
+    dayTypeStats[lNgay].totalProtein += day.totalProteinG;
+    dayTypeStats[lNgay].totalFat += day.totalFatG;
+
+    (day.nutritionItems || []).forEach(function(item) {
+      if (item.tenMon) familiarDishes[item.tenMon] = (familiarDishes[item.tenMon] || 0) + 1;
+    });
+  });
+
+  // Tìm điểm hụt chính lớn nhất
+  var worstDeficitStr = '';
+  var maxDeficitPct = 0;
+
+  Object.keys(dayTypeStats).forEach(function(lNgay) {
+    var st = dayTypeStats[lNgay];
+    var avgKcal = st.totalKcal / st.count;
+    var avgCarb = st.totalCarb / st.count;
+
+    var kcalPct = (avgKcal / st.kcalTarget) * 100;
+    var carbPct = (avgCarb / st.carbTarget) * 100;
+
+    if (kcalPct < 95 && (100 - kcalPct) > maxDeficitPct) {
+      maxDeficitPct = 100 - kcalPct;
+      worstDeficitStr = 'Hụt Kcal nặng ở ngày ' + lNgay + ' (Đạt ' + Math.round(kcalPct) + '%, thiếu ' + Math.round(st.kcalTarget - avgKcal) + ' kcal/ngày)';
+    }
+
+    if (carbPct < 95 && (100 - carbPct) > maxDeficitPct) {
+      maxDeficitPct = 100 - carbPct;
+      worstDeficitStr = 'Hụt Carb nặng ở ngày ' + lNgay + ' (Đạt ' + Math.round(carbPct) + '%, thiếu ' + Math.round(st.carbTarget - avgCarb) + 'g Carb/ngày)';
+    }
+  });
+
+  if (!worstDeficitStr) {
+    worstDeficitStr = 'Tất cả các chỉ số 7 ngày gần nhất đạt tốt (≥95% Target)';
+  }
+
+  var topDishes = Object.keys(familiarDishes).slice(0, 15).join(', ');
+
+  // 2. Phân tích AI bằng Gemini (nếu có API Key), nếu không có dùng Rule-based Fallback
+  var menuResult = null;
+
+  if (geminiApiKey) {
+    try {
+      var promptText = "Bạn là HLV dinh dưỡng chuyên nghiệp cho VĐV Ultra Runner.\n" +
+        "Phân tích dữ liệu dinh dưỡng " + daysLimit + " ngày qua của VĐV:\n" +
+        "- Tên VĐV: " + (userConfig.USER_NAME || 'DNC Ultra Runner') + "\n" +
+        "- Mục tiêu: " + (userConfig.WEIGHT_GOAL || '+0.3kg/tuần') + "\n" +
+        "- Thống kê theo loại ngày: " + JSON.stringify(dayTypeStats) + "\n" +
+        "- Điểm hụt lớn nhất: " + worstDeficitStr + "\n" +
+        "- Danh sách món ăn quen thuộc: " + (topDishes || 'Phở bò, Bún bò nạm, Cơm trắng, Thịt gà, Trứng, Sữa cao đạm, Cà phê sữa') + "\n\n" +
+        "YÊU CẦU: Trả về duy nhất JSON gợi ý thực đơn khắc phục điểm hụt, ƯU TIÊN DÙNG CÁC MÓN KHẨU VỊ QUEN THUỘC TRÊN, chỉ điều chỉnh tăng khẩu phần hoặc gợi ý thêm 1-2 món quen (như sữa đạm, chuối, tinh bột lỏng) để bù đúng điểm hụt.\n" +
+        "JSON SCHEMA:\n" +
+        "{\n" +
+        "  \"diemHutChinh\": \"thông tin điểm hụt ngắn gọn\",\n" +
+        "  \"loaiNgaySuggest\": [\n" +
+        "    {\n" +
+        "      \"loaiNgay\": \"VertNang\",\n" +
+        "      \"loiKhuyen\": \"lời khuyên cụ thể\",\n" +
+        "      \"thucDon\": [\n" +
+        "        {\"bua\": \"Sáng\", \"tenMon\": \"tên món quen + khẩu phần\", \"kcal\": 650, \"carbG\": 80},\n" +
+        "        {\"bua\": \"Tối\", \"tenMon\": \"tên món\", \"kcal\": 750, \"carbG\": 110}\n" +
+        "      ]\n" +
+        "    }\n" +
+        "  ]\n" +
+        "}";
+
+      var geminiModel = userConfig.GEMINI_MODEL || 'gemini-3.6-flash';
+      var apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/' + geminiModel + ':generateContent?key=' + geminiApiKey;
+
+      var options = {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify({
+          contents: [{ parts: [{ text: promptText }] }],
+          generationConfig: { temperature: 0.2, responseMimeType: "application/json" }
+        }),
+        muteHttpExceptions: true
+      };
+
+      var res = UrlFetchApp.fetch(apiUrl, options);
+      if (res.getResponseCode() === 200) {
+        var jsonRes = JSON.parse(res.getContentText());
+        var rawText = jsonRes.candidates[0].content.parts[0].text;
+        menuResult = JSON.parse(rawText);
+      }
+    } catch (e) {
+      Logger.log('Gemini UrlFetch error: ' + e.toString());
+    }
+  }
+
+  // Fallback nếu không có API Key hoặc Gemini lỗi
+  if (!menuResult) {
+    menuResult = {
+      diemHutChinh: worstDeficitStr,
+      loaiNgaySuggest: [
+        {
+          loaiNgay: "VertNang",
+          loiKhuyen: "Tăng thêm 1 tô Bún bò nạm hoặc 1 ly Sữa cao đạm + 2 quả chuối vào bữa phụ trước khi tập leo dốc.",
+          thucDon: [
+            { bua: "Sáng", tenMon: "1 tô Bún bò nạm (khẩu phần lớn)", kcal: 650, carbG: 75 },
+            { bua: "Phụ chiều", tenMon: "1 ly Sữa cao đạm Vinamilk (250ml) + 2 quả chuối", kcal: 280, carbG: 45 },
+            { bua: "Tối", tenMon: "3 chén cơm trắng + 200g Thịt gà kho + Canh rau", kcal: 850, carbG: 120 }
+          ]
+        }
+      ]
+    };
+  }
+
+  // Ghi kết quả vào Sheet GOI_Y_THUC_DON
+  var sheetGoiY = ss.getSheetByName('GOI_Y_THUC_DON');
+  var todayStr = getTodayString();
+  var kyPhanTich = '7 ngày (' + todayStr + ')';
+  var jsonStr = JSON.stringify(menuResult);
+
+  sheetGoiY.appendRow([
+    todayStr,
+    kyPhanTich,
+    'Tất cả loại ngày',
+    jsonStr,
+    worstDeficitStr
+  ]);
+
+  return {
+    ngayTao: todayStr,
+    kyPhanTich: kyPhanTich,
+    diemHutChinh: worstDeficitStr,
+    menuResult: menuResult
+  };
+}
+
+// Lấy bản ghi gợi ý thực đơn mới nhất từ Sheet GOI_Y_THUC_DON
+function getLatestWeeklyReview() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('GOI_Y_THUC_DON');
+  if (!sheet) return { latestReview: null };
+
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { latestReview: null };
+
+  var lastRow = data[data.length - 1];
+  var jsonStr = lastRow[3] || '{}';
+  var parsedMenu = {};
+  try { parsedMenu = JSON.parse(jsonStr); } catch(e) {}
+
+  return {
+    latestReview: {
+      ngayTao: formatDateValue(lastRow[0]),
+      kyPhanTich: lastRow[1],
+      loaiNgay: lastRow[2],
+      diemHutChinh: lastRow[4],
+      menuResult: parsedMenu
+    }
+  };
+}
+
+/**
+ * Cài đặt Time-driven Trigger chạy tự động mỗi Chủ Nhật lúc 8h sáng
+ */
+function createWeeklyTrigger() {
+  // Xóa trigger cũ cùng tên nếu có
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'weeklyReview') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+
+  // Tạo trigger chạy mỗi Chủ Nhật lúc 8:00 sáng
+  ScriptApp.newTrigger('weeklyReview')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay.SUNDAY)
+    .atHour(8)
+    .create();
+
+  Logger.log('🎉 Đã tạo Time-driven Trigger chạy weeklyReview() mỗi Chủ Nhật 8h00 sáng!');
 }
 
 // Format date helper
