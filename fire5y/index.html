@@ -761,7 +761,39 @@
                     </div>
                 </div>
 
-                <!-- AI Batch Input Box for Altcoins -->
+                <!-- 1. Top Summary Stat Cards -->
+                <div class="metrics-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+                    <div class="card metric-card">
+                        <span class="metric-title">Tổng Giá Trị Portfolio</span>
+                        <span class="metric-value amount-number" id="portTotalNavVnd" style="color: var(--ocean-deep);">0 VND</span>
+                        <div style="font-size: 0.78rem; font-weight: 600; color: var(--text-muted);" id="portTotalNavUsd">$0.00</div>
+                    </div>
+                    <div class="card metric-card">
+                        <span class="metric-title">Tổng Lãi / Lỗ Portfolio</span>
+                        <span class="metric-value amount-number" id="portTotalPnLVnd" style="color: var(--trail-moss);">0 VND</span>
+                        <div style="font-size: 0.78rem; font-weight: 700;" id="portTotalPnLPct">0.0%</div>
+                    </div>
+                    <div class="card metric-card">
+                        <span class="metric-title">Số Coin Đang Tích Lũy</span>
+                        <span class="metric-value amount-number" id="portCoinCount" style="color: var(--dawn-gold);">0</span>
+                        <div style="font-size: 0.78rem; color: var(--text-muted);">Số mã coin trong ví</div>
+                    </div>
+                </div>
+
+                <!-- 2. Thanh Phân Bổ % Theo Coin (Reusing Net Worth progress bar component) -->
+                <div class="card" style="margin-bottom: 1.25rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem;">
+                        <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--ocean-deep); margin: 0; display: flex; align-items: center; gap: 6px;">
+                            <i data-lucide="pie-chart" class="w-4 h-4" style="color: var(--dawn-gold);"></i> Tỷ Trọng Phân Bổ Danh Mục Altcoin (%)
+                        </h3>
+                    </div>
+                    <!-- Multi-segment Stacked Progress Bar -->
+                    <div style="height: 18px; border-radius: 99px; background: rgba(0,0,0,0.06); overflow: hidden; display: flex; margin-bottom: 1rem;" id="cryptoAllocationProgressBar"></div>
+                    <!-- Coin Allocation Grid Legend -->
+                    <div id="cryptoAllocationList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.6rem;"></div>
+                </div>
+
+                <!-- 3. AI Batch Input Box for Altcoins -->
                 <div class="card" style="margin-bottom: 1.25rem; background: var(--sea-foam); border: 1px solid var(--border);">
                     <div style="font-weight: 700; font-size: 0.9rem; color: var(--ocean-deep); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
                         <i data-lucide="sparkles" class="w-4 h-4" style="color: var(--dawn-gold);"></i> ⚡ Cập Nhật Nhanh Bằng AI / Prompt (Nhiều Coin 1 Lúc)
@@ -772,11 +804,14 @@
                     </div>
                 </div>
 
-                <!-- Coin List Table -->
+                <!-- 4. Coin List Table -->
                 <div class="card" style="margin-bottom: 1.25rem;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 8px;">
                         <div style="font-weight: 700; color: var(--ocean-deep);">Danh Sách Altcoin Holdings</div>
-                        <button class="btn btn-secondary-sm" onclick="promptAddCoinRow()"><i data-lucide="plus" class="w-4 h-4"></i> Thêm Coin Thủ Công</button>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button class="btn btn-secondary-sm" id="btnCoinGecko" onclick="fetchCoinGeckoPrices()"><i data-lucide="refresh-cw" class="w-4 h-4"></i> Cập Nhật Giá CoinGecko</button>
+                            <button class="btn btn-secondary-sm" onclick="promptAddCoinRow()"><i data-lucide="plus" class="w-4 h-4"></i> Thêm Coin Thủ Công</button>
+                        </div>
                     </div>
                     <div class="table-container" style="margin-bottom: 1rem;">
                         <table class="data-table" style="font-size: 0.85rem;">
@@ -2145,6 +2180,20 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         // ==========================================
         // PORTFOLIO ALTCOIN CRYPTO JS ENGINE (STANDALONE VIEW TAB)
         // ==========================================
+        const COINGECKO_MAP = {
+            'BTC': 'bitcoin', 'ETH': 'ethereum', 'SOL': 'solana', 'BNB': 'binancecoin',
+            'XRP': 'ripple', 'ADA': 'cardano', 'AVAX': 'avalanche-2', 'DOGE': 'dogecoin',
+            'DOT': 'polkadot', 'LINK': 'chainlink', 'NEAR': 'near', 'SUI': 'sui',
+            'APT': 'aptos', 'OP': 'optimism', 'ARB': 'arbitrum', 'MATIC': 'matic-network',
+            'POL': 'polygon-ecosystem-token', 'PEPE': 'pepe', 'SHIB': 'shiba-inu',
+            'TIA': 'celestia', 'SEI': 'sei-network', 'FET': 'artificial-superintelligence-alliance',
+            'RNDR': 'render-token', 'RENDER': 'render-token', 'INJ': 'injective-protocol',
+            'TON': 'the-open-network', 'STX': 'stacks', 'FIL': 'filecoin',
+            'HYPE': 'hyperliquid', 'AAVE': 'aave', 'UNI': 'uniswap', 'LDO': 'lido-dao',
+            'TAO': 'bittensor', 'WIF': 'dogwifcoin', 'BONK': 'bonk', 'FLOKI': 'floki',
+            'TRX': 'tron', 'LTC': 'litecoin', 'ATOM': 'cosmos'
+        };
+
         function populateCryptoAccountFilter() {
             const select = document.getElementById('portfolioAccountFilter');
             if (!select) return;
@@ -2158,7 +2207,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         async function loadCryptoPortfolioView() {
             const select = document.getElementById('portfolioAccountFilter');
             const selectedAcc = select ? select.value : '';
-            activeCryptoPortfolioAccount = selectedAcc || (allAccounts.find(a => (a.type||'').toLowerCase().includes('trading')) ? allAccounts.find(a => (a.type||'').toLowerCase().includes('trading')).name : '');
+            activeCryptoPortfolioAccount = selectedAcc || (allAccounts.find(a => (a.type||'').toLowerCase().includes('trading') || (a.type||'').toLowerCase().includes('crypto')) ? allAccounts.find(a => (a.type||'').toLowerCase().includes('trading') || (a.type||'').toLowerCase().includes('crypto')).name : '');
 
             try {
                 const res = await fetch(API_URL, {
@@ -2179,21 +2228,145 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             renderCryptoPortfolioTable();
         }
 
+        async function fetchCoinGeckoPrices() {
+            const btn = document.getElementById('btnCoinGecko');
+            if (btn) btn.disabled = true;
+
+            const mappedIds = [];
+            const symToId = {};
+
+            activeCryptoPortfolioItems.forEach(it => {
+                const sym = (it.symbol || '').toUpperCase();
+                if (COINGECKO_MAP[sym]) {
+                    const cgId = COINGECKO_MAP[sym];
+                    symToId[sym] = cgId;
+                    if (!mappedIds.includes(cgId)) mappedIds.push(cgId);
+                }
+            });
+
+            if (mappedIds.length === 0) {
+                alert("Chưa hỗ trợ map tự động cho các symbol coin này. Bạn có thể tự nhập tay trực tiếp vào ô Giá hiện tại.");
+                if (btn) btn.disabled = false;
+                return;
+            }
+
+            try {
+                const apiUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${mappedIds.join(',')}&vs_currencies=usd`;
+                const pricesData = await fetch(apiUrl).then(r => r.json());
+
+                let updatedCount = 0;
+                activeCryptoPortfolioItems.forEach(it => {
+                    const sym = (it.symbol || '').toUpperCase();
+                    const cgId = symToId[sym];
+                    if (cgId && pricesData[cgId] && pricesData[cgId].usd) {
+                        it.currentPrice = Number(pricesData[cgId].usd);
+                        updatedCount++;
+                    }
+                });
+
+                renderCryptoPortfolioTable();
+                alert(`Đã cập nhật giá mới nhất từ CoinGecko cho ${updatedCount} coin! (Bạn vẫn có thể sửa tay lại nếu cần).`);
+            } catch (e) {
+                console.error("Fetch CoinGecko prices failed:", e);
+                alert("Lỗi kết nối API CoinGecko. Giữ nguyên giá đã nhập.");
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
         function renderCryptoPortfolioTable() {
             const tbody = document.getElementById('cryptoPortfolioTableBody');
             if (!tbody) return;
 
+            const usdRate = 25400; // USD to VND rate
             let totalNavUsd = 0;
+            let totalCostUsd = 0;
+            let totalPnlUsd = 0;
+
             activeCryptoPortfolioItems.forEach(it => {
-                totalNavUsd += (Number(it.qty) || 0) * (Number(it.currentPrice) || 0);
+                const qty = Number(it.qty) || 0;
+                const curP = Number(it.currentPrice) || 0;
+                const buyP = Number(it.buyPrice) || 0;
+                totalNavUsd += qty * curP;
+                totalCostUsd += qty * buyP;
+                totalPnlUsd += (curP - buyP) * qty;
             });
 
-            const usdRate = 25400; // USD to VND rate
             const totalNavVnd = totalNavUsd * usdRate;
+            const totalPnlVnd = totalPnlUsd * usdRate;
+            const totalPnlPct = totalCostUsd > 0 ? ((totalPnlUsd / totalCostUsd) * 100).toFixed(1) : '0.0';
 
-            const totalEl = document.getElementById('cryptoTotalNavVal');
-            if (totalEl) totalEl.innerText = `$${totalNavUsd.toLocaleString('en-US', {minimumFractionDigits: 2})} (~ ${formatMoney(totalNavVnd)})`;
+            // Update Top 3 Stat Cards
+            const totalVndEl = document.getElementById('portTotalNavVnd');
+            const totalUsdEl = document.getElementById('portTotalNavUsd');
+            const pnlVndEl = document.getElementById('portTotalPnLVnd');
+            const pnlPctEl = document.getElementById('portTotalPnLPct');
+            const coinCountEl = document.getElementById('portCoinCount');
+            const tableTotalEl = document.getElementById('cryptoTotalNavVal');
 
+            if (totalVndEl) totalVndEl.innerText = formatMoney(totalNavVnd);
+            if (totalUsdEl) totalUsdEl.innerText = `$${totalNavUsd.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+            
+            if (pnlVndEl) {
+                pnlVndEl.innerText = (totalPnlVnd >= 0 ? '+' : '') + formatMoney(totalPnlVnd);
+                pnlVndEl.style.color = totalPnlVnd >= 0 ? 'var(--trail-moss)' : 'var(--berry-alert)';
+            }
+            if (pnlPctEl) {
+                pnlPctEl.innerText = (totalPnlUsd >= 0 ? '+' : '') + totalPnlPct + '%';
+                pnlPctEl.style.color = totalPnlUsd >= 0 ? 'var(--trail-moss)' : 'var(--berry-alert)';
+            }
+            if (coinCountEl) coinCountEl.innerText = activeCryptoPortfolioItems.length;
+            if (tableTotalEl) tableTotalEl.innerText = `$${totalNavUsd.toLocaleString('en-US', {minimumFractionDigits: 2})} (~ ${formatMoney(totalNavVnd)})`;
+
+            // Render Horizontal Progress Bar % Allocation by Coin (Reusing Net Worth bar style)
+            const progressBar = document.getElementById('cryptoAllocationProgressBar');
+            const progressList = document.getElementById('cryptoAllocationList');
+
+            if (progressBar && progressList) {
+                if (activeCryptoPortfolioItems.length === 0 || totalNavUsd <= 0) {
+                    progressBar.innerHTML = `<div style="width:100%; height:100%; background:var(--border);"></div>`;
+                    progressList.innerHTML = `<div style="font-size:0.8rem; color:var(--text-muted); grid-column: 1/-1;">Chưa có dữ liệu phân bổ coin.</div>`;
+                } else {
+                    const palette = ['#0D3B3E', '#E3A73B', '#5C8A62', '#D96B6B', '#1565D8', '#8E24AA', '#00897B', '#FF7043', '#26A69A'];
+                    let barHtml = '';
+                    let listHtml = '';
+
+                    // Sort items descending by current USD value
+                    const sortedCoins = [...activeCryptoPortfolioItems].sort((a, b) => {
+                        return ((Number(b.qty)||0)*(Number(b.currentPrice)||0)) - ((Number(a.qty)||0)*(Number(a.currentPrice)||0));
+                    });
+
+                    sortedCoins.forEach((it, idx) => {
+                        const qty = Number(it.qty) || 0;
+                        const curP = Number(it.currentPrice) || 0;
+                        const valUsd = qty * curP;
+                        const pct = totalNavUsd > 0 ? Math.max(0, (valUsd / totalNavUsd) * 100) : 0;
+                        const color = palette[idx % palette.length];
+
+                        if (pct > 0) {
+                            barHtml += `<div style="width: ${pct}%; background: ${color}; height: 100%;" title="${it.symbol}: $${valUsd.toFixed(2)} (${pct.toFixed(1)}%)"></div>`;
+                        }
+
+                        listHtml += `
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.7rem; background: var(--sea-foam); border-radius: 8px; border: 1px solid var(--border);">
+                                <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
+                                    <div style="width: 10px; height: 10px; border-radius: 3px; background: ${color}; flex-shrink: 0;"></div>
+                                    <span style="font-weight: 700; font-size: 0.82rem; color: var(--ocean-deep);">${it.symbol}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span style="font-weight: 700; font-size: 0.82rem; color: var(--ocean-deep);" class="amount-number">$${valUsd.toLocaleString('en-US', {minimumFractionDigits:2})}</span>
+                                    <span style="font-size: 0.72rem; font-weight: 600; color: var(--trail-moss); margin-left: 4px;">${pct.toFixed(1)}%</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+
+                    progressBar.innerHTML = barHtml || `<div style="width:100%; height:100%; background:var(--border);"></div>`;
+                    progressList.innerHTML = listHtml;
+                }
+            }
+
+            // Render Table Rows
             if (activeCryptoPortfolioItems.length === 0) {
                 tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color: var(--text-muted); padding: 1.5rem;">Chưa có coin nào trong portfolio. Nhập text AI hoặc bấm Thêm Coin Thủ Công.</td></tr>`;
                 return;
@@ -2233,7 +2406,10 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         }
 
         function promptAddCoinRow() {
+            const defaultAcc = activeCryptoPortfolioAccount || (allAccounts.find(a => (a.type||'').toLowerCase().includes('trading') || (a.type||'').toLowerCase().includes('crypto')) ? allAccounts.find(a => (a.type||'').toLowerCase().includes('trading') || (a.type||'').toLowerCase().includes('crypto')).name : 'Crypto');
+            
             activeCryptoPortfolioItems.push({
+                account: defaultAcc,
                 symbol: 'SOL',
                 qty: 1,
                 buyPrice: 140,
@@ -2253,6 +2429,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
 
             const parts = text.split(/[,;\n]+/);
             const parsedItems = [];
+            const defaultAcc = activeCryptoPortfolioAccount || (allAccounts.find(a => (a.type||'').toLowerCase().includes('trading') || (a.type||'').toLowerCase().includes('crypto')) ? allAccounts.find(a => (a.type||'').toLowerCase().includes('trading') || (a.type||'').toLowerCase().includes('crypto')).name : 'Crypto');
 
             parts.forEach(part => {
                 const symMatch = part.match(/([A-Z0-9]{2,8})/i);
@@ -2267,7 +2444,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 let buyPrice = nums.length >= 2 ? clean(nums[1]) : 0;
                 let currentPrice = nums.length >= 3 ? clean(nums[2]) : buyPrice;
 
-                parsedItems.push({ symbol, qty, buyPrice, currentPrice });
+                parsedItems.push({ account: defaultAcc, symbol, qty, buyPrice, currentPrice });
             });
 
             if (parsedItems.length > 0) {
@@ -2280,19 +2457,25 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const btn = document.getElementById('btnSaveCryptoPort');
             if (btn) btn.disabled = true;
 
+            let targetAcc = activeCryptoPortfolioAccount;
+            if (!targetAcc) {
+                const cryptoAcc = allAccounts.find(a => (a.type||'').toLowerCase().includes('trading') || (a.type||'').toLowerCase().includes('crypto'));
+                targetAcc = cryptoAcc ? cryptoAcc.name : 'Hyperliquid';
+            }
+
             const payload = {
                 action: 'update_crypto_portfolio',
                 user: currentUser,
-                accountName: activeCryptoPortfolioAccount,
+                accountName: targetAcc,
                 items: activeCryptoPortfolioItems
             };
 
             try {
                 const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(r => r.json());
                 if (res.status === 'success') {
-                    alert(res.message || "Đã lưu portfolio altcoin và cập nhật NAV!");
-                    closeCryptoPortfolioModal();
-                    fetchData();
+                    alert(res.message || "Đã lưu portfolio altcoin và cập nhật NAV thành công!");
+                    await fetchData();
+                    await loadCryptoPortfolioView();
                 } else {
                     alert("Lỗi: " + res.message);
                 }
