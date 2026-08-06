@@ -372,6 +372,24 @@
         <div class="content-area">
             <!-- 1. VIEW OVERVIEW -->
             <div id="view-overview" class="view-container active">
+                <!-- Period Filter Bar -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+                    <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--ocean-deep); margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="compass" class="w-5 h-5" style="color: var(--dawn-gold);"></i> Báo Cáo Tài Chính FIRE5Y
+                    </h2>
+                    <div style="display: flex; align-items: center; gap: 8px; background: var(--sea-foam); padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border);">
+                        <i data-lucide="calendar" class="w-4 h-4" style="color: var(--ocean-deep);"></i>
+                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--ocean-deep);">Thời gian:</span>
+                        <select id="overviewPeriodFilter" class="form-input" style="margin: 0; width: 170px; padding: 0.35rem 0.65rem; font-weight: 700; color: var(--ocean-deep); background: white; border-radius: 8px; cursor: pointer;" onchange="renderOverview()">
+                            <option value="this_month" selected>Tháng này</option>
+                            <option value="last_month">Tháng trước</option>
+                            <option value="last_3_months">3 tháng gần đây</option>
+                            <option value="this_year">Năm nay (2026)</option>
+                            <option value="all_time">Tất cả thời gian</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="metrics-grid">
                     <div class="card metric-card">
                         <span class="metric-title">Số Dư Ròng (Net Worth)</span>
@@ -379,12 +397,12 @@
                         <div class="metric-icon" style="background: #e8f5e9; color: var(--trail-moss);"><i data-lucide="shield-check" class="w-6 h-6"></i></div>
                     </div>
                     <div class="card metric-card">
-                        <span class="metric-title">Tổng Thu Tháng Này</span>
+                        <span class="metric-title" id="totalIncomeLabel">Tổng Thu Tháng Này</span>
                         <span class="metric-value amount-number" style="color: var(--trail-moss);" id="totalIncome">+0 VND</span>
                         <div class="metric-icon" style="background: #e8f5e9; color: var(--trail-moss);"><i data-lucide="trending-up" class="w-6 h-6"></i></div>
                     </div>
                     <div class="card metric-card">
-                        <span class="metric-title">Tổng Chi Tháng Này</span>
+                        <span class="metric-title" id="totalExpenseLabel">Tổng Chi Tháng Này</span>
                         <span class="metric-value amount-number" style="color: var(--berry-alert);" id="totalExpense">-0 VND</span>
                         <div class="metric-icon" style="background: #fce8ec; color: var(--berry-alert);"><i data-lucide="trending-down" class="w-6 h-6"></i></div>
                     </div>
@@ -860,12 +878,69 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
+        // Filter Transactions by Selected Period
+        function getFilteredOverviewTransactions() {
+            const selectEl = document.getElementById('overviewPeriodFilter');
+            const period = selectEl ? selectEl.value : 'this_month';
+
+            const now = new Date();
+            const curYear = now.getFullYear();
+            const curMonth = now.getMonth(); // 0-indexed (0=Jan, 7=Aug)
+
+            return allTransactions.filter(t => {
+                if (!t.date || t.status === 'Cancelled') return false;
+
+                const parts = String(t.date).split('T')[0].split('-');
+                if (parts.length < 3) return false;
+
+                const year = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1; // Convert 1-12 to 0-11
+                const day = parseInt(parts[2], 10);
+
+                if (period === 'this_month') {
+                    return year === curYear && month === curMonth;
+                } else if (period === 'last_month') {
+                    const lastM = curMonth === 0 ? 11 : curMonth - 1;
+                    const lastY = curMonth === 0 ? curYear - 1 : curYear;
+                    return year === lastY && month === lastM;
+                } else if (period === 'last_3_months') {
+                    const tDate = new Date(year, month, day);
+                    const threeMonthsAgo = new Date(curYear, curMonth - 2, 1);
+                    return tDate >= threeMonthsAgo;
+                } else if (period === 'this_year') {
+                    return year === curYear;
+                } else if (period === 'all_time') {
+                    return true;
+                }
+                return year === curYear && month === curMonth;
+            });
+        }
+
         // Render Overview & Elevation Profile Chart
         function renderOverview() {
+            const selectEl = document.getElementById('overviewPeriodFilter');
+            const period = selectEl ? selectEl.value : 'this_month';
+
+            const labelMap = {
+                'this_month': { income: 'Tổng Thu Tháng Này', expense: 'Tổng Chi Tháng Này' },
+                'last_month': { income: 'Tổng Thu Tháng Trước', expense: 'Tổng Chi Tháng Trước' },
+                'last_3_months': { income: 'Tổng Thu 3 Tháng', expense: 'Tổng Chi 3 Tháng' },
+                'this_year': { income: 'Tổng Thu Năm Nay', expense: 'Tổng Chi Năm Nay' },
+                'all_time': { income: 'Tổng Thu Tích Lũy', expense: 'Tổng Chi Tích Lũy' }
+            };
+
+            const labels = labelMap[period] || labelMap['this_month'];
+            const incLabelEl = document.getElementById('totalIncomeLabel');
+            const expLabelEl = document.getElementById('totalExpenseLabel');
+            if (incLabelEl) incLabelEl.innerText = labels.income;
+            if (expLabelEl) expLabelEl.innerText = labels.expense;
+
+            const filteredTxs = getFilteredOverviewTransactions();
+
             let totalIncome = 0;
             let totalExpense = 0;
 
-            allTransactions.forEach(t => {
+            filteredTxs.forEach(t => {
                 const amt = Number(t.amount) || 0;
                 if (t.type === 'Thu') totalIncome += amt;
                 else if (t.type === 'Chi') totalExpense += amt;
@@ -877,16 +952,16 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             document.getElementById('totalIncome').innerText = '+' + formatMoney(totalIncome);
             document.getElementById('totalExpense').innerText = '-' + formatMoney(totalExpense);
 
-            renderElevationChart();
-            renderFireWidgets();
-            renderSpecialWidgets();
+            renderElevationChart(filteredTxs);
+            renderFireWidgets(filteredTxs);
+            renderSpecialWidgets(filteredTxs);
             renderStationGrid('dashboardStationGrid', 4);
         }
 
         let fireProjectionChartObj = null;
 
         // 3 FIRE Widgets Engine (Goal Progress, Savings Rate, 5-Year Projection Chart)
-        function renderFireWidgets() {
+        function renderFireWidgets(filteredTxs) {
             // 1. FIRE Goal Progress
             const totalBalance = allAccounts.reduce((acc, a) => acc + (Number(a.currentBalance) || 0), 0);
             const savedGoal = Number(localStorage.getItem('fire5y_fire_target')) || 5000000000;
@@ -904,33 +979,26 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             if (progressBarEl) progressBarEl.style.width = Math.min(100, Math.max(2, parseFloat(progressPct))) + "%";
             if (remValEl) remValEl.innerText = "Còn thiếu " + formatMoney(remaining);
 
-            // 2. Savings Rate Calculation
-            const now = new Date();
-            const currentMonth = now.getMonth();
-            const currentYear = now.getFullYear();
+            // 2. Savings Rate Calculation based on selected period
+            const txs = filteredTxs || getFilteredOverviewTransactions();
+            let periodIncome = 0;
+            let periodExpense = 0;
 
-            let thisMonthIncome = 0;
-            let thisMonthExpense = 0;
-
-            allTransactions.forEach(t => {
-                if (!t.date) return;
-                const d = new Date(t.date);
-                if (d.getMonth() === currentMonth && d.getFullYear() === currentYear && t.status !== 'Cancelled') {
-                    const amt = Number(t.amount) || 0;
-                    if (t.type === 'Thu') thisMonthIncome += amt;
-                    else if (t.type === 'Chi') thisMonthExpense += amt;
-                }
+            txs.forEach(t => {
+                const amt = Number(t.amount) || 0;
+                if (t.type === 'Thu') periodIncome += amt;
+                else if (t.type === 'Chi') periodExpense += amt;
             });
 
-            const monthlySavings = thisMonthIncome - thisMonthExpense;
-            const savingsRate = thisMonthIncome > 0 ? Math.round((monthlySavings / thisMonthIncome) * 100) : 0;
+            const periodSavings = periodIncome - periodExpense;
+            const savingsRate = periodIncome > 0 ? Math.round((periodSavings / periodIncome) * 100) : 0;
 
             const ratePctEl = document.getElementById('savingsRatePct');
             const savingsValEl = document.getElementById('savingsVal');
             const badgeEl = document.getElementById('savingsBadge');
 
             if (ratePctEl) ratePctEl.innerText = savingsRate + "%";
-            if (savingsValEl) savingsValEl.innerText = (monthlySavings >= 0 ? "+" : "") + formatMoney(monthlySavings);
+            if (savingsValEl) savingsValEl.innerText = (periodSavings >= 0 ? "+" : "") + formatMoney(periodSavings);
             if (badgeEl) {
                 if (savingsRate >= 40) {
                     badgeEl.className = "badge badge-success";
@@ -945,7 +1013,8 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
 
             // 3. 5-Year Projection Chart (Chart.js)
-            renderFireProjectionChart(totalBalance, monthlySavings);
+            const monthlySavingsEst = periodIncome > 0 ? periodSavings : 0;
+            renderFireProjectionChart(totalBalance, monthlySavingsEst);
         }
 
         function renderFireProjectionChart(currentWorth, monthlySavings) {
@@ -1010,23 +1079,15 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         }
 
         // Calculate Ultra Trail & DNC P&L Widgets
-        function renderSpecialWidgets() {
-            const now = new Date();
-            const currentMonth = now.getMonth();
-            const currentYear = now.getFullYear();
-
-            const thisMonthTxs = allTransactions.filter(t => {
-                if (!t.date) return false;
-                const d = new Date(t.date);
-                return d.getMonth() === currentMonth && d.getFullYear() === currentYear && t.status !== 'Cancelled';
-            });
+        function renderSpecialWidgets(filteredTxs) {
+            const txs = filteredTxs || getFilteredOverviewTransactions();
 
             // 1. Ultra Trail Widget
             const ultraTrailCats = ['Phí giải đấu', 'Trang thiết bị', 'Dinh dưỡng & gel', 'Coaching/PT', 'Hồi phục', 'Di chuyển tới giải'];
             let ultraTrailSpent = 0;
             const ultraTrailLimit = 10000000;
 
-            thisMonthTxs.forEach(t => {
+            txs.forEach(t => {
                 if (t.type === 'Chi' && ultraTrailCats.includes(t.category)) {
                     ultraTrailSpent += (Number(t.amount) || 0);
                 }
@@ -1058,7 +1119,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const dncRevCats = ['Doanh thu bán Premium'];
             const dncCostCats = ['Giá vốn gia hạn subscription', 'Chi phí CTV', 'Chi phí vận hành khác'];
 
-            thisMonthTxs.forEach(t => {
+            txs.forEach(t => {
                 if (dncRevCats.includes(t.category)) {
                     dncRev += (Number(t.amount) || 0);
                 } else if (dncCostCats.includes(t.category)) {
