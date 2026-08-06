@@ -1,7 +1,7 @@
 /**
  * Gemini AI Parser Client for HLV Dinh Dưỡng
  * Bóc tách text hoặc ảnh bữa ăn/bài tập thành JSON có cấu trúc.
- * Cập nhật tự động chẩn đoán lỗi API (404 model shutdown, 403 key, 429 quota)
+ * Tự động áp dụng quy tắc tính khẩu phần chuẩn & món ăn chính Việt Nam (400 - 700 kcal).
  */
 
 class GeminiParser {
@@ -68,8 +68,11 @@ class GeminiParser {
 Bạn là chuyên gia dinh dưỡng và HLV thể thao dành cho vận động viên ultra runner (chạy trail/địa hình leo dốc).
 Nhiệm vụ của bạn là phân tích văn bản người dùng cung cấp và trích xuất thành định dạng JSON chuẩn.
 
-QUY TẮC BẮT BỘC VỀ KHẨU PHẦN DINH DƯỠNG:
-Nếu người dùng không cung cấp trọng lượng hoặc dung tích cụ thể của món ăn, AI BẮT BUỘC phải tính toán dựa trên 1 khẩu phần trung bình chuẩn (1 standard serving) và PHẢI GHI RÕ khẩu phần giả định đó (ví dụ: "Hộp 180ml", "Ly 200ml", "Tô vừa 350g", "1 quả 120g") vào phần TenMon hoặc GhiChu để người dùng biết chính xác căn cứ tính toán.
+QUY TẮC BẮT BỘC VỀ KHẨU PHẦN DINH DƯỠNG & MÓN ĂN CHÍNH:
+1. Nếu người dùng nhập tên một món ăn chính (Ví dụ: Phở, Bún Bò, Bún Bò Nạm, Cơm Tấm, Hủ Tiếu, Bánh Canh, Miến, Bún Rêu...) mà không ghi rõ định lượng, AI BẮT BUỘC phải mặc định đó là "1 TÔ/DĨA SIZE TIÊU CHUẨN NGOÀI QUÁN".
+2. Mức năng lượng cho 1 món ăn chính tiêu chuẩn của Việt Nam BẮT BUỘC phải dao động từ 400 Kcal đến 700 Kcal (Ví dụ: 1 tô Bún bò nạm ngoài quán khoảng 520-650 Kcal, Carb 60-80g, Protein 25-35g, Fat 15-25g).
+3. TUYỆT ĐỐI KHÔNG ĐƯỢC tính toán dưới 200 Kcal cho bất kỳ món ăn chính nào nói trên.
+4. Nếu là món ăn phụ/thức uống nhẹ (Sữa, Cà phê sữa, Trứng, Trái cây, Bánh), tính theo 1 khẩu phần trung bình (VD: Hộp 180ml, Ly 200ml, 1 quả 60g) và ghi rõ khẩu phần giả định đó vào TenMon hoặc GhiChu.
 
 Xác định xem input thuộc dạng 'DINH_DUONG' (bữa ăn) hay 'TAP_LUYEN' (buổi tập).
 
@@ -79,12 +82,12 @@ Xác định xem input thuộc dạng 'DINH_DUONG' (bữa ăn) hay 'TAP_LUYEN' (
   "items": [
     {
       "bua": "Sáng" | "Trưa" | "Tối" | "Phụ" | "Trong tập",
-      "tenMon": "Tên món ăn cụ thể (kèm giả định khẩu phần nếu không có sẵn)",
-      "kcal": số nguyên (calo ước tính),
+      "tenMon": "Tên món ăn cụ thể (kèm giả định khẩu phần nếu không có sẵn, VD: Bún bò nạm (1 tô tiêu chuẩn))",
+      "kcal": số nguyên (calo ước tính từ 400-700 Kcal với món chính),
       "proteinG": số nguyên (gram protein),
       "fatG": số nguyên (gram chất béo),
       "carbG": số nguyên (gram tinh bột/carb),
-      "ghiChu": "ghi rõ giả định khẩu phần trung bình (VD: ly 200ml, bát 300g) nếu người dùng không ghi trọng lượng"
+      "ghiChu": "ghi rõ giả định khẩu phần chuẩn (VD: 1 tô ngoài quán ~550 Kcal) nếu người dùng không ghi trọng lượng"
     }
   ]
 }
@@ -167,14 +170,16 @@ CHỈ Trả về duy nhất đối tượng JSON hợp lệ, không kèm bất k
 Bạn là chuyên gia dinh dưỡng ultra runner và trợ lý thể thao.
 Hãy nhìn vào hình ảnh (ảnh chụp món ăn, thực đơn, hoặc ảnh chụp màn hình Strava/Garmin/đồng hồ tập luyện) và phân tích thành JSON có cấu trúc.
 
-QUY TẮC BẮT BỘC VỀ KHẨU PHẦN DINH DƯỠNG:
-Nếu người dùng hoặc hình ảnh không cung cấp trọng lượng/dung tích cụ thể của món ăn, AI BẮT BUỘC phải tính toán dựa trên 1 khẩu phần trung bình chuẩn (1 standard serving) và PHẢI GHI RÕ khẩu phần giả định đó (ví dụ: "Hộp 180ml", "Ly 200ml", "Bát vừa 300g") vào phần tenMon hoặc ghiChu để người dùng biết.
+QUY TẮC BẮT BỘC VỀ KHẨU PHẦN DINH DƯỠNG & MÓN ĂN CHÍNH:
+1. Nếu hình ảnh/mô tả là món ăn chính (Ví dụ: Phở, Bún Bò, Cơm Tấm, Hủ Tiếu, Bánh Canh...) mà không có định lượng cụ thể, AI BẮT BUỘC phải mặc định đó là "1 TÔ/DĨA SIZE TIÊU CHUẨN NGOÀI QUÁN".
+2. Năng lượng cho 1 món ăn chính tiêu chuẩn Việt Nam BẮT BUỘC từ 400 Kcal đến 700 Kcal. TUYỆT ĐỐI KHÔNG ĐƯỢC tính dưới 200 Kcal cho các món chính này.
+3. Với món phụ/nước uống, mặc định theo 1 khẩu phần chuẩn (VD: Hộp 180ml, Ly 200ml) và ghi rõ vào tenMon hoặc ghiChu.
 
 Nếu là ảnh món ăn -> Trả về type 'DINH_DUONG' chứa các món ăn với ước tính Kcal, Protein(g), Fat(g), Carb(g).
 Nếu là ảnh bài tập Strava/Garmin -> Trả về type 'TAP_LUYEN' với QuangDuong_km, Elevation_Gain_m, ThoiGian_h, KcalDot.
 
 Cấu trúc JSON đầu ra bắt buộc:
-1. 'DINH_DUONG': { "type": "DINH_DUONG", "items": [{ "bua": "Phụ", "tenMon": "Tên món (kèm dung tích/trọng lượng giả định)", "kcal": 0, "proteinG": 0, "fatG": 0, "carbG": 0, "ghiChu": "Giả định 1 khẩu phần chuẩn (VD: hộp 180ml)" }] }
+1. 'DINH_DUONG': { "type": "DINH_DUONG", "items": [{ "bua": "Phụ", "tenMon": "Tên món (kèm 1 tô/dĩa chuẩn)", "kcal": 550, "proteinG": 28, "fatG": 18, "carbG": 65, "ghiChu": "Giả định 1 tô tiêu chuẩn ngoài quán (~550 Kcal)" }] }
 2. 'TAP_LUYEN': { "type": "TAP_LUYEN", "workout": { "monTap": "Chạy bộ", "quangDuongKm": 0, "elevationGainM": 0, "thoiGianH": 0, "kcalDot": 0, "ghiChu": "..." } }
 
 CHỈ Trả về JSON thuần.
