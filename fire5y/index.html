@@ -372,21 +372,31 @@
         <div class="content-area">
             <!-- 1. VIEW OVERVIEW -->
             <div id="view-overview" class="view-container active">
-                <!-- Period Filter Bar -->
+                <!-- Period & Custom Month Filter Bar -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
                     <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--ocean-deep); margin: 0; display: flex; align-items: center; gap: 8px;">
                         <i data-lucide="compass" class="w-5 h-5" style="color: var(--dawn-gold);"></i> Báo Cáo Tài Chính FIRE5Y
                     </h2>
-                    <div style="display: flex; align-items: center; gap: 8px; background: var(--sea-foam); padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border);">
-                        <i data-lucide="calendar" class="w-4 h-4" style="color: var(--ocean-deep);"></i>
-                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--ocean-deep);">Thời gian:</span>
-                        <select id="overviewPeriodFilter" class="form-input" style="margin: 0; width: 170px; padding: 0.35rem 0.65rem; font-weight: 700; color: var(--ocean-deep); background: white; border-radius: 8px; cursor: pointer;" onchange="renderOverview()">
-                            <option value="this_month" selected>Tháng này</option>
-                            <option value="last_month">Tháng trước</option>
-                            <option value="last_3_months">3 tháng gần đây</option>
-                            <option value="this_year">Năm nay (2026)</option>
-                            <option value="all_time">Tất cả thời gian</option>
-                        </select>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <!-- Month Picker for Picking ANY Month & Year -->
+                        <div style="display: flex; align-items: center; gap: 6px; background: var(--sea-foam); padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border);">
+                            <i data-lucide="calendar" class="w-4 h-4" style="color: var(--ocean-deep);"></i>
+                            <span style="font-size: 0.82rem; font-weight: 600; color: var(--ocean-deep);">Chọn Tháng:</span>
+                            <input type="month" id="overviewMonthPicker" class="form-input" style="margin: 0; width: 145px; padding: 0.3rem 0.5rem; font-size: 0.85rem; font-weight: 700; color: var(--ocean-deep); background: white; border-radius: 8px; cursor: pointer;" onchange="onOverviewMonthPickerChange()">
+                        </div>
+
+                        <!-- Quick Presets Select -->
+                        <div style="display: flex; align-items: center; gap: 6px; background: var(--sea-foam); padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border);">
+                            <span style="font-size: 0.82rem; font-weight: 600; color: var(--ocean-deep);">Nhanh:</span>
+                            <select id="overviewPeriodFilter" class="form-input" style="margin: 0; width: 155px; padding: 0.35rem 0.5rem; font-size: 0.85rem; font-weight: 700; color: var(--ocean-deep); background: white; border-radius: 8px; cursor: pointer;" onchange="onOverviewQuickFilterChange()">
+                                <option value="custom_month" selected>Tháng chọn bên trái</option>
+                                <option value="this_month">Tháng này</option>
+                                <option value="last_month">Tháng trước</option>
+                                <option value="last_3_months">3 tháng gần đây</option>
+                                <option value="this_year">Năm nay (2026)</option>
+                                <option value="all_time">Tất cả thời gian</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
@@ -878,14 +888,42 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
-        // Filter Transactions by Selected Period
-        function getFilteredOverviewTransactions() {
+        // Handle Custom Month Picker Change (User picks ANY YYYY-MM)
+        function onOverviewMonthPickerChange() {
             const selectEl = document.getElementById('overviewPeriodFilter');
-            const period = selectEl ? selectEl.value : 'this_month';
+            if (selectEl) selectEl.value = 'custom_month';
+            renderOverview();
+        }
+
+        // Handle Quick Presets Change
+        function onOverviewQuickFilterChange() {
+            const selectEl = document.getElementById('overviewPeriodFilter');
+            const picker = document.getElementById('overviewMonthPicker');
+            if (!selectEl) return;
 
             const now = new Date();
             const curYear = now.getFullYear();
-            const curMonth = now.getMonth(); // 0-indexed (0=Jan, 7=Aug)
+            const curMonth = now.getMonth(); // 0-indexed
+
+            if (selectEl.value === 'this_month' && picker) {
+                picker.value = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
+            } else if (selectEl.value === 'last_month' && picker) {
+                const lastM = curMonth === 0 ? 11 : curMonth - 1;
+                const lastY = curMonth === 0 ? curYear - 1 : curYear;
+                picker.value = `${lastY}-${String(lastM + 1).padStart(2, '0')}`;
+            }
+            renderOverview();
+        }
+
+        // Filter Transactions by Selected Period or Custom Month
+        function getFilteredOverviewTransactions() {
+            const selectEl = document.getElementById('overviewPeriodFilter');
+            const picker = document.getElementById('overviewMonthPicker');
+            const period = selectEl ? selectEl.value : 'custom_month';
+
+            const now = new Date();
+            const curYear = now.getFullYear();
+            const curMonth = now.getMonth(); // 0-indexed
 
             return allTransactions.filter(t => {
                 if (!t.date || t.status === 'Cancelled') return false;
@@ -894,10 +932,16 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 if (parts.length < 3) return false;
 
                 const year = parseInt(parts[0], 10);
-                const month = parseInt(parts[1], 10) - 1; // Convert 1-12 to 0-11
+                const month = parseInt(parts[1], 10) - 1; // 0-indexed
                 const day = parseInt(parts[2], 10);
 
-                if (period === 'this_month') {
+                if (period === 'custom_month') {
+                    if (!picker || !picker.value) return year === curYear && month === curMonth;
+                    const ymParts = picker.value.split('-');
+                    const targetY = parseInt(ymParts[0], 10);
+                    const targetM = parseInt(ymParts[1], 10) - 1;
+                    return year === targetY && month === targetM;
+                } else if (period === 'this_month') {
                     return year === curYear && month === curMonth;
                 } else if (period === 'last_month') {
                     const lastM = curMonth === 0 ? 11 : curMonth - 1;
@@ -918,22 +962,40 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
 
         // Render Overview & Elevation Profile Chart
         function renderOverview() {
+            const picker = document.getElementById('overviewMonthPicker');
+            if (picker && !picker.value) {
+                const now = new Date();
+                picker.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            }
+
             const selectEl = document.getElementById('overviewPeriodFilter');
-            const period = selectEl ? selectEl.value : 'this_month';
+            const period = selectEl ? selectEl.value : 'custom_month';
 
-            const labelMap = {
-                'this_month': { income: 'Tổng Thu Tháng Này', expense: 'Tổng Chi Tháng Này' },
-                'last_month': { income: 'Tổng Thu Tháng Trước', expense: 'Tổng Chi Tháng Trước' },
-                'last_3_months': { income: 'Tổng Thu 3 Tháng', expense: 'Tổng Chi 3 Tháng' },
-                'this_year': { income: 'Tổng Thu Năm Nay', expense: 'Tổng Chi Năm Nay' },
-                'all_time': { income: 'Tổng Thu Tích Lũy', expense: 'Tổng Chi Tích Lũy' }
-            };
+            let incLabel = 'Tổng Thu Tháng Này';
+            let expLabel = 'Tổng Chi Tháng Này';
 
-            const labels = labelMap[period] || labelMap['this_month'];
+            if (period === 'custom_month' && picker && picker.value) {
+                const parts = picker.value.split('-');
+                const formattedYM = `${parts[1]}/${parts[0]}`;
+                incLabel = `Tổng Thu (${formattedYM})`;
+                expLabel = `Tổng Chi (${formattedYM})`;
+            } else {
+                const labelMap = {
+                    'this_month': { income: 'Tổng Thu Tháng Này', expense: 'Tổng Chi Tháng Này' },
+                    'last_month': { income: 'Tổng Thu Tháng Trước', expense: 'Tổng Chi Tháng Trước' },
+                    'last_3_months': { income: 'Tổng Thu 3 Tháng', expense: 'Tổng Chi 3 Tháng' },
+                    'this_year': { income: 'Tổng Thu Năm Nay', expense: 'Tổng Chi Năm Nay' },
+                    'all_time': { income: 'Tổng Thu Tích Lũy', expense: 'Tổng Chi Tích Lũy' }
+                };
+                const labels = labelMap[period] || labelMap['this_month'];
+                incLabel = labels.income;
+                expLabel = labels.expense;
+            }
+
             const incLabelEl = document.getElementById('totalIncomeLabel');
             const expLabelEl = document.getElementById('totalExpenseLabel');
-            if (incLabelEl) incLabelEl.innerText = labels.income;
-            if (expLabelEl) expLabelEl.innerText = labels.expense;
+            if (incLabelEl) incLabelEl.innerText = incLabel;
+            if (expLabelEl) expLabelEl.innerText = expLabel;
 
             const filteredTxs = getFilteredOverviewTransactions();
 
