@@ -17,6 +17,7 @@ const SHEET_DATA = 'Dữ liệu';
 const SHEET_DS = 'DS';
 const SHEET_ACCOUNTS = 'Tài Khoản';
 const SHEET_AI_RULES = 'AI_Rules';
+const SHEET_NAV_HISTORY = 'NAV_History';
 
 // ==========================================
 // 1. TẠO SHEET MASTER MỚI (SETUP FUNCTION)
@@ -32,7 +33,7 @@ function createNewMasterSheet() {
   // --- 1. Tab "NguoiDung" ---
   let sheetUsers = getOrCreateSheet(ss, SHEET_USERS);
   sheetUsers.clear();
-  sheetUsers.appendRow(['Username', 'Password_Hash', 'Sheet_URL', 'Gemini_Key', 'Ngay_Tao']);
+  sheetUsers.appendRow(['Username', 'Password_Hash', 'Sheet_URL', 'Gemini_Key', 'Ngay_Tao', 'NextRace_Ten', 'NextRace_Ngay']);
   formatHeaderRow(sheetUsers, '1565D8');
   
   // --- 2. Tab "DS" ---
@@ -72,15 +73,23 @@ function createNewMasterSheet() {
   // --- 3. Tab "Tài Khoản" ---
   let sheetAccounts = getOrCreateSheet(ss, SHEET_ACCOUNTS);
   sheetAccounts.clear();
-  sheetAccounts.appendRow(['Tên tài khoản', 'Loại', 'Số dư đầu kỳ', 'Số dư hiện tại']);
+  sheetAccounts.appendRow(['Tên tài khoản', 'Loại', 'Số dư đầu kỳ', 'Số dư hiện tại', 'Vốn đã nạp ròng']);
   formatHeaderRow(sheetAccounts, '1565D8');
   
   const sampleAccounts = [
-    ['Tiền mặt', 'Tiền mặt', 1000000, 1000000],
-    ['Tài khoản Ngân hàng', 'Ngân hàng', 10000000, 10000000],
-    ['Ví Ví Momo/ZaloPay', 'Ví điện tử', 2000000, 2000000]
+    ['Tiền mặt', 'Tiền mặt', 1000000, 1000000, 0],
+    ['Tài khoản Ngân hàng', 'Ngân hàng', 10000000, 10000000, 0],
+    ['Ví Ví Momo/ZaloPay', 'Ví điện tử', 2000000, 2000000, 0],
+    ['Binance Crypto', 'Sàn Trading/Crypto', 50000000, 50000000, 40000000]
   ];
-  sheetAccounts.getRange(2, 1, sampleAccounts.length, 4).setValues(sampleAccounts);
+  sheetAccounts.getRange(2, 1, sampleAccounts.length, 5).setValues(sampleAccounts);
+
+  // --- 4. Tab "NAV_History" (Lịch Sử NAV Trading/Crypto) ---
+  let sheetNAV = getOrCreateSheet(ss, SHEET_NAV_HISTORY);
+  sheetNAV.clear();
+  sheetNAV.appendRow(['Ngày', 'Tài khoản', 'NAV', 'Vốn đã nạp ròng']);
+  formatHeaderRow(sheetNAV, '1565D8');
+  sheetNAV.getRange("C2:D").setNumberFormat("#,##0");
 
   // --- 4. Tab "Dữ liệu" ---
   let sheetData = getOrCreateSheet(ss, SHEET_DATA);
@@ -354,6 +363,8 @@ function doPost(e) {
       if (data.newPass) sheetUsers.getRange(uInfo.rowIndex, 2).setValue(hashPassword(data.newPass));
       if (data.newSheetUrl !== undefined) sheetUsers.getRange(uInfo.rowIndex, 3).setValue(data.newSheetUrl);
       if (data.newApiKey !== undefined) sheetUsers.getRange(uInfo.rowIndex, 4).setValue(data.newApiKey);
+      if (data.nextRaceName !== undefined) sheetUsers.getRange(uInfo.rowIndex, 6).setValue(data.nextRaceName);
+      if (data.nextRaceDate !== undefined) sheetUsers.getRange(uInfo.rowIndex, 7).setValue(data.nextRaceDate);
 
       return respondJSON({ status: "success", message: "Cập nhật thông tin tài khoản thành công!" });
     }
@@ -373,11 +384,13 @@ function doPost(e) {
     if (action === 'update_ds') return handleUpdateDS(data);
     if (action === 'delete_ds') return handleDeleteDS(data);
 
-    // --- CRUD Tab Tài Khoản ---
+    // --- CRUD Tab Tài Khoản & NAV Trading ---
     if (action === 'get_accounts') return handleGetAccounts(data);
     if (action === 'add_account') return handleAddAccount(data);
     if (action === 'update_account') return handleUpdateAccount(data);
     if (action === 'delete_account') return handleDeleteAccount(data);
+    if (action === 'update_nav') return handleUpdateNAV(data);
+    if (action === 'get_nav_history') return handleGetNAVHistory(data);
 
     return respondJSON({ status: "error", message: "Action không hợp lệ: " + action });
 
@@ -523,16 +536,23 @@ function handleGetAccounts(data) {
   if (!sheet) return respondJSON({ status: "success", data: [] });
   const lastRow = getRealLastRow(sheet, 1);
   if (lastRow < 2) return respondJSON({ status: "success", data: [] });
-  const values = sheet.getRange(2, 1, lastRow - 1, 4).getValues();
-  return respondJSON({ status: "success", data: values.map(r => ({ name: r[0], type: r[1], initialBalance: Number(r[2]) || 0, currentBalance: Number(r[3]) || 0 })) });
+  const values = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  return respondJSON({ status: "success", data: values.map(r => ({
+    name: String(r[0]),
+    type: String(r[1]),
+    initialBalance: Number(r[2]) || 0,
+    currentBalance: Number(r[3]) || 0,
+    netCapital: Number(r[4]) || 0
+  })) });
 }
 
 function handleAddAccount(data) {
   const ss = getTargetSpreadsheet(data.user);
   const sheet = ss.getSheetByName(SHEET_ACCOUNTS);
   const initial = Number(data.initialBalance) || 0;
-  sheet.appendRow([data.name, data.type || 'Tài khoản', initial, initial]);
-  recalculateAccountBalances();
+  const netCapital = Number(data.netCapital) || 0;
+  sheet.appendRow([data.name, data.type || 'Tài khoản', initial, initial, netCapital]);
+  recalculateAccountBalances(ss);
   return respondJSON({ status: "success", message: "Đã thêm tài khoản thành công!" });
 }
 
@@ -547,7 +567,8 @@ function handleUpdateAccount(data) {
       if (data.name) sheet.getRange(i + 2, 1).setValue(data.name);
       if (data.type) sheet.getRange(i + 2, 2).setValue(data.type);
       if (data.initialBalance !== undefined) sheet.getRange(i + 2, 3).setValue(Number(data.initialBalance));
-      recalculateAccountBalances();
+      if (data.netCapital !== undefined) sheet.getRange(i + 2, 5).setValue(Number(data.netCapital));
+      recalculateAccountBalances(ss);
       return respondJSON({ status: "success", message: "Cập nhật tài khoản thành công!" });
     }
   }
@@ -563,11 +584,69 @@ function handleDeleteAccount(data) {
   for (let i = 0; i < values.length; i++) {
     if (values[i][0] === data.name) {
       sheet.deleteRow(i + 2);
-      recalculateAccountBalances();
+      recalculateAccountBalances(ss);
       return respondJSON({ status: "success", message: "Xóa tài khoản thành công!" });
     }
   }
   return respondJSON({ status: "error", message: "Không tìm thấy tài khoản." });
+}
+
+// Cập nhật NAV & Vốn nạp ròng cho tài khoản Trading/Crypto
+function handleUpdateNAV(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sheetAccounts = ss.getSheetByName(SHEET_ACCOUNTS);
+  let sheetNAV = getOrCreateSheet(ss, SHEET_NAV_HISTORY);
+
+  const accName = data.accountName;
+  const navAmt = Number(data.navAmount) || 0;
+  const netCapitalAmt = Number(data.netCapitalAmount) || 0;
+  const dateStr = data.date || Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone() || "GMT+7", "yyyy-MM-dd");
+
+  if (!accName) return respondJSON({ status: "error", message: "Tên tài khoản không được để trống." });
+
+  // 1. Cập nhật tab "Tài Khoản" (Số dư hiện tại = NAV, Vốn đã nạp ròng)
+  const lastRowAcc = getRealLastRow(sheetAccounts, 1);
+  let found = false;
+  if (lastRowAcc >= 2) {
+    const accValues = sheetAccounts.getRange(2, 1, lastRowAcc - 1, 1).getValues();
+    for (let i = 0; i < accValues.length; i++) {
+      if (accValues[i][0] === accName) {
+        sheetAccounts.getRange(i + 2, 4).setValue(navAmt); // Số dư hiện tại = NAV
+        sheetAccounts.getRange(i + 2, 5).setValue(netCapitalAmt); // Vốn đã nạp ròng
+        found = true;
+        break;
+      }
+    }
+  }
+
+  // 2. APPEND 1 dòng mới vào tab "NAV_History" (KHÔNG ghi đè)
+  sheetNAV.appendRow([dateStr, accName, navAmt, netCapitalAmt]);
+
+  recalculateAccountBalances(ss);
+
+  return respondJSON({
+    status: "success",
+    message: `Đã cập nhật NAV thành công cho ${accName} (${navAmt.toLocaleString('vi-VN')} VND)!`
+  });
+}
+
+function handleGetNAVHistory(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sheetNAV = ss.getSheetByName(SHEET_NAV_HISTORY);
+  if (!sheetNAV) return respondJSON({ status: "success", data: [] });
+
+  const lastRow = getRealLastRow(sheetNAV, 1);
+  if (lastRow < 2) return respondJSON({ status: "success", data: [] });
+
+  const values = sheetNAV.getRange(2, 1, lastRow - 1, 4).getValues();
+  const list = values.map(r => ({
+    date: r[0] instanceof Date ? Utilities.formatDate(r[0], "GMT+7", "yyyy-MM-dd") : String(r[0]),
+    account: String(r[1]),
+    nav: Number(r[2]) || 0,
+    netCapital: Number(r[3]) || 0
+  }));
+
+  return respondJSON({ status: "success", data: list });
 }
 
 // ==========================================
