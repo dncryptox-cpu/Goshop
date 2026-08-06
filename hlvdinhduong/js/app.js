@@ -1,6 +1,6 @@
 /**
  * HLV DINH DƯỠNG ULTRA RUNNER - APPLICATION CONTROLLER
- * Điều khiển UI, State, Tính toán Calo/Carb Real-time, Nhật ký Đủ/Thiếu & Đồng bộ
+ * Điều khiển UI, State, Tính toán Calo/Carb Real-time, Nhật ký Đủ/Thiếu & Chỉnh sửa Dữ liệu
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -103,6 +103,29 @@ document.addEventListener('DOMContentLoaded', () => {
       this.btnPushLocalToCloud = document.getElementById('btnPushLocalToCloud');
       this.btnFetchCloudConfig = document.getElementById('btnFetchCloudConfig');
       this.btnModalSyncLink = document.getElementById('btnModalSyncLink');
+
+      // Edit Item Modal
+      this.editItemModal = document.getElementById('editItemModal');
+      this.btnCloseEditModal = document.getElementById('btnCloseEditModal');
+      this.btnCancelEditItem = document.getElementById('btnCancelEditItem');
+      this.editItemForm = document.getElementById('editItemForm');
+      this.editItemRowIndex = document.getElementById('editItemRowIndex');
+      this.editItemType = document.getElementById('editItemType');
+      this.editNutritionFields = document.getElementById('editNutritionFields');
+      this.editWorkoutFields = document.getElementById('editWorkoutFields');
+
+      this.editItemBua = document.getElementById('editItemBua');
+      this.editItemTenMon = document.getElementById('editItemTenMon');
+      this.editItemKcal = document.getElementById('editItemKcal');
+      this.editItemCarb = document.getElementById('editItemCarb');
+      this.editItemProtein = document.getElementById('editItemProtein');
+      this.editItemFat = document.getElementById('editItemFat');
+
+      this.editWorkoutMon = document.getElementById('editWorkoutMon');
+      this.editWorkoutKm = document.getElementById('editWorkoutKm');
+      this.editWorkoutGain = document.getElementById('editWorkoutGain');
+      this.editWorkoutTime = document.getElementById('editWorkoutTime');
+      this.editWorkoutKcal = document.getElementById('editWorkoutKcal');
 
       // Settings Modal
       this.btnOpenSettings = document.getElementById('btnOpenSettings');
@@ -226,21 +249,19 @@ document.addEventListener('DOMContentLoaded', () => {
       // Fetch Cloud Config from Sheets
       this.btnFetchCloudConfig.addEventListener('click', () => this.fetchCloudUserConfig());
 
+      // Edit Modal Events
+      this.btnCloseEditModal.addEventListener('click', () => this.editItemModal.classList.remove('active'));
+      this.btnCancelEditItem.addEventListener('click', () => this.editItemModal.classList.remove('active'));
+      this.editItemForm.addEventListener('submit', (e) => this.saveEditedItem(e));
+
       // Settings Modal Events
       this.btnOpenSettings.addEventListener('click', () => this.settingsModal.classList.add('active'));
       this.btnCloseSettings.addEventListener('click', () => this.settingsModal.classList.remove('active'));
       this.btnSaveSettings.addEventListener('click', () => this.saveSettings());
     },
 
-    /**
-     * Tính toán trạng thái Đủ / Gần Đủ / Thiếu / Vượt theo tiêu chuẩn:
-     * - >= 95% và <= 110%: Đủ (Green)
-     * - 85% - 95%: Gần đủ (Yellow)
-     * - < 85%: Thiếu (Red)
-     * - > 110%: Vượt (Blue)
-     */
     evaluateStatus(consumed, target) {
-      if (!target || target <= 0) return { code: 'du', text: 'Đủ', cls: 'status-du' };
+      if (!target || target <= 0) return { code: 'du', text: 'Đủ', cls: 'du' };
       const pct = (consumed / target) * 100;
       if (pct >= 95 && pct <= 110) {
         return { code: 'du', text: 'Đủ', cls: 'du', label: 'ĐỦ (95-110%)' };
@@ -258,11 +279,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (url) {
         this.cloudStatusBadge.style.background = 'rgba(16, 185, 129, 0.2)';
         this.cloudStatusBadge.style.color = '#10b981';
-        this.cloudStatusBadge.textContent = '🟢 Đã kết nối Google Sheets';
+        this.cloudStatusBadge.innerHTML = '🟢 <span class="cloud-badge-text">Đã kết nối Google Sheets</span>';
       } else {
         this.cloudStatusBadge.style.background = 'rgba(245, 158, 11, 0.2)';
         this.cloudStatusBadge.style.color = '#f59e0b';
-        this.cloudStatusBadge.textContent = '🟡 Chưa dán Web App URL';
+        this.cloudStatusBadge.innerHTML = '🟡 <span class="cloud-badge-text">Chưa dán Web App URL</span>';
       }
     },
 
@@ -524,7 +545,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="mono" style="color:var(--accent-fat);">${item.fatG || 0}g</td>
           <td><small style="color:var(--text-sub);">${item.nguon || 'Text'}</small></td>
           <td>
-            <button class="btn-delete" onclick="app.deleteNutritionItem(${index})">🗑️</button>
+            <button class="btn-delete" title="Sửa món này" onclick="app.openEditNutritionModal(${index})">✏️</button>
+            <button class="btn-delete" title="Xóa món này" onclick="app.deleteNutritionItem(${index})">🗑️</button>
           </td>
         </tr>
       `).join('');
@@ -545,28 +567,104 @@ document.addEventListener('DOMContentLoaded', () => {
           <td class="mono" style="color:var(--accent-kcal);">${w.kcalDot || 0} kcal</td>
           <td><small style="color:var(--text-sub);">${w.ghiChu || ''}</small></td>
           <td>
-            <button class="btn-delete" onclick="app.deleteWorkoutItem(${index})">🗑️</button>
+            <button class="btn-delete" title="Sửa bài tập" onclick="app.openEditWorkoutModal(${index})">✏️</button>
+            <button class="btn-delete" title="Xóa bài tập" onclick="app.deleteWorkoutItem(${index})">🗑️</button>
           </td>
         </tr>
       `).join('');
     },
 
-    /**
-     * Tải & Hiển thị Nhật Ký Lịch Sử (Đủ/Thiếu) + Summary 7 Ngày + Calendar Heatmap
-     */
+    openEditNutritionModal(index) {
+      if (!this.todayData || !this.todayData.nutrition || !this.todayData.nutrition[index]) return;
+      const item = this.todayData.nutrition[index];
+
+      this.editItemType.value = 'nutrition';
+      this.editItemRowIndex.value = item.rowIndex !== undefined ? item.rowIndex : index;
+      
+      this.editNutritionFields.style.display = 'block';
+      this.editWorkoutFields.style.display = 'none';
+      
+      this.editItemBua.value = item.bua || 'Phụ';
+      this.editItemTenMon.value = item.tenMon || '';
+      this.editItemKcal.value = item.kcal || 0;
+      this.editItemCarb.value = item.carbG || 0;
+      this.editItemProtein.value = item.proteinG || 0;
+      this.editItemFat.value = item.fatG || 0;
+
+      this.editItemModal.classList.add('active');
+    },
+
+    openEditWorkoutModal(index) {
+      if (!this.todayData || !this.todayData.workouts || !this.todayData.workouts[index]) return;
+      const w = this.todayData.workouts[index];
+
+      this.editItemType.value = 'workout';
+      this.editItemRowIndex.value = w.rowIndex !== undefined ? w.rowIndex : index;
+
+      this.editNutritionFields.style.display = 'none';
+      this.editWorkoutFields.style.display = 'block';
+
+      this.editWorkoutMon.value = w.monTap || 'Chạy bộ';
+      this.editWorkoutKm.value = w.quangDuongKm || 0;
+      this.editWorkoutGain.value = w.elevationGainM || 0;
+      this.editWorkoutTime.value = w.thoiGianH || 0;
+      this.editWorkoutKcal.value = w.kcalDot || 0;
+
+      this.editItemModal.classList.add('active');
+    },
+
+    async saveEditedItem(e) {
+      e.preventDefault();
+      const type = this.editItemType.value;
+      const rowIndex = parseInt(this.editItemRowIndex.value, 10);
+
+      try {
+        if (type === 'nutrition') {
+          const updatedItem = {
+            bua: this.editItemBua.value,
+            tenMon: this.editItemTenMon.value.trim(),
+            kcal: Number(this.editItemKcal.value) || 0,
+            carbG: Number(this.editItemCarb.value) || 0,
+            proteinG: Number(this.editItemProtein.value) || 0,
+            fatG: Number(this.editItemFat.value) || 0
+          };
+          const res = await window.hlvApi.post('edit_nutrition', {
+            date: this.currentDate,
+            rowIndex: rowIndex,
+            item: updatedItem
+          });
+          this.renderDashboard(res);
+        } else if (type === 'workout') {
+          const updatedWorkout = {
+            monTap: this.editWorkoutMon.value.trim(),
+            quangDuongKm: Number(this.editWorkoutKm.value) || 0,
+            elevationGainM: Number(this.editWorkoutGain.value) || 0,
+            thoiGianH: Number(this.editWorkoutTime.value) || 0,
+            kcalDot: Number(this.editWorkoutKcal.value) || 0
+          };
+          const res = await window.hlvApi.post('edit_workout', {
+            date: this.currentDate,
+            rowIndex: rowIndex,
+            workout: updatedWorkout
+          });
+          this.renderDashboard(res);
+        }
+
+        this.editItemModal.classList.remove('active');
+        alert('✏️ Đã cập nhật dữ liệu thành công!');
+      } catch (err) {
+        alert('Lỗi lưu chỉnh sửa: ' + err.message);
+      }
+    },
+
     async loadHistoryData() {
       try {
         const data = await window.hlvApi.get('get_history');
         const logs = data.historyLogs || [];
         this.historyLogs = logs;
 
-        // 1. Render 7-Day Compliance Summary Header
         this.renderWeeklyComplianceSummary(logs.slice(0, 7));
-
-        // 2. Render GitHub-style Calendar Heatmap
         this.renderCalendarHeatmap(logs.slice(0, 30));
-
-        // 3. Render History Table
         this.renderHistoryTable(logs);
       } catch (err) {
         console.error('Lỗi load lịch sử nhật ký:', err);
@@ -617,11 +715,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      // Map by date string
-      const dayMap = {};
-      pastDays.forEach(d => { dayMap[d.date] = d; });
-
-      // Generate 30 days grid array
       const cellsHtml = pastDays.map(day => {
         const t = day.target || { kcalTarget: 3500 };
         const status = this.evaluateStatus(day.totalKcalEaten, t.kcalTarget);
@@ -641,7 +734,6 @@ document.addEventListener('DOMContentLoaded', () => {
       this.currentDate = dateStr;
       this.dateInput.value = dateStr;
       this.loadTodayData();
-      // Scroll to top dashboard metrics
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
 
@@ -744,44 +836,68 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     },
 
+    /**
+     * Hiển thị Preview Box kết quả AI cho phép chỉnh sửa trực tiếp số liệu trước khi nhấn Lưu!
+     */
     showAiReviewPreview(parsedJson) {
       this.pendingAiParsedResult = parsedJson;
       this.reviewBox.style.display = 'block';
 
       if (parsedJson.type === 'DINH_DUONG') {
-        const itemsHtml = (parsedJson.items || []).map(item => `
-          <div class="review-item">
-            <div>
-              <strong>[${item.bua || 'Phụ'}] ${item.tenMon}</strong>
-              <div style="font-size:0.75rem; color:var(--text-sub);">${item.ghiChu || ''}</div>
+        const itemsHtml = (parsedJson.items || []).map((item, idx) => `
+          <div class="review-item" style="border-left: 3px solid var(--accent-carb); padding: 10px; background: var(--bg-card); border-radius: 8px; margin-bottom: 8px;">
+            <div style="display: flex; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;">
+              <select id="aiEditBua_${idx}" class="form-control" style="width: 100px; padding: 4px 8px; font-size: 0.8rem;">
+                <option value="Sáng" ${item.bua === 'Sáng' ? 'selected' : ''}>Sáng</option>
+                <option value="Trưa" ${item.bua === 'Trưa' ? 'selected' : ''}>Trưa</option>
+                <option value="Tối" ${item.bua === 'Tối' ? 'selected' : ''}>Tối</option>
+                <option value="Phụ" ${item.bua === 'Phụ' ? 'selected' : ''}>Phụ</option>
+                <option value="Trong tập" ${item.bua === 'Trong tập' ? 'selected' : ''}>Trong tập</option>
+              </select>
+              <input type="text" id="aiEditTen_${idx}" class="form-control" value="${item.tenMon || ''}" placeholder="Tên món" style="flex: 1; min-width: 140px; padding: 4px 8px; font-size: 0.85rem; font-weight: bold;">
             </div>
-            <div class="review-item-details">
-              <span style="color:var(--accent-kcal);">${item.kcal || 0} kcal</span>
-              <span style="color:var(--accent-carb);">${item.carbG || 0}g Carb</span>
-              <span style="color:var(--accent-protein);">${item.proteinG || 0}g P</span>
-              <span style="color:var(--accent-fat);">${item.fatG || 0}g F</span>
+            <div style="display: flex; gap: 8px; font-size: 0.8rem; flex-wrap: wrap;">
+              <label style="display:flex; align-items:center; gap:4px; color:var(--accent-kcal);">
+                Kcal: <input type="number" id="aiEditKcal_${idx}" class="form-control" value="${item.kcal || 0}" style="width: 70px; padding: 2px 6px;">
+              </label>
+              <label style="display:flex; align-items:center; gap:4px; color:var(--accent-carb);">
+                Carb(g): <input type="number" id="aiEditCarb_${idx}" class="form-control" value="${item.carbG || 0}" style="width: 65px; padding: 2px 6px;">
+              </label>
+              <label style="display:flex; align-items:center; gap:4px; color:var(--accent-protein);">
+                Prot(g): <input type="number" id="aiEditProtein_${idx}" class="form-control" value="${item.proteinG || 0}" style="width: 65px; padding: 2px 6px;">
+              </label>
+              <label style="display:flex; align-items:center; gap:4px; color:var(--accent-fat);">
+                Fat(g): <input type="number" id="aiEditFat_${idx}" class="form-control" value="${item.fatG || 0}" style="width: 65px; padding: 2px 6px;">
+              </label>
             </div>
           </div>
         `).join('');
 
         this.reviewContent.innerHTML = `
-          <div style="margin-bottom:8px; font-weight:600; color:var(--accent-carb);">Đã nhận diện: ${parsedJson.items?.length || 0} món ăn</div>
+          <div style="margin-bottom:8px; font-weight:600; color:var(--accent-carb);">Đã nhận diện ${parsedJson.items?.length || 0} món ăn (Bạn có thể sửa trực tiếp số liệu dưới đây):</div>
           <div class="review-items-list">${itemsHtml}</div>
         `;
       } else if (parsedJson.type === 'TAP_LUYEN') {
         const w = parsedJson.workout || {};
         this.reviewContent.innerHTML = `
-          <div style="margin-bottom:8px; font-weight:600; color:var(--accent-vert);">Đã nhận diện: 1 Buổi tập thể thao</div>
-          <div class="review-item workout">
-            <div>
-              <strong>${w.monTap || 'Chạy bộ'}</strong>
-              <div style="font-size:0.75rem; color:var(--text-sub);">${w.ghiChu || ''}</div>
+          <div style="margin-bottom:8px; font-weight:600; color:var(--accent-vert);">Đã nhận diện 1 Buổi tập thể thao (Bạn có thể sửa trực tiếp):</div>
+          <div class="review-item workout" style="padding: 10px; background: var(--bg-card); border-radius: 8px;">
+            <div style="margin-bottom: 6px;">
+              <input type="text" id="aiEditMonTap" class="form-control" value="${w.monTap || 'Chạy bộ'}" style="font-weight: bold; padding: 4px 8px; margin-bottom: 6px;">
             </div>
-            <div class="review-item-details">
-              <span style="color:var(--accent-carb);">${w.quangDuongKm || 0} km</span>
-              <span style="color:var(--accent-vert);">${w.elevationGainM || 0} m Gain</span>
-              <span>${w.thoiGianH || 0} giờ</span>
-              <span style="color:var(--accent-kcal);">${w.kcalDot || 0} kcal</span>
+            <div style="display: flex; gap: 8px; font-size: 0.8rem; flex-wrap: wrap;">
+              <label style="display:flex; align-items:center; gap:4px; color:var(--accent-carb);">
+                Km: <input type="number" id="aiEditKm" class="form-control" value="${w.quangDuongKm || 0}" step="0.1" style="width: 70px; padding: 2px 6px;">
+              </label>
+              <label style="display:flex; align-items:center; gap:4px; color:var(--accent-vert);">
+                Gain(m): <input type="number" id="aiEditGain" class="form-control" value="${w.elevationGainM || 0}" style="width: 75px; padding: 2px 6px;">
+              </label>
+              <label style="display:flex; align-items:center; gap:4px;">
+                Giờ: <input type="number" id="aiEditTime" class="form-control" value="${w.thoiGianH || 0}" step="0.1" style="width: 65px; padding: 2px 6px;">
+              </label>
+              <label style="display:flex; align-items:center; gap:4px; color:var(--accent-kcal);">
+                Calo đốt: <input type="number" id="aiEditKcalDot" class="form-control" value="${w.kcalDot || 0}" style="width: 75px; padding: 2px 6px;">
+              </label>
             </div>
           </div>
         `;
@@ -794,15 +910,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         if (data.type === 'DINH_DUONG') {
+          // Read live edited items from preview inputs
+          const editedItems = (data.items || []).map((item, idx) => {
+            const bua = document.getElementById(`aiEditBua_${idx}`)?.value || item.bua;
+            const tenMon = document.getElementById(`aiEditTen_${idx}`)?.value.trim() || item.tenMon;
+            const kcal = Number(document.getElementById(`aiEditKcal_${idx}`)?.value) || 0;
+            const carbG = Number(document.getElementById(`aiEditCarb_${idx}`)?.value) || 0;
+            const proteinG = Number(document.getElementById(`aiEditProtein_${idx}`)?.value) || 0;
+            const fatG = Number(document.getElementById(`aiEditFat_${idx}`)?.value) || 0;
+
+            return { bua, tenMon, kcal, carbG, proteinG, fatG, nguon: item.nguon || 'Text', ghiChu: item.ghiChu || '' };
+          });
+
           const res = await window.hlvApi.post('add_nutrition', {
             date: this.currentDate,
-            items: data.items
+            items: editedItems
           });
           this.renderDashboard(res);
         } else if (data.type === 'TAP_LUYEN') {
+          const monTap = document.getElementById('aiEditMonTap')?.value.trim() || data.workout?.monTap;
+          const quangDuongKm = Number(document.getElementById('aiEditKm')?.value) || 0;
+          const elevationGainM = Number(document.getElementById('aiEditGain')?.value) || 0;
+          const thoiGianH = Number(document.getElementById('aiEditTime')?.value) || 0;
+          const kcalDot = Number(document.getElementById('aiEditKcalDot')?.value) || 0;
+
+          const editedWorkout = { monTap, quangDuongKm, elevationGainM, thoiGianH, kcalDot, ghiChu: data.workout?.ghiChu || '' };
+
           const res = await window.hlvApi.post('add_workout', {
             date: this.currentDate,
-            workout: data.workout
+            workout: editedWorkout
           });
           this.renderDashboard(res);
         }

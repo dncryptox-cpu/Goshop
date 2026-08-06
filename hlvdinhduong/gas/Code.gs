@@ -56,7 +56,6 @@ function setupSheets() {
     sheetNguoiDung.appendRow(['GEMINI_API_KEY', '', 'Gemini API Key lưu mã hóa/đồng bộ']);
   }
   
-  // Xóa Sheet1 mặc định nếu có nhiều hơn 1 sheet
   var defaultSheet = ss.getSheetByName('Sheet1') || ss.getSheetByName('Trang tính1');
   if (defaultSheet && ss.getSheets().length > 1) {
     try { ss.deleteSheet(defaultSheet); } catch(e) {}
@@ -100,8 +99,12 @@ function doPost(e) {
     
     if (action === 'add_nutrition') {
       result = addNutritionLogs(contents.date || getTodayString(), contents.items || []);
+    } else if (action === 'edit_nutrition') {
+      result = editNutritionRow(contents.date || getTodayString(), contents.rowIndex, contents.item || {});
     } else if (action === 'add_workout') {
       result = addWorkoutLog(contents.date || getTodayString(), contents.workout || {});
+    } else if (action === 'edit_workout') {
+      result = editWorkoutRow(contents.date || getTodayString(), contents.rowIndex, contents.workout || {});
     } else if (action === 'set_day_type') {
       result = setDayType(contents.date || getTodayString(), contents.loaiNgay || 'Thuong');
     } else if (action === 'update_targets') {
@@ -303,6 +306,23 @@ function addNutritionLogs(dateStr, items) {
   return getDayData(dateStr);
 }
 
+// Chỉnh sửa dòng món ăn
+function editNutritionRow(dateStr, rowIndex, item) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('DINH_DUONG');
+  if (rowIndex > 0) {
+    var sheetRow = rowIndex + 1; // 1-indexed header
+    sheet.getRange(sheetRow, 2).setValue(item.bua || 'Phụ');
+    sheet.getRange(sheetRow, 3).setValue(item.tenMon || '');
+    sheet.getRange(sheetRow, 4).setValue(Number(item.kcal) || 0);
+    sheet.getRange(sheetRow, 5).setValue(Number(item.proteinG) || 0);
+    sheet.getRange(sheetRow, 6).setValue(Number(item.fatG) || 0);
+    sheet.getRange(sheetRow, 7).setValue(Number(item.carbG) || 0);
+    if (item.ghiChu !== undefined) sheet.getRange(sheetRow, 9).setValue(item.ghiChu);
+  }
+  return getDayData(dateStr);
+}
+
 // Ghi nhận bài tập
 function addWorkoutLog(dateStr, workout) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -319,6 +339,22 @@ function addWorkoutLog(dateStr, workout) {
     workout.ghiChu || ''
   ]);
   
+  return getDayData(dateStr);
+}
+
+// Chỉnh sửa dòng bài tập
+function editWorkoutRow(dateStr, rowIndex, workout) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('TAP_LUYEN');
+  if (rowIndex > 0) {
+    var sheetRow = rowIndex + 1;
+    sheet.getRange(sheetRow, 3).setValue(workout.monTap || 'Chạy bộ');
+    sheet.getRange(sheetRow, 4).setValue(Number(workout.quangDuongKm) || 0);
+    sheet.getRange(sheetRow, 5).setValue(Number(workout.elevationGainM) || 0);
+    sheet.getRange(sheetRow, 6).setValue(Number(workout.thoiGianH) || 0);
+    sheet.getRange(sheetRow, 7).setValue(Number(workout.kcalDot) || 0);
+    if (workout.ghiChu !== undefined) sheet.getRange(sheetRow, 8).setValue(workout.ghiChu);
+  }
   return getDayData(dateStr);
 }
 

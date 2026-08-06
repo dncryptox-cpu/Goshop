@@ -94,7 +94,6 @@ class HlvApi {
       return json.data;
     } catch (err) {
       console.error('[HLV API GET Error]', err);
-      // Fallback local data if network fails
       return this.getLocalMockData(action, params);
     }
   }
@@ -141,9 +140,7 @@ class HlvApi {
     const state = this.getLocalState();
     let pushedCount = 0;
 
-    // 1. Đẩy dinh dưỡng
     if (state.nutritionLogs && state.nutritionLogs.length > 0) {
-      // Group items by date
       const byDate = {};
       state.nutritionLogs.forEach(item => {
         const d = item.ngay || new Date().toISOString().split('T')[0];
@@ -160,7 +157,6 @@ class HlvApi {
       }
     }
 
-    // 2. Đẩy bài tập
     if (state.workoutLogs && state.workoutLogs.length > 0) {
       for (const w of state.workoutLogs) {
         await this.post('add_workout', {
@@ -171,7 +167,6 @@ class HlvApi {
       }
     }
 
-    // 3. Đẩy cấu hình người dùng
     if (state.userConfig) {
       await this.post('save_user_config', {
         config: {
@@ -182,7 +177,6 @@ class HlvApi {
       });
     }
 
-    // Xóa bớt local logs đã đẩy
     state.nutritionLogs = [];
     state.workoutLogs = [];
     this.saveLocalState(state);
@@ -293,6 +287,11 @@ class HlvApi {
           ghiChu: item.ghiChu || ''
         });
       });
+    } else if (action === 'edit_nutrition') {
+      if (state.nutritionLogs[payload.rowIndex]) {
+        const target = state.nutritionLogs[payload.rowIndex];
+        state.nutritionLogs[payload.rowIndex] = { ...target, ...payload.item };
+      }
     } else if (action === 'add_workout') {
       state.workoutLogs.push({
         rowIndex: state.workoutLogs.length + 1,
@@ -305,6 +304,11 @@ class HlvApi {
         kcalDot: Number(payload.workout.kcalDot) || 0,
         ghiChu: payload.workout.ghiChu || ''
       });
+    } else if (action === 'edit_workout') {
+      if (state.workoutLogs[payload.rowIndex]) {
+        const target = state.workoutLogs[payload.rowIndex];
+        state.workoutLogs[payload.rowIndex] = { ...target, ...payload.workout };
+      }
     } else if (action === 'delete_nutrition') {
       state.nutritionLogs = state.nutritionLogs.filter((_, idx) => idx !== payload.rowIndex);
     } else if (action === 'delete_workout') {
