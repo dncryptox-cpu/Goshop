@@ -96,6 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
       this.settingsModal = document.getElementById('settingsModal');
       this.webAppUrlInput = document.getElementById('webAppUrlInput');
       this.geminiKeyInput = document.getElementById('geminiKeyInput');
+      this.geminiModelSelect = document.getElementById('geminiModelSelect');
       this.btnSaveSettings = document.getElementById('btnSaveSettings');
     },
 
@@ -213,6 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettings() {
       this.webAppUrlInput.value = window.hlvApi.getWebAppUrl();
       this.geminiKeyInput.value = window.geminiParser.getApiKey();
+      this.geminiModelSelect.value = window.geminiParser.getModel();
       this.userNameInput.value = window.hlvApi.getUserName();
       this.headerUserName.textContent = window.hlvApi.getUserName();
     },
@@ -220,9 +222,11 @@ document.addEventListener('DOMContentLoaded', () => {
     saveSettings() {
       const url = this.webAppUrlInput.value.trim();
       const key = this.geminiKeyInput.value.trim();
+      const model = this.geminiModelSelect.value.trim();
 
       window.hlvApi.setWebAppUrl(url);
       window.geminiParser.setApiKey(key);
+      window.geminiParser.setModel(model);
 
       this.settingsModal.classList.remove('active');
       this.updateSyncLinkUI();
@@ -262,7 +266,8 @@ document.addEventListener('DOMContentLoaded', () => {
             HEIGHT_CM: height,
             WEIGHT_KG: weight,
             WEIGHT_GOAL: goal,
-            GEMINI_API_KEY: window.geminiParser.getApiKey()
+            GEMINI_API_KEY: window.geminiParser.getApiKey(),
+            GEMINI_MODEL: window.geminiParser.getModel()
           }
         });
         this.updateSyncLinkUI();
@@ -288,6 +293,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (cfg.GEMINI_API_KEY && !window.geminiParser.getApiKey()) {
           window.geminiParser.setApiKey(cfg.GEMINI_API_KEY);
           this.geminiKeyInput.value = cfg.GEMINI_API_KEY;
+        }
+        if (cfg.GEMINI_MODEL) {
+          window.geminiParser.setModel(cfg.GEMINI_MODEL);
+          this.geminiModelSelect.value = cfg.GEMINI_MODEL;
         }
 
         alert('☁️ Đã đồng bộ cấu hình từ Google Sheets về thiết bị này thành công!');
@@ -348,7 +357,6 @@ document.addEventListener('DOMContentLoaded', () => {
       this.currentDayType = data.dayType || 'Thuong';
       this.updateDayButtonsUI(this.currentDayType);
 
-      // Load user config if returned
       if (data.userConfig) {
         if (data.userConfig.USER_NAME) {
           this.headerUserName.textContent = data.userConfig.USER_NAME;
@@ -357,6 +365,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.userConfig.HEIGHT_CM) this.userHeightInput.value = data.userConfig.HEIGHT_CM;
         if (data.userConfig.WEIGHT_KG) this.userWeightInput.value = data.userConfig.WEIGHT_KG;
         if (data.userConfig.WEIGHT_GOAL) this.userGoalInput.value = data.userConfig.WEIGHT_GOAL;
+        if (data.userConfig.GEMINI_MODEL) {
+          window.geminiParser.setModel(data.userConfig.GEMINI_MODEL);
+          this.geminiModelSelect.value = data.userConfig.GEMINI_MODEL;
+        }
       }
 
       const summary = data.summary || { totalKcal: 0, totalCarbG: 0, totalProteinG: 0, totalFatG: 0 };
@@ -483,7 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const activeTab = document.querySelector('.input-tab-btn.active').dataset.tab;
       
       this.btnAnalyzeAi.disabled = true;
-      this.btnAnalyzeAi.innerHTML = `<div class="spinner"></div> Đang gọi Gemini AI phân tích...`;
+      this.btnAnalyzeAi.innerHTML = `<div class="spinner"></div> Đang gọi Gemini AI (${window.geminiParser.getModel()}) phân tích...`;
 
       try {
         let result = null;

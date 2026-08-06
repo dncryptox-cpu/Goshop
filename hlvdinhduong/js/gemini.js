@@ -1,11 +1,23 @@
 /**
  * Gemini AI Parser Client for HLV Dinh Dưỡng
  * Bóc tách text hoặc ảnh bữa ăn/bài tập thành JSON có cấu trúc.
+ * Cập nhật tự động chẩn đoán lỗi API (404 model shutdown, 403 key, 429 quota)
  */
 
 class GeminiParser {
   constructor() {
-    this.model = 'gemini-1.5-flash';
+    this.storageKeyModel = 'hlv_gemini_model';
+    this.defaultModel = 'gemini-3.6-flash'; // GA model 08/2026
+  }
+
+  getModel() {
+    return localStorage.getItem(this.storageKeyModel) || this.defaultModel;
+  }
+
+  setModel(modelName) {
+    if (modelName) {
+      localStorage.setItem(this.storageKeyModel, modelName.trim());
+    }
   }
 
   getApiKey() {
@@ -17,6 +29,30 @@ class GeminiParser {
   }
 
   /**
+   * Chẩn đoán và log chi tiết lỗi API
+   */
+  async handleApiError(response, modelName) {
+    const status = response.status;
+    let errBody = {};
+    try {
+      errBody = await response.json();
+    } catch(e) {}
+
+    const rawMessage = errBody.error?.message || response.statusText || 'Unknown API Error';
+    console.error(`[Gemini API Error] Status: ${status} | Model: ${modelName} | Message: ${rawMessage}`, errBody);
+
+    if (status === 404) {
+      throw new Error(`[Lỗi 404] Model '${modelName}' không tồn tại hoặc đã bị Google khai tử (shutdown). Vui lòng vào Cài đặt (⚙️) đổi tên model sang 'gemini-3.6-flash' hoặc 'gemini-2.5-flash'. (Chi tiết: ${rawMessage})`);
+    } else if (status === 403) {
+      throw new Error(`[Lỗi 403] Gemini API Key bị từ chối hoặc bị hạn chế quyền. Vui lòng kiểm tra lại API Key trong Cài đặt (⚙️). (Chi tiết: ${rawMessage})`);
+    } else if (status === 429) {
+      throw new Error(`[Lỗi 429] Đã vượt quá giới hạn lượt gọi (Quota limit) của Gemini API. Vui lòng đợi ít phút rồi thử lại. (Chi tiết: ${rawMessage})`);
+    } else {
+      throw new Error(`[Lỗi HTTP ${status}] Gọi Gemini API thất bại: ${rawMessage}`);
+    }
+  }
+
+  /**
    * Phân tích text đầu vào (bữa ăn hoặc bài tập)
    */
   async parseText(promptText) {
@@ -25,7 +61,8 @@ class GeminiParser {
       throw new Error('Chưa cấu hình Gemini API Key. Vui lòng nhấn nút ⚙️ Cài đặt trên góc phải để nhập API Key.');
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`;
+    const currentModel = this.getModel();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
 
     const systemInstruction = `
 Bạn là chuyên gia dinh dưỡng và HLV thể thao dành cho vận động viên ultra runner (chạy trail/địa hình leo dốc).
@@ -80,28 +117,32 @@ CHỈ Trả về duy nhất đối tượng JSON hợp lệ, không kèm bất k
       }
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+    } catch (netErr) {
+      console.error('[Gemini Network Error]', netErr);
+      throw new Error(`[Lỗi Mạng/CORS] Không thể kết nối tới generativelanguage.googleapis.com: ${netErr.message}`);
+    }
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `Lỗi Gemini API (${response.status})`);
+      await this.handleApiError(response, currentModel);
     }
 
     const data = await response.json();
     const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (!candidateText) {
-      throw new Error('Gemini API không trả về kết quả.');
+      throw new Error(`Gemini API (${currentModel}) trả về response nhưng không có nội dung text parsed.`);
     }
 
     try {
       return JSON.parse(candidateText);
     } catch (e) {
-      // Clean JSON if markdown block returned
       const cleaned = candidateText.replace(/```json/g, '').replace(/```/g, '').trim();
       return JSON.parse(cleaned);
     }
@@ -116,7 +157,8 @@ CHỈ Trả về duy nhất đối tượng JSON hợp lệ, không kèm bất k
       throw new Error('Chưa cấu hình Gemini API Key. Vui lòng vào Cài đặt để nhập API Key.');
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`;
+    const currentModel = this.getModel();
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey}`;
 
     const systemInstruction = `
 Bạn là chuyên gia dinh dưỡng ultra runner và trợ lý thể thao.
@@ -132,7 +174,6 @@ Cấu trúc JSON đầu ra bắt buộc:
 CHỈ Trả về JSON thuần.
     `;
 
-    // Base64 cleaning
     const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
     const requestBody = {
@@ -155,22 +196,27 @@ CHỈ Trả về JSON thuần.
       }
     };
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody)
-    });
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+    } catch (netErr) {
+      console.error('[Gemini Network Error]', netErr);
+      throw new Error(`[Lỗi Mạng/CORS] Không thể gửi ảnh tới generativelanguage.googleapis.com: ${netErr.message}`);
+    }
 
     if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error?.message || `Lỗi Gemini API (${response.status})`);
+      await this.handleApiError(response, currentModel);
     }
 
     const data = await response.json();
     const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (!candidateText) {
-      throw new Error('Gemini API không trả về kết quả từ hình ảnh.');
+      throw new Error(`Gemini API (${currentModel}) trả về response từ ảnh nhưng không có nội dung text parsed.`);
     }
 
     try {
