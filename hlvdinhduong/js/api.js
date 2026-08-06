@@ -30,7 +30,7 @@ class HlvApi {
   }
 
   /**
-   * Tạo 1-Click Sync Link để gửi sang điện thoại hoặc máy tính khác
+   * Tạo 1-Click Sync Link chứa Web App URL & Key để dán sang điện thoại/máy khác
    */
   generateSyncLink() {
     const webAppUrl = this.getWebAppUrl();
@@ -64,9 +64,8 @@ class HlvApi {
         if (data.k && window.geminiParser) window.geminiParser.setApiKey(data.k);
         if (data.n) this.setUserName(data.n);
 
-        // Clear hash clean URL
         window.history.replaceState(null, null, window.location.pathname);
-        alert('🎉 Đã đồng bộ cấu hình tự động từ Link thiết bị!');
+        alert('🎉 Đã đồng bộ Web App URL & Cấu hình thành công từ Link 1-Click!');
       } catch (err) {
         console.error('Lỗi giải mã sync hash:', err);
       }
@@ -80,7 +79,7 @@ class HlvApi {
     const webAppUrl = this.getWebAppUrl();
     
     if (!webAppUrl) {
-      console.warn('Chưa cấu hình Google Apps Script Web App URL. Sử dụng dữ liệu tạm thời (Local Storage).');
+      console.warn('Chưa cấu hình Web App URL. Đang dùng dữ liệu Local Storage tạm thời.');
       return this.getLocalMockData(action, params);
     }
 
@@ -89,12 +88,13 @@ class HlvApi {
 
     try {
       const res = await fetch(fullUrl, { method: 'GET' });
-      if (!res.ok) throw new Error(`Lỗi HTTP GET: ${res.status}`);
+      if (!res.ok) throw new Error(`Lỗi HTTP GET ${res.status}`);
       const json = await res.json();
       if (json.status === 'error') throw new Error(json.message);
       return json.data;
     } catch (err) {
-      console.error('GET request error:', err);
+      console.error('[HLV API GET Error]', err);
+      // Fallback local data if network fails
       return this.getLocalMockData(action, params);
     }
   }
@@ -107,7 +107,7 @@ class HlvApi {
     const dataToSend = { action, ...payload };
 
     if (!webAppUrl) {
-      console.warn('Chưa cấu hình Web App URL. Lưu dữ liệu vào Local Storage tạm thời.');
+      console.warn('Chưa cấu hình Web App URL. Lưu tạm vào Local Storage.');
       return this.saveLocalMockData(action, payload);
     }
 
@@ -118,14 +118,76 @@ class HlvApi {
         body: JSON.stringify(dataToSend)
       });
 
-      if (!res.ok) throw new Error(`Lỗi HTTP POST: ${res.status}`);
+      if (!res.ok) throw new Error(`Lỗi HTTP POST ${res.status}`);
       const json = await res.json();
       if (json.status === 'error') throw new Error(json.message);
       return json.data;
     } catch (err) {
-      console.error('POST request error:', err);
+      console.error('[HLV API POST Error]', err);
+      alert(`⚠️ Không thể đẩy dữ liệu lên Google Sheets!\nChi tiết lỗi: ${err.message}\nDữ liệu đã được lưu tạm trên máy này.`);
       return this.saveLocalMockData(action, payload);
     }
+  }
+
+  /**
+   * Đẩy toàn bộ dữ liệu lưu tạm ở máy hiện tại (offline/mock) lên Google Sheets
+   */
+  async pushAllLocalDataToSheet() {
+    const webAppUrl = this.getWebAppUrl();
+    if (!webAppUrl) {
+      throw new Error('Chưa dán Web App URL! Vui lòng cài đặt Web App URL trước khi đẩy dữ liệu.');
+    }
+
+    const state = this.getLocalState();
+    let pushedCount = 0;
+
+    // 1. Đẩy dinh dưỡng
+    if (state.nutritionLogs && state.nutritionLogs.length > 0) {
+      // Group items by date
+      const byDate = {};
+      state.nutritionLogs.forEach(item => {
+        const d = item.ngay || new Date().toISOString().split('T')[0];
+        if (!byDate[d]) byDate[d] = [];
+        byDate[d].push(item);
+      });
+
+      for (const d of Object.keys(byDate)) {
+        await this.post('add_nutrition', {
+          date: d,
+          items: byDate[d]
+        });
+        pushedCount += byDate[d].length;
+      }
+    }
+
+    // 2. Đẩy bài tập
+    if (state.workoutLogs && state.workoutLogs.length > 0) {
+      for (const w of state.workoutLogs) {
+        await this.post('add_workout', {
+          date: w.ngay || new Date().toISOString().split('T')[0],
+          workout: w
+        });
+        pushedCount++;
+      }
+    }
+
+    // 3. Đẩy cấu hình người dùng
+    if (state.userConfig) {
+      await this.post('save_user_config', {
+        config: {
+          ...state.userConfig,
+          GEMINI_API_KEY: window.geminiParser ? window.geminiParser.getApiKey() : '',
+          GEMINI_MODEL: window.geminiParser ? window.geminiParser.getModel() : ''
+        }
+      });
+    }
+
+    // Xóa bớt local logs đã đẩy
+    state.nutritionLogs = [];
+    state.workoutLogs = [];
+    this.saveLocalState(state);
+
+    return pushedCount;
   }
 
   /* -------------------------------------------------------------------------- */

@@ -1,6 +1,6 @@
 /**
  * HLV DINH DƯỠNG ULTRA RUNNER - APPLICATION CONTROLLER
- * Điều khiển UI, State, Tính toán Calo/Carb và Tích hợp Gemini & Sheets & Đồng bộ Người dùng
+ * Điều khiển UI, State, Tính toán Calo/Carb và Tích hợp Gemini & Sheets & Đồng bộ Đa thiết bị
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -16,11 +16,17 @@ document.addEventListener('DOMContentLoaded', () => {
       this.cacheDom();
       this.bindEvents();
       this.loadSettings();
+      this.updateCloudStatusBadge();
       this.loadTodayData();
       this.updateSyncLinkUI();
     },
 
     cacheDom() {
+      // Header status & Badges
+      this.cloudStatusBadge = document.getElementById('cloudStatusBadge');
+      this.headerUserName = document.getElementById('headerUserName');
+      this.btnUserBadge = document.getElementById('btnUserBadge');
+
       // Date Picker & Day Type
       this.dateInput = document.getElementById('dateInput');
       this.dateInput.value = this.currentDate;
@@ -77,8 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
       this.weeklyTableBody = document.getElementById('weeklyTableBody');
 
       // User Profile & Sync Elements
-      this.headerUserName = document.getElementById('headerUserName');
-      this.btnUserBadge = document.getElementById('btnUserBadge');
       this.userNameInput = document.getElementById('userNameInput');
       this.userHeightInput = document.getElementById('userHeightInput');
       this.userWeightInput = document.getElementById('userWeightInput');
@@ -87,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
       
       this.syncLinkInput = document.getElementById('syncLinkInput');
       this.btnCopySyncLink = document.getElementById('btnCopySyncLink');
+      this.btnPushLocalToCloud = document.getElementById('btnPushLocalToCloud');
       this.btnFetchCloudConfig = document.getElementById('btnFetchCloudConfig');
       this.btnModalSyncLink = document.getElementById('btnModalSyncLink');
 
@@ -189,10 +194,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
 
-      // Header User Badge click -> Switch to User Tab
+      // Header Badges click
       this.btnUserBadge.addEventListener('click', () => {
         const userTab = Array.from(this.mainTabBtns).find(b => b.dataset.view === 'user');
         if (userTab) userTab.click();
+      });
+
+      this.cloudStatusBadge.addEventListener('click', () => {
+        this.settingsModal.classList.add('active');
       });
 
       // Save User Profile to Google Sheets
@@ -201,6 +210,9 @@ document.addEventListener('DOMContentLoaded', () => {
       // Copy 1-Click Sync Link
       this.btnCopySyncLink.addEventListener('click', () => this.copySyncLink());
       this.btnModalSyncLink.addEventListener('click', () => this.copySyncLink());
+
+      // Push Local Data to Cloud
+      this.btnPushLocalToCloud.addEventListener('click', () => this.pushLocalDataToCloud());
 
       // Fetch Cloud Config from Sheets
       this.btnFetchCloudConfig.addEventListener('click', () => this.fetchCloudUserConfig());
@@ -211,6 +223,19 @@ document.addEventListener('DOMContentLoaded', () => {
       this.btnSaveSettings.addEventListener('click', () => this.saveSettings());
     },
 
+    updateCloudStatusBadge() {
+      const url = window.hlvApi.getWebAppUrl();
+      if (url) {
+        this.cloudStatusBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+        this.cloudStatusBadge.style.color = '#10b981';
+        this.cloudStatusBadge.textContent = '🟢 Đã kết nối Google Sheets';
+      } else {
+        this.cloudStatusBadge.style.background = 'rgba(245, 158, 11, 0.2)';
+        this.cloudStatusBadge.style.color = '#f59e0b';
+        this.cloudStatusBadge.textContent = '🟡 Chưa dán Web App URL';
+      }
+    },
+
     loadSettings() {
       this.webAppUrlInput.value = window.hlvApi.getWebAppUrl();
       this.geminiKeyInput.value = window.geminiParser.getApiKey();
@@ -219,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
       this.headerUserName.textContent = window.hlvApi.getUserName();
     },
 
-    saveSettings() {
+    async saveSettings() {
       const url = this.webAppUrlInput.value.trim();
       const key = this.geminiKeyInput.value.trim();
       const model = this.geminiModelSelect.value.trim();
@@ -229,8 +254,23 @@ document.addEventListener('DOMContentLoaded', () => {
       window.geminiParser.setModel(model);
 
       this.settingsModal.classList.remove('active');
+      this.updateCloudStatusBadge();
       this.updateSyncLinkUI();
-      alert('Đã lưu cấu hình thành công!');
+
+      if (url) {
+        // Tự động đẩy toàn bộ dữ liệu local sẵn có lên Sheets khi vừa dán URL
+        try {
+          const count = await window.hlvApi.pushAllLocalDataToSheet();
+          if (count > 0) {
+            alert(`🎉 Đã kết nối Google Sheets và tự động đẩy ${count} bản ghi từ máy này lên Sheet!`);
+          } else {
+            alert('🎉 Đã kết nối Google Sheets thành công!');
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
       this.loadTodayData();
     },
 
@@ -242,12 +282,26 @@ document.addEventListener('DOMContentLoaded', () => {
     copySyncLink() {
       const link = window.hlvApi.generateSyncLink();
       navigator.clipboard.writeText(link).then(() => {
-        alert('📋 Đã copy Link Đồng Bộ 1-Click vào bộ nhớ tạm!\nBạn có thể dán (Paste) link này sang Zalo/Messenger để mở trên điện thoại hoặc máy tính khác.');
+        alert('📋 Đã copy Link Đồng Bộ 1-Click vào bộ nhớ tạm!\nBạn có thể dán (Paste) link này sang Zalo/Messenger của bạn để mở trên điện thoại hoặc máy tính khác.');
       }).catch(() => {
         this.syncLinkInput.select();
         document.execCommand('copy');
         alert('📋 Đã copy Link Đồng Bộ!');
       });
+    },
+
+    async pushLocalDataToCloud() {
+      try {
+        const count = await window.hlvApi.pushAllLocalDataToSheet();
+        if (count > 0) {
+          alert(`📤 Đã đẩy thành công ${count} mục dữ liệu từ máy này lên Google Sheets!`);
+        } else {
+          alert('Dữ liệu trên máy này đã đồng bộ hoàn toàn với Google Sheets.');
+        }
+        this.loadTodayData();
+      } catch (err) {
+        alert('Lỗi đẩy dữ liệu: ' + err.message);
+      }
     },
 
     async saveUserProfile() {
@@ -300,6 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         alert('☁️ Đã đồng bộ cấu hình từ Google Sheets về thiết bị này thành công!');
+        this.loadTodayData();
       } catch (err) {
         alert('Lỗi đồng bộ: ' + err.message);
       }
