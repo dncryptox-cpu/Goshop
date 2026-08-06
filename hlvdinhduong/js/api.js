@@ -1,12 +1,16 @@
 /**
  * Google Apps Script Web App API Interface
- * Gửi và nhận dữ liệu từ Google Sheets độc lập
+ * Gửi và nhận dữ liệu từ Google Sheets độc lập + Đồng bộ đa thiết bị
  */
 
 class HlvApi {
   constructor() {
     this.storageKeyUrl = 'hlv_gas_web_app_url';
     this.storageKeyLocalData = 'hlv_local_mock_data';
+    this.storageKeyUserName = 'hlv_user_name';
+    
+    // Tự động kiểm tra URL hash để nhập cấu hình 1-Click từ máy khác
+    this.checkSyncHashInUrl();
   }
 
   getWebAppUrl() {
@@ -17,13 +21,64 @@ class HlvApi {
     localStorage.setItem(this.storageKeyUrl, url.trim());
   }
 
+  getUserName() {
+    return localStorage.getItem(this.storageKeyUserName) || 'Ultra Runner DNC';
+  }
+
+  setUserName(name) {
+    localStorage.setItem(this.storageKeyUserName, name.trim());
+  }
+
+  /**
+   * Tạo 1-Click Sync Link để gửi sang điện thoại hoặc máy tính khác
+   */
+  generateSyncLink() {
+    const webAppUrl = this.getWebAppUrl();
+    const geminiKey = window.geminiParser ? window.geminiParser.getApiKey() : '';
+    const userName = this.getUserName();
+
+    const payload = {
+      u: webAppUrl,
+      k: geminiKey,
+      n: userName,
+      t: Date.now()
+    };
+
+    const encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+    const baseUrl = window.location.origin + window.location.pathname;
+    return `${baseUrl}#sync=${encoded}`;
+  }
+
+  /**
+   * Kiểm tra URL Hash khi mở trang trên máy mới
+   */
+  checkSyncHashInUrl() {
+    const hash = window.location.hash;
+    if (hash && hash.includes('sync=')) {
+      try {
+        const rawEncoded = hash.split('sync=')[1];
+        const jsonStr = decodeURIComponent(atob(rawEncoded));
+        const data = JSON.parse(jsonStr);
+
+        if (data.u) this.setWebAppUrl(data.u);
+        if (data.k && window.geminiParser) window.geminiParser.setApiKey(data.k);
+        if (data.n) this.setUserName(data.n);
+
+        // Clear hash clean URL
+        window.history.replaceState(null, null, window.location.pathname);
+        alert('🎉 Đã đồng bộ cấu hình tự động từ Link thiết bị!');
+      } catch (err) {
+        console.error('Lỗi giải mã sync hash:', err);
+      }
+    }
+  }
+
   /**
    * Helper gửi GET request đến Apps Script Web App
    */
   async get(action, params = {}) {
     const webAppUrl = this.getWebAppUrl();
     
-    // Nếu chưa cấu hình Web App URL -> dùng Mock Local Storage để trải nghiệm ngay lập tức
     if (!webAppUrl) {
       console.warn('Chưa cấu hình Google Apps Script Web App URL. Sử dụng dữ liệu tạm thời (Local Storage).');
       return this.getLocalMockData(action, params);
@@ -40,7 +95,6 @@ class HlvApi {
       return json.data;
     } catch (err) {
       console.error('GET request error:', err);
-      // Fallback local data if network fails
       return this.getLocalMockData(action, params);
     }
   }
@@ -60,7 +114,7 @@ class HlvApi {
     try {
       const res = await fetch(webAppUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Apps Script CORS friendliness
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(dataToSend)
       });
 
@@ -75,13 +129,19 @@ class HlvApi {
   }
 
   /* -------------------------------------------------------------------------- */
-  /* LOCAL MOCK STORAGE (Cho phép app chạy mượt mà kể cả khi chưa dán Web App URL) */
+  /* LOCAL MOCK STORAGE (Fallback khi chưa kết nối Sheets)                       */
   /* -------------------------------------------------------------------------- */
 
   getInitialLocalState() {
     return {
       date: new Date().toISOString().split('T')[0],
       dayType: 'Thuong',
+      userConfig: {
+        USER_NAME: 'DNC Ultra Runner',
+        HEIGHT_CM: '170',
+        WEIGHT_KG: '65',
+        WEIGHT_GOAL: '+0.3kg/tuần'
+      },
       allTargets: {
         Rest: { loaiNgay: 'Rest', kcalTarget: 2900, carbTargetG: 375, proteinTargetG: 120, fatTargetG: 75 },
         Thuong: { loaiNgay: 'Thuong', kcalTarget: 3500, carbTargetG: 525, proteinTargetG: 120, fatTargetG: 75 },
@@ -138,6 +198,7 @@ class HlvApi {
       dayType: dayType,
       targets: currentTarget,
       allTargets: state.allTargets,
+      userConfig: state.userConfig || {},
       summary: {
         totalKcal,
         totalProteinG: totalProtein,
@@ -156,7 +217,7 @@ class HlvApi {
     if (action === 'set_day_type') {
       state.dayType = payload.loaiNgay;
     } else if (action === 'add_nutrition') {
-      (payload.items || []).forEach((item, idx) => {
+      (payload.items || []).forEach((item) => {
         state.nutritionLogs.push({
           rowIndex: state.nutritionLogs.length + 1,
           ngay: dateStr,
@@ -186,6 +247,8 @@ class HlvApi {
       state.nutritionLogs = state.nutritionLogs.filter((_, idx) => idx !== payload.rowIndex);
     } else if (action === 'delete_workout') {
       state.workoutLogs = state.workoutLogs.filter((_, idx) => idx !== payload.rowIndex);
+    } else if (action === 'save_user_config') {
+      state.userConfig = { ...state.userConfig, ...(payload.config || {}) };
     }
 
     this.saveLocalState(state);

@@ -1,6 +1,6 @@
 /**
  * HLV DINH DƯỠNG ULTRA RUNNER - APPLICATION CONTROLLER
- * Điều khiển UI, State, Tính toán Calo/Carb và Tích hợp Gemini & Sheets
+ * Điều khiển UI, State, Tính toán Calo/Carb và Tích hợp Gemini & Sheets & Đồng bộ Người dùng
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
       this.bindEvents();
       this.loadSettings();
       this.loadTodayData();
+      this.updateSyncLinkUI();
     },
 
     cacheDom() {
@@ -64,15 +65,30 @@ document.addEventListener('DOMContentLoaded', () => {
       this.btnConfirmSave = document.getElementById('btnConfirmSave');
       this.btnCancelReview = document.getElementById('btnCancelReview');
 
-      // Logs & Table View
+      // Logs & Table & User View
       this.mainTabBtns = document.querySelectorAll('.main-tab');
       this.tabNutritionView = document.getElementById('tabNutritionView');
       this.tabWorkoutView = document.getElementById('tabWorkoutView');
       this.tabWeeklyView = document.getElementById('tabWeeklyView');
+      this.tabUserView = document.getElementById('tabUserView');
 
       this.nutritionTableBody = document.getElementById('nutritionTableBody');
       this.workoutTableBody = document.getElementById('workoutTableBody');
       this.weeklyTableBody = document.getElementById('weeklyTableBody');
+
+      // User Profile & Sync Elements
+      this.headerUserName = document.getElementById('headerUserName');
+      this.btnUserBadge = document.getElementById('btnUserBadge');
+      this.userNameInput = document.getElementById('userNameInput');
+      this.userHeightInput = document.getElementById('userHeightInput');
+      this.userWeightInput = document.getElementById('userWeightInput');
+      this.userGoalInput = document.getElementById('userGoalInput');
+      this.btnSaveUserProfile = document.getElementById('btnSaveUserProfile');
+      
+      this.syncLinkInput = document.getElementById('syncLinkInput');
+      this.btnCopySyncLink = document.getElementById('btnCopySyncLink');
+      this.btnFetchCloudConfig = document.getElementById('btnFetchCloudConfig');
+      this.btnModalSyncLink = document.getElementById('btnModalSyncLink');
 
       // Settings Modal
       this.btnOpenSettings = document.getElementById('btnOpenSettings');
@@ -136,7 +152,6 @@ document.addEventListener('DOMContentLoaded', () => {
           if (item.type.indexOf('image') === 0) {
             const blob = item.getAsFile();
             this.handleFileSelect(blob);
-            // Switch to image tab
             this.inputTabBtns[1].click();
             break;
           }
@@ -153,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
         this.pendingAiParsedResult = null;
       });
 
-      // Main Log Navigation Tabs
+      // Main Navigation Tabs
       this.mainTabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
           this.mainTabBtns.forEach(b => b.classList.remove('active'));
@@ -163,12 +178,31 @@ document.addEventListener('DOMContentLoaded', () => {
           this.tabNutritionView.style.display = target === 'nutrition' ? 'block' : 'none';
           this.tabWorkoutView.style.display = target === 'workout' ? 'block' : 'none';
           this.tabWeeklyView.style.display = target === 'weekly' ? 'block' : 'none';
+          this.tabUserView.style.display = target === 'user' ? 'block' : 'none';
 
           if (target === 'weekly') {
             this.loadWeeklyData();
+          } else if (target === 'user') {
+            this.updateSyncLinkUI();
           }
         });
       });
+
+      // Header User Badge click -> Switch to User Tab
+      this.btnUserBadge.addEventListener('click', () => {
+        const userTab = Array.from(this.mainTabBtns).find(b => b.dataset.view === 'user');
+        if (userTab) userTab.click();
+      });
+
+      // Save User Profile to Google Sheets
+      this.btnSaveUserProfile.addEventListener('click', () => this.saveUserProfile());
+
+      // Copy 1-Click Sync Link
+      this.btnCopySyncLink.addEventListener('click', () => this.copySyncLink());
+      this.btnModalSyncLink.addEventListener('click', () => this.copySyncLink());
+
+      // Fetch Cloud Config from Sheets
+      this.btnFetchCloudConfig.addEventListener('click', () => this.fetchCloudUserConfig());
 
       // Settings Modal Events
       this.btnOpenSettings.addEventListener('click', () => this.settingsModal.classList.add('active'));
@@ -179,6 +213,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadSettings() {
       this.webAppUrlInput.value = window.hlvApi.getWebAppUrl();
       this.geminiKeyInput.value = window.geminiParser.getApiKey();
+      this.userNameInput.value = window.hlvApi.getUserName();
+      this.headerUserName.textContent = window.hlvApi.getUserName();
     },
 
     saveSettings() {
@@ -189,8 +225,75 @@ document.addEventListener('DOMContentLoaded', () => {
       window.geminiParser.setApiKey(key);
 
       this.settingsModal.classList.remove('active');
+      this.updateSyncLinkUI();
       alert('Đã lưu cấu hình thành công!');
       this.loadTodayData();
+    },
+
+    updateSyncLinkUI() {
+      const syncUrl = window.hlvApi.generateSyncLink();
+      this.syncLinkInput.value = syncUrl;
+    },
+
+    copySyncLink() {
+      const link = window.hlvApi.generateSyncLink();
+      navigator.clipboard.writeText(link).then(() => {
+        alert('📋 Đã copy Link Đồng Bộ 1-Click vào bộ nhớ tạm!\nBạn có thể dán (Paste) link này sang Zalo/Messenger để mở trên điện thoại hoặc máy tính khác.');
+      }).catch(() => {
+        this.syncLinkInput.select();
+        document.execCommand('copy');
+        alert('📋 Đã copy Link Đồng Bộ!');
+      });
+    },
+
+    async saveUserProfile() {
+      const name = this.userNameInput.value.trim() || 'Ultra Runner DNC';
+      const height = this.userHeightInput.value.trim();
+      const weight = this.userWeightInput.value.trim();
+      const goal = this.userGoalInput.value.trim();
+
+      window.hlvApi.setUserName(name);
+      this.headerUserName.textContent = name;
+
+      try {
+        await window.hlvApi.post('save_user_config', {
+          config: {
+            USER_NAME: name,
+            HEIGHT_CM: height,
+            WEIGHT_KG: weight,
+            WEIGHT_GOAL: goal,
+            GEMINI_API_KEY: window.geminiParser.getApiKey()
+          }
+        });
+        this.updateSyncLinkUI();
+        alert('💾 Đã lưu thông tin cá nhân lên Google Sheets thành công!');
+      } catch (err) {
+        alert('Lỗi lưu cấu hình: ' + err.message);
+      }
+    },
+
+    async fetchCloudUserConfig() {
+      try {
+        const data = await window.hlvApi.get('get_user_config');
+        const cfg = data.userConfig || {};
+
+        if (cfg.USER_NAME) {
+          this.userNameInput.value = cfg.USER_NAME;
+          window.hlvApi.setUserName(cfg.USER_NAME);
+          this.headerUserName.textContent = cfg.USER_NAME;
+        }
+        if (cfg.HEIGHT_CM) this.userHeightInput.value = cfg.HEIGHT_CM;
+        if (cfg.WEIGHT_KG) this.userWeightInput.value = cfg.WEIGHT_KG;
+        if (cfg.WEIGHT_GOAL) this.userGoalInput.value = cfg.WEIGHT_GOAL;
+        if (cfg.GEMINI_API_KEY && !window.geminiParser.getApiKey()) {
+          window.geminiParser.setApiKey(cfg.GEMINI_API_KEY);
+          this.geminiKeyInput.value = cfg.GEMINI_API_KEY;
+        }
+
+        alert('☁️ Đã đồng bộ cấu hình từ Google Sheets về thiết bị này thành công!');
+      } catch (err) {
+        alert('Lỗi đồng bộ: ' + err.message);
+      }
     },
 
     handleFileSelect(file) {
@@ -244,6 +347,17 @@ document.addEventListener('DOMContentLoaded', () => {
       this.todayData = data;
       this.currentDayType = data.dayType || 'Thuong';
       this.updateDayButtonsUI(this.currentDayType);
+
+      // Load user config if returned
+      if (data.userConfig) {
+        if (data.userConfig.USER_NAME) {
+          this.headerUserName.textContent = data.userConfig.USER_NAME;
+          this.userNameInput.value = data.userConfig.USER_NAME;
+        }
+        if (data.userConfig.HEIGHT_CM) this.userHeightInput.value = data.userConfig.HEIGHT_CM;
+        if (data.userConfig.WEIGHT_KG) this.userWeightInput.value = data.userConfig.WEIGHT_KG;
+        if (data.userConfig.WEIGHT_GOAL) this.userGoalInput.value = data.userConfig.WEIGHT_GOAL;
+      }
 
       const summary = data.summary || { totalKcal: 0, totalCarbG: 0, totalProteinG: 0, totalFatG: 0 };
       const target = data.targets || { kcalTarget: 3500, carbTargetG: 525, proteinTargetG: 120, fatTargetG: 75 };
