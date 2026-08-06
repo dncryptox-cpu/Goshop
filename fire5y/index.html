@@ -344,6 +344,9 @@
             <div class="nav-item" onclick="switchNav('tradeJournal')">
                 <i data-lucide="candlestick-chart" class="w-5 h-5"></i> Nhật Ký Trade
             </div>
+            <div class="nav-item" onclick="switchNav('cryptoPortfolio')">
+                <i data-lucide="coins" class="w-5 h-5"></i> Portfolio Altcoin
+            </div>
             <div class="nav-item" onclick="switchNav('categories')">
                 <i data-lucide="pie-chart" class="w-5 h-5"></i> Trạm Ngân Sách
             </div>
@@ -484,7 +487,7 @@
                 </div>
 
                 <!-- Widget 3: Biểu Đồ Dự Phóng 5 Năm -->
-                <div class="card">
+                <div class="card" style="margin-bottom: 1.25rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
                         <div style="font-weight: 700; font-size: 0.95rem; color: var(--ocean-deep); display: flex; align-items: center; gap: 6px;">
                             <i data-lucide="line-chart" class="w-4 h-4" style="color: var(--trail-moss);"></i> 🚀 Biểu Đồ Dự Phóng Tự Do Tài Chính 5 Năm
@@ -497,6 +500,22 @@
                     <div id="fireChartSubtitle" style="font-size: 0.76rem; color: var(--text-muted); text-align: center; margin-top: 6px; font-weight: 500;">
                         🟢 Nét liền (Trail Moss) = Không tính trading | 🟡 Nét đứt (Dawn Gold) = Có tính lãi trading trung bình
                     </div>
+                </div>
+
+                <!-- Widget 4 MỚI: Net Worth Đến Từ Đâu? (Cơ Cấu Tài Sản) -->
+                <div class="card" style="margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 style="font-size: 1rem; font-weight: 700; color: var(--ocean-deep); margin: 0; display: flex; align-items: center; gap: 8px;">
+                            <i data-lucide="pie-chart" class="w-4.5 h-4.5" style="color: var(--dawn-gold);"></i> Net Worth Đến Từ Đâu? (Cơ Cấu Tài Sản)
+                        </h3>
+                        <span style="font-size: 0.8rem; font-weight: 700; color: var(--trail-moss);" id="netWorthCompositionTotal">0 VND</span>
+                    </div>
+
+                    <!-- Multi-segment Stacked Progress Bar -->
+                    <div style="height: 18px; border-radius: 99px; background: rgba(0,0,0,0.06); overflow: hidden; display: flex; margin-bottom: 1.25rem;" id="netWorthProgressBar"></div>
+
+                    <!-- Account Breakdown Grid / List -->
+                    <div id="netWorthAccountList" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem;"></div>
                 </div>
             </div>
 
@@ -681,9 +700,66 @@
                         </table>
                     </div>
                 </div>
+            <!-- 6. VIEW CRYPTO PORTFOLIO (PORTFOLIO ALTCOIN) -->
+            <div id="view-cryptoPortfolio" class="view-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+                    <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--ocean-deep); margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <i data-lucide="coins" class="w-5 h-5" style="color: var(--dawn-gold);"></i> Portfolio Altcoin & Crypto
+                    </h2>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--ocean-deep);">Lọc theo tài khoản:</span>
+                        <select id="portfolioAccountFilter" class="form-input" style="margin:0; padding:0.35rem 0.6rem; font-size:0.85rem;" onchange="loadCryptoPortfolioView()"></select>
+                    </div>
+                </div>
+
+                <!-- AI Batch Input Box for Altcoins -->
+                <div class="card" style="margin-bottom: 1.25rem; background: var(--sea-foam); border: 1px solid var(--border);">
+                    <div style="font-weight: 700; font-size: 0.9rem; color: var(--ocean-deep); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+                        <i data-lucide="sparkles" class="w-4 h-4" style="color: var(--dawn-gold);"></i> ⚡ Cập Nhật Nhanh Bằng AI / Prompt (Nhiều Coin 1 Lúc)
+                    </div>
+                    <div style="display: flex; gap: 0.75rem;">
+                        <input type="text" id="quickAltcoinText" class="form-input" style="margin:0; flex:1;" placeholder="VD: BTC 0.05 giá vốn 60000 giá hiện tại 68000, ETH 2 giá vốn 3000 giá hiện tại 3400">
+                        <button class="btn btn-primary-sm" onclick="parseAltcoinAiText()"><i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích</button>
+                    </div>
+                </div>
+
+                <!-- Coin List Table -->
+                <div class="card" style="margin-bottom: 1.25rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <div style="font-weight: 700; color: var(--ocean-deep);">Danh Sách Altcoin Holdings</div>
+                        <button class="btn btn-secondary-sm" onclick="promptAddCoinRow()"><i data-lucide="plus" class="w-4 h-4"></i> Thêm Coin Thủ Công</button>
+                    </div>
+                    <div class="table-container" style="margin-bottom: 1rem;">
+                        <table class="data-table" style="font-size: 0.85rem;">
+                            <thead>
+                                <tr>
+                                    <th>Tài khoản</th>
+                                    <th>Mã Coin</th>
+                                    <th>Số lượng</th>
+                                    <th>Giá vốn TB ($)</th>
+                                    <th>Giá hiện tại ($)</th>
+                                    <th>Giá trị hiện tại ($)</th>
+                                    <th>Tỷ trọng</th>
+                                    <th>Lãi / Lỗ ($)</th>
+                                    <th>Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cryptoPortfolioTableBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: var(--sea-foam); padding: 0.8rem 1rem; border-radius: 10px; margin-bottom: 1rem;">
+                        <span style="font-weight: 600; color: var(--ocean-deep);">Tổng Giá Trị NAV Portfolio Altcoin:</span>
+                        <strong style="font-size: 1.1rem; color: var(--trail-moss);" id="cryptoTotalNavVal">0 VND</strong>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button class="btn btn-primary-sm" id="btnSaveCryptoPort" onclick="saveCryptoPortfolio()"><i data-lucide="save" class="w-4 h-4"></i> Lưu Portfolio & Cập Nhật NAV Tài Khoản</button>
+                    </div>
+                </div>
             </div>
 
-            <!-- 6. VIEW SETTINGS -->
+            <!-- 7. VIEW SETTINGS -->
             <div id="view-settings" class="view-container">
                 <div class="card" style="max-width: 600px;">
                     <h3 style="margin-bottom: 1.5rem; color: var(--ocean-deep);">Cài Đặt Hệ Thống FIRE5Y OS</h3>
@@ -1099,7 +1175,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const activeView = document.getElementById('view-' + viewId);
             if(activeView) activeView.classList.add('active');
             
-            const navIndex = { 'overview': 0, 'fireGoal': 1, 'transactions': 2, 'accounts': 3, 'tradeJournal': 4, 'categories': 5, 'settings': 6 };
+            const navIndex = { 'overview': 0, 'fireGoal': 1, 'transactions': 2, 'accounts': 3, 'tradeJournal': 4, 'cryptoPortfolio': 5, 'categories': 6, 'settings': 7 };
             const navItems = document.querySelectorAll('.nav-item');
             if (navItems[navIndex[viewId]]) navItems[navIndex[viewId]].classList.add('active');
 
@@ -1108,14 +1184,24 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 'fireGoal': 'Mục Tiêu FIRE 5 Năm',
                 'transactions': 'Quản lý giao dịch',
                 'accounts': 'Tài khoản & Ví',
-                'categories': 'Trạm Ngân Sách',
                 'tradeJournal': 'Nhật Ký Trade (Price Action)',
+                'cryptoPortfolio': 'Portfolio Altcoin & Crypto',
+                'categories': 'Trạm Ngân Sách',
                 'settings': 'Cài đặt FIRE5Y OS'
             };
             document.getElementById('pageTitle').innerText = titles[viewId] || 'Tổng quan FIRE5Y';
 
+            if (viewId === 'fireGoal') {
+                renderNetWorthComposition();
+            }
+
             if (viewId === 'tradeJournal') {
                 fetchTradeJournal();
+            }
+
+            if (viewId === 'cryptoPortfolio') {
+                populateCryptoAccountFilter();
+                loadCryptoPortfolioView();
             }
 
             if (viewId === 'settings') {
@@ -1214,6 +1300,8 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 renderTransactions();
                 renderAccounts();
                 renderCategories();
+                renderNetWorthComposition();
+                populateCryptoAccountFilter();
                 populateDropdowns();
             } catch (e) {
                 console.error("Fetch Data Error:", e);
@@ -2069,17 +2157,93 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         }
 
         // ==========================================
-        // PORTFOLIO ALTCOIN CRYPTO JS ENGINE
         // ==========================================
-        async function openCryptoPortfolioModal(accountName) {
-            activeCryptoPortfolioAccount = accountName;
-            document.getElementById('cryptoAccNameTitle').innerText = accountName;
-            document.getElementById('quickAltcoinText').value = '';
+        // WIDGET: NET WORTH ĐẾN TỪ ĐÂU? (CƠ CẤU TÀI SẢN)
+        // ==========================================
+        function renderNetWorthComposition() {
+            const barContainer = document.getElementById('netWorthProgressBar');
+            const listContainer = document.getElementById('netWorthAccountList');
+            const totalEl = document.getElementById('netWorthCompositionTotal');
+
+            if (!barContainer || !listContainer) return;
+
+            const totalBalance = allAccounts.reduce((acc, a) => acc + (Number(a.currentBalance) || 0), 0);
+            if (totalEl) totalEl.innerText = formatMoney(totalBalance);
+
+            if (allAccounts.length === 0 || totalBalance <= 0) {
+                barContainer.innerHTML = `<div style="width:100%; height:100%; background:var(--border);"></div>`;
+                listContainer.innerHTML = `<div style="font-size:0.8rem; color:var(--text-muted); grid-column: 1/-1; text-align:center;">Chưa có dữ liệu tài khoản.</div>`;
+                return;
+            }
+
+            // Sort accounts descending by balance
+            const sorted = [...allAccounts].sort((a, b) => (Number(b.currentBalance) || 0) - (Number(a.currentBalance) || 0));
+
+            const palette = [
+                '#0D3B3E', // Ocean Deep
+                '#E3A73B', // Dawn Gold
+                '#5C8A62', // Trail Moss
+                '#D96B6B', // Berry Alert
+                '#1565D8', // Ink Teal / Centrix Blue
+                '#8E24AA', // Purple
+                '#00897B'  // Teal
+            ];
+
+            let barHtml = '';
+            let listHtml = '';
+
+            sorted.forEach((acc, idx) => {
+                const bal = Number(acc.currentBalance) || 0;
+                const pct = totalBalance > 0 ? Math.max(0, (bal / totalBalance) * 100) : 0;
+                const color = palette[idx % palette.length];
+
+                if (pct > 0) {
+                    barHtml += `<div style="width: ${pct}%; background: ${color}; height: 100%;" title="${acc.name}: ${formatMoney(bal)} (${pct.toFixed(1)}%)"></div>`;
+                }
+
+                listHtml += `
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.8rem; background: var(--sea-foam); border-radius: 10px; border: 1px solid var(--border);">
+                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                            <div style="width: 12px; height: 12px; border-radius: 3px; background: ${color}; flex-shrink: 0;"></div>
+                            <div style="min-width: 0;">
+                                <div style="font-weight: 700; font-size: 0.85rem; color: var(--ocean-deep); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${acc.name}</div>
+                                <div style="font-size: 0.74rem; color: var(--text-muted);">${acc.type || 'Tài khoản'}</div>
+                            </div>
+                        </div>
+                        <div style="text-align: right; flex-shrink: 0; margin-left: 8px;">
+                            <div style="font-weight: 700; font-size: 0.88rem; color: var(--ocean-deep);" class="amount-number">${formatMoney(bal)}</div>
+                            <div style="font-size: 0.74rem; font-weight: 600; color: var(--trail-moss);">${pct.toFixed(1)}%</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            barContainer.innerHTML = barHtml || `<div style="width:100%; height:100%; background:var(--border);"></div>`;
+            listContainer.innerHTML = listHtml;
+        }
+
+        // ==========================================
+        // PORTFOLIO ALTCOIN CRYPTO JS ENGINE (STANDALONE VIEW TAB)
+        // ==========================================
+        function populateCryptoAccountFilter() {
+            const select = document.getElementById('portfolioAccountFilter');
+            if (!select) return;
+
+            const cryptoAccs = allAccounts.filter(a => (a.type||'').toLowerCase().includes('trading') || (a.type||'').toLowerCase().includes('crypto'));
+            let html = `<option value="">Tất cả tài khoản Crypto (${cryptoAccs.length})</option>`;
+            html += cryptoAccs.map(a => `<option value="${a.name}">${a.name}</option>`).join('');
+            select.innerHTML = html;
+        }
+
+        async function loadCryptoPortfolioView() {
+            const select = document.getElementById('portfolioAccountFilter');
+            const selectedAcc = select ? select.value : '';
+            activeCryptoPortfolioAccount = selectedAcc || (allAccounts.find(a => (a.type||'').toLowerCase().includes('trading')) ? allAccounts.find(a => (a.type||'').toLowerCase().includes('trading')).name : '');
 
             try {
                 const res = await fetch(API_URL, {
                     method: 'POST',
-                    body: JSON.stringify({ action: 'get_crypto_portfolio', user: currentUser, accountName: accountName })
+                    body: JSON.stringify({ action: 'get_crypto_portfolio', user: currentUser, accountName: selectedAcc })
                 }).then(r => r.json());
 
                 if (res.status === 'success') {
@@ -2093,11 +2257,6 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
 
             renderCryptoPortfolioTable();
-            document.getElementById('cryptoPortfolioModal').classList.add('active');
-        }
-
-        function closeCryptoPortfolioModal() {
-            document.getElementById('cryptoPortfolioModal').classList.remove('active');
         }
 
         function renderCryptoPortfolioTable() {
@@ -2112,10 +2271,11 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const usdRate = 25400; // USD to VND rate
             const totalNavVnd = totalNavUsd * usdRate;
 
-            document.getElementById('cryptoTotalNavVal').innerText = `$${totalNavUsd.toLocaleString('en-US', {minimumFractionDigits: 2})} (~ ${formatMoney(totalNavVnd)})`;
+            const totalEl = document.getElementById('cryptoTotalNavVal');
+            if (totalEl) totalEl.innerText = `$${totalNavUsd.toLocaleString('en-US', {minimumFractionDigits: 2})} (~ ${formatMoney(totalNavVnd)})`;
 
             if (activeCryptoPortfolioItems.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color: var(--text-muted); padding: 1.5rem;">Chưa có coin nào trong portfolio. Nhập text AI hoặc bấm Thêm Coin Thủ Công.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color: var(--text-muted); padding: 1.5rem;">Chưa có coin nào trong portfolio. Nhập text AI hoặc bấm Thêm Coin Thủ Công.</td></tr>`;
                 return;
             }
 
@@ -2130,6 +2290,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
 
                 return `
                     <tr>
+                        <td><span style="font-weight:600; font-size:0.8rem; color:var(--text-muted);">${it.account || activeCryptoPortfolioAccount || 'Crypto'}</span></td>
                         <td><input type="text" class="form-input" style="padding:4px 6px; font-weight:700; margin:0;" value="${it.symbol}" onchange="updateCoinField(${index}, 'symbol', this.value)"></td>
                         <td><input type="number" step="any" class="form-input" style="padding:4px 6px; margin:0;" value="${qty}" onchange="updateCoinField(${index}, 'qty', this.value)"></td>
                         <td><input type="number" step="any" class="form-input" style="padding:4px 6px; margin:0;" value="${buyP}" onchange="updateCoinField(${index}, 'buyPrice', this.value)"></td>
