@@ -184,7 +184,7 @@ function onEdit(e) {
  */
 function recalculateAccountBalances(ssInput) {
   try {
-    const ss = ssInput || SpreadsheetApp.getActiveSpreadsheet();
+    const ss = ssInput || getTargetSpreadsheet();
     if (!ss) return;
 
     const sheetData = ss.getSheetByName(SHEET_DATA);
@@ -271,15 +271,30 @@ function getUserRecord(user) {
   return null;
 }
 
+const DEFAULT_MASTER_SHEET_ID = "1Y5NbQzvhdoie92Yg_iCxz8kGgODF3D0wCUpUS-fgjXE";
+
 function getTargetSpreadsheet(user) {
-  if (!user) return SpreadsheetApp.getActiveSpreadsheet();
-  const uInfo = getUserRecord(user);
-  if (!uInfo || !uInfo.sheetUrl) return SpreadsheetApp.getActiveSpreadsheet();
-  try {
-    return SpreadsheetApp.openByUrl(uInfo.sheetUrl);
-  } catch (e) {
-    throw new Error("Không thể mở Google Sheet của bạn. Vui lòng cấp quyền chia sẻ Sheet.");
+  if (user) {
+    const uInfo = getUserRecord(user);
+    if (uInfo && uInfo.sheetUrl) {
+      try {
+        return SpreadsheetApp.openByUrl(uInfo.sheetUrl);
+      } catch (e) {
+        Logger.log("openByUrl error: " + e.toString());
+      }
+    }
   }
+
+  // Fallback to active spreadsheet or open master sheet by ID
+  let ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    try {
+      ss = SpreadsheetApp.openById(DEFAULT_MASTER_SHEET_ID);
+    } catch (e) {
+      throw new Error("Không thể mở Google Sheet Master (" + DEFAULT_MASTER_SHEET_ID + "): " + e.toString());
+    }
+  }
+  return ss;
 }
 
 // ==========================================
