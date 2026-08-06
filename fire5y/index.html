@@ -565,7 +565,11 @@
             <!-- 5. VIEW SETTINGS -->
             <div id="view-settings" class="view-container">
                 <div class="card" style="max-width: 600px;">
-                    <h3 style="margin-bottom: 1.5rem; color: var(--ocean-deep);">Cài Đặt Hệ Thống BYOB</h3>
+                    <h3 style="margin-bottom: 1.5rem; color: var(--ocean-deep);">Cài Đặt Hệ Thống FIRE5Y OS</h3>
+                    <div style="margin-bottom: 1rem;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;">Mục Tiêu Tự Do Tài Chính FIRE (VND)</label>
+                        <input type="number" id="settingFireGoal" class="form-input" placeholder="Mặc định: 5000000000 (5 Tỷ VND)">
+                    </div>
                     <div style="margin-bottom: 1rem;">
                         <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;">Google Sheet URL Cá Nhân</label>
                         <input type="text" id="settingSheetUrl" class="form-input" placeholder="https://docs.google.com/spreadsheets/d/...">
@@ -759,13 +763,20 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             if (navItems[navIndex[viewId]]) navItems[navIndex[viewId]].classList.add('active');
 
             const titles = {
-                'overview': 'Tổng quan tài chính',
+                'overview': 'Tổng quan FIRE5Y',
                 'transactions': 'Quản lý giao dịch',
                 'accounts': 'Tài khoản & Ví',
                 'categories': 'Trạm Ngân Sách',
-                'settings': 'Cài đặt BYOB'
+                'settings': 'Cài đặt FIRE5Y OS'
             };
-            document.getElementById('pageTitle').innerText = titles[viewId] || 'Tổng quan';
+            document.getElementById('pageTitle').innerText = titles[viewId] || 'Tổng quan FIRE5Y';
+
+            if (viewId === 'settings') {
+                const savedGoal = localStorage.getItem('fire5y_fire_target') || "5000000000";
+                if (document.getElementById('settingFireGoal')) {
+                    document.getElementById('settingFireGoal').value = savedGoal;
+                }
+            }
         }
 
         function toggleSidebar() {
@@ -878,7 +889,8 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         function renderFireWidgets() {
             // 1. FIRE Goal Progress
             const totalBalance = allAccounts.reduce((acc, a) => acc + (Number(a.currentBalance) || 0), 0);
-            const fireGoal = 5000000000; // 5 Tỷ VND Target Goal
+            const savedGoal = Number(localStorage.getItem('fire5y_fire_target')) || 5000000000;
+            const fireGoal = savedGoal;
             const progressPct = Math.min(100, (totalBalance / fireGoal) * 100).toFixed(1);
             const remaining = Math.max(0, fireGoal - totalBalance);
 
@@ -1255,16 +1267,24 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         function saveSettings() {
             const sheetUrl = document.getElementById('settingSheetUrl').value.trim();
             const gKey = document.getElementById('settingGeminiKey').value.trim();
+            const fireGoalInput = document.getElementById('settingFireGoal').value.trim();
 
             if (gKey) {
                 geminiApiKey = gKey;
                 localStorage.setItem('fire5y_gemini_key', gKey);
             }
 
+            if (fireGoalInput) {
+                localStorage.setItem('fire5y_fire_target', fireGoalInput);
+            }
+
             fetch(API_URL, {
                 method: 'POST',
                 body: JSON.stringify({ action: 'update_user', user: currentUser, newSheetUrl: sheetUrl, newApiKey: gKey })
-            }).then(() => alert("Đã lưu cài đặt thành công!"));
+            }).then(() => {
+                alert("Đã lưu cài đặt thành công!");
+                fetchData();
+            });
         }
 
         // ==========================================
