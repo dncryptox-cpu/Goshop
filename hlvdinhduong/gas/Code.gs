@@ -42,7 +42,7 @@ function setupSheets() {
     sheetMucTieu.appendRow(['Peak', 5000, 800, 130, 85]);
   }
 
-  // 4. NGUOI_DUNG (Lưu thông tin cá nhân & API Key đồng bộ thiết bị)
+  // 4. NGUOI_DUNG
   var sheetNguoiDung = ss.getSheetByName('NGUOI_DUNG');
   if (!sheetNguoiDung) {
     sheetNguoiDung = ss.insertSheet('NGUOI_DUNG');
@@ -75,8 +75,8 @@ function doGet(e) {
   try {
     if (action === 'init' || action === 'get_day') {
       responseData = getDayData(dateStr);
-    } else if (action === 'get_weekly') {
-      responseData = getWeeklyData();
+    } else if (action === 'get_weekly' || action === 'get_history') {
+      responseData = getHistoryData();
     } else if (action === 'get_targets') {
       responseData = { targets: getTargets() };
     } else if (action === 'get_user_config') {
@@ -206,11 +206,10 @@ function getDayData(dateStr) {
   var targets = getTargets();
   var userConfig = getUserConfig();
   
-  // Read TAP_LUYEN
   var sheetTL = ss.getSheetByName('TAP_LUYEN');
   var dataTL = sheetTL.getDataRange().getValues();
   var workouts = [];
-  var dayType = 'Thuong'; // Default
+  var dayType = 'Thuong';
   
   for (var i = 1; i < dataTL.length; i++) {
     var row = dataTL[i];
@@ -231,7 +230,6 @@ function getDayData(dateStr) {
     }
   }
   
-  // Read DINH_DUONG
   var sheetDD = ss.getSheetByName('DINH_DUONG');
   var dataDD = sheetDD.getDataRange().getValues();
   var nutrition = [];
@@ -380,11 +378,12 @@ function deleteWorkoutRow(dateStr, rowIndex) {
   return getDayData(dateStr);
 }
 
-// Thống kê 7-14 ngày gần nhất
-function getWeeklyData() {
+// Thống kê lịch sử chi tiết cho Nhật ký Đủ/Thiếu + Chi tiết ngày
+function getHistoryData() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheetTL = ss.getSheetByName('TAP_LUYEN');
   var sheetDD = ss.getSheetByName('DINH_DUONG');
+  var targets = getTargets();
   
   var dataTL = sheetTL.getDataRange().getValues();
   var dataDD = sheetDD.getDataRange().getValues();
@@ -396,12 +395,44 @@ function getWeeklyData() {
     var dStr = formatDateValue(dataTL[i][0]);
     if (!dStr) continue;
     if (!daysMap[dStr]) {
-      daysMap[dStr] = { date: dStr, totalKm: 0, totalGainM: 0, totalTimeH: 0, totalKcalBurned: 0, totalKcalEaten: 0, totalCarbG: 0, loaiNgay: dataTL[i][1] || 'Thuong' };
+      daysMap[dStr] = {
+        date: dStr,
+        loaiNgay: dataTL[i][1] || 'Thuong',
+        totalKm: 0,
+        totalGainM: 0,
+        totalTimeH: 0,
+        totalKcalBurned: 0,
+        totalKcalEaten: 0,
+        totalCarbG: 0,
+        totalProteinG: 0,
+        totalFatG: 0,
+        nutritionItems: [],
+        workoutItems: []
+      };
     }
-    daysMap[dStr].totalKm += Number(dataTL[i][3]) || 0;
-    daysMap[dStr].totalGainM += Number(dataTL[i][4]) || 0;
-    daysMap[dStr].totalTimeH += Number(dataTL[i][5]) || 0;
-    daysMap[dStr].totalKcalBurned += Number(dataTL[i][6]) || 0;
+    var lNgay = dataTL[i][1] ? dataTL[i][1].toString().trim() : '';
+    if (lNgay && lNgay !== 'Khởi tạo ngày') daysMap[dStr].loaiNgay = lNgay;
+    
+    var km = Number(dataTL[i][3]) || 0;
+    var gain = Number(dataTL[i][4]) || 0;
+    var timeH = Number(dataTL[i][5]) || 0;
+    var kcalDot = Number(dataTL[i][6]) || 0;
+
+    daysMap[dStr].totalKm += km;
+    daysMap[dStr].totalGainM += gain;
+    daysMap[dStr].totalTimeH += timeH;
+    daysMap[dStr].totalKcalBurned += kcalDot;
+
+    if (km > 0 || gain > 0 || kcalDot > 0) {
+      daysMap[dStr].workoutItems.push({
+        monTap: dataTL[i][2] || 'Chạy bộ',
+        quangDuongKm: km,
+        elevationGainM: gain,
+        thoiGianH: timeH,
+        kcalDot: kcalDot,
+        ghiChu: dataTL[i][7] || ''
+      });
+    }
   }
   
   // Aggregate nutrition
@@ -409,16 +440,53 @@ function getWeeklyData() {
     var dStr2 = formatDateValue(dataDD[j][0]);
     if (!dStr2) continue;
     if (!daysMap[dStr2]) {
-      daysMap[dStr2] = { date: dStr2, totalKm: 0, totalGainM: 0, totalTimeH: 0, totalKcalBurned: 0, totalKcalEaten: 0, totalCarbG: 0, loaiNgay: 'Thuong' };
+      daysMap[dStr2] = {
+        date: dStr2,
+        loaiNgay: 'Thuong',
+        totalKm: 0,
+        totalGainM: 0,
+        totalTimeH: 0,
+        totalKcalBurned: 0,
+        totalKcalEaten: 0,
+        totalCarbG: 0,
+        totalProteinG: 0,
+        totalFatG: 0,
+        nutritionItems: [],
+        workoutItems: []
+      };
     }
-    daysMap[dStr2].totalKcalEaten += Number(dataDD[j][3]) || 0;
-    daysMap[dStr2].totalCarbG += Number(dataDD[j][6]) || 0;
+    
+    var k = Number(dataDD[j][3]) || 0;
+    var p = Number(dataDD[j][4]) || 0;
+    var f = Number(dataDD[j][5]) || 0;
+    var c = Number(dataDD[j][6]) || 0;
+
+    daysMap[dStr2].totalKcalEaten += k;
+    daysMap[dStr2].totalProteinG += p;
+    daysMap[dStr2].totalFatG += f;
+    daysMap[dStr2].totalCarbG += c;
+
+    daysMap[dStr2].nutritionItems.push({
+      bua: dataDD[j][1] || 'Phụ',
+      tenMon: dataDD[j][2] || '',
+      kcal: k,
+      proteinG: p,
+      fatG: f,
+      carbG: c,
+      nguon: dataDD[j][7] || '',
+      ghiChu: dataDD[j][8] || ''
+    });
   }
   
-  var sortedDates = Object.keys(daysMap).sort().reverse().slice(0, 14);
-  var list = sortedDates.map(function(k) { return daysMap[k]; });
+  var sortedDates = Object.keys(daysMap).sort().reverse();
+  var historyList = sortedDates.map(function(k) {
+    var item = daysMap[k];
+    var dayTarget = targets[item.loaiNgay] || targets['Thuong'] || { kcalTarget: 3500, carbTargetG: 525, proteinTargetG: 120, fatTargetG: 75 };
+    item.target = dayTarget;
+    return item;
+  });
   
-  return { weeklyLogs: list };
+  return { historyLogs: historyList, allTargets: targets };
 }
 
 // Format date helper

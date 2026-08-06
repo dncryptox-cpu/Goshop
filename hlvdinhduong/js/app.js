@@ -1,6 +1,6 @@
 /**
  * HLV DINH DƯỠNG ULTRA RUNNER - APPLICATION CONTROLLER
- * Điều khiển UI, State, Tính toán Calo/Carb và Tích hợp Gemini & Sheets & Đồng bộ Đa thiết bị
+ * Điều khiển UI, State, Tính toán Calo/Carb Real-time, Nhật ký Đủ/Thiếu & Đồng bộ
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     currentDate: new Date().toISOString().split('T')[0],
     currentDayType: 'Thuong',
     todayData: null,
+    historyLogs: [],
     pendingAiParsedResult: null,
     currentImageBase64: null,
     currentImageMime: null,
@@ -32,22 +33,26 @@ document.addEventListener('DOMContentLoaded', () => {
       this.dateInput.value = this.currentDate;
       this.dayTypeButtons = document.querySelectorAll('.btn-day');
 
-      // Metric Elements
+      // Metric Elements & Remaining Badges
       this.valKcal = document.getElementById('valKcal');
       this.subKcal = document.getElementById('subKcal');
       this.fillKcal = document.getElementById('fillKcal');
+      this.badgeKcalRemaining = document.getElementById('badgeKcalRemaining');
 
       this.valCarb = document.getElementById('valCarb');
       this.subCarb = document.getElementById('subCarb');
       this.fillCarb = document.getElementById('fillCarb');
+      this.badgeCarbRemaining = document.getElementById('badgeCarbRemaining');
 
       this.valProtein = document.getElementById('valProtein');
       this.subProtein = document.getElementById('subProtein');
       this.fillProtein = document.getElementById('fillProtein');
+      this.badgeProteinRemaining = document.getElementById('badgeProteinRemaining');
 
       this.valFat = document.getElementById('valFat');
       this.subFat = document.getElementById('subFat');
       this.fillFat = document.getElementById('fillFat');
+      this.badgeFatRemaining = document.getElementById('badgeFatRemaining');
 
       // Alert Banner
       this.alertBanner = document.getElementById('alertBanner');
@@ -71,16 +76,20 @@ document.addEventListener('DOMContentLoaded', () => {
       this.btnConfirmSave = document.getElementById('btnConfirmSave');
       this.btnCancelReview = document.getElementById('btnCancelReview');
 
-      // Logs & Table & User View
+      // Logs & Table & History & User View
       this.mainTabBtns = document.querySelectorAll('.main-tab');
       this.tabNutritionView = document.getElementById('tabNutritionView');
       this.tabWorkoutView = document.getElementById('tabWorkoutView');
-      this.tabWeeklyView = document.getElementById('tabWeeklyView');
+      this.tabHistoryView = document.getElementById('tabHistoryView');
       this.tabUserView = document.getElementById('tabUserView');
 
       this.nutritionTableBody = document.getElementById('nutritionTableBody');
       this.workoutTableBody = document.getElementById('workoutTableBody');
-      this.weeklyTableBody = document.getElementById('weeklyTableBody');
+      
+      // History elements
+      this.weeklyComplianceBar = document.getElementById('weeklyComplianceBar');
+      this.kcalHeatmapGrid = document.getElementById('kcalHeatmapGrid');
+      this.historyTableBody = document.getElementById('historyTableBody');
 
       // User Profile & Sync Elements
       this.userNameInput = document.getElementById('userNameInput');
@@ -183,11 +192,11 @@ document.addEventListener('DOMContentLoaded', () => {
           
           this.tabNutritionView.style.display = target === 'nutrition' ? 'block' : 'none';
           this.tabWorkoutView.style.display = target === 'workout' ? 'block' : 'none';
-          this.tabWeeklyView.style.display = target === 'weekly' ? 'block' : 'none';
+          this.tabHistoryView.style.display = target === 'history' ? 'block' : 'none';
           this.tabUserView.style.display = target === 'user' ? 'block' : 'none';
 
-          if (target === 'weekly') {
-            this.loadWeeklyData();
+          if (target === 'history') {
+            this.loadHistoryData();
           } else if (target === 'user') {
             this.updateSyncLinkUI();
           }
@@ -221,6 +230,27 @@ document.addEventListener('DOMContentLoaded', () => {
       this.btnOpenSettings.addEventListener('click', () => this.settingsModal.classList.add('active'));
       this.btnCloseSettings.addEventListener('click', () => this.settingsModal.classList.remove('active'));
       this.btnSaveSettings.addEventListener('click', () => this.saveSettings());
+    },
+
+    /**
+     * Tính toán trạng thái Đủ / Gần Đủ / Thiếu / Vượt theo tiêu chuẩn:
+     * - >= 95% và <= 110%: Đủ (Green)
+     * - 85% - 95%: Gần đủ (Yellow)
+     * - < 85%: Thiếu (Red)
+     * - > 110%: Vượt (Blue)
+     */
+    evaluateStatus(consumed, target) {
+      if (!target || target <= 0) return { code: 'du', text: 'Đủ', cls: 'status-du' };
+      const pct = (consumed / target) * 100;
+      if (pct >= 95 && pct <= 110) {
+        return { code: 'du', text: 'Đủ', cls: 'du', label: 'ĐỦ (95-110%)' };
+      } else if (pct >= 85 && pct < 95) {
+        return { code: 'gandu', text: 'Gần đủ', cls: 'gandu', label: 'GẦN ĐỦ (85-95%)' };
+      } else if (pct < 85) {
+        return { code: 'thieu', text: 'Thiếu', cls: 'thieu', label: 'THIẾU (<85%)' };
+      } else {
+        return { code: 'vuot', text: 'Vượt', cls: 'vuot', label: 'VƯỢT (>110%)' };
+      }
     },
 
     updateCloudStatusBadge() {
@@ -258,7 +288,6 @@ document.addEventListener('DOMContentLoaded', () => {
       this.updateSyncLinkUI();
 
       if (url) {
-        // Tự động đẩy toàn bộ dữ liệu local sẵn có lên Sheets khi vừa dán URL
         try {
           const count = await window.hlvApi.pushAllLocalDataToSheet();
           if (count > 0) {
@@ -420,33 +449,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.userConfig.HEIGHT_CM) this.userHeightInput.value = data.userConfig.HEIGHT_CM;
         if (data.userConfig.WEIGHT_KG) this.userWeightInput.value = data.userConfig.WEIGHT_KG;
         if (data.userConfig.WEIGHT_GOAL) this.userGoalInput.value = data.userConfig.WEIGHT_GOAL;
-        if (data.userConfig.GEMINI_MODEL) {
-          window.geminiParser.setModel(data.userConfig.GEMINI_MODEL);
-          this.geminiModelSelect.value = data.userConfig.GEMINI_MODEL;
-        }
       }
 
       const summary = data.summary || { totalKcal: 0, totalCarbG: 0, totalProteinG: 0, totalFatG: 0 };
       const target = data.targets || { kcalTarget: 3500, carbTargetG: 525, proteinTargetG: 120, fatTargetG: 75 };
 
-      // 1. Render Progress Bars & Metrics
+      // 1. Render Progress Bars & Metrics với Con số Còn thiếu nổi bật
       this.renderMetricCard(
-        this.valKcal, this.subKcal, this.fillKcal,
+        this.valKcal, this.subKcal, this.fillKcal, this.badgeKcalRemaining,
         summary.totalKcal, target.kcalTarget, 'kcal'
       );
 
       this.renderMetricCard(
-        this.valCarb, this.subCarb, this.fillCarb,
+        this.valCarb, this.subCarb, this.fillCarb, this.badgeCarbRemaining,
         summary.totalCarbG, target.carbTargetG, 'g'
       );
 
       this.renderMetricCard(
-        this.valProtein, this.subProtein, this.fillProtein,
+        this.valProtein, this.subProtein, this.fillProtein, this.badgeProteinRemaining,
         summary.totalProteinG, target.proteinTargetG, 'g'
       );
 
       this.renderMetricCard(
-        this.valFat, this.subFat, this.fillFat,
+        this.valFat, this.subFat, this.fillFat, this.badgeFatRemaining,
         summary.totalFatG, target.fatTargetG, 'g'
       );
 
@@ -458,21 +483,26 @@ document.addEventListener('DOMContentLoaded', () => {
         this.alertBanner.classList.add('hidden');
       }
 
-      // 3. Render Logs Tables
+      // 3. Render Today's Tables
       this.renderNutritionTable(data.nutrition || []);
       this.renderWorkoutTable(data.workouts || []);
     },
 
-    renderMetricCard(valEl, subEl, fillEl, current, target, unit) {
+    renderMetricCard(valEl, subEl, fillEl, badgeEl, current, target, unit) {
       const remaining = target - current;
       const pct = Math.min(Math.round((current / target) * 100), 100);
+      const status = this.evaluateStatus(current, target);
 
-      valEl.textContent = `${current.toLocaleString()} ${unit}`;
-      
+      valEl.textContent = `${current.toLocaleString()} / ${target.toLocaleString()} ${unit}`;
+      subEl.innerHTML = `<span>Tiến độ: ${pct}%</span>`;
+
       if (remaining > 0) {
-        subEl.innerHTML = `<span>Target: ${target.toLocaleString()} ${unit}</span> <span class="remaining">Còn thiếu: ${remaining.toLocaleString()} ${unit} (${pct}%)</span>`;
+        badgeEl.className = `metric-remaining-badge ${status.cls}`;
+        badgeEl.textContent = `Còn thiếu: ${remaining.toLocaleString()} ${unit} (${status.text})`;
       } else {
-        subEl.innerHTML = `<span>Target: ${target.toLocaleString()} ${unit}</span> <span class="remaining" style="color:#10b981;">Đạt target! (${pct}%)</span>`;
+        const overflow = current - target;
+        badgeEl.className = `metric-remaining-badge ${status.cls}`;
+        badgeEl.textContent = overflow > 0 ? `Đã vượt: +${overflow.toLocaleString()} ${unit} (${status.text})` : `Đạt target! (${status.text})`;
       }
 
       fillEl.style.width = `${pct}%`;
@@ -521,28 +551,163 @@ document.addEventListener('DOMContentLoaded', () => {
       `).join('');
     },
 
-    async loadWeeklyData() {
+    /**
+     * Tải & Hiển thị Nhật Ký Lịch Sử (Đủ/Thiếu) + Summary 7 Ngày + Calendar Heatmap
+     */
+    async loadHistoryData() {
       try {
-        const data = await window.hlvApi.get('get_weekly');
-        const logs = data.weeklyLogs || [];
-        if (!logs.length) {
-          this.weeklyTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-sub);">Chưa có dữ liệu tuần.</td></tr>`;
-          return;
-        }
+        const data = await window.hlvApi.get('get_history');
+        const logs = data.historyLogs || [];
+        this.historyLogs = logs;
 
-        this.weeklyTableBody.innerHTML = logs.map(row => `
-          <tr>
-            <td class="mono">${row.date}</td>
-            <td><span class="badge badge-rest">${row.loaiNgay || 'Thuong'}</span></td>
-            <td class="mono" style="color:var(--accent-carb);">${row.totalKm || 0} km</td>
-            <td class="mono" style="color:var(--accent-vert);">${row.totalGainM || 0} m</td>
-            <td class="mono" style="color:var(--accent-kcal);">${row.totalKcalBurned || 0} kcal</td>
-            <td class="mono" style="color:var(--accent-protein);">${row.totalKcalEaten || 0} kcal</td>
-            <td class="mono" style="color:var(--accent-carb);">${row.totalCarbG || 0} g</td>
-          </tr>
-        `).join('');
+        // 1. Render 7-Day Compliance Summary Header
+        this.renderWeeklyComplianceSummary(logs.slice(0, 7));
+
+        // 2. Render GitHub-style Calendar Heatmap
+        this.renderCalendarHeatmap(logs.slice(0, 30));
+
+        // 3. Render History Table
+        this.renderHistoryTable(logs);
       } catch (err) {
-        console.error('Lỗi load dữ liệu tuần:', err);
+        console.error('Lỗi load lịch sử nhật ký:', err);
+      }
+    },
+
+    renderWeeklyComplianceSummary(last7Days) {
+      if (!last7Days.length) {
+        this.weeklyComplianceBar.innerHTML = `<span style="color:var(--text-sub);">Chưa đủ dữ liệu 7 ngày gần nhất.</span>`;
+        return;
+      }
+
+      let kcalCount = 0, carbCount = 0, proteinCount = 0, fatCount = 0;
+      const totalDays = last7Days.length;
+
+      last7Days.forEach(day => {
+        const t = day.target || { kcalTarget: 3500, carbTargetG: 525, proteinTargetG: 120, fatTargetG: 75 };
+        
+        if (this.evaluateStatus(day.totalKcalEaten, t.kcalTarget).cls === 'du') kcalCount++;
+        if (this.evaluateStatus(day.totalCarbG, t.carbTargetG).cls === 'du') carbCount++;
+        if (this.evaluateStatus(day.totalProteinG, t.proteinTargetG).cls === 'du') proteinCount++;
+        if (this.evaluateStatus(day.totalFatG, t.fatTargetG).cls === 'du') fatCount++;
+      });
+
+      this.weeklyComplianceBar.innerHTML = `
+        <div class="compliance-badge-item">
+          <span style="color:var(--accent-kcal);">🔥 Kcal:</span>
+          <strong>${kcalCount}/${totalDays} ngày đủ</strong>
+        </div>
+        <div class="compliance-badge-item">
+          <span style="color:var(--accent-carb);">⚡ Carb:</span>
+          <strong>${carbCount}/${totalDays} ngày đủ</strong>
+        </div>
+        <div class="compliance-badge-item">
+          <span style="color:var(--accent-protein);">🥩 Protein:</span>
+          <strong>${proteinCount}/${totalDays} ngày đủ</strong>
+        </div>
+        <div class="compliance-badge-item">
+          <span style="color:var(--accent-fat);">🥑 Fat:</span>
+          <strong>${fatCount}/${totalDays} ngày đủ</strong>
+        </div>
+      `;
+    },
+
+    renderCalendarHeatmap(pastDays) {
+      if (!pastDays.length) {
+        this.kcalHeatmapGrid.innerHTML = `<span style="color:var(--text-sub);">Chưa có dữ liệu heatmap.</span>`;
+        return;
+      }
+
+      // Map by date string
+      const dayMap = {};
+      pastDays.forEach(d => { dayMap[d.date] = d; });
+
+      // Generate 30 days grid array
+      const cellsHtml = pastDays.map(day => {
+        const t = day.target || { kcalTarget: 3500 };
+        const status = this.evaluateStatus(day.totalKcalEaten, t.kcalTarget);
+        let lvlClass = 'lvl-0';
+        if (status.cls === 'thieu') lvlClass = 'lvl-thieu';
+        else if (status.cls === 'gandu') lvlClass = 'lvl-gandu';
+        else if (status.cls === 'du') lvlClass = 'lvl-du';
+        else if (status.cls === 'vuot') lvlClass = 'lvl-vuot';
+
+        return `<div class="heatmap-cell ${lvlClass}" title="Ngày ${day.date}: ${day.totalKcalEaten}/${t.kcalTarget} kcal (${status.text})" onclick="app.selectHistoryDate('${day.date}')"></div>`;
+      }).join('');
+
+      this.kcalHeatmapGrid.innerHTML = cellsHtml;
+    },
+
+    selectHistoryDate(dateStr) {
+      this.currentDate = dateStr;
+      this.dateInput.value = dateStr;
+      this.loadTodayData();
+      // Scroll to top dashboard metrics
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+
+    renderHistoryTable(logs) {
+      if (!logs.length) {
+        this.historyTableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--text-sub);">Chưa có lịch sử theo dõi nào.</td></tr>`;
+        return;
+      }
+
+      let html = '';
+      logs.forEach((day, index) => {
+        const t = day.target || { kcalTarget: 3500, carbTargetG: 525, proteinTargetG: 120, fatTargetG: 75 };
+        
+        const kcalSt = this.evaluateStatus(day.totalKcalEaten, t.kcalTarget);
+        const carbSt = this.evaluateStatus(day.totalCarbG, t.carbTargetG);
+        const protSt = this.evaluateStatus(day.totalProteinG, t.proteinTargetG);
+        const fatSt = this.evaluateStatus(day.totalFatG, t.fatTargetG);
+
+        html += `
+          <tr class="row-history-main" onclick="app.toggleHistoryRowDetails(${index})">
+            <td class="mono"><strong>${day.date}</strong> 🔍</td>
+            <td><span class="badge badge-rest">${day.loaiNgay || 'Thuong'}</span></td>
+            <td>
+              <div class="mono">${day.totalKcalEaten} / ${t.kcalTarget}</div>
+              <span class="badge-status ${kcalSt.cls}">${kcalSt.text}</span>
+            </td>
+            <td>
+              <div class="mono" style="color:var(--accent-carb);">${day.totalCarbG}g / ${t.carbTargetG}g</div>
+              <span class="badge-status ${carbSt.cls}">${carbSt.text}</span>
+            </td>
+            <td>
+              <div class="mono" style="color:var(--accent-protein);">${day.totalProteinG}g / ${t.proteinTargetG}g</div>
+              <span class="badge-status ${protSt.cls}">${protSt.text}</span>
+            </td>
+            <td>
+              <div class="mono" style="color:var(--accent-fat);">${day.totalFatG}g / ${t.fatTargetG}g</div>
+              <span class="badge-status ${fatSt.cls}">${fatSt.text}</span>
+            </td>
+            <td class="mono" style="color:var(--accent-vert);">
+              ${day.totalKm > 0 ? `${day.totalKm}km (${day.totalGainM}m vert)` : 'Nghỉ tập'}
+            </td>
+          </tr>
+          <tr id="historyDetailsRow_${index}" class="row-history-details" style="display:none;">
+            <td colspan="7">
+              <div class="history-details-container">
+                <div style="font-weight:700; color:var(--accent-carb); margin-bottom:6px;">🍲 Chi tiết bữa ăn (${day.nutritionItems?.length || 0} món):</div>
+                <div style="margin-bottom:10px;">
+                  ${(day.nutritionItems || []).map(m => `<span style="display:inline-block; background:var(--bg-card); padding:4px 8px; border-radius:4px; margin-right:6px; margin-bottom:4px;">[${m.bua}] ${m.tenMon} • ${m.kcal}k (${m.carbG}g Carb)</span>`).join('') || '<span style="color:var(--text-sub);">Chưa có bữa ăn</span>'}
+                </div>
+                <div style="font-weight:700; color:var(--accent-vert); margin-bottom:6px;">🏃 Chi tiết tập luyện (${day.workoutItems?.length || 0} bài tập):</div>
+                <div>
+                  ${(day.workoutItems || []).map(w => `<span style="display:inline-block; background:var(--bg-card); padding:4px 8px; border-radius:4px; margin-right:6px;">${w.monTap} • ${w.quangDuongKm}km • ${w.elevationGainM}m gain • ${w.kcalDot} kcal</span>`).join('') || '<span style="color:var(--text-sub);">Không có bài tập</span>'}
+                </div>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+
+      this.historyTableBody.innerHTML = html;
+    },
+
+    toggleHistoryRowDetails(index) {
+      const detailsRow = document.getElementById(`historyDetailsRow_${index}`);
+      if (detailsRow) {
+        detailsRow.style.display = detailsRow.style.display === 'none' ? 'table-row' : 'none';
       }
     },
 
