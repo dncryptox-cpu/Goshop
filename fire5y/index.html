@@ -750,13 +750,21 @@
         let batchFilesBase64 = [];
         let elevationChartObj = null;
 
-        // Gemini System Prompt
-        const SYSTEM_PROMPT = `Bạn là bộ phân loại giao dịch tài chính cá nhân. Đầu vào có thể là text ghi chú nhanh (1 dòng ở chế độ Single, nhiều dòng ở chế độ Batch) hoặc ảnh hoá đơn/bill.
+        // Gemini System Prompt (Enhanced for Receipts & Business Report/Dashboard Screenshots)
+        const SYSTEM_PROMPT = `Bạn là bộ phân loại giao dịch tài chính cá nhân và kinh doanh. Đầu vào có thể là text ghi chú nhanh hoặc ảnh hoá đơn, bill chuyển tiền, hoặc ảnh chụp màn hình báo cáo doanh thu / dòng tiền (dashboard/bảng tổng hợp tài chính).
 
 Danh sách category hợp lệ:
 [Cà phê sáng, Ăn trưa ngoài, Ăn tối, Ăn vặt khác, Doanh thu bán Premium, Giá vốn gia hạn subscription, Chi phí CTV, Chi phí vận hành khác, Phí giải đấu, Trang thiết bị, Dinh dưỡng & gel, Coaching/PT, Hồi phục, Di chuyển tới giải, Thuê nhà, Điện nước, Di chuyển hàng ngày, Giải trí, Khác]
 
-Trả về JSON:
+Quy tắc bóc tách ảnh báo cáo dòng tiền / dashboard / hóa đơn:
+1. Nếu ảnh chứa Báo cáo dòng tiền, doanh thu, giá vốn, lương nhân sự, hãy bóc tách THÀNH TỪNG GIAO DỊCH RIÊNG BIỆT trong mảng JSON:
+   - Doanh thu / Thu về / Tổng doanh thu -> category: "Doanh thu bán Premium", type: "Thu"
+   - Giá vốn / Gốc / Vốn+HH+PS -> category: "Giá vốn gia hạn subscription", type: "Chi"
+   - Lương nhân sự / CTV -> category: "Chi phí CTV", type: "Chi"
+   - Định phí khác / Chi phí vận hành -> category: "Chi phí vận hành khác", type: "Chi"
+2. Với hoá đơn / bill chuyển tiền thông thường: tách ngày, số tiền, loại (Thu/Chi), danh mục thích hợp.
+
+Trả về duy nhất MẢNG JSON theo schema:
 [
   {
     "date": "YYYY-MM-DD",
@@ -1756,19 +1764,26 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 const result = await callGeminiApi(text, imgs);
                 
                 if (Array.isArray(result) && result.length > 0) {
-                    const item = result[0];
-                    if (item.date) document.getElementById('txDate').value = item.date;
-                    if (item.type) document.getElementById('txType').value = item.type === 'thu' ? 'Thu' : 'Chi';
-                    if (item.amount) document.getElementById('txAmount').value = item.amount;
-                    if (item.description) document.getElementById('txNote').value = item.description;
+                    if (result.length > 1) {
+                        alert(`📸 AI đã đọc và bóc tách thành công ${result.length} giao dịch từ hình ảnh/báo cáo! Đã tự động chuyển sang Bảng Review Batch để bạn xem lại và lưu 1 lần.`);
+                        switchAiMode('batch');
+                        batchReviewItems = result;
+                        renderBatchReviewTable();
+                    } else {
+                        const item = result[0];
+                        if (item.date) document.getElementById('txDate').value = item.date;
+                        if (item.type) document.getElementById('txType').value = (item.type === 'thu' || item.type === 'Thu') ? 'Thu' : 'Chi';
+                        if (item.amount) document.getElementById('txAmount').value = item.amount;
+                        if (item.description) document.getElementById('txNote').value = item.description;
 
-                    if (item.category) {
-                        const matchedCat = allCategories.find(c => c.name.toLowerCase() === item.category.toLowerCase());
-                        if (matchedCat) document.getElementById('txCat').value = matchedCat.name;
-                    }
-                    if (item.account) {
-                        const matchedAcc = allAccounts.find(a => a.name.toLowerCase().includes(item.account.toLowerCase()));
-                        if (matchedAcc) document.getElementById('txSource').value = matchedAcc.name;
+                        if (item.category) {
+                            const matchedCat = allCategories.find(c => c.name.toLowerCase() === item.category.toLowerCase());
+                            if (matchedCat) document.getElementById('txCat').value = matchedCat.name;
+                        }
+                        if (item.account) {
+                            const matchedAcc = allAccounts.find(a => a.name.toLowerCase().includes(item.account.toLowerCase()));
+                            if (matchedAcc) document.getElementById('txSource').value = matchedAcc.name;
+                        }
                     }
                 }
                 btn.disabled = false;
@@ -2035,9 +2050,104 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
+        // Clipboard Paste Listener (Ctrl+V / Cmd+V for Images)
+        function initClipboardPasteListener() {
+            window.addEventListener('paste', function(e) {
+                const modal = document.getElementById('addTxModal');
+                if (!modal || !modal.classList.contains('active')) return;
+
+                const items = e.clipboardData ? e.clipboardData.items : [];
+                if (!items || items.length === 0) return;
+
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.type && item.type.startsWith('image/')) {
+                        e.preventDefault();
+                        const file = item.getAsFile();
+                        if (!file) continue;
+
+                        const reader = new FileReader();
+                        reader.onload = function(evt) {
+                            const base64Data = evt.target.result.split(',')[1];
+                            const isSingleMode = document.getElementById('singleModeContainer').style.display !== 'none';
+
+                            if (isSingleMode) {
+                                singleFileBase64 = base64Data;
+                                const label = document.getElementById('fileNameLabel');
+                                if (label) label.innerText = '📋 Ảnh vừa dán';
+                                alert("📸 Đã dán 1 ảnh hoá đơn/báo cáo từ khay nhớ tạm (Clipboard)! Bấm 'Phân Tích AI' để đọc.");
+                            } else {
+                                batchFilesBase64.push({
+                                    mimeType: file.type || "image/jpeg",
+                                    data: base64Data
+                                });
+                                const countEl = document.getElementById('batchFileCount');
+                                if (countEl) countEl.innerText = batchFilesBase64.length;
+                                alert(`📸 Đã dán 1 ảnh vào danh sách Batch (Tổng: ${batchFilesBase64.length} ảnh)! Bấm 'Phân Tích Bằng AI' để đọc.`);
+                            }
+                        };
+                        reader.readAsDataURL(file);
+                        break;
+                    }
+                }
+            });
+        }
+
+        // Drag & Drop Image Files Dropzone Listener
+        function initDragAndDrop() {
+            const modal = document.getElementById('addTxModal');
+            if (!modal) return;
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                modal.addEventListener(eventName, function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            modal.addEventListener('drop', function(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (!files || files.length === 0) return;
+
+                const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+                if (imageFiles.length === 0) return;
+
+                const isSingleMode = document.getElementById('singleModeContainer').style.display !== 'none';
+
+                if (isSingleMode) {
+                    const file = imageFiles[0];
+                    const reader = new FileReader();
+                    reader.onload = function(evt) {
+                        singleFileBase64 = evt.target.result.split(',')[1];
+                        const label = document.getElementById('fileNameLabel');
+                        if (label) label.innerText = file.name.substring(0, 10) + '...';
+                        alert("📸 Đã nhận 1 ảnh kéo thả! Bấm 'Phân Tích AI' để đọc.");
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    document.getElementById('batchFileCount').innerText = imageFiles.length;
+                    batchFilesBase64 = [];
+                    imageFiles.forEach(file => {
+                        const reader = new FileReader();
+                        reader.onload = function(evt) {
+                            batchFilesBase64.push({
+                                mimeType: file.type || "image/jpeg",
+                                data: evt.target.result.split(',')[1]
+                            });
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                    alert(`📸 Đã nhận ${imageFiles.length} ảnh kéo thả vào Batch! Bấm 'Phân Tích Bằng AI' để đọc.`);
+                }
+            });
+        }
+
         // Initialize on load
         window.addEventListener('DOMContentLoaded', () => {
             checkAuth();
+            initClipboardPasteListener();
+            initDragAndDrop();
         });
     </script>
 </body>
