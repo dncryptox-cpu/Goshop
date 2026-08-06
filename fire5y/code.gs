@@ -18,6 +18,8 @@ const SHEET_DS = 'DS';
 const SHEET_ACCOUNTS = 'Tài Khoản';
 const SHEET_AI_RULES = 'AI_Rules';
 const SHEET_NAV_HISTORY = 'NAV_History';
+const SHEET_TRADE_JOURNAL = 'Nhat_Ky_Trade';
+const SHEET_CRYPTO_PORTFOLIO = 'Portfolio_Crypto';
 
 // ==========================================
 // 1. TẠO SHEET MASTER MỚI (SETUP FUNCTION)
@@ -80,16 +82,30 @@ function createNewMasterSheet() {
     ['Tiền mặt', 'Tiền mặt', 1000000, 1000000, 0],
     ['Tài khoản Ngân hàng', 'Ngân hàng', 10000000, 10000000, 0],
     ['Ví Ví Momo/ZaloPay', 'Ví điện tử', 2000000, 2000000, 0],
-    ['Binance Crypto', 'Sàn Trading/Crypto', 50000000, 50000000, 40000000]
+    ['Binance Crypto', 'Sàn Trading/Crypto', 50000000, 50000000, 50000000]
   ];
   sheetAccounts.getRange(2, 1, sampleAccounts.length, 5).setValues(sampleAccounts);
 
-  // --- 4. Tab "NAV_History" (Lịch Sử NAV Trading/Crypto) ---
+  // --- 4. Tab "NAV_History" ---
   let sheetNAV = getOrCreateSheet(ss, SHEET_NAV_HISTORY);
   sheetNAV.clear();
   sheetNAV.appendRow(['Ngày', 'Tài khoản', 'NAV', 'Vốn đã nạp ròng']);
   formatHeaderRow(sheetNAV, '1565D8');
   sheetNAV.getRange("C2:D").setNumberFormat("#,##0");
+
+  // --- 5. Tab "Nhat_Ky_Trade" ---
+  let sheetJournal = getOrCreateSheet(ss, SHEET_TRADE_JOURNAL);
+  sheetJournal.clear();
+  sheetJournal.appendRow(['ID', 'Ngày', 'Tài khoản', 'Symbol', 'Hướng', 'Giá vào', 'Giá ra', 'Khối lượng', 'P&L', 'Setup_PriceAction', 'Trạng thái']);
+  formatHeaderRow(sheetJournal, '1565D8');
+  sheetJournal.getRange("F2:I").setNumberFormat("#,##0.##");
+
+  // --- 6. Tab "Portfolio_Crypto" ---
+  let sheetPort = getOrCreateSheet(ss, SHEET_CRYPTO_PORTFOLIO);
+  sheetPort.clear();
+  sheetPort.appendRow(['Tài khoản', 'Mã Coin', 'Số lượng', 'Giá vốn trung bình', 'Giá hiện tại', 'Ngày cập nhật']);
+  formatHeaderRow(sheetPort, '1565D8');
+  sheetPort.getRange("C2:E").setNumberFormat("#,##0.##");
 
   // --- 4. Tab "Dữ liệu" ---
   let sheetData = getOrCreateSheet(ss, SHEET_DATA);
@@ -392,6 +408,16 @@ function doPost(e) {
     if (action === 'update_nav') return handleUpdateNAV(data);
     if (action === 'get_nav_history') return handleGetNAVHistory(data);
 
+    // --- CRUD Tab Nhật Ký Trade (Nhat_Ky_Trade) ---
+    if (action === 'get_trade_journal') return handleGetTradeJournal(data);
+    if (action === 'add_trade_journal') return handleAddTradeJournal(data);
+    if (action === 'update_trade_journal') return handleUpdateTradeJournal(data);
+    if (action === 'delete_trade_journal') return handleDeleteTradeJournal(data);
+
+    // --- CRUD Tab Portfolio Altcoin (Portfolio_Crypto) ---
+    if (action === 'get_crypto_portfolio') return handleGetCryptoPortfolio(data);
+    if (action === 'update_crypto_portfolio') return handleUpdateCryptoPortfolio(data);
+
     return respondJSON({ status: "error", message: "Action không hợp lệ: " + action });
 
   } catch (err) {
@@ -647,6 +673,190 @@ function handleGetNAVHistory(data) {
   }));
 
   return respondJSON({ status: "success", data: list });
+}
+
+// ==========================================
+// 5.5. NHẬT KÝ TRADE (Nhat_Ky_Trade) & PORTFOLIO ALTCOIN (Portfolio_Crypto)
+// ==========================================
+
+function handleGetTradeJournal(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sheet = getOrCreateSheet(ss, SHEET_TRADE_JOURNAL);
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return respondJSON({ status: "success", data: [] });
+
+  const values = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  const list = values.map(r => ({
+    id: String(r[0]),
+    date: r[1] instanceof Date ? Utilities.formatDate(r[1], "GMT+7", "yyyy-MM-dd") : String(r[1]),
+    account: String(r[2]),
+    symbol: String(r[3]),
+    direction: String(r[4]),
+    entryPrice: Number(r[5]) || 0,
+    exitPrice: r[6] !== "" && r[6] !== null ? Number(r[6]) : null,
+    size: Number(r[7]) || 0,
+    pnl: r[8] !== "" && r[8] !== null ? Number(r[8]) : null,
+    setup: String(r[9] || ''),
+    status: String(r[10] || 'Đang mở')
+  }));
+
+  return respondJSON({ status: "success", data: list });
+}
+
+function handleAddTradeJournal(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sheet = getOrCreateSheet(ss, SHEET_TRADE_JOURNAL);
+  const id = 'TJ' + new Date().getTime();
+  const dateStr = data.date || Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+  const acc = data.account || 'Sàn Trading/Crypto';
+  const symbol = String(data.symbol || '').toUpperCase();
+  const direction = String(data.direction || 'Long');
+  const entryPrice = Number(data.entryPrice) || 0;
+  const exitPrice = data.exitPrice !== undefined && data.exitPrice !== null && data.exitPrice !== '' ? Number(data.exitPrice) : null;
+  const size = Number(data.size) || 0;
+  const setup = data.setup || '';
+  const status = data.status || (exitPrice !== null ? 'Đã đóng' : 'Đang mở');
+
+  let pnl = null;
+  if (exitPrice !== null) {
+    const factor = (direction.toLowerCase() === 'long') ? 1 : -1;
+    pnl = (exitPrice - entryPrice) * size * factor;
+  }
+
+  sheet.appendRow([id, dateStr, acc, symbol, direction, entryPrice, exitPrice !== null ? exitPrice : '', size, pnl !== null ? pnl : '', setup, status]);
+
+  return respondJSON({ status: "success", message: "Đã ghi nhật ký trade thành công!", id });
+}
+
+function handleUpdateTradeJournal(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sheet = getOrCreateSheet(ss, SHEET_TRADE_JOURNAL);
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return respondJSON({ status: "error", message: "Không tìm thấy lệnh!" });
+
+  const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]) === String(data.id)) {
+      const rowIndex = i + 2;
+      const direction = String(data.direction || sheet.getRange(rowIndex, 5).getValue());
+      const entryPrice = Number(data.entryPrice !== undefined ? data.entryPrice : sheet.getRange(rowIndex, 6).getValue()) || 0;
+      const size = Number(data.size !== undefined ? data.size : sheet.getRange(rowIndex, 8).getValue()) || 0;
+      const exitPrice = data.exitPrice !== undefined && data.exitPrice !== null && data.exitPrice !== '' ? Number(data.exitPrice) : null;
+      const status = data.status || (exitPrice !== null ? 'Đã đóng' : 'Đang mở');
+
+      let pnl = null;
+      if (exitPrice !== null) {
+        const factor = (direction.toLowerCase() === 'long') ? 1 : -1;
+        pnl = (exitPrice - entryPrice) * size * factor;
+      }
+
+      sheet.getRange(rowIndex, 5).setValue(direction);
+      sheet.getRange(rowIndex, 6).setValue(entryPrice);
+      sheet.getRange(rowIndex, 7).setValue(exitPrice !== null ? exitPrice : '');
+      sheet.getRange(rowIndex, 8).setValue(size);
+      sheet.getRange(rowIndex, 9).setValue(pnl !== null ? pnl : '');
+      if (data.setup) sheet.getRange(rowIndex, 10).setValue(data.setup);
+      sheet.getRange(rowIndex, 11).setValue(status);
+
+      return respondJSON({ status: "success", message: "Đã cập nhật lệnh trade thành công!" });
+    }
+  }
+  return respondJSON({ status: "error", message: "Không tìm thấy ID lệnh!" });
+}
+
+function handleDeleteTradeJournal(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sheet = getOrCreateSheet(ss, SHEET_TRADE_JOURNAL);
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return respondJSON({ status: "error", message: "Không tìm thấy lệnh!" });
+
+  const values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0]) === String(data.id)) {
+      sheet.deleteRow(i + 2);
+      return respondJSON({ status: "success", message: "Đã xóa lệnh trade!" });
+    }
+  }
+  return respondJSON({ status: "error", message: "Không tìm thấy ID lệnh!" });
+}
+
+// Portfolio Crypto Handlers
+function handleGetCryptoPortfolio(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sheet = getOrCreateSheet(ss, SHEET_CRYPTO_PORTFOLIO);
+  const lastRow = getRealLastRow(sheet, 1);
+  if (lastRow < 2) return respondJSON({ status: "success", data: [] });
+
+  const values = sheet.getRange(2, 1, lastRow - 1, 6).getValues();
+  let list = values.map(r => ({
+    account: String(r[0]),
+    symbol: String(r[1]),
+    qty: Number(r[2]) || 0,
+    buyPrice: Number(r[3]) || 0,
+    currentPrice: Number(r[4]) || 0,
+    updatedAt: r[5] instanceof Date ? Utilities.formatDate(r[5], "GMT+7", "yyyy-MM-dd") : String(r[5] || '')
+  }));
+
+  if (data.accountName) {
+    list = list.filter(item => item.account === data.accountName);
+  }
+
+  return respondJSON({ status: "success", data: list });
+}
+
+function handleUpdateCryptoPortfolio(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sheetPort = getOrCreateSheet(ss, SHEET_CRYPTO_PORTFOLIO);
+  const sheetAcc = ss.getSheetByName(SHEET_ACCOUNTS);
+  const accName = data.accountName;
+  const items = data.items || [];
+  const dateStr = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+
+  if (!accName) return respondJSON({ status: "error", message: "Tên tài khoản không được để trống." });
+
+  // 1. Xóa các dòng cũ của accountName trong Portfolio_Crypto
+  const lastRowPort = getRealLastRow(sheetPort, 1);
+  if (lastRowPort >= 2) {
+    const accColVals = sheetPort.getRange(2, 1, lastRowPort - 1, 1).getValues();
+    for (let i = accColVals.length - 1; i >= 0; i--) {
+      if (String(accColVals[i][0]) === String(accName)) {
+        sheetPort.deleteRow(i + 2);
+      }
+    }
+  }
+
+  // 2. Thêm các dòng coin mới
+  let totalAccountNAV = 0;
+  items.forEach(it => {
+    const sym = String(it.symbol || '').toUpperCase();
+    const q = Number(it.qty) || 0;
+    const bp = Number(it.buyPrice) || 0;
+    const cp = Number(it.currentPrice) || 0;
+    const coinVal = q * cp;
+    totalAccountNAV += coinVal;
+
+    sheetPort.appendRow([accName, sym, q, bp, cp, dateStr]);
+  });
+
+  // 3. Tự động cập nhật "Số dư hiện tại" (NAV) trong tab "Tài Khoản" cho tài khoản này
+  const lastRowAcc = getRealLastRow(sheetAcc, 1);
+  if (lastRowAcc >= 2) {
+    const accNames = sheetAcc.getRange(2, 1, lastRowAcc - 1, 1).getValues();
+    for (let i = 0; i < accNames.length; i++) {
+      if (String(accNames[i][0]) === String(accName)) {
+        sheetAcc.getRange(i + 2, 4).setValue(totalAccountNAV);
+        break;
+      }
+    }
+  }
+
+  recalculateAccountBalances(ss);
+
+  return respondJSON({
+    status: "success",
+    message: `Đã cập nhật danh mục Altcoin Crypto cho ${accName}! Tổng giá trị NAV mới: ${totalAccountNAV.toLocaleString('vi-VN')} VND`,
+    totalValue: totalAccountNAV
+  });
 }
 
 // ==========================================
