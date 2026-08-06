@@ -372,31 +372,15 @@
         <div class="content-area">
             <!-- 1. VIEW OVERVIEW -->
             <div id="view-overview" class="view-container active">
-                <!-- Period & Custom Month Filter Bar -->
+                <!-- Single Compact Period Filter Bar -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
                     <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--ocean-deep); margin: 0; display: flex; align-items: center; gap: 8px;">
                         <i data-lucide="compass" class="w-5 h-5" style="color: var(--dawn-gold);"></i> Báo Cáo Tài Chính FIRE5Y
                     </h2>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <!-- Month Picker for Picking ANY Month & Year -->
-                        <div style="display: flex; align-items: center; gap: 6px; background: var(--sea-foam); padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border);">
-                            <i data-lucide="calendar" class="w-4 h-4" style="color: var(--ocean-deep);"></i>
-                            <span style="font-size: 0.82rem; font-weight: 600; color: var(--ocean-deep);">Chọn Tháng:</span>
-                            <input type="month" id="overviewMonthPicker" class="form-input" style="margin: 0; width: 145px; padding: 0.3rem 0.5rem; font-size: 0.85rem; font-weight: 700; color: var(--ocean-deep); background: white; border-radius: 8px; cursor: pointer;" onchange="onOverviewMonthPickerChange()">
-                        </div>
-
-                        <!-- Quick Presets Select -->
-                        <div style="display: flex; align-items: center; gap: 6px; background: var(--sea-foam); padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border);">
-                            <span style="font-size: 0.82rem; font-weight: 600; color: var(--ocean-deep);">Nhanh:</span>
-                            <select id="overviewPeriodFilter" class="form-input" style="margin: 0; width: 155px; padding: 0.35rem 0.5rem; font-size: 0.85rem; font-weight: 700; color: var(--ocean-deep); background: white; border-radius: 8px; cursor: pointer;" onchange="onOverviewQuickFilterChange()">
-                                <option value="custom_month" selected>Tháng chọn bên trái</option>
-                                <option value="this_month">Tháng này</option>
-                                <option value="last_month">Tháng trước</option>
-                                <option value="last_3_months">3 tháng gần đây</option>
-                                <option value="this_year">Năm nay (2026)</option>
-                                <option value="all_time">Tất cả thời gian</option>
-                            </select>
-                        </div>
+                    <div style="display: flex; align-items: center; gap: 8px; background: var(--sea-foam); padding: 6px 12px; border-radius: 12px; border: 1px solid var(--border);">
+                        <i data-lucide="calendar" class="w-4 h-4" style="color: var(--ocean-deep);"></i>
+                        <span style="font-size: 0.85rem; font-weight: 600; color: var(--ocean-deep);">Thời gian:</span>
+                        <select id="overviewPeriodFilter" class="form-input" style="margin: 0; width: 220px; padding: 0.35rem 0.65rem; font-weight: 700; color: var(--ocean-deep); background: white; border-radius: 8px; cursor: pointer;" onchange="renderOverview()"></select>
                     </div>
                 </div>
 
@@ -896,38 +880,52 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             }
         }
 
-        // Handle Custom Month Picker Change (User picks ANY YYYY-MM)
-        function onOverviewMonthPickerChange() {
-            const selectEl = document.getElementById('overviewPeriodFilter');
-            if (selectEl) selectEl.value = 'custom_month';
-            renderOverview();
-        }
-
-        // Handle Quick Presets Change
-        function onOverviewQuickFilterChange() {
-            const selectEl = document.getElementById('overviewPeriodFilter');
-            const picker = document.getElementById('overviewMonthPicker');
-            if (!selectEl) return;
+        // Populate 1 Single Compact Dropdown Options
+        function populateOverviewPeriodOptions() {
+            const select = document.getElementById('overviewPeriodFilter');
+            if (!select || select.children.length > 0) return;
 
             const now = new Date();
             const curYear = now.getFullYear();
             const curMonth = now.getMonth(); // 0-indexed
 
-            if (selectEl.value === 'this_month' && picker) {
-                picker.value = `${curYear}-${String(curMonth + 1).padStart(2, '0')}`;
-            } else if (selectEl.value === 'last_month' && picker) {
-                const lastM = curMonth === 0 ? 11 : curMonth - 1;
-                const lastY = curMonth === 0 ? curYear - 1 : curYear;
-                picker.value = `${lastY}-${String(lastM + 1).padStart(2, '0')}`;
+            let html = '';
+
+            // Generate recent 12 specific months
+            for (let i = 0; i < 12; i++) {
+                let m = curMonth - i;
+                let y = curYear;
+                while (m < 0) {
+                    m += 12;
+                    y -= 1;
+                }
+
+                const monthStr = String(m + 1).padStart(2, '0');
+                const val = `${y}-${monthStr}`;
+                
+                let label = `Tháng ${monthStr}/${y}`;
+                if (i === 0) label += ' (Tháng này)';
+                else if (i === 1) label += ' (Tháng trước)';
+
+                html += `<option value="${val}" ${i === 0 ? 'selected' : ''}>${label}</option>`;
             }
-            renderOverview();
+
+            html += `
+                <option disabled>──────────</option>
+                <option value="last_3_months">3 tháng gần đây</option>
+                <option value="this_year">Năm nay (${curYear})</option>
+                <option value="all_time">Tất cả thời gian</option>
+            `;
+
+            select.innerHTML = html;
         }
 
-        // Filter Transactions by Selected Period or Custom Month
+        // Filter Transactions by Selected Period
         function getFilteredOverviewTransactions() {
+            populateOverviewPeriodOptions();
+
             const selectEl = document.getElementById('overviewPeriodFilter');
-            const picker = document.getElementById('overviewMonthPicker');
-            const period = selectEl ? selectEl.value : 'custom_month';
+            const val = selectEl ? selectEl.value : '';
 
             const now = new Date();
             const curYear = now.getFullYear();
@@ -943,61 +941,48 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 const month = parseInt(parts[1], 10) - 1; // 0-indexed
                 const day = parseInt(parts[2], 10);
 
-                if (period === 'custom_month') {
-                    if (!picker || !picker.value) return year === curYear && month === curMonth;
-                    const ymParts = picker.value.split('-');
-                    const targetY = parseInt(ymParts[0], 10);
-                    const targetM = parseInt(ymParts[1], 10) - 1;
-                    return year === targetY && month === targetM;
-                } else if (period === 'this_month') {
-                    return year === curYear && month === curMonth;
-                } else if (period === 'last_month') {
-                    const lastM = curMonth === 0 ? 11 : curMonth - 1;
-                    const lastY = curMonth === 0 ? curYear - 1 : curYear;
-                    return year === lastY && month === lastM;
-                } else if (period === 'last_3_months') {
+                if (val === 'last_3_months') {
                     const tDate = new Date(year, month, day);
                     const threeMonthsAgo = new Date(curYear, curMonth - 2, 1);
                     return tDate >= threeMonthsAgo;
-                } else if (period === 'this_year') {
+                } else if (val === 'this_year') {
                     return year === curYear;
-                } else if (period === 'all_time') {
+                } else if (val === 'all_time') {
                     return true;
+                } else if (val.includes('-')) {
+                    const ym = val.split('-');
+                    const targetY = parseInt(ym[0], 10);
+                    const targetM = parseInt(ym[1], 10) - 1;
+                    return year === targetY && month === targetM;
                 }
+
                 return year === curYear && month === curMonth;
             });
         }
 
         // Render Overview & Elevation Profile Chart
         function renderOverview() {
-            const picker = document.getElementById('overviewMonthPicker');
-            if (picker && !picker.value) {
-                const now = new Date();
-                picker.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-            }
+            populateOverviewPeriodOptions();
 
             const selectEl = document.getElementById('overviewPeriodFilter');
-            const period = selectEl ? selectEl.value : 'custom_month';
+            const val = selectEl ? selectEl.value : '';
 
             let incLabel = 'Tổng Thu Tháng Này';
             let expLabel = 'Tổng Chi Tháng Này';
 
-            if (period === 'custom_month' && picker && picker.value) {
-                const parts = picker.value.split('-');
-                const formattedYM = `${parts[1]}/${parts[0]}`;
-                incLabel = `Tổng Thu (${formattedYM})`;
-                expLabel = `Tổng Chi (${formattedYM})`;
-            } else {
-                const labelMap = {
-                    'this_month': { income: 'Tổng Thu Tháng Này', expense: 'Tổng Chi Tháng Này' },
-                    'last_month': { income: 'Tổng Thu Tháng Trước', expense: 'Tổng Chi Tháng Trước' },
-                    'last_3_months': { income: 'Tổng Thu 3 Tháng', expense: 'Tổng Chi 3 Tháng' },
-                    'this_year': { income: 'Tổng Thu Năm Nay', expense: 'Tổng Chi Năm Nay' },
-                    'all_time': { income: 'Tổng Thu Tích Lũy', expense: 'Tổng Chi Tích Lũy' }
-                };
-                const labels = labelMap[period] || labelMap['this_month'];
-                incLabel = labels.income;
-                expLabel = labels.expense;
+            if (val.includes('-')) {
+                const parts = val.split('-');
+                incLabel = `Tổng Thu (Tháng ${parts[1]}/${parts[0]})`;
+                expLabel = `Tổng Chi (Tháng ${parts[1]}/${parts[0]})`;
+            } else if (val === 'last_3_months') {
+                incLabel = 'Tổng Thu (3 Tháng)';
+                expLabel = 'Tổng Chi (3 Tháng)';
+            } else if (val === 'this_year') {
+                incLabel = 'Tổng Thu (Năm Nay)';
+                expLabel = 'Tổng Chi (Năm Nay)';
+            } else if (val === 'all_time') {
+                incLabel = 'Tổng Thu (Tích Lũy)';
+                expLabel = 'Tổng Chi (Tích Lũy)';
             }
 
             const incLabelEl = document.getElementById('totalIncomeLabel');
