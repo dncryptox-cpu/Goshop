@@ -453,6 +453,14 @@
                     </div>
                 </div>
 
+                <!-- 4 Source Filter Buttons: Tất cả | Cá nhân | Kinh doanh DNC | Đầu tư -->
+                <div class="ai-toggle-bar" style="margin-bottom: 1.25rem; display: flex; gap: 4px;" id="overviewSourceFilterBar">
+                    <button class="ai-toggle-btn active" id="btnSourceAll" onclick="setOverviewSourceFilter('all')">Tất cả</button>
+                    <button class="ai-toggle-btn" id="btnSourcePersonal" onclick="setOverviewSourceFilter('personal')">Cá nhân</button>
+                    <button class="ai-toggle-btn" id="btnSourceDnc" onclick="setOverviewSourceFilter('dnc')">Kinh doanh DNC</button>
+                    <button class="ai-toggle-btn" id="btnSourceInvest" onclick="setOverviewSourceFilter('invest')">Đầu tư</button>
+                </div>
+
                 <div class="metrics-grid">
                     <div class="card metric-card">
                         <span class="metric-title">Số Dư Ròng (Net Worth)</span>
@@ -1358,17 +1366,73 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             });
         }
 
-        function renderRecentTransactions() {
+        let activeSourceFilter = 'all';
+
+        function setOverviewSourceFilter(filterType) {
+            activeSourceFilter = filterType;
+            ['btnSourceAll', 'btnSourcePersonal', 'btnSourceDnc', 'btnSourceInvest'].forEach(id => {
+                const btn = document.getElementById(id);
+                if (btn) btn.classList.remove('active');
+            });
+
+            const activeMap = { 'all': 'btnSourceAll', 'personal': 'btnSourcePersonal', 'dnc': 'btnSourceDnc', 'invest': 'btnSourceInvest' };
+            const btnActive = document.getElementById(activeMap[filterType]);
+            if (btnActive) btnActive.classList.add('active');
+
+            renderOverview();
+        }
+
+        function getFilteredOverviewTrades() {
+            populateOverviewPeriodOptions();
+            const selectEl = document.getElementById('overviewPeriodFilter');
+            const val = selectEl ? selectEl.value : '';
+
+            const now = new Date();
+            const curYear = now.getFullYear();
+            const curMonth = now.getMonth(); // 0-indexed
+
+            return (allTradeJournal || []).filter(t => {
+                if (t.status !== 'Đã đóng' || !t.date) return false;
+
+                const parts = String(t.date).split('T')[0].split('-');
+                if (parts.length < 3) return false;
+
+                const year = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1; // 0-indexed
+                const day = parseInt(parts[2], 10);
+
+                if (val === 'last_3_months') {
+                    const tDate = new Date(year, month, day);
+                    const threeMonthsAgo = new Date(curYear, curMonth - 2, 1);
+                    return tDate >= threeMonthsAgo;
+                } else if (val === 'this_year') {
+                    return year === curYear;
+                } else if (val === 'all_time') {
+                    return true;
+                } else if (val.includes('-')) {
+                    const ym = val.split('-');
+                    const targetY = parseInt(ym[0], 10);
+                    const targetM = parseInt(ym[1], 10) - 1;
+                    return year === targetY && month === targetM;
+                }
+
+                return year === curYear && month === curMonth;
+            });
+        }
+
+        function renderRecentTransactions(overrideTxs) {
             const container = document.getElementById('recentTransactionsList');
             if (!container) return;
 
-            if (!allTransactions || allTransactions.length === 0) {
-                container.innerHTML = `<div style="font-size: 0.85rem; color: var(--text-muted); padding: 1rem 0; text-align: center;">Chưa có giao dịch nào.</div>`;
+            const targetList = overrideTxs || allTransactions || [];
+
+            if (!targetList || targetList.length === 0) {
+                container.innerHTML = `<div style="font-size: 0.85rem; color: var(--text-muted); padding: 1rem 0; text-align: center;">Chưa có giao dịch nào phù hợp với bộ lọc.</div>`;
                 return;
             }
 
             // Sort by date descending (most recent first)
-            const sorted = [...allTransactions].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
+            const sorted = [...targetList].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 8);
 
             container.innerHTML = `
                 <div style="display: flex; flex-direction: column; gap: 0.6rem;">
@@ -1376,6 +1440,8 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                         const isIncome = t.type === 'Thu';
                         const color = isIncome ? 'var(--trail-moss)' : 'var(--berry-alert)';
                         const prefix = isIncome ? '+' : '-';
+                        const usdNote = t.isTrade && t.amountUsd !== undefined ? ` ($${t.amountUsd >= 0 ? '+' : ''}${t.amountUsd.toFixed(2)})` : '';
+                        
                         return `
                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.6rem 0.8rem; background: var(--sea-foam); border-radius: 10px; border: 1px solid var(--border);">
                                 <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
@@ -1384,7 +1450,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                                     </div>
                                     <div style="min-width: 0;">
                                         <div style="font-weight: 700; font-size: 0.88rem; color: var(--ocean-deep); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.category}</div>
-                                        <div style="font-size: 0.76rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.description || t.account || ''}</div>
+                                        <div style="font-size: 0.76rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.description || t.account || ''}${usdNote}</div>
                                     </div>
                                 </div>
                                 <div style="text-align: right; flex-shrink: 0; margin-left: 10px;">
@@ -1406,40 +1472,89 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const selectEl = document.getElementById('overviewPeriodFilter');
             const val = selectEl ? selectEl.value : '';
 
-            let incLabel = 'Tổng Thu Tháng Này';
-            let expLabel = 'Tổng Chi Tháng Này';
-
+            let periodText = 'Tháng Này';
             if (val.includes('-')) {
                 const parts = val.split('-');
-                incLabel = `Tổng Thu (Tháng ${parts[1]}/${parts[0]})`;
-                expLabel = `Tổng Chi (Tháng ${parts[1]}/${parts[0]})`;
+                periodText = `Tháng ${parts[1]}/${parts[0]}`;
             } else if (val === 'last_3_months') {
-                incLabel = 'Tổng Thu (3 Tháng)';
-                expLabel = 'Tổng Chi (3 Tháng)';
+                periodText = '3 Tháng';
             } else if (val === 'this_year') {
-                incLabel = 'Tổng Thu (Năm Nay)';
-                expLabel = 'Tổng Chi (Năm Nay)';
+                periodText = 'Năm Nay';
             } else if (val === 'all_time') {
-                incLabel = 'Tổng Thu (Tích Lũy)';
-                expLabel = 'Tổng Chi (Tích Lũy)';
+                periodText = 'Tích Lũy';
             }
 
             const incLabelEl = document.getElementById('totalIncomeLabel');
             const expLabelEl = document.getElementById('totalExpenseLabel');
-            if (incLabelEl) incLabelEl.innerText = incLabel;
-            if (expLabelEl) expLabelEl.innerText = expLabel;
 
-            const filteredTxs = getFilteredOverviewTransactions();
+            const sourceLabels = {
+                'all': '',
+                'personal': ' (Cá nhân)',
+                'dnc': ' (Kinh doanh DNC)',
+                'invest': ' (Đầu tư)'
+            };
+            const srcText = sourceLabels[activeSourceFilter] || '';
+
+            if (incLabelEl) incLabelEl.innerText = `Tổng Thu ${periodText}${srcText}`;
+            if (expLabelEl) expLabelEl.innerText = `Tổng Chi ${periodText}${srcText}`;
 
             let totalIncome = 0;
             let totalExpense = 0;
+            let filteredTxs = [];
 
-            filteredTxs.forEach(t => {
-                const amt = Number(t.amount) || 0;
-                if (t.type === 'Thu') totalIncome += amt;
-                else if (t.type === 'Chi') totalExpense += amt;
-            });
+            if (activeSourceFilter === 'invest') {
+                // Filter closed trades from allTradeJournal by selected period
+                const closedTrades = getFilteredOverviewTrades();
+                const usdRate = 25400;
 
+                closedTrades.forEach(t => {
+                    const pnlUsd = Number(t.pnl) || 0;
+                    const pnlVnd = pnlUsd * usdRate;
+                    if (pnlVnd > 0) {
+                        totalIncome += pnlVnd;
+                    } else if (pnlVnd < 0) {
+                        totalExpense += Math.abs(pnlVnd);
+                    }
+                });
+
+                // Convert closed trades into list format for Elevation Chart & Recent Transactions
+                filteredTxs = closedTrades.map(t => {
+                    const pnlUsd = Number(t.pnl) || 0;
+                    const pnlVnd = pnlUsd * usdRate;
+                    return {
+                        date: t.date,
+                        type: pnlVnd >= 0 ? 'Thu' : 'Chi',
+                        amount: Math.abs(pnlVnd),
+                        amountUsd: pnlUsd,
+                        category: `${t.symbol} (${t.direction})`,
+                        description: t.setup || t.account || 'Lệnh trade đã đóng',
+                        account: t.account,
+                        isTrade: true
+                    };
+                });
+            } else {
+                const catGroupMap = {};
+                allCategories.forEach(c => { catGroupMap[c.name] = c.group; });
+
+                const rawTxs = getFilteredOverviewTransactions();
+
+                if (activeSourceFilter === 'personal') {
+                    const personalGroups = ['Ăn uống hàng ngày', 'Sinh hoạt Nha Trang', 'Ultra Trail & Sức khoẻ', 'Khác'];
+                    filteredTxs = rawTxs.filter(t => personalGroups.includes(catGroupMap[t.category]));
+                } else if (activeSourceFilter === 'dnc') {
+                    filteredTxs = rawTxs.filter(t => catGroupMap[t.category] === 'Kinh doanh DNC');
+                } else {
+                    filteredTxs = rawTxs;
+                }
+
+                filteredTxs.forEach(t => {
+                    const amt = Number(t.amount) || 0;
+                    if (t.type === 'Thu') totalIncome += amt;
+                    else if (t.type === 'Chi') totalExpense += amt;
+                });
+            }
+
+            // Net Worth ALWAYS UNCHANGED across all filters
             let totalBalance = allAccounts.reduce((acc, a) => acc + (Number(a.currentBalance) || 0), 0);
 
             document.getElementById('netWorth').innerText = formatMoney(totalBalance);
@@ -1449,7 +1564,7 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             renderElevationChart(filteredTxs);
             renderFireWidgets(filteredTxs);
             renderSpecialWidgets(filteredTxs);
-            renderRecentTransactions();
+            renderRecentTransactions(filteredTxs);
             renderStationGrid('dashboardStationGrid', 4);
         }
 
