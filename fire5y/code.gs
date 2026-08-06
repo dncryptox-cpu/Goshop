@@ -302,7 +302,7 @@ function getTargetSpreadsheet(user) {
 // ==========================================
 
 function doGet(e) {
-  return respondJSON({ status: "success", message: "Lovely Money Finance OS API v2.0 is running." });
+  return respondJSON({ status: "success", message: "FIRE5Y OS API v2.0 is running." });
 }
 
 function doPost(e) {
@@ -628,12 +628,12 @@ function checkSystemStatus() {
   const accountRows = sheetAccounts ? getRealLastRow(sheetAccounts, 1) - 1 : 0;
 
   ui.alert(
-    'Trạng Thái Hệ Thống Lovely Money',
+    'Trạng Thái Hệ Thống FIRE5Y OS',
     ` Hệ thống hoạt động tốt!\n\n` +
     `- Tổng số giao dịch: ${dataRows > 0 ? dataRows : 0}\n` +
     `- Số lượng tài khoản: ${accountRows > 0 ? accountRows : 0}\n` +
     `- Anchor Scan Engine: Ready\n` +
-    `- Dual-Layer Cache: Active`,
+    `- Spreadsheet ID: ${ss ? ss.getId() : 'N/A'}`,
     ui.ButtonSet.OK
   );
 }
