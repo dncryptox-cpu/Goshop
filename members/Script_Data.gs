@@ -2438,8 +2438,13 @@ function readSheetByName(sheetName) {
     return { sheet: sheet, data: [], idx: function() { return -1; }, headers: [], rawHeaders: [] };
   }
   var rawHeaders = values[0];
-  var headers = rawHeaders.map(function(h) { return String(h || '').trim().toLowerCase(); });
-  var idx = function(name) { return headers.indexOf(String(name || '').trim().toLowerCase()); };
+  var headers = rawHeaders.map(function(h) {
+    return String(h || '').replace(/^\uFEFF/, '').trim().toLowerCase();
+  });
+  var idx = function(name) {
+    var cleanName = String(name || '').replace(/^\uFEFF/, '').trim().toLowerCase();
+    return headers.indexOf(cleanName);
+  };
   return { sheet: sheet, data: values.slice(1), idx: idx, headers: headers, rawHeaders: rawHeaders };
 }
 
