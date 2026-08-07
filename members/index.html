@@ -2922,7 +2922,10 @@
                         if (String(i.productId || '').trim().toLowerCase() !== targetProdId) return false;
                         const st = String(i.status || '').trim().toLowerCase();
                         if (st !== 'available') return false;
-                        if (i.expireDate && new Date(i.expireDate) < now) return false;
+                        if (i.expireDate) {
+                            const exp = new Date(i.expireDate);
+                            if (!isNaN(exp.getTime()) && exp < now) return false;
+                        }
                         return true;
                     }).length;
                 },
@@ -3482,15 +3485,20 @@
                             const csv = await invRes.text();
                             this.inventory = this.parseCSV(csv).map(r => ({
                                 id: this.getField(r, ['id', 'ID']),
-                                productId: this.getField(r, ['product_id', 'ProductId']),
-                                itemData: this.getField(r, ['item_data', 'ItemData']),
-                                expireDate: this.getField(r, ['expire_date', 'ExpireDate']),
+                                productId: this.getField(r, ['product_id', 'ProductId', 'Product_Id']),
+                                itemData: this.getField(r, ['item_data', 'ItemData', 'Item_Data']),
+                                expireDate: this.getField(r, ['expire_date', 'ExpireDate', 'Expire_Date']),
                                 status: this.getField(r, ['status', 'Status']) || 'available',
                                 soldToEmail: this.getField(r, ['sold_to_email', 'SoldToEmail']),
                                 soldAt: this.getField(r, ['sold_at', 'SoldAt']),
                                 slotType: this.getField(r, ['slot_type', 'SlotType']) || 'rieng',
                                 maxUsers: parseInt(this.getField(r, ['max_users', 'MaxUsers'])) || 1
-                            })).filter(i => i.id && i.productId);
+                            })).filter(i => i.productId && (i.id || i.itemData));
+
+                            console.log('>>> [fetchData] MB_INVENTORY loaded total rows count:', this.inventory.length);
+                            this.products.forEach(p => {
+                                console.log(`>>> [fetchData] Product [${p.name}] (${p.id}) available stock:`, this.getAvailableStock(p.id));
+                            });
                         }
 
                         if (walletRes && walletRes.ok) {
@@ -4756,6 +4764,7 @@
                 // UTILITY FUNCTIONS
                 parseCSV(csv) {
                     if (!csv || csv.includes('html')) return [];
+                    csv = csv.replace(/^\uFEFF/, '');
                     const lines = csv.split(/\r?\n/);
                     if (lines.length < 2) return [];
                     
@@ -4784,7 +4793,7 @@
                         return res;
                     };
 
-                    const headers = parseLine(lines[0]);
+                    const headers = parseLine(lines[0]).map(h => h.replace(/^\uFEFF/, '').trim());
                     return lines.slice(1).map(line => {
                         if (!line.trim()) return null;
                         const values = parseLine(line);
@@ -4802,9 +4811,9 @@
                     for (const pattern of patterns) {
                         const patLower = pattern.toLowerCase().trim();
                         const matchKey = keys.find(k => {
-                            const kLower = k.toLowerCase().trim();
+                            const kLower = k.toLowerCase().replace(/^\uFEFF/, '').trim();
                             if (kLower === patLower) return true;
-                            if (patLower.length > 2 && kLower.includes(patLower)) return true;
+                            if (kLower.includes(patLower)) return true;
                             return false;
                         });
                         if (matchKey && r[matchKey] !== undefined && r[matchKey] !== null && String(r[matchKey]).trim() !== '') {
