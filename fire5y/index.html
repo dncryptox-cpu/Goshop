@@ -951,7 +951,6 @@
                         <input type="text" id="tradeSetup" class="form-input" placeholder="VD: Breakout H4, Pinbar D1, FVG retest">
                     </div>
                     <button type="submit" class="btn btn-primary-sm" style="width: 100%; justify-content: center; padding: 0.8rem;" id="btnSubmitTrade">Lưu Lệnh Trade</button>
-                </form>
             </div>
         </div>
     </div>
@@ -959,7 +958,7 @@
     <!-- Floating Action Button -->
     <button class="fab" onclick="openAddTxModal()"><i data-lucide="plus" class="w-7 h-7"></i></button>
 
-    <!-- Modal Thêm Giao Dịch (AI Single / Batch Supported) -->
+    <!-- Modal Thêm Giao Dịch (AI Single / Batch / Ghi Bù Supported) -->
     <div id="addTxModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -970,10 +969,11 @@
             </div>
             <div class="modal-body">
                 
-                <!-- Toggle Single / Batch -->
+                <!-- Toggle Single / Batch / Ghi Bù -->
                 <div class="ai-toggle-bar">
-                    <button class="ai-toggle-btn active" id="tabSingleBtn" onclick="switchAiMode('single')">Chế Độ Single (1 Dòng / 1 Ảnh)</button>
-                    <button class="ai-toggle-btn" id="tabBatchBtn" onclick="switchAiMode('batch')">Chế Độ Batch (Nhiều Dòng / Hóa Đơn)</button>
+                    <button class="ai-toggle-btn active" id="tabSingleBtn" onclick="switchAiMode('single')">Single (1 Dòng / 1 Ảnh)</button>
+                    <button class="ai-toggle-btn" id="tabBatchBtn" onclick="switchAiMode('batch')">Batch (Nhiều Dòng / Hóa Đơn)</button>
+                    <button class="ai-toggle-btn" id="tabBackfillBtn" onclick="switchAiMode('backfill')">Ghi Bù (Quá Khứ)</button>
                 </div>
                 <div id="aiQuotaTip" style="font-size: 0.78rem; color: var(--text-muted); margin-top: -0.75rem; margin-bottom: 1rem; font-style: italic; font-weight: 500;">
                     💡 <span>Dùng Batch cuối ngày để tiết kiệm quota AI (free tier)</span>
@@ -1040,7 +1040,7 @@
                 <div id="batchModeContainer" style="display: none;">
                     <div style="margin-bottom: 1rem;">
                         <label style="font-size: 0.85rem; font-weight: 700; color: var(--ocean-deep); margin-bottom: 0.5rem; display: block;">
-                             Nhập Nhiều Dòng Hoặc Kéo Thả Nhiều Ảnh Bill
+                              Nhập Nhiều Dòng Hoặc Kéo Thả Nhiều Ảnh Bill
                         </label>
                         <textarea id="quickBatchText" class="form-input" style="height: 90px; margin-bottom: 0.75rem;" placeholder="Nhập mỗi dòng một giao dịch:&#10;cf 35k&#10;ăn trưa 120k&#10;xăng 50k acb"></textarea>
                         <div style="display: flex; gap: 0.75rem; align-items: center;">
@@ -1061,6 +1061,64 @@
                                     <tr>
                                         <th style="width: 110px;">Ngày</th>
                                         <th style="width: 75px;">Loại</th>
+                                        <th style="width: 110px;">Số tiền</th>
+                                        <th>Danh mục</th>
+                                        <th>Tài khoản</th>
+                                        <th>Mô tả</th>
+                                        <th style="width: 40px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="batchReviewBody"></tbody>
+                            </table>
+                        </div>
+                        <button class="btn btn-primary-sm" id="btnSubmitBatchSave" style="width: 100%; justify-content: center; margin-top: 1rem; padding: 0.8rem;" onclick="submitBatchSave()">Lưu tất cả</button>
+                    </div>
+                </div>
+
+                <!-- 3. GHI BÙ MODE CONTAINER (MỚI) -->
+                <div id="backfillModeContainer" style="display: none;">
+                    <!-- Date picker chọn ngày ghi bù quá khứ -->
+                    <div style="background: var(--sea-foam); border: 1px solid var(--border); padding: 0.85rem; border-radius: 12px; margin-bottom: 0.85rem;">
+                        <label style="font-size: 0.85rem; font-weight: 700; color: var(--ocean-deep); margin-bottom: 0.35rem; display: block;">
+                            📅 Chọn Ngày Cần Ghi Bù
+                        </label>
+                        <input type="date" id="backfillDate" class="form-input" style="margin: 0; font-weight: 700;" onchange="loadBackfillChecklist()">
+                    </div>
+
+                    <!-- Checklist Gợi Ý Ăn Uống Hàng Ngày (Trung Bình 7 Ngày) -->
+                    <div style="margin-bottom: 0.85rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                            <label style="font-size: 0.85rem; font-weight: 700; color: var(--ocean-deep); margin: 0;">
+                                📋 Gợi Ý Ăn Uống Hàng Ngày (TB 7 ngày gần nhất):
+                            </label>
+                        </div>
+                        <div id="backfillChecklistContainer" style="display: flex; flex-direction: column; gap: 0.45rem; max-height: 200px; overflow-y: auto; padding-right: 4px;"></div>
+                    </div>
+
+                    <!-- AI Free Text Input khoản bất thường -->
+                    <div style="margin-bottom: 0.85rem;">
+                        <label style="font-size: 0.85rem; font-weight: 700; color: var(--ocean-deep); margin-bottom: 0.35rem; display: block;">
+                            📝 Ghi Thêm Khoản Bất Thường Nhớ Được (AI Parse):
+                        </label>
+                        <textarea id="backfillAiText" class="form-input" style="height: 65px; margin-bottom: 0.45rem;" placeholder="VD: đi chợ 150k, mua thuốc 45k vcb"></textarea>
+                        <button class="btn btn-secondary-sm" id="btnParseBackfillAi" style="width: 100%; justify-content: center;" onclick="parseAiBackfillText()">
+                            <i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Thêm Bằng AI
+                        </button>
+                    </div>
+
+                    <!-- Preview AI parsed items nếu có -->
+                    <div id="backfillAiPreviewSection" style="display: none; margin-bottom: 0.85rem;">
+                        <label style="font-size: 0.82rem; font-weight: 700; color: var(--trail-moss); margin-bottom: 0.35rem; display: block;">
+                            ✨ Giao dịch phát hiện từ AI:
+                        </label>
+                        <div id="backfillAiItemsList" style="display: flex; flex-direction: column; gap: 0.4rem;"></div>
+                    </div>
+
+                    <!-- Nút Lưu Tất Cả Ghi Bù -->
+                    <button class="btn btn-primary-sm" id="btnSubmitBackfill" style="width: 100%; justify-content: center; padding: 0.8rem; font-weight: 700;" onclick="submitBackfillSave()">
+                        🚀 Lưu Tất Cả Giao Dịch Ghi Bù
+                    </button>
+                </div>                  <th style="width: 75px;">Loại</th>
                                         <th style="width: 110px;">Số tiền</th>
                                         <th>Danh mục</th>
                                         <th>Tài khoản</th>
@@ -2709,26 +2767,220 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         }
 
         let quotaCountdownTimer = null;
+        let backfillAiParsedItems = [];
 
         function switchAiMode(mode) {
             const singleBtn = document.getElementById('tabSingleBtn');
             const batchBtn = document.getElementById('tabBatchBtn');
+            const backfillBtn = document.getElementById('tabBackfillBtn');
             const singleCont = document.getElementById('singleModeContainer');
             const batchCont = document.getElementById('batchModeContainer');
+            const backfillCont = document.getElementById('backfillModeContainer');
             const tip = document.getElementById('aiQuotaTip');
 
+            [singleBtn, batchBtn, backfillBtn].forEach(b => { if (b) b.classList.remove('active'); });
+
             if (mode === 'single') {
-                singleBtn.classList.add('active');
-                batchBtn.classList.remove('active');
-                singleCont.style.display = 'block';
-                batchCont.style.display = 'none';
+                if (singleBtn) singleBtn.classList.add('active');
+                if (singleCont) singleCont.style.display = 'block';
+                if (batchCont) batchCont.style.display = 'none';
+                if (backfillCont) backfillCont.style.display = 'none';
                 if (tip) tip.style.display = 'block';
-            } else {
-                batchBtn.classList.add('active');
-                singleBtn.classList.remove('active');
-                batchCont.style.display = 'block';
-                singleCont.style.display = 'none';
+            } else if (mode === 'batch') {
+                if (batchBtn) batchBtn.classList.add('active');
+                if (singleCont) singleCont.style.display = 'none';
+                if (batchCont) batchCont.style.display = 'block';
+                if (backfillCont) backfillCont.style.display = 'none';
+                if (tip) tip.style.display = 'block';
+            } else if (mode === 'backfill') {
+                if (backfillBtn) backfillBtn.classList.add('active');
+                if (singleCont) singleCont.style.display = 'none';
+                if (batchCont) batchCont.style.display = 'none';
+                if (backfillCont) backfillCont.style.display = 'block';
                 if (tip) tip.style.display = 'none';
+
+                // Default backfill date to Yesterday
+                const backfillDateEl = document.getElementById('backfillDate');
+                if (backfillDateEl && !backfillDateEl.value) {
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    backfillDateEl.value = yesterday.toISOString().split('T')[0];
+                }
+                loadBackfillChecklist();
+            }
+        }
+
+        // Calculate 7-day average for "Ăn uống hàng ngày" categories and render checklist
+        function loadBackfillChecklist() {
+            const container = document.getElementById('backfillChecklistContainer');
+            if (!container) return;
+
+            // Filter categories in group "Ăn uống hàng ngày"
+            let targetCats = allCategories.filter(c => c.group === 'Ăn uống hàng ngày').map(c => c.name);
+            if (targetCats.length === 0) {
+                targetCats = ['Cà phê sáng', 'Ăn trưa ngoài', 'Ăn tối'];
+            }
+
+            // Find average amount spent in last 7 active days per category
+            const catAvgMap = {};
+            targetCats.forEach(cat => {
+                const matchingTxs = (allTransactions || []).filter(t => t.category === cat && t.type === 'Chi' && Number(t.amount) > 0);
+                if (matchingTxs.length > 0) {
+                    const recent7 = matchingTxs.slice(0, 7);
+                    const sum = recent7.reduce((acc, t) => acc + Number(t.amount || 0), 0);
+                    catAvgMap[cat] = Math.round(sum / recent7.length);
+                } else {
+                    // Default fallback estimates if no history
+                    if (cat.includes('Cà phê')) catAvgMap[cat] = 35000;
+                    else if (cat.includes('trưa')) catAvgMap[cat] = 50000;
+                    else if (cat.includes('tối')) catAvgMap[cat] = 60000;
+                    else catAvgMap[cat] = 30000;
+                }
+            });
+
+            container.innerHTML = targetCats.map((cat, idx) => {
+                const avgAmt = catAvgMap[cat] || 35000;
+                return `
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0.6rem 0.8rem; background: var(--sea-foam); border-radius: 10px; border: 1px solid var(--border);" class="backfill-item-row" data-cat="${cat}">
+                        <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+                            <input type="checkbox" id="chkBackfill_${idx}" checked style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--trail-moss);">
+                            <label for="chkBackfill_${idx}" style="font-weight: 700; font-size: 0.88rem; color: var(--ocean-deep); cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0;">
+                                ${cat}
+                            </label>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 6px; width: 140px;">
+                            <input type="number" id="amtBackfill_${idx}" class="form-input" style="padding: 4px 8px; margin: 0; font-weight: 700; font-size: 0.85rem;" value="${avgAmt}">
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Parse AI Free Text inside Backfill mode (reuses Gemini API call)
+        async function parseAiBackfillText() {
+            const text = document.getElementById('backfillAiText').value.trim();
+            if (!text) return alert("Vui lòng nhập ghi chú khoản bất thường cần AI phân tích!");
+
+            const btn = document.getElementById('btnParseBackfillAi');
+            if (btn) btn.disabled = true;
+
+            try {
+                const items = await callGeminiParseText(text);
+                if (items && items.length > 0) {
+                    backfillAiParsedItems = items;
+                    renderBackfillAiPreview();
+                } else {
+                    alert("AI không phân tích được giao dịch nào từ ghi chú.");
+                }
+            } catch (e) {
+                alert("Lỗi AI: " + e.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function renderBackfillAiPreview() {
+            const sec = document.getElementById('backfillAiPreviewSection');
+            const list = document.getElementById('backfillAiItemsList');
+            if (!sec || !list) return;
+
+            if (backfillAiParsedItems.length === 0) {
+                sec.style.display = 'none';
+                return;
+            }
+
+            sec.style.display = 'block';
+            list.innerHTML = backfillAiParsedItems.map((it, idx) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; font-size: 0.82rem;">
+                    <div>
+                        <strong>${it.category}</strong> (${it.type === 'Thu' ? 'Thu' : 'Chi'}) - <span>${it.description || ''}</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                        <strong style="color: var(--trail-moss);">${formatMoney(it.amount)}</strong>
+                        <button class="btn btn-secondary-sm" style="padding: 2px 6px;" onclick="removeBackfillAiItem(${idx})">&times;</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function removeBackfillAiItem(idx) {
+            backfillAiParsedItems.splice(idx, 1);
+            renderBackfillAiPreview();
+        }
+
+        // Submit all checked items + AI items for Backfill mode
+        async function submitBackfillSave() {
+            const dateVal = document.getElementById('backfillDate').value;
+            if (!dateVal) return alert("Vui lòng chọn ngày cần ghi bù!");
+
+            const btn = document.getElementById('btnSubmitBackfill');
+            if (btn) btn.disabled = true;
+
+            const defaultAccount = allAccounts.length > 0 ? allAccounts[0].name : 'Tiền mặt';
+            const finalItems = [];
+
+            // 1. Gather checked items from checklist
+            const itemRows = document.querySelectorAll('.backfill-item-row');
+            itemRows.forEach((row, idx) => {
+                const chk = document.getElementById(`chkBackfill_${idx}`);
+                const amtInput = document.getElementById(`amtBackfill_${idx}`);
+                const catName = row.getAttribute('data-cat');
+
+                if (chk && chk.checked) {
+                    const amt = Number(amtInput ? amtInput.value : 0) || 0;
+                    if (amt > 0) {
+                        finalItems.push({
+                            date: dateVal,
+                            type: 'Chi',
+                            amount: amt,
+                            category: catName,
+                            account: defaultAccount,
+                            description: 'Ghi bù tự động',
+                            source: 'Ghi bù'
+                        });
+                    }
+                }
+            });
+
+            // 2. Gather AI parsed items
+            backfillAiParsedItems.forEach(it => {
+                finalItems.push({
+                    date: dateVal,
+                    type: it.type || 'Chi',
+                    amount: Number(it.amount) || 0,
+                    category: it.category || 'Khác',
+                    account: defaultAccount,
+                    description: (it.description || '') + ' (Ghi bù)',
+                    source: 'Ghi bù'
+                });
+            });
+
+            if (finalItems.length === 0) {
+                alert("Chưa có giao dịch nào được chọn hoặc nhập để ghi bù!");
+                if (btn) btn.disabled = false;
+                return;
+            }
+
+            try {
+                const payload = {
+                    action: 'add_batch_transactions',
+                    user: currentUser,
+                    transactions: finalItems
+                };
+
+                const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) }).then(r => r.json());
+                if (res.status === 'success') {
+                    alert(`Đã ghi bù thành công ${finalItems.length} giao dịch cho ngày ${dateVal}!`);
+                    closeAddTxModal();
+                    backfillAiParsedItems = [];
+                    fetchData();
+                } else {
+                    alert("Lỗi ghi bù: " + res.message);
+                }
+            } catch (e) {
+                alert("Lỗi kết nối: " + e.message);
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 
