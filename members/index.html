@@ -3002,17 +3002,18 @@
 
                 async pollTopupStatus() {
                     try {
-                        const topupRes = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=MB_TOPUP_REQ&t=${Date.now()}`);
+                        const topupRes = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_TOPUP_REQ&t=${Date.now()}`);
                         if (topupRes.ok) {
-                            const csv = await topupRes.text();
-                            const newRequests = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                email: this.getField(r, ['email', 'Email']),
-                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
-                                proofUrl: this.getField(r, ['proof_url', 'ProofUrl']),
-                                status: this.getField(r, ['status', 'Status']) || 'pending',
-                                requestedAt: this.getField(r, ['requested_at', 'RequestedAt']) || new Date().toISOString(),
-                                note: this.getField(r, ['note', 'Note'])
+                            const raw = await topupRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            const newRequests = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                email: String(row['email'] || '').trim().toLowerCase(),
+                                amount: parseInt(row['amount']) || 0,
+                                proofUrl: String(row['proof_url'] || '').trim(),
+                                status: String(row['status'] || 'pending').trim().toLowerCase(),
+                                requestedAt: String(row['requested_at'] || new Date().toISOString()).trim(),
+                                note: String(row['note'] || '').trim()
                             })).filter(tr => tr.id && tr.email);
 
                             this.topupRequests = newRequests;
@@ -3456,23 +3457,24 @@
                         ]);
 
                         if (prodRes && prodRes.ok) {
-                            const csv = await prodRes.text();
-                            this.products = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                name: this.getField(r, ['name', 'Name', 'Tên']),
-                                description: this.getField(r, ['description', 'Description', 'Mô tả']),
-                                price: parseInt(this.getField(r, ['price', 'Price', 'Giá'])) || 0,
-                                type: this.getField(r, ['type', 'Type']) || 'auto',
-                                category: this.getField(r, ['category', 'Category']),
-                                status: this.getField(r, ['status', 'Status']) || 'active',
-                                createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString(),
-                                slot_type: this.getField(r, ['slot_type', 'SlotType']) || 'rieng',
-                                guide_url: this.getField(r, ['guide_url', 'GuideUrl', 'Guide_Url']) || '',
-                                sale_type: this.getField(r, ['sale_type', 'SaleType', 'Sale_Type']) || 'none',
-                                sale_price: this.getField(r, ['sale_price', 'SalePrice', 'Sale_Price']),
-                                sale_label: this.getField(r, ['sale_label', 'SaleLabel', 'Sale_Label']) || '',
-                                sale_end_date: this.getField(r, ['sale_end_date', 'SaleEndDate', 'Sale_End_Date']) || '',
-                                product_notes: this.getField(r, ['product_notes', 'ProductNotes', 'Product_Notes', 'Ghi chú', 'Ghi_Chú']) || ''
+                            const raw = await prodRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.products = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                name: String(row['name'] || '').trim(),
+                                description: String(row['description'] || '').trim(),
+                                price: parseInt(row['price']) || 0,
+                                type: String(row['type'] || 'auto').trim().toLowerCase(),
+                                category: String(row['category'] || '').trim(),
+                                status: String(row['status'] || 'active').trim().toLowerCase(),
+                                createdAt: String(row['created_at'] || new Date().toISOString()).trim(),
+                                slot_type: String(row['slot_type'] || 'rieng').trim(),
+                                guide_url: String(row['guide_url'] || '').trim(),
+                                sale_type: String(row['sale_type'] || 'none').trim().toLowerCase(),
+                                sale_price: row['sale_price'],
+                                sale_label: String(row['sale_label'] || '').trim(),
+                                sale_end_date: String(row['sale_end_date'] || '').trim(),
+                                product_notes: String(row['product_notes'] || '').trim()
                             })).filter(p => p.id && p.name);
 
                             console.log('>>> [fetchData] MB_PRODUCTS loaded count:', this.products.length);
@@ -3482,17 +3484,18 @@
                         }
 
                         if (invRes && invRes.ok) {
-                            const csv = await invRes.text();
-                            this.inventory = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                productId: this.getField(r, ['product_id', 'ProductId', 'Product_Id']),
-                                itemData: this.getField(r, ['item_data', 'ItemData', 'Item_Data']),
-                                expireDate: this.getField(r, ['expire_date', 'ExpireDate', 'Expire_Date']),
-                                status: this.getField(r, ['status', 'Status']) || 'available',
-                                soldToEmail: this.getField(r, ['sold_to_email', 'SoldToEmail']),
-                                soldAt: this.getField(r, ['sold_at', 'SoldAt']),
-                                slotType: this.getField(r, ['slot_type', 'SlotType']) || 'rieng',
-                                maxUsers: parseInt(this.getField(r, ['max_users', 'MaxUsers'])) || 1
+                            const raw = await invRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.inventory = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                productId: String(row['product_id'] || '').trim(),
+                                itemData: String(row['item_data'] || '').trim(),
+                                expireDate: row['expire_date'] ? String(row['expire_date']).trim() : '',
+                                status: String(row['status'] || 'available').trim().toLowerCase(),
+                                soldToEmail: String(row['sold_to_email'] || '').trim(),
+                                soldAt: String(row['sold_at'] || '').trim(),
+                                slotType: String(row['slot_type'] || 'rieng').trim(),
+                                maxUsers: parseInt(row['max_users']) || 1
                             })).filter(i => i.productId && (i.id || i.itemData));
 
                             console.log('>>> [fetchData] MB_INVENTORY loaded total rows count:', this.inventory.length);
@@ -3502,103 +3505,110 @@
                         }
 
                         if (walletRes && walletRes.ok) {
-                            const csv = await walletRes.text();
-                            this.walletLogs = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                email: this.getField(r, ['email', 'Email']),
-                                type: this.getField(r, ['type', 'Type']),
-                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
-                                balanceAfter: parseInt(this.getField(r, ['balance_after', 'BalanceAfter'])) || 0,
-                                refId: this.getField(r, ['ref_id', 'RefId']),
-                                note: this.getField(r, ['note', 'Note']),
-                                timestamp: this.getField(r, ['timestamp', 'Timestamp']) || new Date().toISOString()
+                            const raw = await walletRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.walletLogs = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                email: String(row['email'] || '').trim().toLowerCase(),
+                                type: String(row['type'] || '').trim(),
+                                amount: parseInt(row['amount']) || 0,
+                                balanceAfter: parseInt(row['balance_after']) || 0,
+                                refId: String(row['ref_id'] || '').trim(),
+                                note: String(row['note'] || '').trim(),
+                                timestamp: String(row['timestamp'] || new Date().toISOString()).trim()
                             })).filter(l => l.email);
                         }
 
                         if (topupRes && topupRes.ok) {
-                            const csv = await topupRes.text();
-                            this.topupRequests = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                email: this.getField(r, ['email', 'Email']),
-                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
-                                proofUrl: this.getField(r, ['proof_url', 'ProofUrl']),
-                                status: (this.getField(r, ['status', 'Status']) || 'pending').toLowerCase().trim(),
-                                requestedAt: this.getField(r, ['requested_at', 'RequestedAt']) || new Date().toISOString(),
-                                reviewedBy: this.getField(r, ['reviewed_by', 'ReviewedBy']),
-                                note: this.getField(r, ['note', 'Note'])
+                            const raw = await topupRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.topupRequests = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                email: String(row['email'] || '').trim().toLowerCase(),
+                                amount: parseInt(row['amount']) || 0,
+                                proofUrl: String(row['proof_url'] || '').trim(),
+                                status: String(row['status'] || 'pending').trim().toLowerCase(),
+                                requestedAt: String(row['requested_at'] || new Date().toISOString()).trim(),
+                                reviewedBy: String(row['reviewed_by'] || '').trim(),
+                                note: String(row['note'] || '').trim()
                             })).filter(tr => tr.id && tr.email);
                             console.log('>>> [fetchData] MB_TOPUP_REQ loaded:', this.topupRequests);
                         }
 
                         if (orderRes && orderRes.ok) {
-                            const csv = await orderRes.text();
-                            this.allOrders = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                email: this.getField(r, ['email', 'Email']),
-                                productId: this.getField(r, ['product_id', 'ProductId']),
-                                productName: this.getField(r, ['product_name', 'ProductName']),
-                                inventoryId: this.getField(r, ['inventory_id', 'InventoryId']),
-                                itemData: this.getField(r, ['item_data', 'ItemData']),
-                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
-                                status: this.getField(r, ['status', 'Status']) || 'completed',
-                                createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString()
+                            const raw = await orderRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.allOrders = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                email: String(row['email'] || '').trim().toLowerCase(),
+                                productId: String(row['product_id'] || '').trim(),
+                                productName: String(row['product_name'] || '').trim(),
+                                inventoryId: String(row['inventory_id'] || '').trim(),
+                                itemData: String(row['item_data'] || '').trim(),
+                                amount: parseInt(row['amount']) || 0,
+                                status: String(row['status'] || 'completed').trim().toLowerCase(),
+                                createdAt: String(row['created_at'] || new Date().toISOString()).trim()
                             })).filter(o => o.id);
                         }
 
                         if (pendingRes && pendingRes.ok) {
-                            const csv = await pendingRes.text();
-                            this.pendingOrders = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                email: this.getField(r, ['email', 'Email']),
-                                productId: this.getField(r, ['product_id', 'ProductId']),
-                                productName: this.getField(r, ['product_name', 'ProductName']),
-                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
-                                status: this.getField(r, ['status', 'Status']) || 'pending',
-                                createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString(),
-                                note: this.getField(r, ['note', 'Note'])
+                            const raw = await pendingRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.pendingOrders = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                email: String(row['email'] || '').trim().toLowerCase(),
+                                productId: String(row['product_id'] || '').trim(),
+                                productName: String(row['product_name'] || '').trim(),
+                                amount: parseInt(row['amount']) || 0,
+                                status: String(row['status'] || 'pending').trim().toLowerCase(),
+                                createdAt: String(row['created_at'] || new Date().toISOString()).trim(),
+                                note: String(row['note'] || '').trim()
                             })).filter(po => po.id);
                         }
 
                         if (reportRes && reportRes.ok) {
-                            const csv = await reportRes.text();
-                            this.orderReports = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                orderId: this.getField(r, ['order_id', 'OrderId']),
-                                email: this.getField(r, ['email', 'Email']),
-                                productName: this.getField(r, ['product_name', 'ProductName']),
-                                description: this.getField(r, ['description', 'Description']),
-                                status: this.getField(r, ['status', 'Status']) || 'open',
-                                createdAt: this.getField(r, ['created_at', 'CreatedAt']) || new Date().toISOString()
+                            const raw = await reportRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.orderReports = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                orderId: String(row['order_id'] || '').trim(),
+                                email: String(row['email'] || '').trim().toLowerCase(),
+                                productName: String(row['product_name'] || '').trim(),
+                                description: String(row['description'] || '').trim(),
+                                status: String(row['status'] || 'open').trim().toLowerCase(),
+                                createdAt: String(row['created_at'] || new Date().toISOString()).trim()
                             })).filter(rp => rp.id);
                         }
 
                         if (withdrawRes && withdrawRes.ok) {
-                            const csv = await withdrawRes.text();
-                            this.withdrawRequests = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                email: this.getField(r, ['email', 'Email']),
-                                amount: parseInt(this.getField(r, ['amount', 'Amount'])) || 0,
-                                bankName: this.getField(r, ['bank_name', 'BankName']),
-                                bankAccount: this.getField(r, ['bank_account', 'BankAccount']),
-                                bankOwner: this.getField(r, ['bank_owner', 'BankOwner']),
-                                status: this.getField(r, ['status', 'Status']) || 'pending',
-                                requestedAt: this.getField(r, ['requested_at', 'RequestedAt']) || new Date().toISOString(),
-                                reviewedAt: this.getField(r, ['reviewed_at', 'ReviewedAt']),
-                                note: this.getField(r, ['note', 'Note'])
+                            const raw = await withdrawRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.withdrawRequests = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                email: String(row['email'] || '').trim().toLowerCase(),
+                                amount: parseInt(row['amount']) || 0,
+                                bankName: String(row['bank_name'] || '').trim(),
+                                bankAccount: String(row['bank_account'] || '').trim(),
+                                bankOwner: String(row['bank_owner'] || '').trim(),
+                                status: String(row['status'] || 'pending').trim().toLowerCase(),
+                                requestedAt: String(row['requested_at'] || new Date().toISOString()).trim(),
+                                reviewedAt: String(row['reviewed_at'] || '').trim(),
+                                note: String(row['note'] || '').trim()
                             })).filter(wr => wr.id && wr.email);
                         }
 
                         if (usersRes && usersRes.ok) {
-                            const csv = await usersRes.text();
-                            this.mbUsers = this.parseCSV(csv).map(r => ({
-                                id: this.getField(r, ['id', 'ID']),
-                                email: this.getField(r, ['email', 'Email']),
-                                passwordHash: this.getField(r, ['password_hash', 'PasswordHash', 'Password_Hash']),
-                                displayName: this.getField(r, ['display_name', 'DisplayName', 'Display_Name']),
-                                phone: this.getField(r, ['phone', 'Phone', 'SĐT', 'SDT']),
-                                createdAt: this.getField(r, ['created_at', 'CreatedAt']),
-                                status: this.getField(r, ['status', 'Status']) || 'active',
-                                note: this.getField(r, ['note', 'Note'])
+                            const raw = await usersRes.text();
+                            const parsed = this.parseGvizTable(raw);
+                            this.mbUsers = parsed.rows.map(row => ({
+                                id: String(row['id'] || '').trim(),
+                                email: String(row['email'] || '').trim().toLowerCase(),
+                                passwordHash: String(row['password_hash'] || '').trim(),
+                                displayName: String(row['display_name'] || '').trim(),
+                                phone: String(row['phone'] || '').trim(),
+                                createdAt: String(row['created_at'] || '').trim(),
+                                status: String(row['status'] || 'active').trim().toLowerCase(),
+                                note: String(row['note'] || '').trim()
                             })).filter(u => u.email);
                         }
 
@@ -4762,6 +4772,53 @@
                 },
 
                 // UTILITY FUNCTIONS
+                parseGvizTable(responseData) {
+                    if (!responseData) return { headers: [], rows: [] };
+                    let json = responseData;
+                    if (typeof responseData === 'string') {
+                        const match = responseData.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?/);
+                        if (match && match[1]) {
+                            try { json = JSON.parse(match[1]); } catch(e) {}
+                        } else {
+                            try { json = JSON.parse(responseData); } catch(e) {}
+                        }
+                    }
+                    var table = (json && json.table) ? json.table : null;
+                    if (table && table.cols) {
+                        var headers = table.cols.map(function(c) {
+                            return (c.label || c.id || '').replace(/^\uFEFF/, '').trim().toLowerCase();
+                        });
+                        var rows = (table.rows || []).map(function(r) {
+                            var obj = {};
+                            (r.c || []).forEach(function(cell, i) {
+                                var h = headers[i];
+                                if (h) {
+                                    obj[h] = (cell && cell !== null) ? (cell.v !== undefined && cell.v !== null ? cell.v : cell.f) : null;
+                                }
+                            });
+                            return obj;
+                        });
+                        return { headers: headers, rows: rows };
+                    }
+
+                    if (typeof responseData === 'string') {
+                        const parsedRows = this.parseCSV(responseData);
+                        if (parsedRows && parsedRows.length > 0) {
+                            const headers = Object.keys(parsedRows[0]).map(h => h.toLowerCase().trim());
+                            const rows = parsedRows.map(r => {
+                                const obj = {};
+                                Object.keys(r).forEach(k => {
+                                    obj[k.toLowerCase().trim()] = r[k];
+                                });
+                                return obj;
+                            });
+                            return { headers: headers, rows: rows };
+                        }
+                    }
+
+                    return { headers: [], rows: [] };
+                },
+
                 parseCSV(csv) {
                     if (!csv || csv.includes('html')) return [];
                     csv = csv.replace(/^\uFEFF/, '');
