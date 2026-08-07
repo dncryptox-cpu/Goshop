@@ -2429,10 +2429,24 @@ function responseJSON(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
+function readSheetByName(sheetName) {
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { sheet: null, data: [], idx: function() { return -1; }, headers: [], rawHeaders: [] };
+  var values = sheet.getDataRange().getValues();
+  if (!values || values.length === 0) {
+    return { sheet: sheet, data: [], idx: function() { return -1; }, headers: [], rawHeaders: [] };
+  }
+  var rawHeaders = values[0];
+  var headers = rawHeaders.map(function(h) { return String(h || '').trim().toLowerCase(); });
+  var idx = function(name) { return headers.indexOf(String(name || '').trim().toLowerCase()); };
+  return { sheet: sheet, data: values.slice(1), idx: idx, headers: headers, rawHeaders: rawHeaders };
+}
+
 function initMemberShopSheets() {
   var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
   var schemas = {
-    'MB_PRODUCTS': ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"],
+    'MB_PRODUCTS': ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date", "product_notes"],
     'MB_INVENTORY': ["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"],
     'MB_USERS': ["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"],
     'MB_WALLET_LOG': ["id", "email", "type", "amount", "balance_after", "ref_id", "note", "timestamp"],
@@ -2463,49 +2477,72 @@ function saveProduct(productData) {
 
   var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
   var prodSheet = ss.getSheetByName('MB_PRODUCTS');
-  var expectedHeaders = ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date"];
+  var expectedHeaders = ["id", "name", "description", "price", "type", "category", "status", "created_at", "slot_type", "guide_url", "sale_type", "sale_price", "sale_label", "sale_end_date", "product_notes"];
 
   if (!prodSheet) {
     prodSheet = ss.insertSheet('MB_PRODUCTS');
     prodSheet.appendRow(expectedHeaders);
-  } else {
-    var currentHeaders = prodSheet.getRange(1, 1, 1, 14).getValues()[0];
-    var needUpdateHeader = false;
-    for (var h = 0; h < expectedHeaders.length; h++) {
-      if (String(currentHeaders[h] || '').trim() !== expectedHeaders[h]) {
-        currentHeaders[h] = expectedHeaders[h];
-        needUpdateHeader = true;
-      }
-    }
-    if (needUpdateHeader) {
-      prodSheet.getRange(1, 1, 1, 14).setValues([currentHeaders]);
-    }
   }
 
-  var prodData = prodSheet.getDataRange().getValues();
+  var sInfo = readSheetByName('MB_PRODUCTS');
+  var headers = sInfo.headers;
+  var idx = sInfo.idx;
+
+  var currentRawHeaders = sInfo.rawHeaders || [];
+  var needUpdateHeader = false;
+  for (var h = 0; h < expectedHeaders.length; h++) {
+    if (idx(expectedHeaders[h]) === -1) {
+      currentRawHeaders.push(expectedHeaders[h]);
+      needUpdateHeader = true;
+    }
+  }
+  if (needUpdateHeader) {
+    prodSheet.getRange(1, 1, 1, currentRawHeaders.length).setValues([currentRawHeaders]);
+    sInfo = readSheetByName('MB_PRODUCTS');
+    headers = sInfo.headers;
+    idx = sInfo.idx;
+  }
+
+  var prodData = sInfo.data;
+  var idIdx = idx('id');
   var existingRow = -1;
 
-  for (var i = 1; i < prodData.length; i++) {
-    if (productData.id && String(prodData[i][0]) === String(productData.id)) {
-      existingRow = i + 1;
+  for (var i = 0; i < prodData.length; i++) {
+    if (productData.id && idIdx >= 0 && String(prodData[i][idIdx]) === String(productData.id)) {
+      existingRow = i + 2;
       break;
     }
   }
 
-  var slotType = productData.slot_type || 'rieng';
-  var guideUrl = productData.guide_url || '';
-  var saleType = String(productData.sale_type || 'none').trim().toLowerCase();
-  var salePrice = (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price).trim() !== '') ? productData.sale_price : '';
-  var saleLabel = String(productData.sale_label || '').trim();
-  var saleEndDate = String(productData.sale_end_date || '').trim();
   var prodId = productData.id || ('PROD-' + Date.now());
+  var valMap = {
+    'id': prodId,
+    'name': productData.name,
+    'description': productData.description || '',
+    'price': productData.price || 0,
+    'type': productData.type || 'auto',
+    'category': productData.category || '',
+    'status': productData.status || 'active',
+    'created_at': new Date().toISOString(),
+    'slot_type': productData.slot_type || 'rieng',
+    'guide_url': productData.guide_url || '',
+    'sale_type': String(productData.sale_type || 'none').trim().toLowerCase(),
+    'sale_price': (productData.sale_price !== undefined && productData.sale_price !== null && String(productData.sale_price).trim() !== '') ? productData.sale_price : '',
+    'sale_label': String(productData.sale_label || '').trim(),
+    'sale_end_date': String(productData.sale_end_date || '').trim(),
+    'product_notes': String(productData.product_notes || '').trim()
+  };
+
+  var newRow = [];
+  for (var c = 0; c < headers.length; c++) {
+    var hKey = headers[c];
+    newRow.push(valMap[hKey] !== undefined ? valMap[hKey] : '');
+  }
 
   if (existingRow > 0) {
-    prodSheet.getRange(existingRow, 1, 1, 14).setValues([[
-      prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate
-    ]]);
+    prodSheet.getRange(existingRow, 1, 1, newRow.length).setValues([newRow]);
   } else {
-    prodSheet.appendRow([prodId, productData.name, productData.description || '', productData.price || 0, productData.type || 'auto', productData.category || '', productData.status || 'active', new Date().toISOString(), slotType, guideUrl, saleType, salePrice, saleLabel, saleEndDate]);
+    prodSheet.appendRow(newRow);
   }
   return responseJSON({ status: 'success', id: prodId });
 }
@@ -2653,21 +2690,30 @@ function bulkAddInventory(productId, items, expireDate, slotType, maxUsers) {
 function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
   var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
   var invSheet = ss.getSheetByName("MB_INVENTORY");
-  var headers = ["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"];
+  var expectedHeaders = ["id", "product_id", "item_data", "expire_date", "status", "sold_to_email", "sold_at", "slot_type", "max_users"];
 
   if (!invSheet) {
     invSheet = ss.insertSheet("MB_INVENTORY");
-    invSheet.appendRow(headers);
-  } else {
-    var curH = invSheet.getRange(1, 1, 1, 9).getValues()[0];
-    var needUpdate = false;
-    for (var h = 0; h < headers.length; h++) {
-      if (String(curH[h] || '').trim() !== headers[h]) {
-        curH[h] = headers[h];
-        needUpdate = true;
-      }
+    invSheet.appendRow(expectedHeaders);
+  }
+
+  var sInfo = readSheetByName("MB_INVENTORY");
+  var headers = sInfo.headers;
+  var idx = sInfo.idx;
+
+  var currentRawHeaders = sInfo.rawHeaders || [];
+  var needUpdate = false;
+  for (var h = 0; h < expectedHeaders.length; h++) {
+    if (idx(expectedHeaders[h]) === -1) {
+      currentRawHeaders.push(expectedHeaders[h]);
+      needUpdate = true;
     }
-    if (needUpdate) invSheet.getRange(1, 1, 1, 9).setValues([curH]);
+  }
+  if (needUpdate) {
+    invSheet.getRange(1, 1, 1, currentRawHeaders.length).setValues([currentRawHeaders]);
+    sInfo = readSheetByName("MB_INVENTORY");
+    headers = sInfo.headers;
+    idx = sInfo.idx;
   }
 
   if (!productId) {
@@ -2678,14 +2724,17 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
   maxUsers = parseInt(maxUsers) || (slotType === "gia_dinh" ? 3 : 1);
   expireDate = expireDate || "";
 
-  // Đọc dữ liệu hiện có trong MB_INVENTORY để kiểm tra trùng lặp
-  var existingData = invSheet.getDataRange().getValues();
+  // Fix 5: Đọc dữ liệu hiện có trong MB_INVENTORY qua header name để chống trùng
+  var existingData = sInfo.data;
+  var prodIdIdx = idx('product_id');
+  var itemDataIdx = idx('item_data');
+
   var existingMap = {};
   var cleanTargetProdId = String(productId).trim().toLowerCase();
 
-  for (var k = 1; k < existingData.length; k++) {
-    var exProdId = String(existingData[k][1] || "").trim().toLowerCase(); // Cột B (product_id)
-    var exItemData = String(existingData[k][2] || "").trim().toLowerCase(); // Cột C (item_data)
+  for (var k = 0; k < existingData.length; k++) {
+    var exProdId = (prodIdIdx >= 0) ? String(existingData[k][prodIdIdx] || "").trim().toLowerCase() : "";
+    var exItemData = (itemDataIdx >= 0) ? String(existingData[k][itemDataIdx] || "").trim().toLowerCase() : "";
     if (exProdId === cleanTargetProdId && exItemData !== "") {
       existingMap[exItemData] = true;
     }
@@ -2702,7 +2751,7 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
 
       var cleanLineKey = line.toLowerCase();
 
-      // Kiểm tra trùng item_data cho cùng productId (so sánh Cột C)
+      // Kiểm tra trùng item_data cho cùng productId
       if (existingMap[cleanLineKey]) {
         Logger.log(">>> [addInventoryBulk] Skipping duplicate item_data: '" + line + "' for product_id: " + productId);
         skippedCount++;
@@ -2710,22 +2759,29 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
       }
 
       var id = "INV-" + Date.now() + "-" + Math.floor(Math.random() * 10000);
-      var rowData = [
-        id,
-        productId,
-        line,
-        expireDate,
-        "available",
-        "",
-        "",
-        slotType,
-        maxUsers
-      ];
+      var rowObj = {
+        'id': id,
+        'product_id': productId,
+        'item_data': line,
+        'expire_date': expireDate,
+        'status': 'available',
+        'sold_to_email': '',
+        'sold_at': '',
+        'slot_type': slotType,
+        'max_users': maxUsers
+      };
+
+      var rowData = [];
+      for (var c = 0; c < headers.length; c++) {
+        var hKey = headers[c];
+        rowData.push(rowObj[hKey] !== undefined ? rowObj[hKey] : '');
+      }
+
       Logger.log(">>> [addInventoryBulk] Appending row " + (i + 1) + ": " + JSON.stringify(rowData));
       invSheet.appendRow(rowData);
       addedCount++;
       addedIds.push(id);
-      existingMap[cleanLineKey] = true; // Lưu key vào map để chống trùng nội bộ trong cùng đợt bulk
+      existingMap[cleanLineKey] = true;
     }
   }
 
@@ -2737,6 +2793,8 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
   return responseJSON({
     status: "success",
     message: msg,
+    added: addedCount,
+    skipped: skippedCount,
     addedCount: addedCount,
     skippedCount: skippedCount,
     addedIds: addedIds
@@ -2744,28 +2802,30 @@ function addInventoryBulk(productId, items, slotType, maxUsers, expireDate) {
 }
 
 function fixInventoryStatus() {
-  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
-  var invSheet = ss.getSheetByName("MB_INVENTORY");
-  if (!invSheet) {
+  var sInfo = readSheetByName("MB_INVENTORY");
+  if (!sInfo.sheet) {
     return responseJSON({ status: "error", message: "Sheet MB_INVENTORY chưa tồn tại" });
   }
 
-  var data = invSheet.getDataRange().getValues();
+  var data = sInfo.data;
+  var idx = sInfo.idx;
+  var statusIdx = idx('status');
+  var soldEmailIdx = idx('sold_to_email');
   var fixedCount = 0;
 
-  for (var i = 1; i < data.length; i++) {
-    var status = String(data[i][4] || data[i][6] || "").trim().toLowerCase();
-    var soldEmail = String(data[i][5] || data[i][7] || "").trim();
+  if (statusIdx === -1) {
+    return responseJSON({ status: "error", message: "Không tìm thấy cột status trong MB_INVENTORY" });
+  }
 
-    if (status === "" || status === "null" || status === "undefined") {
+  for (var i = 0; i < data.length; i++) {
+    var statusVal = String(data[i][statusIdx] || "").trim().toLowerCase();
+    var soldEmail = (soldEmailIdx >= 0) ? String(data[i][soldEmailIdx] || "").trim() : "";
+
+    if (statusVal === "" || statusVal === "null" || statusVal === "undefined") {
       var newStatus = (soldEmail !== "") ? "sold" : "available";
-      // Update both possible status columns if 9-column sheet format
-      invSheet.getRange(i + 1, 5).setValue(newStatus);
-      if (invSheet.getLastColumn() >= 7) {
-        invSheet.getRange(i + 1, 7).setValue(newStatus);
-      }
+      sInfo.sheet.getRange(i + 2, statusIdx + 1).setValue(newStatus);
       fixedCount++;
-      Logger.log(">>> [fixInventoryStatus] Fixed row " + (i + 1) + ": status set to " + newStatus);
+      Logger.log(">>> [fixInventoryStatus] Fixed row " + (i + 2) + ": status set to " + newStatus);
     }
   }
 
@@ -2875,13 +2935,12 @@ function purchaseProduct(email, productId) {
   }
 
   try {
-    var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
-    var prodSheet = ss.getSheetByName('MB_PRODUCTS');
-    var invSheet = ss.getSheetByName('MB_INVENTORY');
-    var logSheet = ss.getSheetByName('MB_WALLET_LOG');
-    var orderSheet = ss.getSheetByName('MB_ORDERS');
+    var prodInfo = readSheetByName('MB_PRODUCTS');
+    var invInfo = readSheetByName('MB_INVENTORY');
+    var logInfo = readSheetByName('MB_WALLET_LOG');
+    var orderInfo = readSheetByName('MB_ORDERS');
 
-    if (!prodSheet || !invSheet || !logSheet || !orderSheet) {
+    if (!prodInfo.sheet || !invInfo.sheet || !logInfo.sheet || !orderInfo.sheet) {
       return responseJSON({ status: 'error', message: 'Sheet hệ thống chưa khởi tạo đầy đủ' });
     }
 
@@ -2890,16 +2949,24 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Thiếu email hoặc productId' });
     }
 
-    var prodData = prodSheet.getDataRange().getValues();
+    // Đọc MB_PRODUCTS theo tên cột
+    var pData = prodInfo.data;
+    var pIdx = prodInfo.idx;
+    var pIdIdx = pIdx('id');
+    var pNameIdx = pIdx('name');
+    var pPriceIdx = pIdx('price');
+    var pTypeIdx = pIdx('type');
+    var pStatusIdx = pIdx('status');
+
     var product = null;
-    for (var p = 1; p < prodData.length; p++) {
-      if (String(prodData[p][0]) === String(productId)) {
+    for (var p = 0; p < pData.length; p++) {
+      if (pIdIdx >= 0 && String(pData[p][pIdIdx]) === String(productId)) {
         product = {
-          id: prodData[p][0],
-          name: prodData[p][1],
-          price: parseInt(prodData[p][3]) || 0,
-          type: prodData[p][4] || 'auto',
-          status: prodData[p][6] || 'active'
+          id: pData[p][pIdIdx],
+          name: pNameIdx >= 0 ? pData[p][pNameIdx] : '',
+          price: pPriceIdx >= 0 ? (parseInt(pData[p][pPriceIdx]) || 0) : 0,
+          type: pTypeIdx >= 0 ? (pData[p][pTypeIdx] || 'auto') : 'auto',
+          status: pStatusIdx >= 0 ? (pData[p][pStatusIdx] || 'active') : 'active'
         };
         break;
       }
@@ -2909,11 +2976,16 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Sản phẩm không khả dụng' });
     }
 
-    var logData = logSheet.getDataRange().getValues();
+    // Đọc MB_WALLET_LOG theo tên cột
+    var lData = logInfo.data;
+    var lIdx = logInfo.idx;
+    var lEmailIdx = lIdx('email');
+    var lAmountIdx = lIdx('amount');
     var currentBalance = 0;
-    for (var l = 1; l < logData.length; l++) {
-      if (String(logData[l][1]).trim().toLowerCase() === cleanEmail) {
-        currentBalance += (parseInt(logData[l][3]) || 0);
+
+    for (var l = 0; l < lData.length; l++) {
+      if (lEmailIdx >= 0 && String(lData[l][lEmailIdx]).trim().toLowerCase() === cleanEmail) {
+        currentBalance += (lAmountIdx >= 0 ? (parseInt(lData[l][lAmountIdx]) || 0) : 0);
       }
     }
 
@@ -2921,26 +2993,39 @@ function purchaseProduct(email, productId) {
       return responseJSON({ status: 'error', message: 'Số dư ví không đủ (' + currentBalance + ' < ' + product.price + ')' });
     }
 
-    var invData = invSheet.getDataRange().getValues();
+    // Đọc MB_INVENTORY theo tên cột
+    var iData = invInfo.data;
+    var iIdx = invInfo.idx;
+    var invProdIdIdx = iIdx('product_id');
+    var invStatusIdx = iIdx('status');
+    var invExpireIdx = iIdx('expire_date');
+    var invIdIdx = iIdx('id');
+    var invItemDataIdx = iIdx('item_data');
+    var invSlotTypeIdx = iIdx('slot_type');
+    var invMaxUsersIdx = iIdx('max_users');
+    var invSoldToEmailIdx = iIdx('sold_to_email');
+    var invSoldAtIdx = iIdx('sold_at');
+
     var targetInvRow = -1;
     var targetInvItem = null;
     var cleanProductId = String(productId || '').trim().toLowerCase();
+    var now = new Date();
     Logger.log('>>> [purchaseProduct] Looking for available slot with product_id: "' + cleanProductId + '"');
 
-    for (var i = 1; i < invData.length; i++) {
-      var rowProdId = String(invData[i][1] || '').trim().toLowerCase();
-      var rowStatus = String(invData[i][4] || '').trim().toLowerCase();
-      var rowExpire = invData[i][3]; // cột D = expire_date
+    for (var i = 0; i < iData.length; i++) {
+      var rowProdId = (invProdIdIdx >= 0) ? String(iData[i][invProdIdIdx] || '').trim().toLowerCase() : '';
+      var rowStatus = (invStatusIdx >= 0) ? String(iData[i][invStatusIdx] || '').trim().toLowerCase() : '';
+      var rowExpire = (invExpireIdx >= 0) ? iData[i][invExpireIdx] : null;
 
       if (rowProdId === cleanProductId && rowStatus === 'available') {
         if (rowExpire && new Date(rowExpire) < now) continue;
-        targetInvRow = i + 1;
+        targetInvRow = i + 2; // 1-based index (row 1 is header)
         targetInvItem = {
-          id: invData[i][0],
-          itemData: invData[i][2],
-          expireDate: invData[i][3] || '',
-          slotType: invData[i][7] || 'rieng',
-          maxUsers: parseInt(invData[i][8]) || 1
+          id: invIdIdx >= 0 ? iData[i][invIdIdx] : '',
+          itemData: invItemDataIdx >= 0 ? iData[i][invItemDataIdx] : '',
+          expireDate: invExpireIdx >= 0 ? (iData[i][invExpireIdx] || '') : '',
+          slotType: invSlotTypeIdx >= 0 ? (iData[i][invSlotTypeIdx] || 'rieng') : 'rieng',
+          maxUsers: invMaxUsersIdx >= 0 ? (parseInt(iData[i][invMaxUsersIdx]) || 1) : 1
         };
         break;
       }
@@ -2953,14 +3038,14 @@ function purchaseProduct(email, productId) {
     var newBalance = currentBalance - product.price;
     var logId = 'LOG-' + Date.now();
     var logNote = 'Mua hàng: ' + product.name;
-    logSheet.appendRow([logId, cleanEmail, 'purchase', -product.price, newBalance, product.id, logNote, new Date().toISOString()]);
+    logInfo.sheet.appendRow([logId, cleanEmail, 'purchase', -product.price, newBalance, product.id, logNote, new Date().toISOString()]);
 
-    invSheet.getRange(targetInvRow, 5).setValue('sold');
-    invSheet.getRange(targetInvRow, 6).setValue(cleanEmail);
-    invSheet.getRange(targetInvRow, 7).setValue(new Date().toISOString());
+    if (invStatusIdx >= 0) invInfo.sheet.getRange(targetInvRow, invStatusIdx + 1).setValue('sold');
+    if (invSoldToEmailIdx >= 0) invInfo.sheet.getRange(targetInvRow, invSoldToEmailIdx + 1).setValue(cleanEmail);
+    if (invSoldAtIdx >= 0) invInfo.sheet.getRange(targetInvRow, invSoldAtIdx + 1).setValue(new Date().toISOString());
 
     var orderId = 'ORD-' + Date.now();
-    orderSheet.appendRow([orderId, cleanEmail, product.id, product.name, targetInvItem.id, targetInvItem.itemData, product.effectivePrice || product.price, 'completed', new Date().toISOString(), 'Thành công']);
+    orderInfo.sheet.appendRow([orderId, cleanEmail, product.id, product.name, targetInvItem.id, targetInvItem.itemData, product.price, 'completed', new Date().toISOString(), 'Thành công']);
 
     // Đồng bộ đơn hoàn thành sang DON_HANG_MOI (Không block đơn hàng nếu lỗi)
     syncOrderToDonHangMoi({

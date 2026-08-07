@@ -429,15 +429,24 @@
 
                                         <!-- Badge góc trên trái: Trạng thái kho -->
                                         <div class="absolute top-3 left-3 z-10">
-                                            <template x-if="p.type === 'manual'">
-                                                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-900/80 text-purple-200 backdrop-blur-xs border border-purple-400/30">
+                                            <template x-if="getAvailableStock(p.id) > 3">
+                                                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider bg-emerald-900/80 text-emerald-200 backdrop-blur-xs border border-emerald-400/30 shadow-xs"
+                                                      x-text="'Còn ' + getAvailableStock(p.id) + ' slot'">
+                                                </span>
+                                            </template>
+                                            <template x-if="getAvailableStock(p.id) >= 1 && getAvailableStock(p.id) <= 3">
+                                                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider bg-amber-900/80 text-amber-200 backdrop-blur-xs border border-amber-400/30 shadow-xs"
+                                                      x-text="'Sắp hết (' + getAvailableStock(p.id) + ' slot)'">
+                                                </span>
+                                            </template>
+                                            <template x-if="getAvailableStock(p.id) === 0 && (p.type || 'auto').toLowerCase() === 'manual'">
+                                                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-900/80 text-purple-200 backdrop-blur-xs border border-purple-400/30 shadow-xs">
                                                     Sẵn sàng tiếp nhận
                                                 </span>
                                             </template>
-                                            <template x-if="p.type === 'auto'">
-                                                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider backdrop-blur-xs shadow-xs"
-                                                    :class="getAvailableStock(p.id) > 3 ? 'bg-emerald-900/80 text-emerald-200 border border-emerald-400/30' : (getAvailableStock(p.id) > 0 ? 'bg-amber-900/80 text-amber-200 border border-amber-400/30' : 'bg-red-900/80 text-red-200 border border-red-400/30')"
-                                                    x-text="getAvailableStock(p.id) > 3 ? ('Còn ' + getAvailableStock(p.id) + ' slot') : (getAvailableStock(p.id) > 0 ? ('Sắp hết (' + getAvailableStock(p.id) + ')') : 'Hết hàng')">
+                                            <template x-if="getAvailableStock(p.id) === 0 && (p.type || 'auto').toLowerCase() === 'auto'">
+                                                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider bg-red-900/80 text-red-200 backdrop-blur-xs border border-red-400/30 shadow-xs">
+                                                    Hết hàng
                                                 </span>
                                             </template>
                                         </div>
@@ -445,8 +454,8 @@
                                         <!-- Badge góc trên phải: Loại xử lý -->
                                         <div class="absolute top-3 right-3 z-10">
                                             <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-xs shadow-xs"
-                                                :class="p.type === 'auto' ? 'bg-emerald-500/90 text-white' : 'bg-amber-500/90 text-white'"
-                                                x-text="p.type === 'auto' ? 'Tự Động' : 'Duyệt Tay'">
+                                                :class="(p.type || 'auto').toLowerCase() === 'auto' ? 'bg-emerald-500/90 text-white' : 'bg-amber-500/90 text-white'"
+                                                x-text="(p.type || 'auto').toLowerCase() === 'auto' ? 'Tự động' : 'Duyệt tay'">
                                             </span>
                                         </div>
 
@@ -468,31 +477,31 @@
                                             <p class="text-xs text-gray-500 mt-1 truncate" x-text="p.description || 'Chính hãng, bảo hành full thời gian'"></p>
                                         </div>
 
-                                        <!-- THỜI HẠN & ĐỊNH DẠNG GIAO HÀNG -->
-                                        <div class="flex items-center gap-3 text-xs text-gray-600 bg-gray-50 p-2.5 rounded-xl border border-gray-100">
-                                            <span class="font-medium flex items-center gap-1">⏱ 30 ngày</span>
-                                            <span class="text-gray-300">•</span>
-                                            <span class="font-medium flex items-center gap-1" x-text="p.slot_type === 'gia_dinh' ? '📦 Slot Gia Đình' : '📦 Mail|Pass'"></span>
+                                        <!-- GIÁ SẢN PHẨM HỢP NHẤT (SALE / REGULAR) -->
+                                        <div class="flex items-baseline gap-2 pt-1 border-t border-gray-100">
+                                            <template x-if="hasActiveSale(p)">
+                                                <div class="flex items-baseline gap-2 flex-wrap">
+                                                    <span class="text-lg font-black text-red-600 tracking-tight" x-text="formatCurrency(getEffectivePrice(p))"></span>
+                                                    <span class="text-xs text-gray-400 line-through font-semibold" x-text="formatCurrency(p.price)"></span>
+                                                </div>
+                                            </template>
+                                            <template x-if="!hasActiveSale(p)">
+                                                <span class="text-lg font-black text-gray-900 tracking-tight" x-text="formatCurrency(p.price)"></span>
+                                            </template>
                                         </div>
 
-                                        <!-- Countdown Timer nếu Flash Sale -->
-                                        <template x-if="getSaleCountdownText(p)">
-                                            <div class="text-[11px] font-mono font-bold text-amber-900 flex items-center justify-between bg-amber-50 p-2 rounded-lg border border-amber-200/60">
-                                                <span class="text-amber-800">⏰ Kết thúc sau:</span>
-                                                <strong class="font-black text-red-600 text-xs" x-text="getSaleCountdownText(p)"></strong>
-                                            </div>
-                                        </template>
-
                                         <!-- PHẦN GHI CHÚ SẢN PHẨM (product_notes) -->
-                                        <template x-if="p.product_notes">
-                                            <div class="bg-[#fffbeb] border border-[#fde68a] rounded-lg p-3 text-xs text-amber-950 font-sans whitespace-pre-line leading-relaxed shadow-2xs mt-2">
-                                                <div class="flex items-center justify-between font-bold text-amber-900 mb-1">
+                                        <template x-if="p.product_notes && p.product_notes.trim()">
+                                            <div class="bg-amber-50/80 border border-amber-200/80 rounded-xl p-2.5 text-xs text-amber-900 space-y-1">
+                                                <div class="flex items-center justify-between font-bold text-[11px] text-amber-950">
                                                     <span class="flex items-center gap-1">ℹ️ Thông tin sản phẩm</span>
                                                     <button type="button" @click="toggleNoteCollapse(p.id)" class="text-[11px] text-amber-800 hover:underline font-semibold">
                                                         <span x-text="expandedNotes[p.id] ? 'Thu gọn ▲' : 'Xem thêm ▼'"></span>
                                                     </button>
                                                 </div>
-                                                <div :class="expandedNotes[p.id] ? '' : 'line-clamp-3 overflow-hidden'" x-text="p.product_notes"></div>
+                                                <p class="text-[11px] leading-relaxed whitespace-pre-line text-amber-900"
+                                                   :class="expandedNotes[p.id] ? '' : 'line-clamp-2'"
+                                                   x-text="p.product_notes"></p>
                                             </div>
                                         </template>
                                     </div>
