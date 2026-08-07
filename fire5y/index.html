@@ -324,9 +324,8 @@
             .quick-single-box { flex-direction: column !important; gap: 0.5rem !important; }
             .quick-single-box .btn-row { display: flex; gap: 0.5rem; width: 100%; }
             .quick-single-box .btn-row button { flex: 1; justify-content: center; }
-            .form-grid { grid-template-columns: 1fr !important; gap: 0.5rem !important; margin-bottom: 0.5rem !important; }
-            .ai-toggle-bar { flex-direction: column !important; gap: 4px !important; }
-            .ai-toggle-btn { font-size: 0.8rem; padding: 0.5rem; }
+            .ai-toggle-bar { flex-direction: row !important; gap: 2px !important; padding: 3px !important; }
+            .ai-toggle-btn { font-size: 0.78rem !important; padding: 6px 4px !important; white-space: nowrap; }
         }
 
         @media (max-width: 480px) {
@@ -1046,32 +1045,17 @@
                         <div style="display: flex; gap: 0.75rem; align-items: center;">
                             <input type="file" id="quickBatchFiles" accept="image/*" multiple style="display:none;" onchange="handleBatchFilesSelected(event)">
                             <button class="btn btn-secondary" onclick="document.getElementById('quickBatchFiles').click()">
-                                <i data-lucide="images" class="w-4 h-4"></i> Chọn Nhiều Ảnh (<span id="batchFileCount">0</span>)
+                                <i data-lucide="images" class="w-4 h-4"></i> Ảnh (<span id="batchFileCount">0</span>)
                             </button>
                             <button class="btn btn-primary-sm" id="btnParseBatch" onclick="parseAiBatch()"><i data-lucide="cpu" class="w-4 h-4"></i> Phân Tích Bằng AI</button>
                         </div>
                     </div>
 
-                    <!-- Review Table Batch -->
+                    <!-- Review List Batch (Mobile Responsive Cards) -->
                     <div id="batchReviewSection" style="display: none;">
-                        <h4 style="font-size: 0.95rem; color: var(--ocean-deep); margin-top: 1rem; font-weight: 700;">Bảng Review Giao Dịch (Chỉnh sửa trước khi lưu):</h4>
-                        <div class="review-table-container">
-                            <table class="review-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 110px;">Ngày</th>
-                                        <th style="width: 75px;">Loại</th>
-                                        <th style="width: 110px;">Số tiền</th>
-                                        <th>Danh mục</th>
-                                        <th>Tài khoản</th>
-                                        <th>Mô tả</th>
-                                        <th style="width: 40px;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="batchReviewBody"></tbody>
-                            </table>
-                        </div>
-                        <button class="btn btn-primary-sm" id="btnSubmitBatchSave" style="width: 100%; justify-content: center; margin-top: 1rem; padding: 0.8rem;" onclick="submitBatchSave()">Lưu tất cả</button>
+                        <h4 style="font-size: 0.9rem; color: var(--ocean-deep); margin-top: 0.85rem; margin-bottom: 0.5rem; font-weight: 700;">Giao Dịch Đã Bóc Tách (Chỉnh sửa trước khi lưu):</h4>
+                        <div id="batchReviewListContainer" style="display: flex; flex-direction: column; max-height: 280px; overflow-y: auto; padding-right: 2px;"></div>
+                        <button class="btn btn-primary-sm" id="btnSubmitBatchSave" style="width: 100%; justify-content: center; margin-top: 0.85rem; padding: 0.8rem; font-weight: 700;" onclick="submitBatchSave()">Lưu Tất Cả Giao Dịch Batch</button>
                     </div>
                 </div>
 
@@ -3444,10 +3428,16 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
 
         function renderBatchReviewTable() {
             const sec = document.getElementById('batchReviewSection');
-            const tbody = document.getElementById('batchReviewBody');
+            const container = document.getElementById('batchReviewListContainer');
+            if (!sec || !container) return;
             sec.style.display = 'block';
 
-            tbody.innerHTML = batchReviewItems.map((item, idx) => {
+            if (batchReviewItems.length === 0) {
+                container.innerHTML = `<div style="font-size: 0.85rem; color: var(--text-muted); padding: 1rem; text-align: center;">Chưa có giao dịch nào để review.</div>`;
+                return;
+            }
+
+            container.innerHTML = batchReviewItems.map((item, idx) => {
                 const catOptions = allCategories.map(c => 
                     `<option value="${c.name}" ${item.category && item.category.toLowerCase() === c.name.toLowerCase() ? 'selected' : ''}>${c.name}</option>`
                 ).join('');
@@ -3457,29 +3447,52 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 ).join('');
 
                 return `
-                <tr>
-                    <td><input type="date" value="${item.date || new Date().toISOString().split('T')[0]}" onchange="updateBatchItem(${idx}, 'date', this.value)"></td>
-                    <td>
-                        <select onchange="updateBatchItem(${idx}, 'type', this.value)">
-                            <option value="Chi" ${item.type === 'Chi' || item.type === 'chi' ? 'selected' : ''}>Chi</option>
-                            <option value="Thu" ${item.type === 'Thu' || item.type === 'thu' ? 'selected' : ''}>Thu</option>
-                        </select>
-                    </td>
-                    <td><input type="number" value="${item.amount || 0}" onchange="updateBatchItem(${idx}, 'amount', Number(this.value))"></td>
-                    <td>
-                        <select onchange="updateBatchItem(${idx}, 'category', this.value)">
-                            ${catOptions}
-                        </select>
-                    </td>
-                    <td>
-                        <select onchange="updateBatchItem(${idx}, 'account', this.value)">
-                            ${accOptions}
-                        </select>
-                    </td>
-                    <td><input type="text" value="${item.description || ''}" onchange="updateBatchItem(${idx}, 'description', this.value)"></td>
-                    <td><button style="color:var(--berry-alert); background:none;" onclick="removeBatchItem(${idx})">&times;</button></td>
-                </tr>
-            `}).join('');
+                    <div style="background: var(--sea-foam); border: 1px solid var(--border); border-radius: 12px; padding: 0.65rem 0.8rem; margin-bottom: 0.6rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; padding-bottom: 0.3rem; border-bottom: 1px dashed var(--border);">
+                            <span style="font-size: 0.8rem; font-weight: 700; color: var(--ocean-deep);">Giao dịch #${idx + 1}</span>
+                            <button class="btn btn-secondary-sm" style="padding: 1px 6px; font-size: 0.75rem; color: var(--berry-alert);" onclick="removeBatchItem(${idx})">&times; Xoá</button>
+                        </div>
+                        <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-bottom: 0.4rem;">
+                            <div>
+                                <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 1px;">Số tiền *</label>
+                                <input type="number" class="form-input" style="padding: 4px 6px; margin: 0; font-weight: 700; font-size: 0.85rem; color: var(--trail-moss);" value="${item.amount || 0}" onchange="updateBatchItem(${idx}, 'amount', Number(this.value))">
+                            </div>
+                            <div>
+                                <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 1px;">Loại *</label>
+                                <select class="form-input" style="padding: 4px 6px; margin: 0; font-weight: 700; font-size: 0.85rem;" onchange="updateBatchItem(${idx}, 'type', this.value)">
+                                    <option value="Chi" ${item.type === 'Chi' || item.type === 'chi' ? 'selected' : ''}>Chi</option>
+                                    <option value="Thu" ${item.type === 'Thu' || item.type === 'thu' ? 'selected' : ''}>Thu</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-bottom: 0.4rem;">
+                            <div>
+                                <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 1px;">Danh mục *</label>
+                                <select class="form-input" style="padding: 4px 6px; margin: 0; font-size: 0.8rem;" onchange="updateBatchItem(${idx}, 'category', this.value)">
+                                    ${catOptions}
+                                </select>
+                            </div>
+                            <div>
+                                <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 1px;">Tài khoản *</label>
+                                <select class="form-input" style="padding: 4px 6px; margin: 0; font-size: 0.8rem;" onchange="updateBatchItem(${idx}, 'account', this.value)">
+                                    ${accOptions}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem;">
+                            <div>
+                                <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 1px;">Mô tả</label>
+                                <input type="text" class="form-input" style="padding: 4px 6px; margin: 0; font-size: 0.8rem;" value="${item.description || ''}" placeholder="Ghi chú" onchange="updateBatchItem(${idx}, 'description', this.value)">
+                            </div>
+                            <div>
+                                <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 1px;">Ngày</label>
+                                <input type="date" class="form-input" style="padding: 4px 6px; margin: 0; font-size: 0.8rem;" value="${item.date || new Date().toISOString().split('T')[0]}" onchange="updateBatchItem(${idx}, 'date', this.value)">
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
         function updateBatchItem(idx, key, val) {
