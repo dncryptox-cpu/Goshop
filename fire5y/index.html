@@ -1337,10 +1337,16 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const curYear = now.getFullYear();
             const curMonth = now.getMonth(); // 0-indexed
 
-            let html = '';
+            let html = `
+                <option value="today">Hôm nay</option>
+                <option value="yesterday">Hôm qua</option>
+                <option value="this_week">Tuần này</option>
+                <option value="this_month" selected>Tháng này (Tháng ${String(curMonth + 1).padStart(2, '0')}/${curYear})</option>
+                <option disabled>──────────</option>
+            `;
 
-            // Generate recent 12 specific months
-            for (let i = 0; i < 12; i++) {
+            // Generate recent 12 specific months (excluding current month which is at top)
+            for (let i = 1; i < 12; i++) {
                 let m = curMonth - i;
                 let y = curYear;
                 while (m < 0) {
@@ -1352,10 +1358,9 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 const val = `${y}-${monthStr}`;
                 
                 let label = `Tháng ${monthStr}/${y}`;
-                if (i === 0) label += ' (Tháng này)';
-                else if (i === 1) label += ' (Tháng trước)';
+                if (i === 1) label += ' (Tháng trước)';
 
-                html += `<option value="${val}" ${i === 0 ? 'selected' : ''}>${label}</option>`;
+                html += `<option value="${val}">${label}</option>`;
             }
 
             html += `
@@ -1373,11 +1378,12 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             populateOverviewPeriodOptions();
 
             const selectEl = document.getElementById('overviewPeriodFilter');
-            const val = selectEl ? selectEl.value : '';
+            const val = selectEl ? selectEl.value : 'this_month';
 
             const now = new Date();
             const curYear = now.getFullYear();
             const curMonth = now.getMonth(); // 0-indexed
+            const todayDate = new Date(curYear, curMonth, now.getDate());
 
             return allTransactions.filter(t => {
                 if (!t.date || t.status === 'Cancelled') return false;
@@ -1388,9 +1394,22 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 const year = parseInt(parts[0], 10);
                 const month = parseInt(parts[1], 10) - 1; // 0-indexed
                 const day = parseInt(parts[2], 10);
+                const tDate = new Date(year, month, day);
 
-                if (val === 'last_3_months') {
-                    const tDate = new Date(year, month, day);
+                if (val === 'today') {
+                    return tDate.getTime() === todayDate.getTime();
+                } else if (val === 'yesterday') {
+                    const yestDate = new Date(todayDate);
+                    yestDate.setDate(yestDate.getDate() - 1);
+                    return tDate.getTime() === yestDate.getTime();
+                } else if (val === 'this_week') {
+                    const dayOfWeek = todayDate.getDay() || 7; // 1 (Mon) to 7 (Sun)
+                    const monday = new Date(todayDate);
+                    monday.setDate(todayDate.getDate() - (dayOfWeek - 1));
+                    return tDate >= monday && tDate <= todayDate;
+                } else if (val === 'this_month') {
+                    return year === curYear && month === curMonth;
+                } else if (val === 'last_3_months') {
                     const threeMonthsAgo = new Date(curYear, curMonth - 2, 1);
                     return tDate >= threeMonthsAgo;
                 } else if (val === 'this_year') {
@@ -1427,11 +1446,12 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
         function getFilteredOverviewTrades() {
             populateOverviewPeriodOptions();
             const selectEl = document.getElementById('overviewPeriodFilter');
-            const val = selectEl ? selectEl.value : '';
+            const val = selectEl ? selectEl.value : 'this_month';
 
             const now = new Date();
             const curYear = now.getFullYear();
             const curMonth = now.getMonth(); // 0-indexed
+            const todayDate = new Date(curYear, curMonth, now.getDate());
 
             return (allTradeJournal || []).filter(t => {
                 if (t.status !== 'Đã đóng' || !t.date) return false;
@@ -1442,9 +1462,22 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
                 const year = parseInt(parts[0], 10);
                 const month = parseInt(parts[1], 10) - 1; // 0-indexed
                 const day = parseInt(parts[2], 10);
+                const tDate = new Date(year, month, day);
 
-                if (val === 'last_3_months') {
-                    const tDate = new Date(year, month, day);
+                if (val === 'today') {
+                    return tDate.getTime() === todayDate.getTime();
+                } else if (val === 'yesterday') {
+                    const yestDate = new Date(todayDate);
+                    yestDate.setDate(yestDate.getDate() - 1);
+                    return tDate.getTime() === yestDate.getTime();
+                } else if (val === 'this_week') {
+                    const dayOfWeek = todayDate.getDay() || 7;
+                    const monday = new Date(todayDate);
+                    monday.setDate(todayDate.getDate() - (dayOfWeek - 1));
+                    return tDate >= monday && tDate <= todayDate;
+                } else if (val === 'this_month') {
+                    return year === curYear && month === curMonth;
+                } else if (val === 'last_3_months') {
                     const threeMonthsAgo = new Date(curYear, curMonth - 2, 1);
                     return tDate >= threeMonthsAgo;
                 } else if (val === 'this_year') {
@@ -1515,7 +1548,15 @@ Quy tắc: không chắc -> category "Khác", confidence "low". Không bịa s�
             const val = selectEl ? selectEl.value : '';
 
             let periodText = 'Tháng Này';
-            if (val.includes('-')) {
+            if (val === 'today') {
+                periodText = 'Hôm Nay';
+            } else if (val === 'yesterday') {
+                periodText = 'Hôm Qua';
+            } else if (val === 'this_week') {
+                periodText = 'Tuần Này';
+            } else if (val === 'this_month') {
+                periodText = 'Tháng Này';
+            } else if (val.includes('-')) {
                 const parts = val.split('-');
                 periodText = `Tháng ${parts[1]}/${parts[0]}`;
             } else if (val === 'last_3_months') {
