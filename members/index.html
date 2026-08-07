@@ -3478,20 +3478,39 @@
 
                         if (invRes && invRes.ok) {
                             const raw = await invRes.text();
+
+                            // === DEBUG LOG — xác định gviz trả headers gì ===
+                            try {
+                                const match = raw.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?/);
+                                if (match && match[1]) {
+                                    const parsed = JSON.parse(match[1]);
+                                    if (parsed.table && parsed.table.cols) {
+                                        console.log('>>> [MB_INVENTORY] gviz col labels:', parsed.table.cols.map(c => c.label || c.id));
+                                        if (parsed.table.rows && parsed.table.rows.length > 0) {
+                                            const firstRow = parsed.table.rows[0];
+                                            console.log('>>> [MB_INVENTORY] first raw row cells:', JSON.stringify(firstRow));
+                                        }
+                                    }
+                                }
+                            } catch(e) { console.error('[MB_INVENTORY] debug parse error', e); }
+
                             const rows = this.parseGvizTable(raw);
+                            console.log('>>> [MB_INVENTORY] first parsed row object:', rows[0]);
+
                             this.inventory = rows.map(row => ({
                                 id: String(row['id'] || '').trim(),
                                 productId: String(row['product_id'] || '').trim(),
                                 itemData: String(row['item_data'] || '').trim(),
                                 expireDate: row['expire_date'] ? String(row['expire_date']).trim() : '',
-                                status: String(row['status'] || 'available').trim().toLowerCase(),
+                                status: String(row['status'] || '').trim().toLowerCase(),
                                 soldToEmail: String(row['sold_to_email'] || '').trim(),
                                 soldAt: String(row['sold_at'] || '').trim(),
                                 slotType: String(row['slot_type'] || 'rieng').trim(),
                                 maxUsers: parseInt(row['max_users']) || 1
                             })).filter(i => i.productId && (i.id || i.itemData));
 
-                            console.log('>>> [fetchData] MB_INVENTORY loaded total rows count:', this.inventory.length);
+                            console.log('>>> [MB_INVENTORY] loaded total rows count:', this.inventory.length);
+                            console.log('>>> [MB_INVENTORY] sample mapped items:', this.inventory.slice(0, 3));
                             this.products.forEach(p => {
                                 console.log(`>>> [fetchData] Product [${p.name}] (${p.id}) available stock:`, this.getAvailableStock(p.id));
                             });
