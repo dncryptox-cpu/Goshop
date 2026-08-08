@@ -389,7 +389,9 @@
                                         :class="getAvailableStock(p.id) > 0 ? 'bg-white border-emerald-200 hover:border-emerald-400' : 'bg-gray-100 border-gray-200 opacity-75'">
                                         <div class="flex items-center gap-1.5 text-xs font-bold" :class="getAvailableStock(p.id) > 0 ? 'text-gray-900' : 'text-gray-500 line-through'">
                                             <span x-text="p.name"></span>
-                                            <span class="text-gray-400 font-normal">· 30 ngày</span>
+                                            <template x-if="getProductExpireLabel(p.id)">
+                                                <span class="text-gray-400 font-normal" x-text="'· ' + getProductExpireLabel(p.id)"></span>
+                                            </template>
                                         </div>
                                         <button @click="handleBuyProduct(p)"
                                             :disabled="getAvailableStock(p.id) === 0"
@@ -2934,6 +2936,25 @@
                         const rowStatus = String(i.status || i['status'] || '').trim().toLowerCase();
                         return rowProdId === targetProdId && rowStatus === 'available';
                     }).length;
+                },
+
+                getProductExpireLabel(productId) {
+                    if (!productId) return '';
+                    const targetProdId = String(productId).trim().toLowerCase();
+                    const slot = this.inventory.find(i => {
+                        const rowProdId = String(i.productId || '').trim().toLowerCase();
+                        const rowStatus = String(i.status || '').trim().toLowerCase();
+                        return rowProdId === targetProdId && rowStatus === 'available' && i.expireDate;
+                    });
+                    if (!slot || !slot.expireDate) return '';
+                    try {
+                        const exp = new Date(slot.expireDate);
+                        if (isNaN(exp.getTime())) return '';
+                        const now = new Date();
+                        const diffDays = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+                        if (diffDays <= 0) return 'Đã hết hạn';
+                        return `còn ${diffDays} ngày`;
+                    } catch(e) { return ''; }
                 },
 
                 getSoldStock(productId) {
