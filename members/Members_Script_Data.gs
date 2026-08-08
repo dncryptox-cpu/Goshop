@@ -2519,7 +2519,17 @@ function saveProduct(productData) {
     }
   }
 
-  var prodId = productData.id || ('PROD-' + Date.now());
+  var prodPrefix = 'PROD';
+  if (productData.name) {
+    try {
+      var cleanName = String(productData.name).normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      var slug = cleanName.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      if (slug.length > 0) {
+        prodPrefix = slug.substring(0, 10);
+      }
+    } catch(e) { prodPrefix = 'PROD'; }
+  }
+  var prodId = productData.id || (prodPrefix + '-' + Date.now());
   var valMap = {
     'id': prodId,
     'name': productData.name,
