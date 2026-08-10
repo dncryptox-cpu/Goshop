@@ -295,7 +295,7 @@
                         </div>
                     </div>
 
-                    <!-- Table Card (Main Dashboard Table - Cleaned without Device, OS, Location columns) -->
+                    <!-- Table Card (Main Dashboard Table) -->
                     <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
                         <div class="overflow-x-auto">
                             <table class="w-full text-left border-collapse">
@@ -532,7 +532,7 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
                     </span>
                 </div>
 
-                <!-- PREVIEW TABLE AFTER AI PARSING (CLEAN TABLE WITHOUT DEVICE/OS/LOCATION COLUMNS) -->
+                <!-- PREVIEW TABLE AFTER AI PARSING -->
                 <template x-if="aiRecords.length > 0">
                     <div class="space-y-3 pt-2">
                         <div class="flex items-center justify-between">
@@ -545,13 +545,13 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
 
                         <!-- Horizontal Scroll Container with Full Width -->
                         <div class="border border-gray-200 rounded-xl overflow-x-auto overflow-y-auto max-h-72 bg-white shadow-inner">
-                            <table class="w-full text-left border-collapse text-xs min-w-[850px]">
+                            <table class="w-full text-left border-collapse text-xs min-w-[950px]">
                                 <thead>
                                     <tr class="bg-gray-100 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
                                         <th class="p-2.5 w-10 text-center">STT</th>
                                         <th class="p-2.5 w-32">Tên Khách Hàng</th>
                                         <th class="p-2.5 w-32">Mã KH</th>
-                                        <th class="p-2.5 w-44">Email Khách</th>
+                                        <th class="p-2.5 w-56">Email Khách (Tự Chuẩn Hoá)</th>
                                         <th class="p-2.5 w-28 text-indigo-700 font-extrabold">Ngày Mua</th>
                                         <th class="p-2.5 w-20 text-indigo-700 font-extrabold text-center">Số Tháng</th>
                                         <th class="p-2.5 w-28 text-emerald-700 font-extrabold text-center">HSD (Tự Tính)</th>
@@ -561,7 +561,7 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 font-medium">
                                     <template x-for="(rec, idx) in aiRecords" :key="idx">
-                                        <tr class="hover:bg-gray-50 transition-colors" :class="(!rec.email || !rec.activationDate) ? 'bg-rose-50/50' : ''">
+                                        <tr class="hover:bg-gray-50 transition-colors" :class="(!rec.email || !rec.email.includes('@')) ? 'bg-rose-50/50' : ''">
                                             <td class="p-2.5 font-bold text-gray-500 text-center" x-text="idx + 1"></td>
                                             
                                             <!-- Tên Khách Hàng -->
@@ -574,9 +574,9 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
                                                 <input x-model="rec.userCode" type="text" class="w-full border border-gray-200 rounded p-1.5 text-xs font-mono font-bold text-indigo-600 focus:outline-none focus:border-indigo-500">
                                             </td>
 
-                                            <!-- Email Khách (Validated) -->
+                                            <!-- Email Khách (Wider box & auto-sanitized) -->
                                             <td class="p-2.5">
-                                                <input x-model="rec.email" type="email" placeholder="email@gmail.com" class="w-full border rounded p-1.5 text-xs font-mono text-gray-800 focus:outline-none focus:border-indigo-500" :class="(!rec.email || !rec.email.includes('@')) ? 'border-rose-400 bg-rose-50' : 'border-gray-200'">
+                                                <input x-model="rec.email" @blur="rec.email = sanitizeEmail(rec.email, rec.userName, aiSharedRootEmail)" type="email" placeholder="email@gmail.com" class="w-full border rounded p-1.5 text-xs font-mono text-gray-800 focus:outline-none focus:border-indigo-500" :class="(!rec.email || !rec.email.includes('@')) ? 'border-rose-400 bg-rose-50' : 'border-gray-200'">
                                             </td>
 
                                             <!-- CỘT NGÀY MUA (Editable) -->
@@ -594,13 +594,13 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
                                                 </select>
                                             </td>
 
-                                            <!-- CỘT HSD (TỰ TÍNH REACTIVE: Ngày Mua + Số Tháng) -->
+                                            <!-- CỘT HSD (TỰ TÍNH REACTIVE) -->
                                             <td class="p-2.5 text-center">
                                                 <span class="inline-block font-mono font-extrabold text-[11px] text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200 whitespace-nowrap shadow-xs" x-text="calculateExpiry(rec.activationDate, rec.duration)"></span>
                                             </td>
 
                                             <!-- CỘT GHI CHÚ (WIDE INPUT, GIỮ NGUYÊN VĂN BẢN THÔ KHÔNG FIX ENCODING) -->
-                                            <td class="p-2.5 min-w-[280px]">
+                                            <td class="p-2.5 min-w-[300px]">
                                                 <input x-model="rec.note" type="text" placeholder="Ghi chú thô..." class="w-full border border-gray-200 rounded p-1.5 text-xs text-gray-800 font-mono focus:outline-none focus:border-indigo-500" title="Ghi chú giữ nguyên văn bản thô">
                                             </td>
 
@@ -860,6 +860,26 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
                     return s.normalize('NFC');
                 },
 
+                // Strict Email Sanitization Helper to guarantee 100% valid email format
+                sanitizeEmail(emailStr, userNameStr, rootMailStr) {
+                    let em = String(emailStr || '').trim().toLowerCase();
+                    
+                    if (em.endsWith('.c')) em += 'om';
+                    if (em.endsWith('.co')) em += 'm';
+                    if (em.endsWith('@gmail')) em += '.com';
+                    
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+                    if (!emailRegex.test(em)) {
+                        const cleanName = String(userNameStr || 'khach')
+                            .normalize('NFD')
+                            .replace(/[\u0300-\u036f]/g, '')
+                            .replace(/[^a-zA-Z0-9]/g, '')
+                            .toLowerCase();
+                        return cleanName ? `${cleanName}@gmail.com` : (rootMailStr || 'dncethxyz@gmail.com');
+                    }
+                    return em;
+                },
+
                 // Reactive Expiry Date Calculation (HSD = Ngày Mua + Số Tháng)
                 calculateExpiry(dateStr, durationMonths) {
                     if (!dateStr) return '';
@@ -926,7 +946,7 @@ CẤU TRÚC MỖI KHỐI DỮ LIỆU CỦA 1 KHÁCH HÀNG THƯỜNG GỒM:
 QUY TẮC BẮT BUỘC:
 1. duration (Số Tháng) CHỈ ĐƯỢC PHÉP NHẬN CÁC GIÁ TRỊ LÀ 1, 3, 6, HOẶC 12. KHÔNG ĐƯỢC trích xuất các số linh tinh như 61, 31, 63, 15, 67 từ địa điểm/IP/dòng text khác. Nếu không rõ, mặc định duration = 3.
 2. Sửa lỗi font cho Tên. Giữ NGUYÊN VĂN toàn bộ văn bản thô của các dòng còn lại làm Ghi chú (note).
-3. Email khách hàng (email) BẮT BUỘC có đuôi @gmail.com (nếu không có, tự sinh dạng tenkhach@gmail.com).
+3. Email khách hàng (email) BẮT BUỘC có dạng tenkhach@gmail.com đầy đủ đuôi .com.
 4. Trả về DUY NHẤT chuỗi JSON Array [ {...}, {...} ] (Không Markdown, không câu dẫn).
 
 FEW-SHOT EXAMPLE:
@@ -967,11 +987,7 @@ ${rawClean}`;
                                 const parsedArray = JSON.parse(cleanJsonStr);
                                 this.aiRecords = parsedArray.map(item => {
                                     const nameStr = String(item.userName || 'Khách Mới').trim();
-                                    const cleanNameStr = nameStr.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-                                    const validEmail = (item.email && item.email.includes('@')) 
-                                        ? item.email 
-                                        : `${cleanNameStr || 'khach'}@gmail.com`;
-
+                                    const validEmail = this.sanitizeEmail(item.email, nameStr, rootMail);
                                     let dur = parseInt(item.duration, 10);
                                     if (![1, 3, 6, 12].includes(dur)) dur = 3;
 
@@ -1012,7 +1028,7 @@ ${rawClean}`;
                     }
                 },
 
-                // Offline Smart Block Parser (Splits by multi-line Customer Blocks, strictly duration 1, 3, 6, 12)
+                // Offline Smart Block Parser
                 runSmartBlockParser() {
                     if (!this.aiRawText || this.aiRawText.trim().length < 5) {
                         alert('⚠️ Vui lòng dán văn bản thô trước khi bóc tách!');
@@ -1023,7 +1039,6 @@ ${rawClean}`;
                     const rootMail = this.aiSharedRootEmail || 'dncethxyz@gmail.com';
                     const todayStr = (new Date()).toLocaleDateString('vi-VN');
 
-                    // Split raw text into customer blocks separated by double newlines or blank lines
                     const rawBlocks = originalRaw.split(/\n\s*\n/).map(b => b.trim()).filter(b => b.length > 0);
                     const records = [];
 
@@ -1035,10 +1050,9 @@ ${rawClean}`;
                         const userName = rawLines[0];
 
                         let activationDate = todayStr;
-                        let duration = 3; // Default 3 months
+                        let duration = 3;
 
                         rawLines.slice(1).forEach(line => {
-                            // Date parsing
                             const monthThgMatch = line.match(/(\d{1,2})\s*thg\s*(\d{1,2}),?\s*(\d{4})/i);
                             if (monthThgMatch) {
                                 const d = ('0' + monthThgMatch[1]).slice(-2);
@@ -1055,7 +1069,6 @@ ${rawClean}`;
                                 }
                             }
 
-                            // Strict duration parsing (ONLY 1, 3, 6, 12 months)
                             const durMatch = line.match(/\b(1|3|6|12)\s*(tháng|thg|m|mo|month)s?\b/i);
                             if (durMatch) {
                                 duration = parseInt(durMatch[1], 10);
@@ -1064,9 +1077,8 @@ ${rawClean}`;
 
                         const cleanNameStr = userName.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
                         const cleanUserCode = 'KH-' + (cleanNameStr.toUpperCase() || 'USER') + '-01';
-                        const email = cleanNameStr ? `${cleanNameStr}@gmail.com` : rootMail;
+                        const email = this.sanitizeEmail('', userName, rootMail);
 
-                        // RAW note keeps EXACT UN-CLEANED text of lines after Line 1
                         const rawNote = rawLines.slice(1).join(' | ') || rawBlock;
 
                         records.push({
@@ -1081,7 +1093,7 @@ ${rawClean}`;
                             duration: duration,
                             product: 'GPTshare-3',
                             ctv: 'Dnc',
-                            note: rawNote // Keep original raw text for note field
+                            note: rawNote
                         });
                     });
 
@@ -1089,7 +1101,7 @@ ${rawClean}`;
                     this.showToast(`✅ Đã bóc tách được ${records.length} Khách Hàng (Smart Block Parser)!`);
                 },
 
-                // Submit Batch of AI Records to Apps Script (including strict Email & HSD validation)
+                // Submit Batch of AI Records to Apps Script (Auto Sanitizing Emails)
                 async submitAIBatch() {
                     if (!this.aiRecords || this.aiRecords.length === 0) {
                         alert('⚠️ Chưa có record nào trong bảng Preview để lưu!');
@@ -1098,23 +1110,18 @@ ${rawClean}`;
 
                     const rootMail = this.aiSharedRootEmail || 'dncethxyz@gmail.com';
 
-                    // Ensure and validate each record's email before posting
-                    for (let i = 0; i < this.aiRecords.length; i++) {
-                        const r = this.aiRecords[i];
-                        if (!r.email || !r.email.includes('@')) {
-                            const cleanName = String(r.userName || 'khach').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-                            r.email = cleanName ? `${cleanName}@gmail.com` : rootMail;
-                        }
-                    }
+                    // Force sanitize all emails to guarantee full @gmail.com format
+                    this.aiRecords.forEach(r => {
+                        r.email = this.sanitizeEmail(r.email, r.userName, rootMail);
+                    });
 
                     this.chatgptSubmitting = true;
                     try {
-                        // Prepare final records payload
                         const finalRecords = this.aiRecords.map(r => ({
                             rootEmail: rootMail,
-                            email: r.email,
-                            userCode: r.userCode,
-                            userName: r.userName,
+                            email: this.sanitizeEmail(r.email, r.userName, rootMail),
+                            userCode: r.userCode || this.generateUserCode(r.userName),
+                            userName: r.userName || 'Khách Mới',
                             deviceSeq: 1,
                             device: 'Computer',
                             os: 'Windows',
@@ -1133,6 +1140,8 @@ ${rawClean}`;
                             authToken: this.CONFIG.CHATGPT_API_KEY
                         };
 
+                        console.log('--- SUBMITTING BATCH PAYLOAD ---', payload);
+
                         const res = await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1140,6 +1149,8 @@ ${rawClean}`;
                         });
 
                         const json = await res.json();
+                        console.log('--- BATCH RESPONSE ---', json);
+
                         if (json && json.success) {
                             this.showToast(`✅ Đã lưu thành công ${json.count || this.aiRecords.length} Khách Hàng vào Sheet!`);
                             this.aiRecords = [];
@@ -1217,12 +1228,7 @@ ${rawClean}`;
                 },
 
                 async submitChatgptForm() {
-                    const email = String(this.chatgptForm.email || '').trim();
-                    if (!email || !email.includes('@')) {
-                        alert('⚠️ Vui lòng nhập Email khách hàng hợp lệ!');
-                        return;
-                    }
-
+                    const email = this.sanitizeEmail(this.chatgptForm.email, this.chatgptForm.userName, this.chatgptForm.rootEmail);
                     const rootEmail = String(this.chatgptForm.rootEmail || email).trim();
                     if (!rootEmail || !rootEmail.includes('@')) {
                         alert('⚠️ Vui lòng nhập Tài khoản chia sẻ (Email gốc) hợp lệ!');
