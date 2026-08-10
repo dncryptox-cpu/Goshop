@@ -224,13 +224,13 @@
                         </div>
 
                         <div class="flex items-center gap-3">
-                            <button @click="openChatgptModal()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 flex items-center gap-2">
-                                <i data-lucide="plus" class="w-4 h-4"></i>
-                                <span>Thêm / Gia Hạn Thiết Bị</span>
+                            <button @click="openChatgptModal()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2">
+                                <i data-lucide="sparkles" class="w-4 h-4 text-purple-200"></i>
+                                <span>Thêm / Gia Hạn AI (Batch)</span>
                             </button>
-                            <button @click="buildChatgptList()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2" :disabled="chatgptLoading">
+                            <button @click="buildChatgptList()" class="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2" :disabled="chatgptLoading">
                                 <i data-lucide="refresh-cw" class="w-4 h-4" :class="chatgptLoading ? 'animate-spin' : ''"></i>
-                                <span x-text="chatgptLoading ? 'Đang Tải...' : 'Tải Lại Dữ Liệu'"></span>
+                                <span x-text="chatgptLoading ? 'Đang Tải...' : 'Tải Lại'"></span>
                             </button>
                         </div>
                     </div>
@@ -434,133 +434,271 @@
         </div>
     </div>
 
-    <!-- ChatGPT Add/Edit Modal -->
+    <!-- ChatGPT Add/Edit Modal (with 2 Tabs: Dán Nhanh AI & Nhập Tay) -->
     <div x-show="showChatgptModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
         <div @click="showChatgptModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
-        <div class="bg-white rounded-2xl w-full max-w-2xl shadow-2xl relative overflow-hidden" 
+        <div class="bg-white rounded-2xl w-full max-w-4xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]" 
              x-transition:enter="transition ease-out duration-300"
              x-transition:enter-start="opacity-0 scale-95"
              x-transition:enter-end="opacity-100 scale-100">
             
-            <div class="p-6 border-b border-gray-100 flex items-center justify-between bg-indigo-50/50">
+            <!-- Modal Header -->
+            <div class="p-5 border-b border-gray-100 flex items-center justify-between bg-indigo-50/40 shrink-0">
                 <div>
                     <h2 class="text-xl font-bold text-gray-900 flex items-center gap-2">
-                        <span class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm">🤖</span>
+                        <span class="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-sm shadow-md shadow-indigo-200">🤖</span>
                         Thêm / Gia Hạn Thiết Bị ChatGPT
                     </h2>
-                    <p class="text-xs text-gray-500 mt-1">Lưu dữ liệu cấu trúc mã khách hàng & email chia sẻ vào Sheet ThietbiGPT.</p>
+                    <p class="text-xs text-gray-500 mt-0.5">Dán văn bản thô nhiều dòng để AI (Gemini 2.5/3.6) tự động phân tách thành các record chuẩn.</p>
                 </div>
-                <button @click="showChatgptModal = false" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg transition-colors">
+                <button @click="showChatgptModal = false" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
                     <i data-lucide="x" class="w-5 h-5"></i>
                 </button>
             </div>
 
-            <!-- novalidate to prevent browser HTML5 native popup bugs -->
-            <form novalidate @submit.prevent="submitChatgptForm()" class="p-6 space-y-4 max-h-[78vh] overflow-y-auto">
+            <!-- Tab Switcher Header -->
+            <div class="flex items-center gap-2 border-b border-gray-100 px-6 pt-3 bg-gray-50/60 shrink-0">
+                <button type="button" @click="activeModalTab = 'ai'"
+                        :class="activeModalTab === 'ai' ? 'border-indigo-600 text-indigo-600 font-extrabold bg-white shadow-sm' : 'border-transparent text-gray-500 hover:text-gray-700 font-semibold'"
+                        class="px-5 py-2.5 text-xs border-b-2 rounded-t-xl transition-all flex items-center gap-2">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-purple-600"></i>
+                    <span>Dán Nhanh (AI Gemini)</span>
+                </button>
+                <button type="button" @click="activeModalTab = 'manual'"
+                        :class="activeModalTab === 'manual' ? 'border-indigo-600 text-indigo-600 font-extrabold bg-white shadow-sm' : 'border-transparent text-gray-500 hover:text-gray-700 font-semibold'"
+                        class="px-5 py-2.5 text-xs border-b-2 rounded-t-xl transition-all flex items-center gap-2">
+                    <i data-lucide="edit-3" class="w-4 h-4 text-gray-500"></i>
+                    <span>Nhập Tay (1 Record)</span>
+                </button>
+            </div>
+
+            <!-- TAB 1: DÁN NHANH (AI GEMINI) -->
+            <div x-show="activeModalTab === 'ai'" class="p-6 overflow-y-auto space-y-4 flex-1">
                 
-                <!-- Limit Warning Alert if userCode has >= 3 active devices -->
-                <template x-if="chatgptForm.userCode && getUserActiveCount(chatgptForm.userCode) >= 3">
-                    <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-xs text-amber-800 font-semibold">
-                        <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 shrink-0"></i>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Email gốc / Tài khoản chia sẻ -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Email Gốc / Tài Khoản Chia Sẻ <span class="text-rose-500">*</span></label>
+                        <input x-model="aiSharedRootEmail" type="email" placeholder="dncethxyz@gmail.com" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                    </div>
+
+                    <!-- Defaults info -->
+                    <div class="flex items-center gap-2 bg-indigo-50/60 border border-indigo-100 p-3 rounded-xl text-xs text-indigo-800">
+                        <i data-lucide="info" class="w-4 h-4 text-indigo-600 shrink-0"></i>
                         <div>
-                            <p class="font-bold">⚠️ Cảnh báo giới hạn thiết bị!</p>
-                            <p class="text-[11px] text-amber-700 mt-0.5">
-                                Mã KH <span class="font-mono font-bold" x-text="chatgptForm.userCode"></span> hiện đã có <strong class="font-bold" x-text="getUserActiveCount(chatgptForm.userCode)"></strong> thiết bị Active. Hệ thống vẫn cho phép thêm nhưng nên lưu ý quy định 3 máy/khách!
-                            </p>
+                            <span class="font-bold">Mặc định batch:</span> Gói <strong class="font-extrabold">GPTshare-3</strong> (3 Tháng) | CTV: <strong class="font-extrabold">Dnc</strong>. Bạn có thể sửa trực tiếp trên bảng preview sau khi tách.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Textarea dán dữ liệu thô -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider">Dán Khối Văn Bản Thô Vào Đây</label>
+                        <span class="text-[11px] text-gray-400">Dán tin nhắn Zalo / Telegram / Khách gửi trực tiếp</span>
+                    </div>
+                    <textarea x-model="aiRawText" rows="6" placeholder="Ví dụ dán:
+Cafard máy tính Windows kết nối Gò Vấp TP.HCM 10/08/2026
+Hoan Tran điện thoại iPhone iOS Tây Ninh ngày 11/08/2026
+Trần Khanh máy tính macOS..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-medium focus:outline-none focus:border-indigo-500 text-gray-900 leading-relaxed"></textarea>
+                </div>
+
+                <!-- Action Button Parse AI -->
+                <div class="flex items-center justify-between">
+                    <button type="button" @click="parseWithAI()" :disabled="aiParsing" class="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2">
+                        <i data-lucide="wand-2" class="w-4 h-4" :class="aiParsing ? 'animate-spin' : ''"></i>
+                        <span x-text="aiParsing ? 'AI Đang Bóc Tách...' : 'Phân Tích Bằng AI (Gemini)'"></span>
+                    </button>
+                    <span x-show="aiRecords.length > 0" class="text-xs font-bold text-emerald-600" x-cloak>
+                        ✅ Đã tách được <strong x-text="aiRecords.length"></strong> record
+                    </span>
+                </div>
+
+                <!-- PREVIEW TABLE AFTER AI PARSING -->
+                <template x-if="aiRecords.length > 0">
+                    <div class="space-y-3 pt-2">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xs font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-2">
+                                <i data-lucide="list-checks" class="w-4 h-4 text-indigo-600"></i>
+                                Bảng Preview Kết Quả AI (Sửa Trực Tiếp Trên Bảng)
+                            </h3>
+                            <button type="button" @click="aiRecords = []" class="text-[11px] text-rose-500 hover:underline font-bold">Clear Tất Cả</button>
+                        </div>
+
+                        <div class="border border-gray-200 rounded-xl overflow-hidden max-h-60 overflow-y-auto bg-white">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="bg-gray-100 border-b border-gray-200 text-gray-600 font-bold uppercase tracking-wider text-[10px]">
+                                        <th class="p-2.5">STT</th>
+                                        <th class="p-2.5">Tên Người Dùng</th>
+                                        <th class="p-2.5">Mã KH</th>
+                                        <th class="p-2.5">Email Khách</th>
+                                        <th class="p-2.5">Loại Thiết Bị</th>
+                                        <th class="p-2.5">HĐH</th>
+                                        <th class="p-2.5">Ngày Kích Hoạt</th>
+                                        <th class="p-2.5">Địa Điểm</th>
+                                        <th class="p-2.5 text-center">Xóa</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100 font-medium">
+                                    <template x-for="(rec, idx) in aiRecords" :key="idx">
+                                        <tr class="hover:bg-gray-50" :class="(!rec.email || !rec.activationDate) ? 'bg-rose-50/50' : ''">
+                                            <td class="p-2 font-bold text-gray-500 text-center" x-text="idx + 1"></td>
+                                            <td class="p-2">
+                                                <input x-model="rec.userName" type="text" class="w-full border border-gray-200 rounded p-1 text-xs font-bold text-gray-800 focus:outline-none focus:border-indigo-500">
+                                            </td>
+                                            <td class="p-2">
+                                                <input x-model="rec.userCode" type="text" class="w-full border border-gray-200 rounded p-1 text-xs font-mono font-bold text-indigo-600 focus:outline-none focus:border-indigo-500">
+                                            </td>
+                                            <td class="p-2">
+                                                <input x-model="rec.email" type="email" class="w-full border rounded p-1 text-xs font-mono text-gray-800 focus:outline-none focus:border-indigo-500" :class="!rec.email ? 'border-rose-400 bg-rose-50' : 'border-gray-200'">
+                                            </td>
+                                            <td class="p-2">
+                                                <select x-model="rec.device" class="w-full border border-gray-200 rounded p-1 text-xs font-bold text-gray-800">
+                                                    <option value="Computer">Computer</option>
+                                                    <option value="Mobile">Mobile</option>
+                                                </select>
+                                            </td>
+                                            <td class="p-2">
+                                                <input x-model="rec.os" type="text" class="w-full border border-gray-200 rounded p-1 text-xs text-gray-800">
+                                            </td>
+                                            <td class="p-2">
+                                                <input x-model="rec.activationDate" type="text" placeholder="DD/MM/YYYY" class="w-full border rounded p-1 text-xs font-mono font-bold text-gray-800" :class="!rec.activationDate ? 'border-rose-400 bg-rose-50' : 'border-gray-200'">
+                                            </td>
+                                            <td class="p-2">
+                                                <input x-model="rec.location" type="text" class="w-full border border-gray-200 rounded p-1 text-xs text-gray-800">
+                                            </td>
+                                            <td class="p-2 text-center">
+                                                <button type="button" @click="aiRecords.splice(idx, 1)" class="p-1 text-rose-500 hover:bg-rose-50 rounded">
+                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Submit Batch Button -->
+                        <div class="flex items-center justify-end gap-3 pt-3">
+                            <button type="button" @click="submitAIBatch()" :disabled="chatgptSubmitting || aiRecords.length === 0" class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 flex items-center gap-2">
+                                <i data-lucide="check-circle-2" class="w-4 h-4" :class="chatgptSubmitting ? 'animate-spin' : ''"></i>
+                                <span x-text="chatgptSubmitting ? 'Đang Ghi Vào Sheet...' : 'Xác Nhận Lưu Tất Cả (' + aiRecords.length + ' Record)'"></span>
+                            </button>
                         </div>
                     </div>
                 </template>
+            </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <!-- Tài khoản chia sẻ (Email gốc) -->
-                    <div class="sm:col-span-2">
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tài Khoản Chia Sẻ (Email Gốc) <span class="text-rose-500">*</span></label>
-                        <input x-model="chatgptForm.rootEmail" type="email" placeholder="dncethxyz@gmail.com (Email GPT thật)" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+            <!-- TAB 2: NHẬP TAY (1 RECORD LẺ) -->
+            <div x-show="activeModalTab === 'manual'" class="p-6 overflow-y-auto flex-1">
+                <!-- novalidate to prevent browser HTML5 native popup bugs -->
+                <form novalidate @submit.prevent="submitChatgptForm()" class="space-y-4">
+                    
+                    <!-- Limit Warning Alert if userCode has >= 3 active devices -->
+                    <template x-if="chatgptForm.userCode && getUserActiveCount(chatgptForm.userCode) >= 3">
+                        <div class="p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-3 text-xs text-amber-800 font-semibold">
+                            <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 shrink-0"></i>
+                            <div>
+                                <p class="font-bold">⚠️ Cảnh báo giới hạn thiết bị!</p>
+                                <p class="text-[11px] text-amber-700 mt-0.5">
+                                    Mã KH <span class="font-mono font-bold" x-text="chatgptForm.userCode"></span> hiện đã có <strong class="font-bold" x-text="getUserActiveCount(chatgptForm.userCode)"></strong> thiết bị Active. Hệ thống vẫn cho phép thêm nhưng nên lưu ý quy định 3 máy/khách!
+                                </p>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Tài khoản chia sẻ (Email gốc) -->
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tài Khoản Chia Sẻ (Email Gốc) <span class="text-rose-500">*</span></label>
+                            <input x-model="chatgptForm.rootEmail" type="email" placeholder="dncethxyz@gmail.com (Email GPT thật)" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- Email khách hàng -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email Khách Hàng <span class="text-rose-500">*</span></label>
+                            <input x-model="chatgptForm.email" type="email" placeholder="khachhang@gmail.com" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- Mã khách hàng -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Khách Hàng (Mã Nhóm Slot)</label>
+                            <input x-model="chatgptForm.userCode" type="text" placeholder="Ví dụ: KH-CAFARD01" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- Tên người dùng thực tế -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tên Người Dùng Thực Tế</label>
+                            <input x-model="chatgptForm.userName" type="text" placeholder="Ví dụ: Cafard / Hoan Tran" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- Số thứ tự thiết bị -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Số Thứ Tự Máy (1-3)</label>
+                            <select x-model.number="chatgptForm.deviceSeq" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                <option value="1">Máy 1 (Thiết bị thứ 1)</option>
+                                <option value="2">Máy 2 (Thiết bị thứ 2)</option>
+                                <option value="3">Máy 3 (Thiết bị thứ 3)</option>
+                            </select>
+                        </div>
+
+                        <!-- Mã đơn -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Đơn Hàng (Nếu có)</label>
+                            <input x-model="chatgptForm.orderId" type="text" placeholder="Ví dụ: #109283" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- Thời hạn gói (tháng) -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Thời Hạn Gói (Số Tháng) <span class="text-rose-500">*</span></label>
+                            <input x-model.number="chatgptForm.duration" type="number" min="1" max="60" placeholder="3" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- Ngày kích hoạt -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Ngày Kích Hoạt (DD/MM/YYYY) <span class="text-rose-500">*</span></label>
+                            <input x-model="chatgptForm.activationDate" type="text" placeholder="DD/MM/YYYY" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- CTV Phụ trách -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">CTV Phụ Trách</label>
+                            <input x-model="chatgptForm.ctv" type="text" placeholder="Dnc" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- Loại thiết bị -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Loại Thiết Bị</label>
+                            <select x-model="chatgptForm.device" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                <option value="Computer">💻 Máy tính (Computer)</option>
+                                <option value="Mobile">📱 Điện thoại (Mobile)</option>
+                            </select>
+                        </div>
+
+                        <!-- Gói mua -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tên Gói Mua</label>
+                            <input x-model="chatgptForm.product" type="text" placeholder="GPTshare-3" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                        </div>
+
+                        <!-- Thông tin thiết bị (Ghi chú) -->
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Ghi Chú / Thông Tin Thiết Bị</label>
+                            <textarea x-model="chatgptForm.note" rows="2" placeholder="Tên máy, ứng dụng, vị trí kết nối..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium focus:outline-none focus:border-indigo-500 text-gray-900"></textarea>
+                        </div>
                     </div>
 
-                    <!-- Email khách hàng -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Email Khách Hàng <span class="text-rose-500">*</span></label>
-                        <input x-model="chatgptForm.email" type="email" placeholder="khachhang@gmail.com" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                    <!-- Footer Modal buttons -->
+                    <div class="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+                        <button type="button" @click="showChatgptModal = false" class="px-5 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-all">Hủy</button>
+                        <button type="submit" :disabled="chatgptSubmitting" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2">
+                            <i data-lucide="check-circle" class="w-4 h-4" :class="chatgptSubmitting ? 'animate-spin' : ''"></i>
+                            <span x-text="chatgptSubmitting ? 'Đang Lưu...' : 'Xác Nhận Lưu 1 Record'"></span>
+                        </button>
                     </div>
-
-                    <!-- Mã khách hàng -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Khách Hàng (Mã Nhóm Slot)</label>
-                        <input x-model="chatgptForm.userCode" type="text" placeholder="Ví dụ: KH-CAFARD01" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                    </div>
-
-                    <!-- Tên người dùng thực tế -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tên Người Dùng Thực Tế</label>
-                        <input x-model="chatgptForm.userName" type="text" placeholder="Ví dụ: Cafard / Hoan Tran" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                    </div>
-
-                    <!-- Số thứ tự thiết bị -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Số Thứ Tự Máy (1-3)</label>
-                        <select x-model.number="chatgptForm.deviceSeq" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                            <option value="1">Máy 1 (Thiết bị thứ 1)</option>
-                            <option value="2">Máy 2 (Thiết bị thứ 2)</option>
-                            <option value="3">Máy 3 (Thiết bị thứ 3)</option>
-                        </select>
-                    </div>
-
-                    <!-- Mã đơn -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Đơn Hàng (Nếu có)</label>
-                        <input x-model="chatgptForm.orderId" type="text" placeholder="Ví dụ: #109283" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:border-indigo-500 text-gray-900">
-                    </div>
-
-                    <!-- Thời hạn gói (tháng) -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Thời Hạn Gói (Số Tháng) <span class="text-rose-500">*</span></label>
-                        <input x-model.number="chatgptForm.duration" type="number" min="1" max="60" placeholder="1" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                    </div>
-
-                    <!-- Ngày kích hoạt -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Ngày Kích Hoạt (DD/MM/YYYY) <span class="text-rose-500">*</span></label>
-                        <input x-model="chatgptForm.activationDate" type="text" placeholder="DD/MM/YYYY" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                    </div>
-
-                    <!-- CTV Phụ trách -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">CTV Phụ Trách</label>
-                        <input x-model="chatgptForm.ctv" type="text" placeholder="Dnc" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                    </div>
-
-                    <!-- Loại thiết bị -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Loại Thiết Bị</label>
-                        <select x-model="chatgptForm.device" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                            <option value="Computer">💻 Máy tính (Computer)</option>
-                            <option value="Mobile">📱 Điện thoại (Mobile)</option>
-                        </select>
-                    </div>
-
-                    <!-- Gói mua -->
-                    <div>
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tên Gói Mua</label>
-                        <input x-model="chatgptForm.product" type="text" placeholder="GPTshare-3" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                    </div>
-
-                    <!-- Thông tin thiết bị (Ghi chú) -->
-                    <div class="sm:col-span-2">
-                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Ghi Chú / Thông Tin Thiết Bị</label>
-                        <textarea x-model="chatgptForm.note" rows="2" placeholder="Tên máy, ứng dụng, vị trí kết nối..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-medium focus:outline-none focus:border-indigo-500 text-gray-900"></textarea>
-                    </div>
-                </div>
-
-                <!-- Footer Modal buttons -->
-                <div class="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
-                    <button type="button" @click="showChatgptModal = false" class="px-5 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-all">Hủy</button>
-                    <button type="submit" :disabled="chatgptSubmitting" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2">
-                        <i data-lucide="check-circle" class="w-4 h-4" :class="chatgptSubmitting ? 'animate-spin' : ''"></i>
-                        <span x-text="chatgptSubmitting ? 'Đang Lưu...' : 'Xác Nhận Lưu Record'"></span>
-                    </button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
 
@@ -579,6 +717,7 @@
                     CHATGPT_API_KEY: 'c74391ab-gpt-sec-2026'
                 },
                 sidebarOpen: window.innerWidth >= 768,
+                activeModalTab: 'ai', // 'ai' or 'manual'
                 chatgptSearch: '',
                 chatgptStatusFilter: 'all',
                 chatgptList: [],
@@ -586,6 +725,14 @@
                 showChatgptModal: false,
                 chatgptSubmitting: false,
                 toastMessage: '',
+                
+                // AI Batch States
+                aiSharedRootEmail: 'dncethxyz@gmail.com',
+                aiRawText: '',
+                aiParsing: false,
+                aiRecords: [],
+
+                // Single Manual Form State
                 chatgptForm: {
                     rootEmail: '',
                     userCode: '',
@@ -638,6 +785,208 @@
                     }).length;
                 },
 
+                // Normalize UTF-8 encoding helper for Vietnamese characters
+                fixEncoding(str) {
+                    if (!str) return '';
+                    let s = String(str).trim();
+                    try {
+                        // Fix corrupted UTF-8 Mojibake like "GÃ² Vá°¥p" -> "Gò Vấp"
+                        return decodeURIComponent(escape(s));
+                    } catch (e) {
+                        return s;
+                    }
+                },
+
+                // Generate UserCode from name (e.g. "Cafard" -> "KH-CAFARD-01")
+                generateUserCode(userName) {
+                    if (!userName) return 'KH-USER-01';
+                    const cleanName = String(userName)
+                        .normalize("NFD")
+                        .replace(/[\u0300-\u036f]/g, "")
+                        .replace(/[^a-zA-Z0-9]/g, "")
+                        .toUpperCase();
+                    return `KH-${cleanName || 'USER'}-01`;
+                },
+
+                // AI Gemini / Regex Smart Parser
+                async parseWithAI() {
+                    if (!this.aiRawText || this.aiRawText.trim().length < 5) {
+                        alert('⚠️ Vui lòng dán nội dung văn bản thô (ít nhất vài dòng) vào ô trước khi bấm phân tích!');
+                        return;
+                    }
+
+                    this.aiParsing = true;
+                    const raw = this.fixEncoding(this.aiRawText);
+                    const rootMail = this.aiSharedRootEmail || 'dncethxyz@gmail.com';
+                    const todayStr = (new Date()).toLocaleDateString('vi-VN');
+
+                    try {
+                        // Prompt for Gemini AI API
+                        const promptText = `Bạn là trợ lý AI bóc tách dữ liệu thiết bị ChatGPT. Hãy phân tích đoạn văn bản thô dưới đây và chuyển đổi thành danh sách các record dưới dạng JSON Array thuần túy.
+
+Mỗi phần tử trong JSON Array gồm các thuộc tính sau:
+- userName: Tên người dùng thực tế (Ví dụ: Cafard, Hoan Tran, Trần Khanh). Chuẩn hoá tiếng Việt đúng chữ hoa/thường.
+- userCode: Mã KH tự sinh dạng KH-[TEN_VIET_HOA_KHONG_DAU]-01 (Ví dụ: KH-CAFARD-01).
+- email: Email khách hàng (nếu không có trong text, tự tạo dạng tên_khach@gmail.com).
+- device: 'Computer' hoặc 'Mobile'.
+- os: 'Windows', 'macOS', 'iOS', hoặc 'Android'.
+- activationDate: Ngày kích hoạt định dạng DD/MM/YYYY (Nếu không có trong text, dùng "${todayStr}").
+- location: Địa điểm kết nối (Ví dụ: Gò Vấp TP.HCM, Tây Ninh...).
+- deviceSeq: Số thứ tự máy (1, 2 hoặc 3, mặc định 1).
+- note: Ghi chú lại tóm tắt thông tin thiết bị và địa điểm.
+
+CHỈ TRẢ VỀ DUY NHẤT CHUỖI JSON ARRAY [ {...}, {...} ] (Không bao gồm Markdown formatting \`\`\`json, không kèm lời giải thích).
+
+Văn bản thô:
+${raw}`;
+
+                        let parsedArray = null;
+
+                        // Try calling Gemini REST API (gemini-2.5-flash)
+                        try {
+                            const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.CONFIG.GEMINI_API_KEY || ''}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    contents: [{ parts: [{ text: promptText }] }]
+                                })
+                            });
+                            if (res.ok) {
+                                const json = await res.json();
+                                const replyText = json?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                                const cleanJsonStr = replyText.replace(/```json/gi, '').replace(/```/g, '').trim();
+                                if (cleanJsonStr.startsWith('[')) {
+                                    parsedArray = JSON.parse(cleanJsonStr);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Gemini API call warning, switching to Smart Regex Fallback Parser:', e);
+                        }
+
+                        // Fallback: Smart Regex/Rule Parser if Gemini call is unconfigured or fails
+                        if (!Array.isArray(parsedArray) || parsedArray.length === 0) {
+                            console.log('Executing Smart Regex Fallback Parser...');
+                            parsedArray = this.smartRegexParse(raw, rootMail);
+                        }
+
+                        if (Array.isArray(parsedArray) && parsedArray.length > 0) {
+                            this.aiRecords = parsedArray.map(item => ({
+                                rootEmail: rootMail,
+                                email: item.email || `${String(item.userName || 'khach').toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
+                                userCode: item.userCode || this.generateUserCode(item.userName),
+                                userName: item.userName || 'Khách Mới',
+                                deviceSeq: parseInt(item.deviceSeq) || 1,
+                                device: item.device || 'Computer',
+                                os: item.os || 'Windows',
+                                activationDate: item.activationDate || todayStr,
+                                location: item.location || '',
+                                product: 'GPTshare-3',
+                                duration: 3,
+                                ctv: 'Dnc',
+                                note: item.note || `${item.device || 'Computer'} ${item.os || ''} ${item.location || ''}`.trim()
+                            }));
+                            this.showToast(`✅ Đã phân tích thành công ${this.aiRecords.length} record!`);
+                        } else {
+                            alert('❌ Không thể tự động phân tách dữ liệu. Vui lòng kiểm tra lại văn bản dán vào!');
+                        }
+
+                    } catch (err) {
+                        console.error('Lỗi phân tích AI:', err);
+                        alert('❌ Lỗi phân tích AI: ' + err.message);
+                    } finally {
+                        this.aiParsing = false;
+                        this.$nextTick(() => {
+                            if (window.lucide) window.lucide.createIcons();
+                        });
+                    }
+                },
+
+                // Smart Regex Rule Parser Fallback
+                smartRegexParse(text, rootMail) {
+                    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    const records = [];
+                    const todayStr = (new Date()).toLocaleDateString('vi-VN');
+
+                    lines.forEach((line, idx) => {
+                        const isMobile = /mobile|phone|iphone|android|điện thoại|đt/i.test(line);
+                        const isMac = /mac|macbook|ios|apple/i.test(line);
+                        const isWin = /windows|win|pc|máy tính/i.test(line);
+                        
+                        // Extract date if present
+                        const dateMatch = line.match(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/);
+                        const actDate = dateMatch ? dateMatch[0].replace(/-/g, '/') : todayStr;
+
+                        // Extract email if present
+                        const emailMatch = line.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+                        
+                        // Extract name (first words before keywords)
+                        const nameWords = line.split(/[\s,\.\-]+/);
+                        const userName = nameWords[0] ? this.fixEncoding(nameWords[0]) : `Khách ${idx + 1}`;
+
+                        records.push({
+                            userName: userName,
+                            userCode: this.generateUserCode(userName),
+                            email: emailMatch ? emailMatch[0] : `${userName.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
+                            device: isMobile ? 'Mobile' : 'Computer',
+                            os: isMac ? (isMobile ? 'iOS' : 'macOS') : (isWin ? 'Windows' : 'Android'),
+                            activationDate: actDate,
+                            location: line.length > 20 ? line.substring(0, 40) : line,
+                            deviceSeq: 1,
+                            note: line
+                        });
+                    });
+                    return records;
+                },
+
+                // Submit Batch of AI Records to Apps Script
+                async submitAIBatch() {
+                    if (!this.aiRecords || this.aiRecords.length === 0) {
+                        alert('⚠️ Chưa có record nào trong bảng Preview để lưu!');
+                        return;
+                    }
+
+                    // Validate each record
+                    for (let i = 0; i < this.aiRecords.length; i++) {
+                        const r = this.aiRecords[i];
+                        if (!r.email || !r.email.includes('@')) {
+                            alert(`⚠️ Record dòng ${i + 1} (${r.userName}) chưa có Email khách hàng hợp lệ!`);
+                            return;
+                        }
+                    }
+
+                    this.chatgptSubmitting = true;
+                    try {
+                        const payload = {
+                            action: 'batch_insert',
+                            rootEmail: this.aiSharedRootEmail || 'dncethxyz@gmail.com',
+                            records: this.aiRecords,
+                            authToken: this.CONFIG.CHATGPT_API_KEY
+                        };
+
+                        const res = await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const json = await res.json();
+                        if (json && json.success) {
+                            this.showToast(`✅ Đã lưu thành công ${json.count || this.aiRecords.length} record vào Sheet!`);
+                            this.aiRecords = [];
+                            this.aiRawText = '';
+                            this.showChatgptModal = false;
+                            this.buildChatgptList();
+                        } else {
+                            alert('❌ Lỗi lưu batch: ' + (json ? json.error : 'Lưu thất bại'));
+                        }
+                    } catch (e) {
+                        console.error('Lỗi gửi batch insert:', e);
+                        alert('❌ Lỗi kết nối Web App: ' + e.message);
+                    } finally {
+                        this.chatgptSubmitting = false;
+                    }
+                },
+
                 openChatgptModal(item = null) {
                     const today = new Date();
                     const d = ('0' + today.getDate()).slice(-2);
@@ -645,7 +994,12 @@
                     const y = today.getFullYear();
                     const todayStr = `${d}/${m}/${y}`;
 
+                    this.activeModalTab = 'ai'; // Default to AI tab
+                    this.aiRecords = [];
+                    this.aiRawText = '';
+
                     if (item) {
+                        this.activeModalTab = 'manual';
                         this.chatgptForm = {
                             rootEmail: item.rootEmail || item.email || '',
                             userCode: item.userCode || '',
@@ -667,7 +1021,7 @@
                         };
                     } else {
                         this.chatgptForm = {
-                            rootEmail: '',
+                            rootEmail: 'dncethxyz@gmail.com',
                             userCode: '',
                             userName: '',
                             deviceSeq: 1,
