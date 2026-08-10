@@ -4368,7 +4368,7 @@
                             class="bg-white rounded-2xl border p-5 card-shadow flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
                             <div>
                                 <span class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Tổng Khách Mua ChatGPT</span>
-                                <h3 class="text-3xl font-extrabold text-gray-900" x-text="chatgptList.length"></h3>
+                                <h3 class="text-3xl font-extrabold text-gray-900" x-text="(chatgptList || []).length"></h3>
                                 <span class="text-[11px] text-gray-500 mt-1 block">Toàn bộ danh sách tài khoản & thiết bị</span>
                             </div>
                             <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
@@ -4382,7 +4382,7 @@
                             class="bg-white rounded-2xl border p-5 card-shadow flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
                             <div>
                                 <span class="block text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">Đang Sử Dụng (Còn Hạn)</span>
-                                <h3 class="text-3xl font-extrabold text-emerald-600" x-text="chatgptList.filter(i => !i.expired).length"></h3>
+                                <h3 class="text-3xl font-extrabold text-emerald-600" x-text="(chatgptList || []).filter(i => i && !i.expired).length"></h3>
                                 <span class="text-[11px] text-emerald-600 mt-1 block">Khách hàng đang dùng thiết bị hợp lệ</span>
                             </div>
                             <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
@@ -4396,7 +4396,7 @@
                             class="bg-white rounded-2xl border p-5 card-shadow flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
                             <div>
                                 <span class="block text-xs font-bold text-rose-600 uppercase tracking-widest mb-1">Đã Hết Hạn Sử Dụng</span>
-                                <h3 class="text-3xl font-extrabold text-rose-600" x-text="chatgptList.filter(i => i.expired).length"></h3>
+                                <h3 class="text-3xl font-extrabold text-rose-600" x-text="(chatgptList || []).filter(i => i && i.expired).length"></h3>
                                 <span class="text-[11px] text-rose-600 mt-1 block">Cần kiểm tra gia hạn hoặc thu hồi</span>
                             </div>
                             <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center">
@@ -4517,7 +4517,7 @@
                             </table>
                         </div>
                         <div class="px-5 py-3 border-t border-gray-100 text-xs text-gray-400 font-semibold flex items-center justify-between">
-                            <span>Đang hiển thị <strong class="text-gray-700" x-text="filteredChatgptList.length"></strong> / <strong class="text-gray-700" x-text="chatgptList.length"></strong> thiết bị</span>
+                            <span>Đang hiển thị <strong class="text-gray-700" x-text="(filteredChatgptList || []).length"></strong> / <strong class="text-gray-700" x-text="(chatgptList || []).length"></strong> thiết bị</span>
                         </div>
                     </div>
                 </div>
@@ -8638,12 +8638,19 @@
                 },
 
                 get filteredChatgptList() {
+                    const list = Array.isArray(this.chatgptList) ? this.chatgptList : [];
                     const q = (this.chatgptSearch || '').toLowerCase().trim();
-                    return this.chatgptList.filter(item => {
-                        if (this.chatgptStatusFilter === 'active' && item.expired) return false;
-                        if (this.chatgptStatusFilter === 'expired' && !item.expired) return false;
+                    return list.filter(item => {
+                        if (!item) return false;
+                        const isExpired = Boolean(item.expired);
+                        if (this.chatgptStatusFilter === 'active' && isExpired) return false;
+                        if (this.chatgptStatusFilter === 'expired' && !isExpired) return false;
                         if (!q) return true;
-                        return (item.email + item.product + item.ctv + item.note + item.orderId).toLowerCase().includes(q);
+                        const targetStr = [item.email, item.product, item.ctv, item.note, item.orderId, item.device]
+                            .map(v => String(v || ''))
+                            .join(' ')
+                            .toLowerCase();
+                        return targetStr.includes(q);
                     });
                 },
 
