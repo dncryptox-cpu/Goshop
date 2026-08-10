@@ -4344,15 +4344,19 @@
                                 </div>
                                 <div>
                                     <h1 class="text-xl font-black text-gray-900 tracking-tight">Quản Lý Khách Hàng & Thiết Bị ChatGPT</h1>
-                                    <p class="text-xs text-gray-500 mt-0.5">Đồng bộ tự động từ đơn hàng sheet Tài Chính DATA(YTB) + DATA(GCC).</p>
+                                    <p class="text-xs text-gray-500 mt-0.5">Hệ thống quản lý dữ liệu thiết bị ChatGPT độc lập (Sheet ThietbiGPT).</p>
                                 </div>
                             </div>
                         </div>
 
                         <div class="flex items-center gap-3">
-                            <button @click="buildChatgptList()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                                <span>Tải Lại Dữ Liệu</span>
+                            <button @click="openChatgptModal()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-200 flex items-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                                <span>Thêm / Gia Hạn Thiết Bị</span>
+                            </button>
+                            <button @click="buildChatgptList()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2" :disabled="chatgptLoading">
+                                <svg class="w-4 h-4" :class="chatgptLoading ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                <span x-text="chatgptLoading ? 'Đang Tải...' : 'Tải Lại Dữ Liệu'"></span>
                             </button>
                         </div>
                     </div>
@@ -5369,6 +5373,8 @@
                     TRANSACTION_SHEET_ID: '1-EgeNWztGQsY2rmLYp00yKDjgHR5WYoqzzhAkSnvJjc',
                     WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxzXvVjASViAK--nYwzfJ_iTbK8e7Ilfd9xjbDdzS3SdXPTgdPRVSd9M4ORimanRWZN/exec', // PASTE YOUR GOOGLE APPS SCRIPT URL HERE
                     FINANCIAL_WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxoBHLdCgValY0h2LtV5jDo1hhidv0nW_QXZ9rDf0RM0bl2ktpHpL38Utk2NbHos4PF/exec',
+                    CHATGPT_WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbySu9evgLmqMVKSc-Z1cKUIzcfqJH9_pEFDdzOERQ1yP8uLy1hvLqJgNRkOlwDJEOba/exec',
+                    CHATGPT_API_KEY: 'c74391ab-gpt-sec-2026',
                     TABS: ['APP_DATA', 'UPSALE', 'STOCK', 'PNL', 'Spot']
                 },
                 // db is now a NON-REACTIVE accessor — CSV data is stored in
@@ -8514,76 +8520,126 @@
                 chatgptStatusFilter: 'all',
                 chatgptList: [],
                 chatgptLoading: false,
+                showChatgptModal: false,
+                chatgptSubmitting: false,
+                chatgptForm: {
+                    email: '',
+                    orderId: '',
+                    product: 'GPTshare-3',
+                    duration: 3,
+                    activationDate: '',
+                    device: 'Computer',
+                    os: 'Windows',
+                    app: 'ChatGPT Web',
+                    location: '',
+                    ctv: 'Dnc',
+                    price: 0,
+                    note: '',
+                    source: 'Nhập tay'
+                },
 
-                buildChatgptList() {
-                    const list = [];
+                openChatgptModal(item = null) {
                     const today = new Date();
-                    today.setHours(23,59,59,0);
+                    const d = ('0' + today.getDate()).slice(-2);
+                    const m = ('0' + (today.getMonth() + 1)).slice(-2);
+                    const y = today.getFullYear();
+                    const todayStr = `${d}/${m}/${y}`;
 
-                    const parseExpiry = (str) => {
-                        if (!str || str === '--') return null;
-                        const p = String(str).trim().split('/');
-                        if (p.length === 3) return new Date(parseInt(p[2]), parseInt(p[1])-1, parseInt(p[0]), 23, 59, 59);
-                        return null;
-                    };
+                    if (item) {
+                        this.chatgptForm = {
+                            email: item.email || '',
+                            orderId: item.orderId || '',
+                            product: item.product || 'GPTshare-3',
+                            duration: item.duration || 3,
+                            activationDate: item.activationDate || todayStr,
+                            device: item.device || 'Computer',
+                            os: item.os || 'Windows',
+                            app: item.app || 'ChatGPT Web',
+                            location: item.location || '',
+                            ctv: item.ctv || 'Dnc',
+                            price: item.price || 0,
+                            note: item.note || '',
+                            source: 'Nhập tay'
+                        };
+                    } else {
+                        this.chatgptForm = {
+                            email: '',
+                            orderId: '',
+                            product: 'GPTshare-3',
+                            duration: 3,
+                            activationDate: todayStr,
+                            device: 'Computer',
+                            os: 'Windows',
+                            app: 'ChatGPT Web',
+                            location: '',
+                            ctv: 'Dnc',
+                            price: 0,
+                            note: '',
+                            source: 'Nhập tay'
+                        };
+                    }
+                    this.showChatgptModal = true;
+                },
 
-                    // Source 1: DATA_YTB (from Google Sheet)
-                    const ytbData = (window._rawDb && Array.isArray(window._rawDb.DATA_YTB)) ? window._rawDb.DATA_YTB : [];
-                    ytbData.forEach(row => {
-                        if (!row || typeof row !== 'object') return;
-                        const vals = row._rawVals || Object.values(row);
-                        if (vals.length < 5) return;
-                        const product = String(row['Sản phẩm'] || vals[4] || '').trim();
-                        if (!product.toLowerCase().includes('gpt')) return;
-                        const exp = parseExpiry(String(vals[13] || row['HSD'] || '').trim());
-                        const daysLeft = exp ? Math.floor((exp - today) / 86400000) : null;
-                        list.push({
-                            email:      String(vals[3] || row['Email'] || 'N/A').trim(),
-                            orderId:    String(vals[1] || '').trim(),
-                            product,
-                            duration:   parseInt(vals[5] || '1') || 1,
-                            date:       String(vals[0] || '').trim(),
-                            expiryDate: String(vals[13] || '--').trim(),
-                            ctv:        String(vals[7] || 'Dnc').trim(),
-                            note:       String(vals[15] || '').trim(),
-                            expired:    exp ? exp < today : false,
-                            daysLeft,
+                async submitChatgptForm() {
+                    if (!this.chatgptForm.email || !this.chatgptForm.email.includes('@')) {
+                        alert('Vui lòng nhập Email hợp lệ!');
+                        return;
+                    }
+                    if (!this.CONFIG.CHATGPT_WEBAPP_URL || this.CONFIG.CHATGPT_WEBAPP_URL.includes('YOUR_CHATGPT_SCRIPT_ID')) {
+                        alert('Vui lòng cập nhật Web App URL mới vào CONFIG.CHATGPT_WEBAPP_URL trước khi tạo!');
+                        return;
+                    }
+
+                    this.chatgptSubmitting = true;
+                    try {
+                        const payload = {
+                            ...this.chatgptForm,
+                            authToken: this.CONFIG.CHATGPT_API_KEY
+                        };
+                        const res = await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload)
                         });
-                    });
+                        const json = await res.json();
+                        if (json && json.success) {
+                            alert('✅ Đã thêm record thành công! (ID: ' + json.id + ')');
+                            this.showChatgptModal = false;
+                            this.buildChatgptList();
+                        } else {
+                            alert('❌ Lỗi: ' + (json ? json.error : 'Tạo thất bại'));
+                        }
+                    } catch (e) {
+                        console.error('Lỗi khi gửi form ChatGPT:', e);
+                        alert('❌ Lỗi kết nối API Web App: ' + e.message);
+                    } finally {
+                        this.chatgptSubmitting = false;
+                    }
+                },
 
-                    // Source 2: DATAGoc (fallback — dedupe by email)
-                    const seen = new Set(list.map(i => i.email.toLowerCase()));
-                    const gocData = Array.isArray(this.dataGocList) ? this.dataGocList : [];
-                    gocData.forEach(item => {
-                        if (!item || !item.email) return;
-                        const p = String(item.product || '').toLowerCase();
-                        if (!p.includes('gpt')) return;
-                        if (seen.has(item.email.toLowerCase())) return;
-                        seen.add(item.email.toLowerCase());
-                        const exp = parseExpiry(item.expiryDate);
-                        const daysLeft = exp ? Math.floor((exp - today) / 86400000) : null;
-                        list.push({
-                            email:      item.email,
-                            orderId:    '',
-                            product:    item.product || 'GPTshare',
-                            duration:   parseInt(item.months) || 1,
-                            date:       item.purchaseDate || '--',
-                            expiryDate: item.expiryDate || '--',
-                            ctv:        item.staff || 'Dnc',
-                            note:       (item.subEmail && item.subEmail !== '-') ? item.subEmail : '',
-                            expired:    exp ? exp < today : false,
-                            daysLeft,
-                        });
-                    });
-
-                    // Sort: newest first
-                    list.sort((a, b) => {
-                        const da = a.date ? new Date(a.date.split('/').reverse().join('-')) : new Date(0);
-                        const db_ = b.date ? new Date(b.date.split('/').reverse().join('-')) : new Date(0);
-                        return db_ - da;
-                    });
-
-                    this.chatgptList = list;
+                async buildChatgptList() {
+                    this.chatgptLoading = true;
+                    try {
+                        if (!this.CONFIG.CHATGPT_WEBAPP_URL || this.CONFIG.CHATGPT_WEBAPP_URL.includes('YOUR_CHATGPT_SCRIPT_ID')) {
+                            console.warn('ChatGPT WebApp URL chưa được cấu hình.');
+                            this.chatgptList = [];
+                            return;
+                        }
+                        const res = await fetch(`${this.CONFIG.CHATGPT_WEBAPP_URL}?action=list&t=${Date.now()}`);
+                        const json = await res.json();
+                        if (json && json.success && Array.isArray(json.data)) {
+                            this.chatgptList = json.data;
+                        } else {
+                            console.error('Lỗi khi tải dữ liệu ChatGPT:', json ? json.error : 'Response không hợp lệ');
+                            this.chatgptList = [];
+                        }
+                    } catch (e) {
+                        console.error('Lỗi kết nối Web App ChatGPT:', e);
+                        this.chatgptList = [];
+                    } finally {
+                        this.chatgptLoading = false;
+                    }
                 },
 
                 get filteredChatgptList() {
@@ -9174,14 +9230,8 @@
                             this.activeModule = newHash;
                         }
                     });
-                    this.loadTwofaData();
-                    this.fetchDataGoc().then(() => {
-                        if (this.activeModule === 'chatgpt_shared') this.buildChatgptList();
-                    });
+                    this.fetchDataGoc();
                     this.fetchSheetData();
-                    if (this.activeModule === 'chatgpt_shared') {
-                        this.fetchSheetData();
-                    }
                     // Track which modules have been loaded (lazy loading)
                     this._loadedModules = new Set();
 
@@ -9190,8 +9240,8 @@
                         window.location.hash = val;
 
                         // Lazy load: only fetch data the FIRST time a module is visited
-                        const needsDataGoc = ['data_goc', 'dashboard', 'chatgpt_shared'];
-                        const needsSheet = ['chatgpt_shared'];
+                        const needsDataGoc = ['data_goc', 'dashboard'];
+                        const needsSheet = [];
 
                         if (needsDataGoc.includes(val) && !this._loadedModules.has('datagoc')) {
                             this._loadedModules.add('datagoc');
@@ -11307,6 +11357,108 @@ khach2@gmail.com | Netflix | 150k | 12/05/2026 | 3 tháng
                 <button @click="parseBulkRefundAI()" class="px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-md shadow-indigo-500/20 transition-all flex items-center gap-2">
                     <i data-lucide="scan-line" class="w-4 h-4"></i>
                     Phân Tích Hàng Loạt
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- ChatGPT Add/Extend Modal -->
+    <div x-show="showChatgptModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div @click="showChatgptModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
+        <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl border border-gray-100 flex flex-col max-h-[90vh]"
+             x-transition:enter="transition ease-out duration-300"
+             x-transition:enter-start="opacity-0 scale-95"
+             x-transition:enter-end="opacity-100 scale-100">
+            <!-- Header -->
+            <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between shrink-0 bg-indigo-50/50 rounded-t-2xl">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-black text-gray-900">Thêm / Gia Hạn Thiết Bị ChatGPT</h3>
+                        <p class="text-xs text-gray-500">Ghi dữ liệu mới vào tab Sheet ThietbiGPT</p>
+                    </div>
+                </div>
+                <button @click="showChatgptModal = false" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+
+            <!-- Content -->
+            <div class="p-6 overflow-y-auto space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Email Khách Hàng *</label>
+                        <input type="email" x-model="chatgptForm.email" placeholder="khachhang@gmail.com" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Mã Đơn (Nếu có)</label>
+                        <input type="text" x-model="chatgptForm.orderId" placeholder="GS260714-249" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Gói Mua</label>
+                        <input type="text" x-model="chatgptForm.product" placeholder="GPTshare-3" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Thời Hạn (Tháng)</label>
+                        <input type="number" min="1" max="36" x-model.number="chatgptForm.duration" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Ngày Kích Hoạt</label>
+                        <input type="text" x-model="chatgptForm.activationDate" placeholder="DD/MM/YYYY" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Thiết Bị</label>
+                        <select x-model="chatgptForm.device" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="Computer">Computer</option>
+                            <option value="Mobile">Mobile</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Hệ Điều Hành</label>
+                        <input type="text" x-model="chatgptForm.os" placeholder="Windows / Mac / iOS / Android" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Ứng Dụng</label>
+                        <select x-model="chatgptForm.app" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="ChatGPT Web">ChatGPT Web</option>
+                            <option value="ChatGPT App">ChatGPT App</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Địa Điểm</label>
+                        <input type="text" x-model="chatgptForm.location" placeholder="Hà Nội, VN" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">CTV Phụ Trách</label>
+                        <input type="text" x-model="chatgptForm.ctv" placeholder="Dnc" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Giá Bán (VNĐ)</label>
+                        <input type="number" x-model.number="chatgptForm.price" placeholder="150000" class="w-full border-gray-200 rounded-xl text-xs py-2.5 px-3 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1">Ghi Chú / Chi Tiết Thiết Bị</label>
+                    <textarea x-model="chatgptForm.note" rows="2" placeholder="VD: Computer • Windows ChatGPT Web 14 thg 7..." class="w-full border-gray-200 rounded-xl text-xs p-3 focus:ring-indigo-500 focus:border-indigo-500"></textarea>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 shrink-0 bg-gray-50 rounded-b-2xl">
+                <button @click="showChatgptModal = false" class="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-all border border-gray-200">Hủy</button>
+                <button @click="submitChatgptForm()" :disabled="chatgptSubmitting" class="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-200 transition-all flex items-center gap-2">
+                    <span x-text="chatgptSubmitting ? 'Đang Lưu...' : 'Lưu Record'"></span>
                 </button>
             </div>
         </div>
