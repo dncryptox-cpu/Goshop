@@ -543,22 +543,45 @@
                     </div>
                 </div>
 
-                <!-- Textarea dán dữ liệu thô -->
-                <div>
+                <!-- Textarea & Image Dropzone dán dữ liệu thô / dán ảnh -->
+                <div class="space-y-2">
                     <div class="flex items-center justify-between mb-1.5">
-                        <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider">Dán Khối Văn Bản Thô Vào Đây (Dán Dính Liền Nhiều Dòng Cho Mỗi Khách)</label>
-                        <span class="text-[11px] text-gray-400">Dán tin nhắn Zalo / Telegram / Khách gửi trực tiếp</span>
+                        <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider">Dán Khối Văn Bản Thô hoặc Dán / Tải Ảnh Chụp Đơn Hàng (Multimodal Vision)</label>
+                        <div class="flex items-center gap-2">
+                            <label class="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1">
+                                <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                                <span>Tải ảnh lên</span>
+                                <input type="file" accept="image/*" class="hidden" @change="handleBatchImageFile($event)">
+                            </label>
+                            <template x-if="aiAttachedImage">
+                                <button type="button" @click="aiAttachedImage = null" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold flex items-center gap-1">
+                                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                    <span>Xóa ảnh</span>
+                                </button>
+                            </template>
+                        </div>
                     </div>
-                    <textarea x-model="aiRawText" rows="5" placeholder="Ví dụ dán thực tế:
-Cafard
-10 thg 8, 2026 lúc 19:00
-Gò Vấp, 61
-Đăng xuất
 
-Hoan Tran
-10 thg 8, 2026 lúc 10:15
-Haiphong 31
-mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-medium focus:outline-none focus:border-indigo-500 text-gray-900 leading-relaxed font-mono"></textarea>
+                    <div class="relative rounded-xl border border-gray-200 bg-gray-50 p-2 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-500"
+                         @paste="handleBatchImagePaste($event)">
+                        <textarea x-model="aiRawText" rows="4" 
+                                  placeholder="Bấm Ctrl+V để dán trực tiếp ảnh chụp màn hình hoặc dán văn bản thô tại đây..." 
+                                  class="w-full bg-transparent text-xs font-mono focus:outline-none resize-y p-1 text-gray-900 leading-relaxed"></textarea>
+
+                        <template x-if="aiAttachedImage">
+                            <div class="mt-2 p-2 bg-white rounded-lg border border-indigo-200 flex items-center gap-3">
+                                <img :src="aiAttachedImage.dataUrl" class="w-16 h-16 object-cover rounded-lg border border-gray-200 shadow-xs shrink-0">
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs font-bold text-gray-800 flex items-center gap-1">
+                                        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                        <span>Đã đính kèm 1 ảnh chụp đơn hàng</span>
+                                    </p>
+                                    <p class="text-[10px] text-gray-400 font-mono mt-0.5" x-text="aiAttachedImage.mimeType + ' • AI Gemini Vision sẽ đọc trực tiếp cả Ảnh + Text'"></p>
+                                </div>
+                                <button type="button" @click="aiAttachedImage = null" class="p-1.5 text-gray-400 hover:text-rose-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+                            </div>
+                        </template>
+                    </div>
                 </div>
 
                 <!-- Action Button Parse AI & Smart Parser -->
@@ -566,7 +589,7 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
                     <div class="flex items-center gap-2">
                         <button type="button" @click="parseWithAI()" :disabled="aiParsing" class="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2">
                             <i data-lucide="wand-2" class="w-4 h-4" :class="aiParsing ? 'animate-spin' : ''"></i>
-                            <span x-text="aiParsing ? 'Gemini AI Đang Xử Lý...' : 'Phân Tích Bằng AI (Gemini)'"></span>
+                            <span x-text="aiParsing ? 'Gemini AI Đang Xử Lý...' : 'Phân Tích Bằng AI (Text + Ảnh Vision)'"></span>
                         </button>
 
                         <button type="button" @click="runSmartBlockParser()" :disabled="aiParsing" class="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5" title="Sử dụng bộ bóc tách khối dữ liệu offline">
@@ -834,6 +857,23 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
         <i data-lucide="info" class="w-4 h-4 text-indigo-400"></i>
         <span x-text="toastMessage"></span>
     </div>
+
+    <script>
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = reader.result;
+                    const commaIdx = dataUrl.indexOf(',');
+                    const mimeType = dataUrl.substring(5, commaIdx).split(';')[0];
+                    const base64 = dataUrl.substring(commaIdx + 1);
+                    resolve({ mimeType, base64, dataUrl });
+                };
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+    </script>
 
     <script>
         function chatgptApp() {
@@ -1229,9 +1269,6 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
                     } finally {
                         this.rowSaving = false;
                         this.editingRowId = null;
-                        this.$nextTick(() => {
-                            if (window.lucide) window.lucide.createIcons();
-                        });
                     }
                 },
 
@@ -1275,21 +1312,29 @@ mua 3 tháng" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 tex
                     return `${d}/${mon}/${y}`;
                 },
 
-                // Generate UserCode from name (e.g. "Cafard" -> "KH-CAFARD-01")
-                generateUserCode(userName) {
-                    if (!userName) return 'KH-USER-01';
-                    const cleanName = String(userName)
-                        .normalize("NFD")
-                        .replace(/[\u0300-\u036f]/g, "")
-                        .replace(/[^a-zA-Z0-9]/g, "")
-                        .toUpperCase();
-                    return `KH-${cleanName || 'USER'}-01`;
+                aiAttachedImage: null,
+
+                async handleBatchImageFile(e) {
+                    if (e.target.files && e.target.files[0]) {
+                        this.aiAttachedImage = await fileToBase64(e.target.files[0]);
+                    }
+                },
+                async handleBatchImagePaste(e) {
+                    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                    for (let item of items) {
+                        if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
+                            const file = item.getAsFile();
+                            this.aiAttachedImage = await fileToBase64(file);
+                            e.preventDefault();
+                            break;
+                        }
+                    }
                 },
 
                 // Primary Gemini AI API Call with Few-Shot Examples (Restricted duration: 1, 3, 6, 12)
                 async parseWithAI() {
-                    if (!this.aiRawText || this.aiRawText.trim().length < 5) {
-                        alert('⚠️ Vui lòng dán khối văn bản thô (nhiều dòng) trước khi bấm phân tích AI!');
+                    if (!this.aiRawText.trim() && !this.aiAttachedImage) {
+                        alert('⚠️ Vui lòng dán văn bản thô hoặc ảnh chụp màn hình đơn hàng trước khi bấm phân tích AI!');
                         return;
                     }
 
@@ -1334,17 +1379,29 @@ FEW-SHOT EXAMPLE:
 ĐOẠN VĂN BẢN THÔ CẦN PHÂN TÍCH:
 ${rawClean}`;
 
-                    console.log('--- GEMINI API CALL PAYLOAD ---');
-                    console.log(promptText);
+                    const parts = [{ text: promptText }];
+                    if (this.aiAttachedImage && this.aiAttachedImage.base64) {
+                        parts.push({
+                            inlineData: { mimeType: this.aiAttachedImage.mimeType || 'image/jpeg', data: this.aiAttachedImage.base64 }
+                        });
+                    }
 
                     try {
-                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                contents: [{ parts: [{ text: promptText }] }]
-                            })
-                        });
+                        let res;
+                        try {
+                            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ contents: [{ parts }] })
+                            });
+                            if (!res.ok) throw new Error('Fallback to 1.5');
+                        } catch(err) {
+                            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ contents: [{ parts }] })
+                            });
+                        }
 
                         const json = await res.json();
                         console.log('--- GEMINI API RESPONSE BODY ---', json);

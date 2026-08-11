@@ -210,6 +210,7 @@
                                 <thead>
                                     <tr class="bg-gray-50 text-gray-400 font-bold uppercase text-[10px] tracking-wider border-b border-gray-100">
                                         <th class="p-3">Email Chủ Gói</th>
+                                        <th class="p-3">Slot Đã Dùng</th>
                                         <th class="p-3">Mật Khẩu</th>
                                         <th class="p-3">Mã 2FA Real-Time (TOTP)</th>
                                         <th class="p-3">Mã Khôi Phục (Backup Codes)</th>
@@ -221,6 +222,17 @@
                                     <template x-for="(acc, idx) in ownerAccounts" :key="acc.id || idx">
                                         <tr class="hover:bg-gray-50/80 transition-all font-mono">
                                             <td class="p-3 font-bold text-blue-700" x-text="acc.email"></td>
+                                            <!-- CẢI TIẾN 2: CỘT SLOT ĐÃ DÙNG (X/5) BADGE -->
+                                            <td class="p-3">
+                                                <span class="text-xs font-mono font-extrabold px-2.5 py-1 rounded-lg border font-mono shadow-2xs"
+                                                      :class="{
+                                                          'bg-emerald-50 text-emerald-700 border-emerald-200': getHostActiveCount(acc.email) < 5,
+                                                          'bg-amber-50 text-amber-700 border-amber-200': getHostActiveCount(acc.email) === 5,
+                                                          'bg-rose-50 text-rose-700 border-rose-200': getHostActiveCount(acc.email) > 5
+                                                      }">
+                                                    <span x-text="getHostActiveCount(acc.email)"></span>/5 Slot
+                                                </span>
+                                            </td>
                                             <td class="p-3">
                                                 <div class="flex items-center gap-1.5">
                                                     <span x-text="acc.showPassword ? acc.password : '••••••••'"></span>
@@ -248,7 +260,7 @@
                                     </template>
                                     <template x-if="ownerAccounts.length === 0">
                                         <tr>
-                                            <td colspan="6" class="p-4 text-center text-gray-400 font-sans">Chưa có tài khoản chủ nào được tạo. Bấm "Thêm Tài Khoản Chủ" để tạo mới.</td>
+                                            <td colspan="7" class="p-4 text-center text-gray-400 font-sans">Chưa có tài khoản chủ nào được tạo. Bấm "Thêm Tài Khoản Chủ" để tạo mới.</td>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -453,10 +465,10 @@
         </div>
     </div>
 
-    <!-- Modal Thêm/Sửa Tài Khoản Chủ Gói -->
+    <!-- Modal Thêm/Sửa Tài Khoản Chủ Gói (Multimodal Vision OCR) -->
     <div x-show="showOwnerModal" x-cloak class="fixed inset-0 z-[110] flex items-center justify-center p-4">
         <div @click="showOwnerModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
-        <div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col">
+        <div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col max-h-[92vh]">
             <div class="p-5 border-b border-gray-100 flex items-center justify-between bg-blue-50/50">
                 <div class="flex items-center gap-2">
                     <span class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center text-sm shadow-md">🔑</span>
@@ -465,7 +477,45 @@
                 <button @click="showOwnerModal = false" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-xl"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
 
-            <form @submit.prevent="submitOwnerForm()" class="p-6 space-y-4 text-xs">
+            <form @submit.prevent="submitOwnerForm()" class="p-6 space-y-4 text-xs overflow-y-auto">
+                
+                <!-- CẢI TIẾN 1: KHU VỰC DÁN ẢNH CHỤP THÔNG TIN TK CHỦ (VISION AI AUTO-FILL) -->
+                <div class="p-3.5 bg-blue-50/60 rounded-xl border border-blue-100 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="block font-extrabold text-blue-900 text-xs flex items-center gap-1.5">
+                            <i data-lucide="sparkles" class="w-4 h-4 text-blue-600"></i>
+                            <span>Dán / Tải Ảnh Chụp TK Chủ (AI Đọc & Auto-fill)</span>
+                        </label>
+                        <label class="px-2.5 py-1 bg-white hover:bg-blue-100 text-blue-700 rounded-lg text-[10px] font-bold border border-blue-200 cursor-pointer flex items-center gap-1 shadow-2xs">
+                            <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                            <span>Tải ảnh</span>
+                            <input type="file" accept="image/*" class="hidden" @change="handleOwnerImageFile($event)">
+                        </label>
+                    </div>
+
+                    <div class="relative" @paste="handleOwnerImagePaste($event)">
+                        <template x-if="!ownerImage">
+                            <div class="p-3.5 bg-white rounded-lg border border-dashed border-blue-200 text-center cursor-pointer hover:bg-blue-50/50 transition-all" @click="$el.querySelector('input')?.click()">
+                                <p class="text-[11px] text-blue-600 font-bold">Bấm Ctrl+V để dán ảnh chụp màn hình chứa Email, Mật khẩu, Backup codes...</p>
+                            </div>
+                        </template>
+                        
+                        <template x-if="ownerImage">
+                            <div class="p-2 bg-white rounded-lg border border-blue-200 flex items-center gap-3">
+                                <img :src="ownerImage.dataUrl" class="w-14 h-14 object-cover rounded-lg border border-gray-200 shrink-0">
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs font-bold text-gray-800">Đã đính kèm 1 ảnh chụp TK</p>
+                                    <button type="button" @click="parseOwnerImageWithAI()" :disabled="parsingOwnerImage" class="mt-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1 shadow-xs">
+                                        <i data-lucide="sparkles" class="w-3 h-3" :class="parsingOwnerImage ? 'animate-spin' : ''"></i>
+                                        <span x-text="parsingOwnerImage ? 'Đang đọc ảnh...' : 'Bấm để AI Đọc Ảnh & Điền'"></span>
+                                    </button>
+                                </div>
+                                <button type="button" @click="ownerImage = null" class="p-1.5 text-gray-400 hover:text-rose-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
                 <div>
                     <label class="block font-bold text-gray-700 uppercase mb-1">Email Đăng Nhập (Chủ Gói)</label>
                     <input x-model="ownerForm.email" type="email" required placeholder="g1master@gmail.com" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 font-mono font-bold focus:outline-none focus:border-blue-500">
@@ -489,7 +539,7 @@
                 <div>
                     <label class="block font-bold text-gray-700 uppercase mb-1">TOTP Secret Key (Mã 2FA Base32)</label>
                     <input x-model="ownerForm.totpSecret" type="text" placeholder="JBSWY3DPEHPK3PXP..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 font-mono font-bold focus:outline-none focus:border-blue-500">
-                    <span class="text-[10px] text-gray-400 mt-1 block">Dùng để tự sinh mã 2FA 6 số theo chu kỳ 30 giây</span>
+                    <span class="text-[10px] text-gray-400 mt-1 block">Dùng để tự sinh mã 2FA 6 số theo chu kỳ 30 giây (Nhập tay riêng)</span>
                 </div>
 
                 <div>
@@ -507,7 +557,7 @@
         </div>
     </div>
 
-    <!-- Google One Creation Modal (2 Tabs: AI Gemini & Nhập Tay) -->
+    <!-- Google One Creation Modal (2 Tabs: AI Gemini Multimodal Vision & Nhập Tay) -->
     <div x-show="showModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
         <div @click="showModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
         <div class="bg-white rounded-2xl w-full max-w-5xl shadow-2xl relative overflow-hidden flex flex-col max-h-[92vh]">
@@ -519,7 +569,7 @@
                         <span class="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center text-sm shadow-md shadow-blue-200">☁️</span>
                         Thêm / Gia Hạn Google One 2TB
                     </h2>
-                    <p class="text-xs text-gray-500 mt-0.5">Dán văn bản thô để AI Gemini tự động bóc tách thông tin thành viên gói gia đình.</p>
+                    <p class="text-xs text-gray-500 mt-0.5">Dán văn bản thô hoặc ảnh chụp màn hình để AI Gemini tự động bóc tách thông tin.</p>
                 </div>
                 <button @click="showModal = false" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-xl hover:bg-gray-100 transition-colors">
                     <i data-lucide="x" class="w-5 h-5"></i>
@@ -532,7 +582,7 @@
                         class="px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 border-t border-x"
                         :class="activeModalTab === 'ai' ? 'bg-white text-blue-700 border-gray-200 shadow-xs' : 'text-gray-500 hover:text-gray-900 border-transparent'">
                     <i data-lucide="sparkles" class="w-4 h-4 text-blue-600"></i>
-                    <span>Dán Nhanh (AI Gemini)</span>
+                    <span>Dán Nhanh (AI Gemini + Vision Ảnh)</span>
                 </button>
                 <button @click="activeModalTab = 'manual'"
                         class="px-4 py-2.5 rounded-t-xl text-xs font-bold transition-all flex items-center gap-2 border-t border-x"
@@ -545,13 +595,12 @@
             <!-- Modal Content Area -->
             <div class="p-6 overflow-y-auto space-y-5 flex-1">
                 
-                <!-- TAB 1: AI GEMINI PARSER -->
+                <!-- TAB 1: AI GEMINI PARSER (TEXT + VISION OCR) -->
                 <template x-if="activeModalTab === 'ai'">
                     <div class="space-y-4">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Email Chủ Gói Dùng Chung Cho Batch này</label>
-                                <!-- Dropdown / Custom Input for Owner Account -->
                                 <select x-model="aiSharedRootEmail" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-blue-500">
                                     <template x-for="acc in ownerAccounts" :key="acc.id || acc.email">
                                         <option :value="acc.email" x-text="acc.email"></option>
@@ -565,18 +614,52 @@
                             </div>
                         </div>
 
-                        <div>
-                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Dán Văn Bản Thô Nhận Từ Khách / Zalo</label>
-                            <textarea x-model="aiRawText" rows="5" placeholder="Ví dụ văn bản thô:
-Anh Tuấn - KH-ANHTUAN-01 - Slot 1 - GoogleOne 2TB - 3 tháng - 150000đ - 10/08/2026
-Chị Mai - Slot 2 - 6 tháng - 300000đ..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-mono focus:outline-none focus:border-blue-500"></textarea>
+                        <!-- CẢI TIẾN 1: Ô DÁN KHỐI VĂN BẢN VÀ DÁN/TẢI ẢNH ĐA NĂNG -->
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <label class="block text-xs font-bold text-gray-700 uppercase">Dán Văn Bản Thô hoặc Dán / Tải Ảnh Chụp Đơn Hàng (Multimodal Vision)</label>
+                                <div class="flex items-center gap-2">
+                                    <label class="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1">
+                                        <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                                        <span>Tải ảnh lên</span>
+                                        <input type="file" accept="image/*" class="hidden" @change="handleBatchImageFile($event)">
+                                    </label>
+                                    <template x-if="aiAttachedImage">
+                                        <button @click="aiAttachedImage = null" class="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold flex items-center gap-1">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                            <span>Xóa ảnh</span>
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <div class="relative rounded-xl border border-gray-200 bg-gray-50 p-2 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500"
+                                 @paste="handleBatchImagePaste($event)">
+                                <textarea x-model="aiRawText" rows="4" 
+                                          placeholder="Bấm Ctrl+V để dán trực tiếp ảnh chụp màn hình hoặc dán văn bản thô tại đây..." 
+                                          class="w-full bg-transparent text-xs font-mono focus:outline-none resize-y p-1"></textarea>
+
+                                <template x-if="aiAttachedImage">
+                                    <div class="mt-2 p-2 bg-white rounded-lg border border-blue-200 flex items-center gap-3">
+                                        <img :src="aiAttachedImage.dataUrl" class="w-16 h-16 object-cover rounded-lg border border-gray-200 shadow-xs shrink-0">
+                                        <div class="flex-1 min-w-0">
+                                            <p class="text-xs font-bold text-gray-800 flex items-center gap-1">
+                                                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                                <span>Đã đính kèm 1 ảnh chụp đơn hàng</span>
+                                            </p>
+                                            <p class="text-[10px] text-gray-400 font-mono mt-0.5" x-text="aiAttachedImage.mimeType + ' • AI Gemini Vision sẽ đọc trực tiếp cả Ảnh + Text'"></p>
+                                        </div>
+                                        <button @click="aiAttachedImage = null" class="p-1.5 text-gray-400 hover:text-rose-600"><i data-lucide="x" class="w-4 h-4"></i></button>
+                                    </div>
+                                </template>
+                            </div>
                         </div>
 
                         <div class="flex items-center justify-between">
-                            <span class="text-xs text-gray-500 italic">💡 Mẫu prompt đã tối ưu riêng cho gói gia đình Google One 2TB.</span>
+                            <span class="text-xs text-gray-500 italic">💡 Hỗ trợ đọc cả Text + Ảnh chụp màn hình đơn hàng bằng Gemini Vision.</span>
                             <button @click="parseWithGemini()" :disabled="aiParsing" class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-2 shadow-md shadow-blue-200 transition-all">
                                 <i data-lucide="sparkles" class="w-4 h-4" :class="aiParsing ? 'animate-spin' : ''"></i>
-                                <span x-text="aiParsing ? 'Đang Phân Tích...' : 'Phân Tích Bằng AI'"></span>
+                                <span x-text="aiParsing ? 'Đang Phân Tích...' : 'Phân Tích Bằng AI (Text + Ảnh)'"></span>
                             </button>
                         </div>
 
@@ -747,8 +830,23 @@ Chị Mai - Slot 2 - 6 tháng - 300000đ..." class="w-full bg-gray-50 border bor
         <span x-text="toastMessage"></span>
     </div>
 
-    <!-- Standard TOTP Helper Script -->
+    <!-- Helper Functions & TOTP -->
     <script>
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const dataUrl = reader.result;
+                    const commaIdx = dataUrl.indexOf(',');
+                    const mimeType = dataUrl.substring(5, commaIdx).split(';')[0];
+                    const base64 = dataUrl.substring(commaIdx + 1);
+                    resolve({ mimeType, base64, dataUrl });
+                };
+                reader.onerror = error => reject(error);
+                reader.readAsDataURL(file);
+            });
+        }
+
         function base32ToBuf(str) {
             if (!str) return new Uint8Array(0);
             const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -819,6 +917,8 @@ Chị Mai - Slot 2 - 6 tháng - 300000đ..." class="w-full bg-gray-50 border bor
                 showOwnerModal: false,
                 submittingOwner: false,
                 ownerForm: { id: '', email: '', password: '', backupCodes: '', recoveryEmail: '', totpSecret: '', note: '' },
+                ownerImage: null,
+                parsingOwnerImage: false,
                 
                 loading: false,
                 showModal: false,
@@ -834,10 +934,11 @@ Chị Mai - Slot 2 - 6 tháng - 300000đ..." class="w-full bg-gray-50 border bor
                 showMessageModal: false,
                 messageData: { userName: '', userCode: '', product: '', expiryDate: '', daysLeft: 0, expired: false, duration: 3, price: 0, phone: '', messageText: '' },
 
-                // AI States
+                // AI States (Multimodal Vision + Text)
                 geminiApiKey: localStorage.getItem('gemini_api_key') || '',
                 aiSharedRootEmail: 'g1master@gmail.com',
                 aiRawText: '',
+                aiAttachedImage: null,
                 aiParsing: false,
                 aiRecords: [],
 
@@ -878,6 +979,103 @@ Chị Mai - Slot 2 - 6 tháng - 300000đ..." class="w-full bg-gray-50 border bor
                     navigator.clipboard.writeText(text).then(() => {
                         this.showToast(`Đã copy ${label}: ${text}`);
                     });
+                },
+
+                // Image Handlers for Master Owner Account Form
+                async handleOwnerImageFile(e) {
+                    if (e.target.files && e.target.files[0]) {
+                        this.ownerImage = await fileToBase64(e.target.files[0]);
+                    }
+                },
+                async handleOwnerImagePaste(e) {
+                    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                    for (let item of items) {
+                        if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
+                            const file = item.getAsFile();
+                            this.ownerImage = await fileToBase64(file);
+                            e.preventDefault();
+                            break;
+                        }
+                    }
+                },
+
+                // Image Handlers for Batch Creation AI Modal
+                async handleBatchImageFile(e) {
+                    if (e.target.files && e.target.files[0]) {
+                        this.aiAttachedImage = await fileToBase64(e.target.files[0]);
+                    }
+                },
+                async handleBatchImagePaste(e) {
+                    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                    for (let item of items) {
+                        if (item.kind === 'file' && item.type.indexOf('image/') !== -1) {
+                            const file = item.getAsFile();
+                            this.aiAttachedImage = await fileToBase64(file);
+                            e.preventDefault();
+                            break;
+                        }
+                    }
+                },
+
+                async parseOwnerImageWithAI() {
+                    if (!this.ownerImage || !this.ownerImage.base64) {
+                        alert('Vui lòng dán hoặc tải ảnh chụp màn hình thông tin tài khoản!');
+                        return;
+                    }
+                    this.parsingOwnerImage = true;
+                    try {
+                        const prompt = `Bạn là trợ lý AI đọc ảnh chụp màn hình thông tin tài khoản chủ gói.
+Hãy phân tích hình ảnh đính kèm và trích xuất thông tin thành một JSON object thuần:
+{
+  "email": "Email đăng nhập",
+  "password": "Mật khẩu",
+  "backupCodes": "Các mã khôi phục / backup codes (nếu có)",
+  "recoveryEmail": "Email khôi phục phụ (nếu có)",
+  "note": "Ghi chú khác (nếu có)"
+}
+
+QUY TẮC:
+- Nếu trường nào không có hoặc không rõ trong ảnh, hãy để chuỗi rỗng "". KHÔNG TỰ BỊA GIÁ TRỊ.
+- Mật khẩu và email cần chính xác từng ký tự.
+- Chỉ trả về DUY NHẤT JSON object thuần, KHÔNG kèm markdown codeblock hay lời giải thích.`;
+
+                        const parts = [
+                            { text: prompt },
+                            { inlineData: { mimeType: this.ownerImage.mimeType || 'image/jpeg', data: this.ownerImage.base64 } }
+                        ];
+
+                        let res;
+                        try {
+                            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.geminiApiKey}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ contents: [{ parts }] })
+                            });
+                            if (!res.ok) throw new Error('Fallback to 1.5');
+                        } catch(err) {
+                            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ contents: [{ parts }] })
+                            });
+                        }
+                        const json = await res.json();
+                        const rawText = json.candidates[0].content.parts[0].text;
+                        const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                        const obj = JSON.parse(cleanJson);
+
+                        if (obj.email) this.ownerForm.email = obj.email;
+                        if (obj.password) this.ownerForm.password = obj.password;
+                        if (obj.backupCodes) this.ownerForm.backupCodes = obj.backupCodes;
+                        if (obj.recoveryEmail) this.ownerForm.recoveryEmail = obj.recoveryEmail;
+                        if (obj.note) this.ownerForm.note = obj.note;
+
+                        this.showToast('✨ AI đã tự động điền thông tin tài khoản từ ảnh!');
+                    } catch (e) {
+                        alert('Lỗi đọc ảnh AI: ' + e.message);
+                    } finally {
+                        this.parsingOwnerImage = false;
+                    }
                 },
 
                 parseDate(input) {
@@ -948,11 +1146,13 @@ Chị Mai - Slot 2 - 6 tháng - 300000đ..." class="w-full bg-gray-50 border bor
 
                 openOwnerModal() {
                     this.ownerForm = { id: '', email: '', password: '', backupCodes: '', recoveryEmail: '', totpSecret: '', note: '' };
+                    this.ownerImage = null;
                     this.showOwnerModal = true;
                 },
 
                 editOwnerAccount(acc) {
                     this.ownerForm = { ...acc };
+                    this.ownerImage = null;
                     this.showOwnerModal = true;
                 },
 
@@ -1062,6 +1262,7 @@ Lưu ý: Vui lòng không đổi mật khẩu, không đăng xuất các thiết
                 openModal() {
                     this.activeModalTab = 'ai';
                     this.aiRawText = '';
+                    this.aiAttachedImage = null;
                     this.aiRecords = [];
                     this.form.activationDate = this.formatDateStr(new Date());
                     this.showModal = true;
@@ -1131,86 +1332,55 @@ Lưu ý: Vui lòng không đổi mật khẩu, không đăng xuất các thiết
                 },
 
                 async parseWithGemini() {
-                    if (!this.aiRawText.trim()) { alert('Vui lòng dán văn bản thô!'); return; }
+                    if (!this.aiRawText.trim() && !this.aiAttachedImage) { alert('Vui lòng dán văn bản thô hoặc ảnh chụp màn hình!'); return; }
                     this.aiParsing = true;
                     try {
                         const prompt = `Bạn là trợ lý AI chuyên bóc tách dữ liệu đơn hàng cho gói gia đình Google One 2TB. 
-Hãy bóc tách khối văn bản thô bên dưới thành một mảng JSON các object.
+Hãy bóc tách dữ liệu (từ văn bản thô hoặc/và hình ảnh đính kèm) thành một mảng JSON các object.
 
 QUY TẮC BÓC TÁCH:
-1. "rootEmail": Email chủ gói gia đình (mặc định "${this.aiSharedRootEmail || 'g1master@gmail.com'}" nếu không được ghi).
+1. "rootEmail": Email chủ gói gia đình (mặc định "${this.aiSharedRootEmail || 'g1master@gmail.com'}" nếu không có).
 2. "userName": Tên khách hàng (ví dụ: "Anh Tuấn", "Chị Mai").
 3. "userCode": Mã khách hàng dạng "KH-[TÊN_VIẾT_HOA]-[STT]" (ví dụ "KH-ANHTUAN-01").
 4. "slotSeq": Số thứ tự slot (từ 1 đến 5).
 5. "product": Gói mua (mặc định "GoogleOne-2TB").
 6. "duration": Số tháng gia hạn (mặc định 3).
-7. "price": Giá bán dạng số nguyên VND (ví dụ 150000). KHÔNG ĐỂ 0 NẾU CÓ GIÁ TRONG TEXT!
+7. "price": Giá bán dạng số nguyên VND (ví dụ 150000). KHÔNG ĐỂ 0 NẾU CÓ GIÁ TRONG TEXT HẶC ẢNH!
 8. "activationDate": Ngày mua dạng DD/MM/YYYY (mặc định ngày hôm nay nếu không có).
 9. "note": Ghi chú raw giữ nguyên văn.
 
-VÍ DỤ MẪU (FEW-SHOT EXAMPLES):
-
-[VÍ DỤ 1]
-Văn bản thô:
-"Anh Tuấn - KH-ANHTUAN-01 - Slot 1 - GoogleOne 2TB - 3 tháng - 150.000đ - 10/08/2026"
-Trả về JSON:
-[
-  {
-    "rootEmail": "${this.aiSharedRootEmail || 'g1master@gmail.com'}",
-    "userName": "Anh Tuấn",
-    "userCode": "KH-ANHTUAN-01",
-    "slotSeq": 1,
-    "product": "GoogleOne-2TB",
-    "duration": 3,
-    "price": 150000,
-    "activationDate": "10/08/2026",
-    "note": "Anh Tuấn - KH-ANHTUAN-01 - Slot 1 - GoogleOne 2TB - 3 tháng - 150.000đ - 10/08/2026"
-  }
-]
-
-[VÍ DỤ 2]
-Văn bản thô:
-"Chị Mai 6 tháng 300k slot 2 gia hạn ngày 15/08/2026"
-Trả về JSON:
-[
-  {
-    "rootEmail": "${this.aiSharedRootEmail || 'g1master@gmail.com'}",
-    "userName": "Chị Mai",
-    "userCode": "KH-CHIMAI-02",
-    "slotSeq": 2,
-    "product": "GoogleOne-2TB",
-    "duration": 6,
-    "price": 300000,
-    "activationDate": "15/08/2026",
-    "note": "Chị Mai 6 tháng 300k slot 2 gia hạn ngày 15/08/2026"
-  }
-]
-
-VĂN BẢN THÔ CẦN XỬ LÝ:
-${this.aiRawText}
+VĂN BẢN THÔ KÈM THEO:
+${this.aiRawText || 'Xem thêm trong hình ảnh đính kèm'}
 
 Chỉ trả về DUY NHẤT mảng JSON thuần array of objects, KHÔNG kèm lời giải thích hay markdown codeblock.`;
+
+                        const parts = [{ text: prompt }];
+                        if (this.aiAttachedImage && this.aiAttachedImage.base64) {
+                            parts.push({
+                                inlineData: { mimeType: this.aiAttachedImage.mimeType || 'image/jpeg', data: this.aiAttachedImage.base64 }
+                            });
+                        }
 
                         let res;
                         try {
                             res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.geminiApiKey}`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                                body: JSON.stringify({ contents: [{ parts }] })
                             });
                             if (!res.ok) throw new Error('Fallback to 1.5');
                         } catch(err) {
                             res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                                body: JSON.stringify({ contents: [{ parts }] })
                             });
                         }
                         const json = await res.json();
                         const rawText = json.candidates[0].content.parts[0].text;
                         const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
                         this.aiRecords = JSON.parse(cleanJson);
-                        this.showToast(`✨ AI đã bóc tách thành công ${this.aiRecords.length} record!`);
+                        this.showToast(`✨ AI Vision đã bóc tách thành công ${this.aiRecords.length} record!`);
                     } catch (e) {
                         alert('Lỗi bóc tách AI: ' + e.message);
                     } finally {
