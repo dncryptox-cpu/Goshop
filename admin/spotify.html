@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Gói Gia Đình Spotify | DNC Operator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased min-h-screen" x-data="spotifyApp()">
+
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-white border-r border-gray-200 flex flex-col justify-between shrink-0 hidden md:flex transition-all duration-300">
+            <div>
+                <div class="p-6 border-b border-gray-100 flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-xl shadow-lg shadow-emerald-200">
+                        🎵
+                    </div>
+                    <div>
+                        <h1 class="font-extrabold text-gray-900 leading-tight">DNC Operator</h1>
+                        <p class="text-[11px] font-bold text-emerald-600 tracking-wider">SPOTIFY FAMILY</p>
+                    </div>
+                </div>
+
+                <nav class="p-4 space-y-1.5">
+                    <a href="index.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-gray-600 font-semibold text-xs hover:bg-gray-50 transition-colors">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4 text-gray-400"></i>
+                        <span>Tổng Quan</span>
+                    </a>
+                    <a href="chatgpt.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-gray-600 font-semibold text-xs hover:bg-gray-50 transition-colors">
+                        <i data-lucide="bot" class="w-4 h-4 text-gray-400"></i>
+                        <span>Quản Lý ChatGPT</span>
+                    </a>
+                    <a href="netflix.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-gray-600 font-semibold text-xs hover:bg-gray-50 transition-colors">
+                        <i data-lucide="tv" class="w-4 h-4 text-gray-400"></i>
+                        <span>Quản Lý Netflix</span>
+                    </a>
+                    <a href="googleone.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-gray-600 font-semibold text-xs hover:bg-gray-50 transition-colors">
+                        <i data-lucide="cloud" class="w-4 h-4 text-gray-400"></i>
+                        <span>Quản Lý Google One</span>
+                    </a>
+                    <a href="spotify.html" class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 font-bold text-xs transition-colors">
+                        <i data-lucide="music" class="w-4 h-4 text-emerald-600"></i>
+                        <span>Quản Lý Spotify</span>
+                    </a>
+                </nav>
+            </div>
+
+            <div class="p-4 border-t border-gray-100">
+                <div class="bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span class="text-xs font-bold text-emerald-900">Spotify_API Active</span>
+                    </div>
+                    <p class="text-[10px] text-emerald-600 mt-1 font-mono">1-EgeNWztGQsY2rmLYp...</p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col min-w-0 overflow-y-auto">
+            <!-- Topbar -->
+            <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
+                <div class="flex items-center gap-3">
+                    <button @click="sidebarOpen = !sidebarOpen" class="md:hidden p-2 rounded-lg border border-gray-200 text-gray-600">
+                        <i data-lucide="menu" class="w-5 h-5"></i>
+                    </button>
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-900">Gói Gia Đình Spotify Premium</h2>
+                        <p class="text-xs text-gray-500">Quản lý Slot thành viên (1-5), tính HSD độc lập từng dòng khách hàng</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button @click="fetchData()" class="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold text-xs transition-colors flex items-center gap-1.5">
+                        <i data-lucide="refresh-cw" class="w-4 h-4" :class="loading ? 'animate-spin' : ''"></i>
+                        <span class="hidden sm:inline">Làm mới</span>
+                    </button>
+                    <button @click="openModal()" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs transition-colors shadow-lg shadow-emerald-200 flex items-center gap-2">
+                        <i data-lucide="plus" class="w-4 h-4"></i>
+                        <span>Thêm Slot Spotify</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Dashboard Stats & Filters -->
+            <main class="p-6 space-y-6">
+                <!-- 3 Stats Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">Tổng Slot Đã Tạo</p>
+                            <h3 class="text-2xl font-black text-gray-900 mt-1" x-text="(list || []).length">0</h3>
+                        </div>
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">
+                            🎵
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-emerald-600 uppercase tracking-wider">🟢 Còn Hạn (Active)</p>
+                            <h3 class="text-2xl font-black text-emerald-700 mt-1" x-text="(list || []).filter(i => !i.expired).length">0</h3>
+                        </div>
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">
+                            ✅
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-center justify-between">
+                        <div>
+                            <p class="text-xs font-bold text-rose-500 uppercase tracking-wider">🔴 Đã Hết Hạn (Expired)</p>
+                            <h3 class="text-2xl font-black text-rose-600 mt-1" x-text="(list || []).filter(i => i.expired).length">0</h3>
+                        </div>
+                        <div class="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-lg">
+                            ⚠️
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Filters & Search -->
+                <div class="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div class="relative flex-1">
+                        <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3.5 top-3.5"></i>
+                        <input x-model="searchQuery" type="text" placeholder="Tìm theo Tên khách, Mã KH, Email chủ gói, Ghi chú..." class="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium focus:outline-none focus:border-emerald-500 focus:bg-white transition-all">
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button @click="statusFilter = 'all'" class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all" :class="statusFilter === 'all' ? 'bg-gray-900 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">Tất Cả</button>
+                        <button @click="statusFilter = 'active'" class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all" :class="statusFilter === 'active' ? 'bg-emerald-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">🟢 Còn Hạn</button>
+                        <button @click="statusFilter = 'expired'" class="px-3.5 py-2 rounded-xl text-xs font-bold transition-all" :class="statusFilter === 'expired' ? 'bg-rose-600 text-white shadow-md' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">🔴 Hết Hạn</button>
+                    </div>
+                </div>
+
+                <!-- Table List -->
+                <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-gray-50/80 border-b border-gray-100 text-[11px] font-extrabold text-gray-400 uppercase tracking-wider">
+                                    <th class="px-5 py-4">TK Chủ Gói (Host Email)</th>
+                                    <th class="px-5 py-4">Mã KH / Tên Khách</th>
+                                    <th class="px-5 py-4">Slot</th>
+                                    <th class="px-5 py-4">Ngày Mua & HSD (Tính Riêng)</th>
+                                    <th class="px-5 py-4">Ghi Chú Raw</th>
+                                    <th class="px-5 py-4">Trạng Thái</th>
+                                    <th class="px-5 py-4">CTV / Giá</th>
+                                    <th class="px-5 py-4 text-right">Thao Tác</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <template x-for="(item, idx) in filteredList" :key="item.id || idx">
+                                    <tr class="hover:bg-gray-50/80 transition-colors">
+                                        <!-- Host Email -->
+                                        <td class="px-5 py-4">
+                                            <div class="flex items-center gap-2.5">
+                                                <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 font-bold text-xs">🎵</div>
+                                                <div class="min-w-0">
+                                                    <span class="font-mono font-extrabold text-emerald-700 text-xs block truncate" x-text="item.rootEmail"></span>
+                                                    <!-- 5-Slot Active Warning Badge -->
+                                                    <template x-if="getHostActiveCount(item.rootEmail) >= 5">
+                                                        <span class="inline-flex items-center gap-1 text-[10px] font-extrabold bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-200 mt-0.5">
+                                                            ⚠️ ≥5 Slot Active (<span x-text="getHostActiveCount(item.rootEmail)"></span>/5)
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <!-- Customer Code & Name -->
+                                        <td class="px-5 py-4">
+                                            <div class="flex flex-col gap-1">
+                                                <span class="font-mono font-bold text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100 w-fit" x-text="item.userCode || 'KH-SPOT-01'"></span>
+                                                <span class="text-xs font-bold text-gray-800" x-text="item.userName || 'Thành Viên'"></span>
+                                            </div>
+                                        </td>
+
+                                        <!-- Slot Seq -->
+                                        <td class="px-5 py-4">
+                                            <span class="text-xs font-extrabold px-2.5 py-1 rounded-lg border font-mono"
+                                                  :class="item.slotSeq >= 5 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-100 text-gray-700 border-gray-200'"
+                                                  x-text="'Slot ' + (item.slotSeq || 1) + '/5'"></span>
+                                        </td>
+
+                                        <!-- Activation Date & Expiry Date (Inline Editable) -->
+                                        <td class="px-5 py-4">
+                                            <template x-if="editingRowId !== (item.id || item.rowNum)">
+                                                <div class="flex flex-col gap-0.5">
+                                                    <div class="flex items-center gap-1">
+                                                        <span class="text-xs font-bold text-gray-900 font-mono" x-text="formatDateStr(item.activationDate)"></span>
+                                                        <span class="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-100" x-text="(item.duration || 1) + 'T'"></span>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            <template x-if="editingRowId === (item.id || item.rowNum)">
+                                                <div class="flex items-center gap-1">
+                                                    <input x-model="editForm.activationDate" type="text" class="w-22 border border-emerald-400 rounded p-1 text-[11px] font-bold font-mono">
+                                                    <select x-model.number="editForm.duration" class="border border-emerald-400 rounded p-1 text-[11px] font-bold">
+                                                        <option value="1">1T</option>
+                                                        <option value="3">3T</option>
+                                                        <option value="6">6T</option>
+                                                        <option value="12">12T</option>
+                                                    </select>
+                                                    <button @click="saveEditRow(item)" class="p-1 bg-emerald-600 text-white rounded"><i data-lucide="check" class="w-3 h-3"></i></button>
+                                                    <button @click="cancelEditRow()" class="p-1 bg-gray-200 text-gray-700 rounded"><i data-lucide="x" class="w-3 h-3"></i></button>
+                                                </div>
+                                            </template>
+                                        </td>
+
+                                        <!-- Raw Note -->
+                                        <td class="px-5 py-4 max-w-xs">
+                                            <div class="bg-gray-50 border border-gray-200/80 rounded-xl p-2">
+                                                <span class="text-xs font-medium text-gray-800 break-words block font-mono text-[11px]" x-text="item.note || 'Chưa có ghi chú'"></span>
+                                            </div>
+                                        </td>
+
+                                        <!-- Expiry Status & Days Left -->
+                                        <td class="px-5 py-4">
+                                            <div class="flex flex-col gap-1">
+                                                <span class="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-lg border w-fit font-mono"
+                                                      :class="item.expired ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'">
+                                                    <span class="w-1.5 h-1.5 rounded-full" :class="item.expired ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'"></span>
+                                                    <span x-text="'HSD: ' + formatDateStr(item.expiryDate)"></span>
+                                                </span>
+                                                <span class="text-[11px] font-bold" :class="item.expired ? 'text-rose-600' : 'text-emerald-600'"
+                                                      x-text="item.daysLeft >= 0 ? '🟢 Còn ' + item.daysLeft + ' ngày' : '🔴 Quá hạn ' + Math.abs(item.daysLeft) + ' ngày'"></span>
+                                            </div>
+                                        </td>
+
+                                        <!-- CTV / Price -->
+                                        <td class="px-5 py-4">
+                                            <div class="flex flex-col gap-0.5">
+                                                <span class="text-xs font-bold text-gray-900 bg-gray-100 px-2 py-0.5 rounded border border-gray-200 w-fit" x-text="item.ctv"></span>
+                                                <span class="text-[11px] font-extrabold text-emerald-700" x-text="item.price ? (item.price.toLocaleString('vi-VN') + 'đ') : '0đ'"></span>
+                                            </div>
+                                        </td>
+
+                                        <!-- Actions -->
+                                        <td class="px-5 py-4 text-right">
+                                            <div class="flex items-center justify-end gap-1">
+                                                <button @click="openCustomerMessageModal(item)"
+                                                        class="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1"
+                                                        title="Nhắn Khách">
+                                                    <i data-lucide="message-square" class="w-3.5 h-3.5 text-emerald-600"></i>
+                                                    <span>Nhắn</span>
+                                                </button>
+                                                <button @click="startEditRow(item)"
+                                                        class="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold transition-all" title="Sửa Mua & Số Tháng">
+                                                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                                                </button>
+                                                <button @click="copyToClipboard(item.rootEmail, 'Email Chủ Gói')"
+                                                        class="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-all" title="Copy Email">
+                                                    <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <template x-if="filteredList.length === 0">
+                                    <tr>
+                                        <td colspan="8" class="px-5 py-12 text-center text-gray-400">
+                                            <p class="text-sm font-bold text-gray-600">Không tìm thấy record Spotify nào</p>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Spotify Creation Modal (2 Tabs: AI Gemini & Nhập Tay) -->
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div @click="showModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
+        <div class="bg-white rounded-2xl w-full max-w-4xl shadow-2xl relative overflow-hidden flex flex-col max-h-[92vh]">
+            <div class="p-5 border-b border-gray-100 flex items-center justify-between bg-emerald-50/40">
+                <div class="flex items-center gap-2">
+                    <span class="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-sm shadow-md">🎵</span>
+                    <h2 class="text-xl font-bold text-gray-900">Thêm Record Spotify Family</h2>
+                </div>
+                <button @click="showModal = false" class="text-gray-400 hover:text-gray-600 p-1 rounded-lg"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <!-- Tab Buttons -->
+            <div class="flex border-b border-gray-100 bg-gray-50/50 p-1.5 px-5 gap-2">
+                <button @click="activeTab = 'ai'" class="px-4 py-2 rounded-xl text-xs font-bold transition-all" :class="activeTab === 'ai' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'">🤖 Dán Nhanh AI Gemini</button>
+                <button @click="activeTab = 'manual'" class="px-4 py-2 rounded-xl text-xs font-bold transition-all" :class="activeTab === 'manual' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500 hover:text-gray-900'">✍️ Nhập Tay (1 Record)</button>
+            </div>
+
+            <div class="p-6 overflow-y-auto space-y-4">
+                <!-- AI Tab -->
+                <template x-if="activeTab === 'ai'">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Dán Văn Bản Thô Nhận Từ Khách</label>
+                            <textarea x-model="aiRawText" rows="5" placeholder="Ví dụ:
+Chị Mai - Spotify Family - spotmaster@gmail.com - 6 tháng - 180000đ
+Anh Minh - Slot 1 - 11/08/2026..." class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs font-mono focus:outline-none focus:border-emerald-500"></textarea>
+                        </div>
+                        <button @click="parseWithGemini()" :disabled="aiParsing" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-md shadow-emerald-200">
+                            <i data-lucide="sparkles" class="w-4 h-4" :class="aiParsing ? 'animate-spin' : ''"></i>
+                            <span>Bóc Tách Dữ Liệu AI</span>
+                        </button>
+
+                        <template x-if="aiRecords.length > 0">
+                            <div class="space-y-2 border-t pt-4">
+                                <h4 class="text-xs font-bold text-gray-700">Kết quả bóc tách (<span x-text="aiRecords.length"></span> khách):</h4>
+                                <div class="max-h-48 overflow-y-auto space-y-2">
+                                    <template x-for="(r, idx) in aiRecords" :key="idx">
+                                        <div class="p-3 bg-gray-50 rounded-xl text-xs font-mono flex items-center justify-between border border-gray-200">
+                                            <div>
+                                                <strong class="text-emerald-700" x-text="r.userName"></strong> - Mã: <span x-text="r.userCode"></span> - Host: <span x-text="r.rootEmail"></span> - Giá: <span x-text="r.price"></span>đ
+                                            </div>
+                                            <span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded" x-text="'Slot ' + (r.slotSeq || 1)"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                                <button @click="submitBatchAI()" :disabled="submitting" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-200">
+                                    Xác Nhận Lưu Tất Cả Vào Sheet
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- Manual Tab -->
+                <template x-if="activeTab === 'manual'">
+                    <form @submit.prevent="submitManualForm()" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Email Chủ Gói (Host)</label>
+                            <input x-model="form.rootEmail" type="email" required class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Tên Khách Hàng</label>
+                            <input x-model="form.userName" type="text" required class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Mã Khách Hàng</label>
+                            <input x-model="form.userCode" type="text" required class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">STT Slot (1-5)</label>
+                            <input x-model.number="form.slotSeq" type="number" min="1" max="5" required class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Ngày Kích Hoạt (DD/MM/YYYY)</label>
+                            <input x-model="form.activationDate" type="text" required class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Số Tháng</label>
+                            <select x-model.number="form.duration" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none">
+                                <option value="1">1 Tháng</option>
+                                <option value="3">3 Tháng</option>
+                                <option value="6">6 Tháng</option>
+                                <option value="12">12 Tháng</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Giá Bán (VND)</label>
+                            <input x-model.number="form.price" type="number" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">CTV</label>
+                            <input x-model="form.ctv" type="text" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">Ghi Chú Raw</label>
+                            <textarea x-model="form.note" rows="2" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono focus:outline-none"></textarea>
+                        </div>
+                        <div class="md:col-span-2">
+                            <button type="submit" :disabled="submitting" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-200">
+                                Xác Nhận Lưu Về Sheet
+                            </button>
+                        </div>
+                    </form>
+                </template>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Messaging Modal Popup (Nhắn Khách) -->
+    <div x-show="showMessageModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div @click="showMessageModal = false" class="absolute inset-0 bg-gray-900/50 backdrop-blur-sm"></div>
+        <div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl relative overflow-hidden flex flex-col">
+            <div class="p-5 border-b border-gray-100 flex items-center justify-between bg-emerald-50/50">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl flex items-center justify-center font-bold"
+                         :class="messageData.expired ? 'bg-rose-100 text-rose-600' : 'bg-emerald-100 text-emerald-600'">
+                        <i data-lucide="message-square" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-gray-900 flex items-center gap-2">
+                            <span>Nhắn Khách Hàng (Spotify)</span>
+                            <span class="text-xs font-mono font-bold px-2 py-0.5 rounded border"
+                                  :class="messageData.expired ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'"
+                                  x-text="messageData.expired ? '🔴 Đã Hết Hạn' : '🟢 Còn Hạn (' + messageData.daysLeft + ' ngày)'"></span>
+                        </h3>
+                        <p class="text-xs text-gray-500 mt-0.5">Khách: <strong class="text-gray-800" x-text="messageData.userName"></strong> (<span class="font-mono text-emerald-600 font-bold" x-text="messageData.userCode"></span>)</p>
+                    </div>
+                </div>
+                <button @click="showMessageModal = false" class="text-gray-400 hover:text-gray-600 p-1.5 rounded-xl"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="p-5 space-y-3">
+                <label class="block text-xs font-bold text-gray-700 uppercase tracking-wider">Nội dung tin nhắn (Có thể sửa trực tiếp)</label>
+                <textarea x-model="messageData.messageText" rows="6" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-xs font-medium focus:outline-none focus:border-emerald-500 leading-relaxed"></textarea>
+            </div>
+
+            <div class="p-4 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                <button type="button" @click="showMessageModal = false" class="px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-200 rounded-xl">Đóng</button>
+                <div class="flex items-center gap-2">
+                    <template x-if="messageData.phone">
+                        <a :href="'https://zalo.me/' + messageData.phone" target="_blank" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5">
+                            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                            <span>Mở Zalo (<span x-text="messageData.phone"></span>)</span>
+                        </a>
+                    </template>
+                    <button type="button" @click="copyToClipboard(messageData.messageText, 'Tin Nhắn')" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        <span>Copy Tin Nhắn</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div x-show="toastMessage" x-cloak class="fixed bottom-5 right-5 z-[200] bg-gray-900 text-white text-xs font-bold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2">
+        <i data-lucide="info" class="w-4 h-4 text-emerald-400"></i>
+        <span x-text="toastMessage"></span>
+    </div>
+
+    <script>
+        function spotifyApp() {
+            return {
+                CONFIG: {
+                    WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbwSpotDummyUrl/exec', // Deploy script Spotify_API and set URL
+                    API_KEY: 'c74391ab-spot-sec-2026'
+                },
+                sidebarOpen: window.innerWidth >= 768,
+                activeTab: 'ai',
+                searchQuery: '',
+                statusFilter: 'all',
+                list: [],
+                loading: false,
+                showModal: false,
+                submitting: false,
+                toastMessage: '',
+                
+                // Inline edit state
+                editingRowId: null,
+                editForm: { activationDate: '', duration: 3 },
+
+                // Messaging State
+                showMessageModal: false,
+                messageData: { userName: '', userCode: '', product: '', expiryDate: '', daysLeft: 0, expired: false, duration: 3, price: 0, phone: '', messageText: '' },
+
+                // AI States
+                geminiApiKey: localStorage.getItem('gemini_api_key') || '',
+                aiRawText: '',
+                aiParsing: false,
+                aiRecords: [],
+
+                // Single Form State
+                form: { rootEmail: 'spotmaster@gmail.com', userCode: '', userName: '', slotSeq: 1, product: 'Spotify-Family', duration: 3, activationDate: '', ctv: 'Dnc', price: 180000, note: '', source: 'Nhập tay' },
+
+                init() {
+                    const todayStr = this.formatDateStr(new Date());
+                    this.form.activationDate = todayStr;
+                    this.fetchData();
+                },
+
+                showToast(msg) {
+                    this.toastMessage = msg;
+                    setTimeout(() => { this.toastMessage = ''; }, 3500);
+                },
+
+                copyToClipboard(text, label) {
+                    if (!text) return;
+                    navigator.clipboard.writeText(text).then(() => {
+                        this.showToast(`Đã copy ${label}: ${text}`);
+                    });
+                },
+
+                parseDate(input) {
+                    if (!input) return null;
+                    if (Object.prototype.toString.call(input) === '[object Date]' && !isNaN(input.getTime())) return input;
+                    var s = String(input).trim();
+                    if (!s) return null;
+                    var p = s.split('/');
+                    if (p.length === 3) return new Date(parseInt(p[2], 10), parseInt(p[1], 10) - 1, parseInt(p[0], 10), 23, 59, 59);
+                    p = s.split('-');
+                    if (p.length === 3 && p[0].length === 4) return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 23, 59, 59);
+                    var d = new Date(s);
+                    return !isNaN(d.getTime()) ? d : null;
+                },
+
+                formatDateStr(input) {
+                    var d = this.parseDate(input);
+                    if (!d) return String(input || '');
+                    var day = ('0' + d.getDate()).slice(-2);
+                    var mon = ('0' + (d.getMonth() + 1)).slice(-2);
+                    return day + '/' + mon + '/' + d.getFullYear();
+                },
+
+                calculateExpiry(actDate, durationMonths) {
+                    var d = this.parseDate(actDate) || new Date();
+                    var exp = new Date(d.getFullYear(), d.getMonth() + parseInt(durationMonths, 10), d.getDate(), 23, 59, 59);
+                    return this.formatDateStr(exp);
+                },
+
+                calculateDaysLeft(expiryInput) {
+                    var expObj = this.parseDate(expiryInput);
+                    if (!expObj) return 0;
+                    var today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    var expMid = new Date(expObj.getFullYear(), expObj.getMonth(), expObj.getDate());
+                    return Math.round((expMid.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                },
+
+                getHostActiveCount(hostEmail) {
+                    if (!hostEmail) return 0;
+                    const email = String(hostEmail).trim().toLowerCase();
+                    return (this.list || []).filter(item => {
+                        if (!item || item.expired) return false;
+                        return String(item.rootEmail || '').trim().toLowerCase() === email;
+                    }).length;
+                },
+
+                async fetchData() {
+                    this.loading = true;
+                    try {
+                        const res = await fetch(`${this.CONFIG.WEBAPP_URL}?module=spotify`);
+                        const json = await res.json();
+                        if (json && json.success && Array.isArray(json.data)) {
+                            this.list = json.data.map(item => {
+                                const actDate = this.formatDateStr(item.activationDate);
+                                const expDate = this.formatDateStr(item.expiryDate || this.calculateExpiry(actDate, item.duration));
+                                const daysLeft = this.calculateDaysLeft(expDate);
+                                const expired = daysLeft < 0;
+                                return { ...item, activationDate: actDate, expiryDate: expDate, daysLeft: daysLeft, expired: expired };
+                            });
+                        } else {
+                            this.list = [];
+                        }
+                    } catch (e) {
+                        console.error('Fetch error:', e);
+                        this.list = [];
+                    } finally {
+                        this.loading = false;
+                        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+                    }
+                },
+
+                get filteredList() {
+                    const q = (this.searchQuery || '').toLowerCase().trim();
+                    return (this.list || []).filter(item => {
+                        if (this.statusFilter === 'active' && item.expired) return false;
+                        if (this.statusFilter === 'expired' && !item.expired) return false;
+                        if (!q) return true;
+                        return [item.rootEmail, item.userName, item.userCode, item.product, item.ctv, item.note]
+                            .map(v => String(v || '')).join(' ').toLowerCase().includes(q);
+                    });
+                },
+
+                openModal() {
+                    this.activeTab = 'ai';
+                    this.aiRawText = '';
+                    this.aiRecords = [];
+                    this.form.activationDate = this.formatDateStr(new Date());
+                    this.showModal = true;
+                    this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+                },
+
+                openCustomerMessageModal(item) {
+                    if (!item) return;
+                    const uName = item.userName || 'bạn';
+                    const uCode = item.userCode || 'KH-SPOT-01';
+                    const product = item.product || 'Spotify-Family';
+                    const expDate = this.formatDateStr(item.expiryDate);
+                    const daysLeft = item.daysLeft;
+                    const expired = item.expired || (daysLeft < 0);
+                    const duration = parseInt(item.duration, 10) || 1;
+                    const price = parseFloat(item.price) || 0;
+                    const slot = item.slotSeq || 1;
+
+                    let phone = '';
+                    const phoneMatch = (item.note || '').match(/(0[3|5|7|8|9]\d{8})/);
+                    if (phoneMatch) phone = phoneMatch[1];
+
+                    let msg = '';
+                    if (expired) {
+                        let priceText = price > 0 ? ` Giá gia hạn ${duration} tháng: ${price.toLocaleString('vi-VN')}đ.` : '';
+                        msg = `Chào ${uName}, gói Spotify Family (Slot ${slot}/5) của bạn đã hết hạn vào ngày ${expDate}. Bạn có muốn gia hạn tiếp không ạ?${priceText} Bạn xác nhận giúp mình để mình gia hạn liền nhé!`;
+                    } else {
+                        msg = `Chào ${uName}, gói Spotify Family (Slot ${slot}/5) của bạn vẫn đang hoạt động bình thường, còn hạn tới ngày ${expDate} (còn ${daysLeft} ngày nữa). Bạn cứ yên tâm sử dụng nhé!`;
+                    }
+
+                    this.messageData = { userName: uName, userCode: uCode, product: product, expiryDate: expDate, daysLeft: daysLeft, expired: expired, duration: duration, price: price, phone: phone, messageText: msg };
+                    this.showMessageModal = true;
+                    this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+                },
+
+                startEditRow(item) {
+                    this.editingRowId = item.id || item.rowNum;
+                    this.editForm = { activationDate: this.formatDateStr(item.activationDate), duration: parseInt(item.duration, 10) || 3 };
+                    this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+                },
+
+                cancelEditRow() { this.editingRowId = null; },
+
+                async saveEditRow(item) {
+                    const actDate = this.formatDateStr(this.editForm.activationDate);
+                    const duration = parseInt(this.editForm.duration, 10) || 1;
+                    const expDate = this.calculateExpiry(actDate, duration);
+                    const daysLeft = this.calculateDaysLeft(expDate);
+
+                    item.activationDate = actDate;
+                    item.duration = duration;
+                    item.expiryDate = expDate;
+                    item.daysLeft = daysLeft;
+                    item.expired = daysLeft < 0;
+                    this.editingRowId = null;
+
+                    try {
+                        await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ action: 'update', rowNum: item.rowNum || item.id, activationDate: actDate, duration: duration, authToken: this.CONFIG.API_KEY })
+                        });
+                        this.showToast('✅ Đã cập nhật Ngày Mua & HSD!');
+                    } catch (e) {
+                        console.error('Update error:', e);
+                    }
+                },
+
+                async parseWithGemini() {
+                    if (!this.aiRawText.trim()) { alert('Vui lòng dán văn bản thô!'); return; }
+                    this.aiParsing = true;
+                    try {
+                        const prompt = `Bạn là trợ lý bóc tách dữ liệu cho quản lý gói gia đình Spotify Family. 
+Hãy bóc tách khối văn bản sau thành danh sách JSON các record thành viên Spotify.
+Mỗi item chứa:
+- rootEmail: Email chủ gói gia đình (mặc định "spotmaster@gmail.com" nếu không ghi)
+- userName: Tên khách hàng
+- userCode: Mã KH dạng "KH-TÊN-01" (VD "KH-MAI-01")
+- slotSeq: Số thứ tự slot (1-5)
+- product: Gói mua (mặc định "Spotify-Family")
+- duration: Số tháng (mặc định 3)
+- price: Giá bán (chuyển về dạng số nguyên VND, VD 180000, KHÔNG ĐỂ 0 NẾU CÓ GIÁ TRONG TEXT)
+- activationDate: Ngày mua (DD/MM/YYYY, mặc định ngày hôm nay nếu không có)
+- note: Ghi chú giữ nguyên văn
+
+VĂN BẢN THÔ:
+${this.aiRawText}
+
+Chỉ trả về JSON thuần array object.`;
+
+                        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${this.geminiApiKey}`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                        });
+                        const json = await res.json();
+                        const rawText = json.candidates[0].content.parts[0].text;
+                        const cleanJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                        this.aiRecords = JSON.parse(cleanJson);
+                        this.showToast(`✨ AI đã bóc tách thành công ${this.aiRecords.length} record!`);
+                    } catch (e) {
+                        alert('Lỗi bóc tách AI: ' + e.message);
+                    } finally {
+                        this.aiParsing = false;
+                    }
+                },
+
+                async submitBatchAI() {
+                    this.submitting = true;
+                    try {
+                        const payload = { action: 'batch_insert', records: this.aiRecords, authToken: this.CONFIG.API_KEY };
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload)
+                        });
+                        const json = await res.json();
+                        if (json && json.success) {
+                            this.showToast(`✅ Đã lưu ${json.count || this.aiRecords.length} record Spotify!`);
+                            this.showModal = false;
+                            this.fetchData();
+                        }
+                    } catch (e) {
+                        alert('Lỗi lưu batch: ' + e.message);
+                    } finally {
+                        this.submitting = false;
+                    }
+                },
+
+                async submitManualForm() {
+                    this.submitting = true;
+                    try {
+                        const payload = { action: 'batch_insert', records: [this.form], authToken: this.CONFIG.API_KEY };
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload)
+                        });
+                        const json = await res.json();
+                        if (json && json.success) {
+                            this.showToast('✅ Đã lưu record Spotify thành công!');
+                            this.showModal = false;
+                            this.fetchData();
+                        }
+                    } catch (e) {
+                        alert('Lỗi lưu form: ' + e.message);
+                    } finally {
+                        this.submitting = false;
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>
