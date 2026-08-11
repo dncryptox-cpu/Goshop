@@ -387,7 +387,8 @@
                                                             </template>
                                                             <template x-if="editingRowId === (it.id || it.rowNum)">
                                                                 <div class="flex items-center gap-1">
-                                                                    <input x-model="editForm.activationDate" type="text" class="w-20 border border-indigo-400 rounded p-1 text-[11px] font-bold">
+                                                                    <input x-model="editForm.activationDateIso" type="date" class="border border-indigo-400 rounded p-1 text-[11px] font-bold font-mono bg-white text-gray-900 shadow-2xs">
+                                                                    <button type="button" @click="editForm.activationDateIso = toIsoDateStr(new Date())" class="px-1.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold border border-indigo-200" title="Chọn Hôm Nay">Hôm nay</button>
                                                                     <select x-model.number="editForm.duration" class="border border-indigo-400 rounded p-1 text-[11px] font-bold">
                                                                         <option value="1">1T</option>
                                                                         <option value="3">3T</option>
@@ -744,14 +745,14 @@
 
                         <!-- Ngày kích hoạt (Ngày Mua) -->
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Ngày Mua (Kích Hoạt: DD/MM/YYYY) <span class="text-rose-500">*</span></label>
-                            <input x-model="chatgptForm.activationDate" type="text" placeholder="DD/MM/YYYY" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Ngày Mua (Kích Hoạt: Chọn từ Lịch) <span class="text-rose-500">*</span></label>
+                            <input x-model="chatgptForm.activationDateIso" type="date" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
                         </div>
 
                         <!-- HSD Reactive Display -->
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">HSD (Tự Động Tính)</label>
-                            <div class="w-full bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-xs font-mono font-extrabold text-emerald-700" x-text="calculateExpiry(chatgptForm.activationDate, chatgptForm.duration)"></div>
+                            <div class="w-full bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-xs font-mono font-extrabold text-emerald-700" x-text="calculateExpiry(formatDateStr(chatgptForm.activationDateIso), chatgptForm.duration)"></div>
                         </div>
 
                         <!-- CTV Phụ trách -->
@@ -1199,11 +1200,20 @@
                     });
                 },
 
+                toIsoDateStr(input) {
+                    var d = this.parseDate(input);
+                    if (!d) return '';
+                    var yr = d.getFullYear();
+                    var mon = ('0' + (d.getMonth() + 1)).slice(-2);
+                    var day = ('0' + d.getDate()).slice(-2);
+                    return `${yr}-${mon}-${day}`;
+                },
+
                 // Inline Editing Actions for Main Table
                 startEditRow(item) {
                     this.editingRowId = item.id || item.rowNum;
                     this.editForm = {
-                        activationDate: this.formatDateStr(item.activationDate),
+                        activationDateIso: this.toIsoDateStr(item.activationDate),
                         duration: parseInt(item.duration, 10) || 3
                     };
                     this.$nextTick(() => {
@@ -1213,14 +1223,14 @@
 
                 cancelEditRow() {
                     this.editingRowId = null;
-                    this.editForm = { activationDate: '', duration: 3 };
+                    this.editForm = { activationDateIso: '', duration: 3 };
                     this.$nextTick(() => {
                         if (window.lucide) window.lucide.createIcons();
                     });
                 },
 
                 async saveEditRow(item) {
-                    const actDate = this.formatDateStr(this.editForm.activationDate);
+                    const actDate = this.formatDateStr(this.editForm.activationDateIso);
                     const duration = parseInt(this.editForm.duration, 10) || 1;
                     if (!actDate) {
                         alert('⚠️ Ngày Mua không hợp lệ!');
@@ -1653,9 +1663,9 @@ ${rawClean}`;
                         return;
                     }
 
-                    const actDate = this.formatDateStr(this.chatgptForm.activationDate);
+                    const actDate = this.formatDateStr(this.chatgptForm.activationDateIso || this.chatgptForm.activationDate);
                     if (!actDate) {
-                        alert('⚠️ Vui lòng nhập Ngày kích hoạt (DD/MM/YYYY)!');
+                        alert('⚠️ Vui lòng chọn Ngày kích hoạt!');
                         return;
                     }
 

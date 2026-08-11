@@ -263,7 +263,7 @@
                                             <span class="font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded-md text-[11px]" x-text="item.product || 'Spotify-Family'"></span>
                                         </td>
 
-                                        <!-- Activation Date & Duration (Inline Editable) -->
+                                        <!-- Activation Date & Duration (CẢI TIẾN: INPUT DATE LỊCH CHỌN NGÀY THÔNG MINH) -->
                                         <td class="px-5 py-4">
                                             <template x-if="editingRowId !== (item.id || item.rowNum)">
                                                 <div class="flex flex-col gap-0.5">
@@ -273,8 +273,17 @@
                                             </template>
                                             <template x-if="editingRowId === (item.id || item.rowNum)">
                                                 <div class="flex items-center gap-1.5">
-                                                    <input x-model="editForm.activationDate" type="text" placeholder="DD/MM/YYYY" class="w-24 border border-emerald-400 rounded-lg p-1.5 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                                                    <select x-model.number="editForm.duration" class="border border-emerald-400 rounded-lg p-1.5 text-xs font-bold text-emerald-700 bg-white focus:outline-none">
+                                                    <!-- HTML5 Native Calendar Datepicker -->
+                                                    <input x-model="editForm.activationDateIso" 
+                                                           type="date" 
+                                                           class="border border-emerald-400 rounded-lg p-1.5 text-xs font-bold font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white text-gray-900 shadow-2xs">
+                                                    <button type="button" 
+                                                            @click="editForm.activationDateIso = toIsoDateStr(new Date())" 
+                                                            class="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-bold border border-emerald-200" 
+                                                            title="Chọn ngày Hôm Nay">
+                                                        Hôm nay
+                                                    </button>
+                                                    <select x-model.number="editForm.duration" class="border border-emerald-400 rounded-lg p-1.5 text-xs font-bold text-emerald-700 bg-white focus:outline-none shadow-2xs">
                                                         <option value="1">1T</option>
                                                         <option value="3">3T</option>
                                                         <option value="6">6T</option>
@@ -418,7 +427,7 @@
                             </div>
                         </div>
 
-                        <!-- CẢI TIẾN 1: Ô DÁN KHỐI VĂN BẢN VÀ DÁN/TẢI ẢNH ĐA NĂNG -->
+                        <!-- Ô DÁN KHỐI VĂN BẢN VÀ DÁN/TẢI ẢNH ĐA NĂNG -->
                         <div class="space-y-2">
                             <div class="flex items-center justify-between">
                                 <label class="block text-xs font-bold text-gray-700 uppercase">Dán Văn Bản Thô hoặc Dán / Tải Ảnh Chụp Đơn Hàng (Multimodal Vision)</label>
@@ -512,7 +521,7 @@
                     </div>
                 </template>
 
-                <!-- TAB 2: MANUAL INPUT FORM -->
+                <!-- TAB 2: MANUAL INPUT FORM (CẢI TIẾN: INPUT DATE CHO NGÀY KÍCH HOẠT) -->
                 <template x-if="activeModalTab === 'manual'">
                     <form @submit.prevent="submitManualForm()" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                         <div>
@@ -536,8 +545,8 @@
                         </div>
 
                         <div>
-                            <label class="block font-bold text-gray-700 uppercase mb-1">Ngày Kích Hoạt (DD/MM/YYYY)</label>
-                            <input x-model="form.activationDate" type="text" required class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 font-mono focus:outline-none focus:border-emerald-500">
+                            <label class="block font-bold text-gray-700 uppercase mb-1">Ngày Kích Hoạt (Chọn từ Lịch)</label>
+                            <input x-model="form.activationDateIso" type="date" required class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 font-mono font-bold focus:outline-none focus:border-emerald-500">
                         </div>
 
                         <div>
@@ -667,7 +676,7 @@
                 
                 // Inline Edit State
                 editingRowId: null,
-                editForm: { activationDate: '', duration: 3 },
+                editForm: { activationDateIso: '', duration: 3 },
                 rowSaving: false,
 
                 // Customer Messaging State
@@ -683,11 +692,10 @@
                 aiRecords: [],
 
                 // Single Manual Form State
-                form: { rootEmail: 'spotmaster@gmail.com', userCode: '', userName: '', slotSeq: 1, product: 'Spotify-Family', duration: 3, activationDate: '', ctv: 'Dnc', price: 180000, note: '', source: 'Nhập tay' },
+                form: { rootEmail: 'spotmaster@gmail.com', userCode: '', userName: '', slotSeq: 1, product: 'Spotify-Family', duration: 3, activationDateIso: '', ctv: 'Dnc', price: 180000, note: '', source: 'Nhập tay' },
 
                 init() {
-                    const todayStr = this.formatDateStr(new Date());
-                    this.form.activationDate = todayStr;
+                    this.form.activationDateIso = this.toIsoDateStr(new Date());
                     this.$watch('geminiApiKey', val => {
                         if (val) localStorage.setItem('gemini_api_key', val.trim());
                         else localStorage.removeItem('gemini_api_key');
@@ -736,6 +744,15 @@
                     if (p.length === 3 && p[0].length === 4) return new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 23, 59, 59);
                     var d = new Date(s);
                     return !isNaN(d.getTime()) ? d : null;
+                },
+
+                toIsoDateStr(input) {
+                    var d = this.parseDate(input);
+                    if (!d) return '';
+                    var yr = d.getFullYear();
+                    var mon = ('0' + (d.getMonth() + 1)).slice(-2);
+                    var day = ('0' + d.getDate()).slice(-2);
+                    return `${yr}-${mon}-${day}`;
                 },
 
                 formatDateStr(input) {
@@ -811,7 +828,7 @@
                     this.aiRawText = '';
                     this.aiAttachedImage = null;
                     this.aiRecords = [];
-                    this.form.activationDate = this.formatDateStr(new Date());
+                    this.form.activationDateIso = this.toIsoDateStr(new Date());
                     this.showModal = true;
                     this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
                 },
@@ -847,14 +864,17 @@
 
                 startEditRow(item) {
                     this.editingRowId = item.id || item.rowNum;
-                    this.editForm = { activationDate: this.formatDateStr(item.activationDate), duration: parseInt(item.duration, 10) || 3 };
+                    this.editForm = {
+                        activationDateIso: this.toIsoDateStr(item.activationDate),
+                        duration: parseInt(item.duration, 10) || 3
+                    };
                     this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
                 },
 
                 cancelEditRow() { this.editingRowId = null; },
 
                 async saveEditRow(item) {
-                    const actDate = this.formatDateStr(this.editForm.activationDate);
+                    const actDate = this.formatDateStr(this.editForm.activationDateIso);
                     const duration = parseInt(this.editForm.duration, 10) || 1;
                     const expDate = this.calculateExpiry(actDate, duration);
                     const daysLeft = this.calculateDaysLeft(expDate);
@@ -960,7 +980,11 @@ Chỉ trả về DUY NHẤT mảng JSON thuần array of objects, KHÔNG kèm l�
                 async submitManualForm() {
                     this.submitting = true;
                     try {
-                        const payload = { module: 'spotify', action: 'batch_insert', records: [this.form], authToken: this.CONFIG.API_KEY };
+                        const manualRecord = {
+                            ...this.form,
+                            activationDate: this.formatDateStr(this.form.activationDateIso)
+                        };
+                        const payload = { module: 'spotify', action: 'batch_insert', records: [manualRecord], authToken: this.CONFIG.API_KEY };
                         const res = await fetch(this.CONFIG.WEBAPP_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
