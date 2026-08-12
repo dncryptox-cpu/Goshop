@@ -1771,8 +1771,8 @@ ${rawClean}`;
                     }
 
                     const rootMail = this.aiSharedRootEmail || 'dncethxyz@gmail.com';
-
                     this.chatgptSubmitting = true;
+
                     try {
                         const finalRecords = this.aiRecords.map(r => ({
                             rootEmail: rootMail,
@@ -1805,27 +1805,22 @@ ${rawClean}`;
                         });
 
                         const json = await res.json();
-
                         if (json && json.success) {
-                            // Automatically sync each AI record to Financial Sheet
                             for (let rec of finalRecords) {
-                                const orderCode = this.generateOrderCode();
                                 await this.syncToFinancialSheet({
                                     dateStr: rec.activationDate,
-                                    orderCode: orderCode,
-                                    email: rec.rootEmail,
+                                    orderCode: this.generateOrderCode(),
+                                    email: (rec.userName || 'Khách ChatGPT').trim(),
                                     ctv: rec.ctv || 'Dnc',
-                                    price: rec.price || 150000,
+                                    price: 150000,
                                     cost: 0,
                                     hsdStr: rec.expiryDate,
                                     note: rec.note || ''
                                 });
                             }
-
-                            this.showToast(`✅ Đã lưu ${json.count || this.aiRecords.length} Khách Hàng ChatGPT & tự động đồng bộ Sheet Tài Chính!`);
+                            this.showToast(`✅ Đã lưu ${json.count || finalRecords.length} Khách Hàng & đồng bộ Sheet Tài Chính!`);
                             this.aiRecords = [];
                             this.aiRawText = '';
-                            this.showChatgptModal = false;
                             this.buildChatgptList();
                         } else {
                             alert('❌ Lỗi lưu batch: ' + (json ? json.error : 'Lưu thất bại'));
@@ -1840,7 +1835,6 @@ ${rawClean}`;
 
                 openChatgptModal(item = null) {
                     const todayStr = this.formatDateStr(new Date());
-
                     this.activeModalTab = 'ai';
                     this.aiRecords = [];
                     this.aiRawText = '';
@@ -1923,67 +1917,43 @@ ${rawClean}`;
                                 return;
                             }
                             const firstItem = group.items[0];
-
-                            // Renewal Expiration Logic:
-                            // If customer is active, accumulate from expiryDate.
-                            // If customer is expired, calculate from Today.
-                            let baseDateForRenew = firstItem.expiryDate;
-                            if (firstItem.expired || firstItem.daysLeft < 0) {
-                                baseDateForRenew = new Date();
-                            }
+                            let baseDateForRenew = (firstItem.expired || firstItem.daysLeft < 0) ? new Date() : firstItem.expiryDate;
                             finalHsdStr = this.calculateExpiry(baseDateForRenew, duration);
 
-                            // Update each device record for this customer
                             for (let it of group.items) {
-                                const payload = {
-                                    ...it,
-                                    duration: (parseInt(it.duration, 10) || 0) + duration,
-                                    expiryDate: finalHsdStr,
-                                    authToken: this.CONFIG.CHATGPT_API_KEY
-                                };
                                 await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                    body: JSON.stringify(payload)
+                                    body: JSON.stringify({ ...it, duration: (parseInt(it.duration, 10) || 0) + duration, expiryDate: finalHsdStr, authToken: this.CONFIG.CHATGPT_API_KEY })
                                 });
                             }
                         } else {
-                            const rootEmail = String(this.chatgptForm.rootEmail || 'dncethxyz@gmail.com').trim();
                             finalHsdStr = this.calculateExpiry(actDateStr, duration);
-
-                            const payload = {
-                                ...this.chatgptForm,
-                                rootEmail: rootEmail,
-                                email: rootEmail,
-                                activationDate: actDateStr,
-                                expiryDate: finalHsdStr,
-                                duration: duration,
-                                deviceSeq: parseInt(this.chatgptForm.deviceSeq) || 1,
-                                authToken: this.CONFIG.CHATGPT_API_KEY
-                            };
                             await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                body: JSON.stringify(payload)
+                                body: JSON.stringify({ ...this.chatgptForm, rootEmail: this.chatgptForm.rootEmail, email: this.chatgptForm.rootEmail, activationDate: actDateStr, expiryDate: finalHsdStr, duration: duration, deviceSeq: parseInt(this.chatgptForm.deviceSeq) || 1, authToken: this.CONFIG.CHATGPT_API_KEY })
                             });
                         }
 
+                        const custName = (this.chatgptForm.userName || 'Khách ChatGPT').trim();
+
                         // Background Financial Sync to Sheet Tài Chính (DATA YTB/GCC)
                         await this.syncToFinancialSheet({
-                            dateStr: this.formatDateStr(new Date()),
+                            dateStr: actDateStr,
                             orderCode: orderCode,
-                            email: this.chatgptForm.rootEmail,
+                            email: custName,
                             ctv: this.chatgptForm.ctv || 'Dnc',
                             price: this.chatgptForm.price || 150000,
                             cost: this.chatgptForm.cost || 0,
                             hsdStr: finalHsdStr,
-                            note: this.chatgptForm.note || (this.chatgptForm.orderType === 'renew' ? `Gia hạn KH ${this.chatgptForm.userName}` : '')
+                            note: this.chatgptForm.note || (this.chatgptForm.orderType === 'renew' ? `Gia hạn KH ${custName}` : '')
                         });
 
                         // Set Result Data for In-Modal Customer Info Template & Copy Button
                         this.manualOrderResultData = {
                             orderCode: orderCode,
-                            email: this.chatgptForm.rootEmail,
+                            email: custName,
                             product: 'ChatGPT Share',
                             hsd: finalHsdStr,
                             price: Number(this.chatgptForm.price) || 0,
