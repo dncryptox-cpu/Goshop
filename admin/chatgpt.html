@@ -762,48 +762,98 @@
                 </template>
             </div>
 
-            <!-- TAB 2: NHẬP TAY (1 RECORD LẺ) -->
+            <!-- TAB 2: NHẬP TAY (LOẠI ĐƠN: ĐƠN MỚI / GIA HẠN + TỰ ĐỘNG ĐỒNG BỘ TÀI CHÍNH) -->
             <div x-show="activeModalTab === 'manual'" class="p-6 overflow-y-auto flex-1">
+                
+                <!-- BƯỚC 1: NHÓM BẤM CHỌN LOẠI ĐƠN -->
+                <div class="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-100 space-y-2 mb-4">
+                    <label class="block text-xs font-extrabold text-indigo-900 uppercase tracking-wider">
+                        📌 Chọn Loại Đơn Hàng:
+                    </label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="flex items-center gap-2.5 p-3 rounded-xl border bg-white cursor-pointer transition-all shadow-2xs"
+                               :class="chatgptForm.orderType === 'new' ? 'border-indigo-600 ring-2 ring-indigo-500/20 text-indigo-900 font-extrabold' : 'border-gray-200 text-gray-600'">
+                            <input type="radio" name="orderTypeGpt" value="new" x-model="chatgptForm.orderType" @change="onOrderTypeChange()" class="w-4 h-4 text-indigo-600">
+                            <div>
+                                <span class="block text-xs">⭘ Đơn Mới (Tạo Mới)</span>
+                                <span class="block text-[10px] text-gray-400 font-normal">Tạo khách hàng & thiết bị mới hoàn toàn</span>
+                            </div>
+                        </label>
+
+                        <label class="flex items-center gap-2.5 p-3 rounded-xl border bg-white cursor-pointer transition-all shadow-2xs"
+                               :class="chatgptForm.orderType === 'renew' ? 'border-amber-600 ring-2 ring-amber-500/20 text-amber-900 font-extrabold' : 'border-gray-200 text-gray-600'">
+                            <input type="radio" name="orderTypeGpt" value="renew" x-model="chatgptForm.orderType" @change="onOrderTypeChange()" class="w-4 h-4 text-amber-600">
+                            <div>
+                                <span class="block text-xs">⭘ Gia Hạn Đơn Cũ</span>
+                                <span class="block text-[10px] text-gray-400 font-normal">Cộng dồn HSD cho khách đã tồn tại</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
                 <form novalidate @submit.prevent="submitChatgptForm()" class="space-y-4">
                     
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <!-- Tài khoản chia sẻ (Email gốc) -->
-                        <div class="sm:col-span-2">
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tài Khoản Chia Sẻ (Email Gốc) <span class="text-rose-500">*</span></label>
-                            <input x-model="chatgptForm.rootEmail" type="email" placeholder="dncethxyz@gmail.com (Email GPT thật)" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                        </div>
-
-                        <!-- Mã khách hàng -->
-                        <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Khách Hàng (Mã Nhóm Slot)</label>
-                            <input x-model="chatgptForm.userCode" type="text" placeholder="Ví dụ: KH-CAFARD-01" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                        </div>
-
-                        <!-- Tên người dùng thực tế -->
-                        <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tên Người Dùng Thực Tế</label>
-                            <input x-model="chatgptForm.userName" type="text" placeholder="Ví dụ: Cafard / Hoan Tran" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                        </div>
-
-                        <!-- Số thứ tự thiết bị -->
-                        <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Số Thứ Tự Máy (1-3)</label>
-                            <select x-model.number="chatgptForm.deviceSeq" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                                <option value="1">Máy 1 (Thiết bị thứ 1)</option>
-                                <option value="2">Máy 2 (Thiết bị thứ 2)</option>
-                                <option value="3">Máy 3 (Thiết bị thứ 3)</option>
+                    <!-- TRƯỜNG HỢP: GIA HẠN (CHỌN KHÁCH ĐÃ TỒN TẠI) -->
+                    <template x-if="chatgptForm.orderType === 'renew'">
+                        <div class="bg-amber-50/70 p-3.5 rounded-xl border border-amber-200 space-y-2">
+                            <label class="block font-extrabold text-amber-900 uppercase text-xs">
+                                🔍 Chọn Khách Hàng Gia Hạn (Từ Danh Sách Hiện Có) <span class="text-rose-500">*</span>
+                            </label>
+                            <select x-model="chatgptForm.selectedRenewId" @change="onSelectRenewCustomer()" required class="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-xs font-bold text-gray-900 focus:outline-none focus:border-amber-600 shadow-2xs">
+                                <option value="" disabled selected>-- Bấm để chọn Khách Hàng Gia Hạn --</option>
+                                <template x-for="g in groupedChatgptList" :key="g.id">
+                                    <option :value="g.id" 
+                                            x-text="(g.userName || 'Khách') + ' (' + (g.userCode || 'Mã KH') + ') • Email Gốc: ' + g.rootEmail + ' • HSD Cũ: ' + formatDateStr(g.items[0].expiryDate) + (g.items[0].expired ? ' (🔴 Đã Hết Hạn)' : ' (🟢 Còn Hạn)')"></option>
+                                </template>
                             </select>
                         </div>
+                    </template>
 
-                        <!-- Mã đơn -->
-                        <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Đơn Hàng (Nếu có)</label>
-                            <input x-model="chatgptForm.orderId" type="text" placeholder="Ví dụ: #109283" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:border-indigo-500 text-gray-900">
-                        </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        
+                        <!-- TRƯỜNG HỢP: ĐƠN MỚI -->
+                        <template x-if="chatgptForm.orderType === 'new'">
+                            <div class="contents">
+                                <!-- Tài khoản chia sẻ (Email gốc) -->
+                                <div class="sm:col-span-2">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tài Khoản Chia Sẻ (Email Gốc) <span class="text-rose-500">*</span></label>
+                                    <input x-model="chatgptForm.rootEmail" type="email" placeholder="dncethxyz@gmail.com (Email GPT thật)" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                </div>
 
+                                <!-- Mã khách hàng -->
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Khách Hàng (Mã Nhóm Slot)</label>
+                                    <input x-model="chatgptForm.userCode" type="text" placeholder="Ví dụ: KH-CAFARD-01" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                </div>
+
+                                <!-- Tên người dùng thực tế -->
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Tên Người Dùng Thực Tế</label>
+                                    <input x-model="chatgptForm.userName" type="text" placeholder="Ví dụ: Cafard / Hoan Tran" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                </div>
+
+                                <!-- Số thứ tự thiết bị -->
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Số Thứ Tự Máy (1-3)</label>
+                                    <select x-model.number="chatgptForm.deviceSeq" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                        <option value="1">Máy 1 (Thiết bị thứ 1)</option>
+                                        <option value="2">Máy 2 (Thiết bị thứ 2)</option>
+                                        <option value="3">Máy 3 (Thiết bị thứ 3)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Ngày kích hoạt (Ngày Mua) -->
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Ngày Mua (Kích Hoạt: Chọn từ Lịch) <span class="text-rose-500">*</span></label>
+                                    <input x-model="chatgptForm.activationDateIso" type="date" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- TRƯỜNG DÙNG CHUNG CẢ ĐƠN MỚI & GIA HẠN -->
                         <!-- Thời hạn gói (tháng) -->
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Số Tháng <span class="text-rose-500">*</span></label>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Số Tháng <span x-text="chatgptForm.orderType === 'renew' ? 'Gia Hạn (Cộng Dồn HSD)' : 'Kích Hoạt'"></span> <span class="text-rose-500">*</span></label>
                             <select x-model.number="chatgptForm.duration" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
                                 <option value="1">1 Tháng</option>
                                 <option value="3">3 Tháng</option>
@@ -812,16 +862,22 @@
                             </select>
                         </div>
 
-                        <!-- Ngày kích hoạt (Ngày Mua) -->
-                        <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Ngày Mua (Kích Hoạt: Chọn từ Lịch) <span class="text-rose-500">*</span></label>
-                            <input x-model="chatgptForm.activationDateIso" type="date" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
-                        </div>
-
                         <!-- HSD Reactive Display -->
                         <div>
                             <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">HSD (Tự Động Tính)</label>
                             <div class="w-full bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-xs font-mono font-extrabold text-emerald-700" x-text="calculateExpiry(formatDateStr(chatgptForm.activationDateIso), chatgptForm.duration)"></div>
+                        </div>
+
+                        <!-- Giá Bán -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Giá Bán Lần Này (VND)</label>
+                            <input x-model.number="chatgptForm.price" type="number" required placeholder="150000" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-emerald-700 font-mono">
+                        </div>
+
+                        <!-- Giá Vốn -->
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Giá Vốn (VND - Mặc định 0)</label>
+                            <input x-model.number="chatgptForm.cost" type="number" placeholder="0" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 text-gray-600 font-mono">
                         </div>
 
                         <!-- CTV Phụ trách -->
@@ -848,10 +904,39 @@
                         <button type="button" @click="showChatgptModal = false" class="px-5 py-2.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded-xl transition-all">Hủy</button>
                         <button type="submit" :disabled="chatgptSubmitting" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2">
                             <i data-lucide="check-circle" class="w-4 h-4" :class="chatgptSubmitting ? 'animate-spin' : ''"></i>
-                            <span x-text="chatgptSubmitting ? 'Đang Lưu...' : 'Xác Nhận Lưu 1 Record'"></span>
+                            <span x-text="chatgptSubmitting ? 'Đang Lưu & Đồng Bộ...' : (chatgptForm.orderType === 'renew' ? 'Xác Nhận Gia Hạn & Đồng Bộ Tài Chính' : 'Xác Nhận Lưu Đơn Mới & Đồng Bộ Tài Chính')"></span>
                         </button>
                     </div>
                 </form>
+
+                <!-- KHUNG MẪU THÔNG TIN GỬI KHÁCH HÀNG (HIỆN NGAY TRONG MODAL SAU KHI LƯU) -->
+                <template x-if="manualOrderResultData">
+                    <div class="p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-3 mt-4">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
+                                <span>Mẫu Thông Tin Gửi Khách Hàng (Tự Động Sinh)</span>
+                            </h4>
+                            <span class="font-mono text-[11px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded" x-text="manualOrderResultData.orderCode"></span>
+                        </div>
+                        <div class="bg-white p-3 rounded-xl border border-emerald-200 text-xs font-mono space-y-1 text-gray-800">
+                            <p>🎉 THÔNG TIN KÍCH HOẠT ĐƠN HÀNG GO SHOP</p>
+                            <p>━━━━━━━━━━━━━━━━━━━━</p>
+                            <p>📌 Mã đơn: <strong x-text="manualOrderResultData.orderCode"></strong></p>
+                            <p>📧 Email: <span x-text="manualOrderResultData.email"></span></p>
+                            <p>📦 Sản phẩm: <span x-text="manualOrderResultData.product"></span></p>
+                            <p>⏳ Hạn sử dụng (HSD): <strong class="text-emerald-600" x-text="manualOrderResultData.hsd"></strong></p>
+                            <p>💰 Số tiền thanh toán: <strong class="text-emerald-700" x-text="Number(manualOrderResultData.price || 0).toLocaleString('vi-VN') + ' đ'"></strong></p>
+                            <p>📝 Ghi chú: <span x-text="manualOrderResultData.note || 'Không có'"></span></p>
+                            <p>━━━━━━━━━━━━━━━━━━━━</p>
+                            <p>Cảm ơn quý khách đã tin dùng dịch vụ!</p>
+                        </div>
+                        <button type="button" @click="copyCustomerActivationInfo()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5">
+                            <i data-lucide="copy" class="w-4 h-4"></i>
+                            <span>Copy Thông Tin Gửi Khách (Zalo/Email)</span>
+                        </button>
+                    </div>
+                </template>
             </div>
         </div>
     </div>
@@ -950,6 +1035,7 @@
             return {
                 CONFIG: {
                     CHATGPT_WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbySu9evgLmqMVKSc-Z1cKUIzcfqJH9_pEFDdzOERQ1yP8uLy1hvLqJgNRkOlwDJEOba/exec',
+                    FINANCIAL_WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxoBHLdCgValY0h2LtV5jDo1hhidv0nW_QXZ9rDf0RM0bl2ktpHpL38Utk2NbHos4PF/exec',
                     CHATGPT_API_KEY: 'c74391ab-gpt-sec-2026'
                 },
                 sidebarOpen: window.innerWidth >= 768,
@@ -961,6 +1047,7 @@
                 showChatgptModal: false,
                 chatgptSubmitting: false,
                 toastMessage: '',
+                manualOrderResultData: null,
                 
                 // Inline Edit States
                 editingRowId: null,
@@ -991,6 +1078,8 @@
 
                 // Single Manual Form State
                 chatgptForm: {
+                    orderType: 'new',
+                    selectedRenewId: '',
                     rootEmail: '',
                     userCode: '',
                     userName: '',
@@ -1006,6 +1095,7 @@
                     location: '',
                     ctv: 'Dnc',
                     price: 0,
+                    cost: 0,
                     note: '',
                     source: 'Nhập tay'
                 },
@@ -1036,6 +1126,78 @@
                         this.showToast(`Đã copy ${label}: ${text}`);
                     }).catch(e => {
                         console.error('Copy error:', e);
+                    });
+                },
+
+                // Order Type Selector Handler
+                onOrderTypeChange() {
+                    this.manualOrderResultData = null;
+                    if (this.chatgptForm.orderType === 'renew') {
+                        if (this.groupedChatgptList && this.groupedChatgptList.length > 0) {
+                            this.chatgptForm.selectedRenewId = this.groupedChatgptList[0].id;
+                            this.onSelectRenewCustomer();
+                        }
+                    }
+                },
+
+                // When user selects an existing customer to renew
+                onSelectRenewCustomer() {
+                    if (!this.chatgptForm.selectedRenewId) return;
+                    const group = (this.groupedChatgptList || []).find(g => g.id == this.chatgptForm.selectedRenewId);
+                    if (group && group.items && group.items.length > 0) {
+                        const item = group.items[0];
+                        this.chatgptForm.rootEmail = group.rootEmail || item.rootEmail || item.email || 'dncethxyz@gmail.com';
+                        this.chatgptForm.userName = group.userName || item.userName || '';
+                        this.chatgptForm.userCode = group.userCode || item.userCode || '';
+                        this.chatgptForm.product = item.product || 'GPTshare-3';
+                        this.chatgptForm.price = item.price || 0;
+                        this.chatgptForm.ctv = item.ctv || 'Dnc';
+                        this.chatgptForm.note = `[Gia Hạn KH: ${group.userName}] ${item.note || ''}`;
+                    }
+                },
+
+                // Helper to generate unique order code GS...
+                generateOrderCode() {
+                    const d = new Date();
+                    const yyyy = String(d.getFullYear());
+                    const mm = String(d.getMonth() + 1).padStart(2, '0');
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const rand = Math.floor(100 + Math.random() * 900);
+                    return `GS${yyyy.slice(-2)}${mm}${dd}-${rand}`;
+                },
+
+                // Background Financial Sync to Sheet Tài Chính (DATA YTB/GCC)
+                async syncToFinancialSheet(payload) {
+                    try {
+                        await fetch(this.CONFIG.FINANCIAL_WEBAPP_URL, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain' },
+                            body: JSON.stringify({
+                                action: 'log_financial_ytb',
+                                date: payload.dateStr,
+                                orderCode: payload.orderCode,
+                                email: payload.email,
+                                product: 'ChatGPT Share',
+                                ctv: payload.ctv || 'Dnc',
+                                price: Number(payload.price) || 0,
+                                cost: Number(payload.cost) || 0,
+                                hsd: payload.hsdStr,
+                                note: `[Mã: ${payload.orderCode} | HSD: ${payload.hsdStr}] ${payload.note || ''}`
+                            })
+                        });
+                        console.log('✅ Synchronized ChatGPT order to Financial Sheet:', payload.orderCode);
+                    } catch (e) {
+                        console.warn('⚠️ Financial sheet sync warning:', e);
+                    }
+                },
+
+                copyCustomerActivationInfo() {
+                    if (!this.manualOrderResultData) return;
+                    const d = this.manualOrderResultData;
+                    const msg = `🎉 THÔNG TIN KÍCH HOẠT ĐƠN HÀNG GO SHOP\n━━━━━━━━━━━━━━━━━━━━\n📌 Mã đơn: ${d.orderCode}\n📧 Email: ${d.email}\n📦 Sản phẩm: ${d.product}\n⏳ Hạn sử dụng (HSD): ${d.hsd}\n💰 Số tiền thanh toán: ${Number(d.price || 0).toLocaleString('vi-VN')} đ\n📝 Ghi chú: ${d.note || 'Không có'}\n━━━━━━━━━━━━━━━━━━━━\nCảm ơn quý khách đã tin dùng dịch vụ!`;
+                    navigator.clipboard.writeText(msg).then(() => {
+                        this.showToast('✅ Đã sao chép thông tin gửi khách vào Clipboard!');
                     });
                 },
 
@@ -1601,7 +1763,7 @@ ${rawClean}`;
                     this.showToast(`✅ Đã bóc tách được ${records.length} Khách Hàng (Smart Block Parser)!`);
                 },
 
-                // Submit Batch of AI Records to Apps Script
+                // Submit Batch of AI Records to Apps Script & Financial Sync
                 async submitAIBatch() {
                     if (!this.aiRecords || this.aiRecords.length === 0) {
                         alert('⚠️ Chưa có record nào trong bảng Preview để lưu!');
@@ -1636,8 +1798,6 @@ ${rawClean}`;
                             authToken: this.CONFIG.CHATGPT_API_KEY
                         };
 
-                        console.log('--- SUBMITTING BATCH PAYLOAD ---', payload);
-
                         const res = await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -1645,10 +1805,24 @@ ${rawClean}`;
                         });
 
                         const json = await res.json();
-                        console.log('--- BATCH RESPONSE ---', json);
 
                         if (json && json.success) {
-                            this.showToast(`✅ Đã lưu thành công ${json.count || this.aiRecords.length} Khách Hàng vào Sheet!`);
+                            // Automatically sync each AI record to Financial Sheet
+                            for (let rec of finalRecords) {
+                                const orderCode = this.generateOrderCode();
+                                await this.syncToFinancialSheet({
+                                    dateStr: rec.activationDate,
+                                    orderCode: orderCode,
+                                    email: rec.rootEmail,
+                                    ctv: rec.ctv || 'Dnc',
+                                    price: rec.price || 150000,
+                                    cost: 0,
+                                    hsdStr: rec.expiryDate,
+                                    note: rec.note || ''
+                                });
+                            }
+
+                            this.showToast(`✅ Đã lưu ${json.count || this.aiRecords.length} Khách Hàng ChatGPT & tự động đồng bộ Sheet Tài Chính!`);
                             this.aiRecords = [];
                             this.aiRawText = '';
                             this.showChatgptModal = false;
@@ -1670,10 +1844,13 @@ ${rawClean}`;
                     this.activeModalTab = 'ai';
                     this.aiRecords = [];
                     this.aiRawText = '';
+                    this.manualOrderResultData = null;
 
                     if (item) {
                         this.activeModalTab = 'manual';
                         this.chatgptForm = {
+                            orderType: 'new',
+                            selectedRenewId: '',
                             rootEmail: item.rootEmail || item.email || '',
                             userCode: this.getItemUserCode(item),
                             userName: this.getItemUserName(item),
@@ -1683,17 +1860,21 @@ ${rawClean}`;
                             product: item.product || 'GPTshare-3',
                             duration: parseInt(item.duration) || 3,
                             activationDate: this.formatDateStr(item.activationDate || todayStr),
+                            activationDateIso: this.toIsoDateStr(item.activationDate || new Date()),
                             device: 'Computer',
                             os: 'Windows',
                             app: 'ChatGPT Web',
                             location: '',
                             ctv: item.ctv || 'Dnc',
                             price: item.price || 0,
+                            cost: 0,
                             note: item.note || '',
                             source: 'Nhập tay'
                         };
                     } else {
                         this.chatgptForm = {
+                            orderType: 'new',
+                            selectedRenewId: '',
                             rootEmail: 'dncethxyz@gmail.com',
                             userCode: '',
                             userName: '',
@@ -1703,12 +1884,14 @@ ${rawClean}`;
                             product: 'GPTshare-3',
                             duration: 3,
                             activationDate: todayStr,
+                            activationDateIso: this.toIsoDateStr(new Date()),
                             device: 'Computer',
                             os: 'Windows',
                             app: 'ChatGPT Web',
                             location: '',
                             ctv: 'Dnc',
-                            price: 0,
+                            price: 150000,
+                            cost: 0,
                             note: '',
                             source: 'Nhập tay'
                         };
@@ -1720,48 +1903,97 @@ ${rawClean}`;
                 },
 
                 async submitChatgptForm() {
-                    const rootEmail = String(this.chatgptForm.rootEmail || 'dncethxyz@gmail.com').trim();
-                    if (!rootEmail || !rootEmail.includes('@')) {
-                        alert('⚠️ Vui lòng nhập Tài khoản chia sẻ (Email gốc) hợp lệ!');
-                        return;
-                    }
-
                     const duration = parseInt(this.chatgptForm.duration, 10);
                     if (isNaN(duration) || duration < 1) {
                         alert('⚠️ Vui lòng nhập thời hạn gói (số tháng) hợp lệ!');
                         return;
                     }
 
-                    const actDate = this.formatDateStr(this.chatgptForm.activationDateIso || this.chatgptForm.activationDate);
-                    if (!actDate) {
-                        alert('⚠️ Vui lòng chọn Ngày kích hoạt!');
-                        return;
-                    }
-
                     this.chatgptSubmitting = true;
                     try {
-                        const payload = {
-                            ...this.chatgptForm,
-                            rootEmail: rootEmail,
-                            email: rootEmail,
-                            activationDate: actDate,
-                            duration: duration,
-                            deviceSeq: parseInt(this.chatgptForm.deviceSeq) || 1,
-                            authToken: this.CONFIG.CHATGPT_API_KEY
-                        };
-                        const res = await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            body: JSON.stringify(payload)
-                        });
-                        const json = await res.json();
-                        if (json && json.success) {
-                            this.showToast('✅ Đã thêm/cập nhật record thành công! (ID: ' + json.id + ')');
-                            this.showChatgptModal = false;
-                            this.buildChatgptList();
+                        let finalHsdStr = '';
+                        let actDateStr = this.formatDateStr(this.chatgptForm.activationDateIso || new Date());
+                        const orderCode = this.generateOrderCode();
+
+                        if (this.chatgptForm.orderType === 'renew') {
+                            const group = (this.groupedChatgptList || []).find(g => g.id == this.chatgptForm.selectedRenewId);
+                            if (!group || !group.items || group.items.length === 0) {
+                                alert('Vui lòng chọn Khách hàng gia hạn hợp lệ!');
+                                this.chatgptSubmitting = false;
+                                return;
+                            }
+                            const firstItem = group.items[0];
+
+                            // Renewal Expiration Logic:
+                            // If customer is active, accumulate from expiryDate.
+                            // If customer is expired, calculate from Today.
+                            let baseDateForRenew = firstItem.expiryDate;
+                            if (firstItem.expired || firstItem.daysLeft < 0) {
+                                baseDateForRenew = new Date();
+                            }
+                            finalHsdStr = this.calculateExpiry(baseDateForRenew, duration);
+
+                            // Update each device record for this customer
+                            for (let it of group.items) {
+                                const payload = {
+                                    ...it,
+                                    duration: (parseInt(it.duration, 10) || 0) + duration,
+                                    expiryDate: finalHsdStr,
+                                    authToken: this.CONFIG.CHATGPT_API_KEY
+                                };
+                                await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                    body: JSON.stringify(payload)
+                                });
+                            }
                         } else {
-                            alert('❌ Lỗi tạo record: ' + (json ? json.error : 'Tạo thất bại'));
+                            const rootEmail = String(this.chatgptForm.rootEmail || 'dncethxyz@gmail.com').trim();
+                            finalHsdStr = this.calculateExpiry(actDateStr, duration);
+
+                            const payload = {
+                                ...this.chatgptForm,
+                                rootEmail: rootEmail,
+                                email: rootEmail,
+                                activationDate: actDateStr,
+                                expiryDate: finalHsdStr,
+                                duration: duration,
+                                deviceSeq: parseInt(this.chatgptForm.deviceSeq) || 1,
+                                authToken: this.CONFIG.CHATGPT_API_KEY
+                            };
+                            await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify(payload)
+                            });
                         }
+
+                        // Background Financial Sync to Sheet Tài Chính (DATA YTB/GCC)
+                        await this.syncToFinancialSheet({
+                            dateStr: this.formatDateStr(new Date()),
+                            orderCode: orderCode,
+                            email: this.chatgptForm.rootEmail,
+                            ctv: this.chatgptForm.ctv || 'Dnc',
+                            price: this.chatgptForm.price || 150000,
+                            cost: this.chatgptForm.cost || 0,
+                            hsdStr: finalHsdStr,
+                            note: this.chatgptForm.note || (this.chatgptForm.orderType === 'renew' ? `Gia hạn KH ${this.chatgptForm.userName}` : '')
+                        });
+
+                        // Set Result Data for In-Modal Customer Info Template & Copy Button
+                        this.manualOrderResultData = {
+                            orderCode: orderCode,
+                            email: this.chatgptForm.rootEmail,
+                            product: 'ChatGPT Share',
+                            hsd: finalHsdStr,
+                            price: Number(this.chatgptForm.price) || 0,
+                            note: this.chatgptForm.note || ''
+                        };
+
+                        this.showToast('✅ Đã lưu thành công & tự động đồng bộ Sheet Tài Chính!');
+                        this.buildChatgptList();
+                        this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
+
                     } catch (e) {
                         console.error('Lỗi khi gửi form ChatGPT:', e);
                         alert('❌ Lỗi kết nối API Web App: ' + e.message);
