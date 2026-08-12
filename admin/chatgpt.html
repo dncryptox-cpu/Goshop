@@ -1166,36 +1166,98 @@
                     return `GS${yyyy.slice(-2)}${mm}${dd}-${rand}`;
                 },
 
-                // Background Financial Sync to Sheet Tài Chính (DATA YTB/GCC)
-                async syncToFinancialSheet(payload) {
-                    try {
-                        const durationNum = Number(payload.duration) || 1;
-                        const baseProduct = payload.product || 'ChatGPT Share';
-                        const productKey = baseProduct.includes('-') ? baseProduct : `${baseProduct}-${durationNum}`;
+                // Unified Financial Sync Function (Tái Sử Dụng Giống Nhập Đơn Tay)
+                async logFinancialOrder(params = {}) {
+                    if (!this.CONFIG.FINANCIAL_WEBAPP_URL) {
+                        console.warn('⚠️ FINANCIAL_WEBAPP_URL is not configured');
+                        return null;
+                    }
 
+                    // 1. Format Purchase Date (date: YYYY-MM-DD or DD/MM/YYYY)
+                    let dateIso = params.date || '';
+                    let dateStr = '';
+                    if (dateIso && dateIso.includes('-')) {
+                        const [yyyy, mm, dd] = dateIso.split('-');
+                        dateStr = `${dd}/${mm}/${yyyy}`;
+                    } else if (dateIso && dateIso.includes('/')) {
+                        dateStr = dateIso;
+                    } else {
+                        const d = new Date();
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const yyyy = d.getFullYear();
+                        dateStr = `${dd}/${mm}/${yyyy}`;
+                    }
+
+                    // 2. Auto-generate Order Code (GSYYMMDD-xxx)
+                    const dParts = dateStr.split('/');
+                    const yyyy = dParts[2] || '2026';
+                    const mm = dParts[1] || '01';
+                    const dd = dParts[0] || '01';
+                    const orderCode = (params.orderCode || '').trim() || (`GS${yyyy.slice(-2)}${mm}${dd}-${Math.floor(100 + Math.random() * 900)}`);
+
+                    // 3. Calculate HSD (Expiry Date) if not provided
+                    const durationNum = Number(params.duration) || 1;
+                    let hsdStr = params.hsd || '';
+                    if (!hsdStr) {
+                        let expDate = new Date(parseInt(yyyy, 10), parseInt(mm, 10) - 1, parseInt(dd, 10));
+                        expDate.setMonth(expDate.getMonth() + durationNum);
+                        const expDd = String(expDate.getDate()).padStart(2, '0');
+                        const expMm = String(expDate.getMonth() + 1).padStart(2, '0');
+                        const expYyyy = expDate.getFullYear();
+                        hsdStr = `${expDd}/${expMm}/${expYyyy}`;
+                    }
+
+                    // 4. Product Name Mapping (e.g. "ChatGPT Share-12")
+                    const baseProduct = params.product || 'ChatGPT Share';
+                    const productKey = baseProduct.includes('-') ? baseProduct : `${baseProduct}-${durationNum}`;
+
+                    // 5. Append Host Email & Customer Code to Note for reference tracking
+                    let noteText = (params.note || '').trim();
+                    const extraInfo = [];
+                    if (params.rootEmail) extraInfo.push(`Email chủ gói: ${params.rootEmail}`);
+                    if (params.userCode) extraInfo.push(`Mã KH: ${params.userCode}`);
+                    if (extraInfo.length > 0) {
+                        noteText = noteText ? `${noteText} [${extraInfo.join(' | ')}]` : `[${extraInfo.join(' | ')}]`;
+                    }
+
+                    // 6. Send POST request to FINANCIAL_WEBAPP_URL (Sheet Tài Chính DATA YTB/GCC)
+                    try {
                         await fetch(this.CONFIG.FINANCIAL_WEBAPP_URL, {
                             method: 'POST',
                             mode: 'no-cors',
                             headers: { 'Content-Type': 'text/plain' },
                             body: JSON.stringify({
                                 action: 'log_financial_ytb',
-                                date: payload.dateStr,
-                                orderCode: payload.orderCode,
-                                email: payload.email,
+                                date: dateStr,
+                                orderCode: orderCode,
+                                email: params.email,
                                 product: productKey,
                                 duration: durationNum,
                                 months: durationNum,
-                                ctv: payload.ctv || 'Dnc',
-                                price: Number(payload.price) || 0,
-                                cost: Number(payload.cost) || 0,
-                                hsd: payload.hsdStr,
-                                note: `[Mã: ${payload.orderCode} | HSD: ${payload.hsdStr}] ${payload.note || ''}`
+                                ctv: params.ctv || 'Dnc',
+                                price: Number(params.price) || 0,
+                                cost: Number(params.cost) || 0,
+                                hsd: hsdStr,
+                                note: `[Mã: ${orderCode} | HSD: ${hsdStr}] ${noteText}`
                             })
                         });
-                        console.log('✅ Synchronized ChatGPT order to Financial Sheet:', payload.orderCode, 'Duration:', durationNum);
+                        console.log('✅ Logged Financial Order:', orderCode, productKey, 'Customer:', params.email);
                     } catch (e) {
                         console.warn('⚠️ Financial sheet sync warning:', e);
                     }
+
+                    // 7. Update manualOrderResultData for rendering In-Modal Customer Activation Info Card
+                    this.manualOrderResultData = {
+                        orderCode: orderCode,
+                        email: params.email,
+                        product: baseProduct,
+                        hsd: hsdStr,
+                        price: Number(params.price) || 0,
+                        note: noteText
+                    };
+
+                    return this.manualOrderResultData;
                 },
 
                 copyCustomerActivationInfo() {
@@ -1813,16 +1875,19 @@ ${rawClean}`;
                         const json = await res.json();
                         if (json && json.success) {
                             for (let rec of finalRecords) {
-                                await this.syncToFinancialSheet({
-                                    dateStr: rec.activationDate,
-                                    orderCode: this.generateOrderCode(),
-                                    email: (rec.userName || 'Khách ChatGPT').trim(),
+                                const custName = (rec.userName || 'Khách ChatGPT').trim();
+                                const actIso = this.toIsoDateStr(rec.activationDate || new Date());
+                                await this.logFinancialOrder({
+                                    date: actIso,
+                                    ctv: rec.ctv || 'Dnc',
+                                    email: custName,
                                     product: 'ChatGPT Share',
                                     duration: parseInt(rec.duration, 10) || 3,
-                                    ctv: rec.ctv || 'Dnc',
                                     price: 150000,
                                     cost: 0,
-                                    hsdStr: rec.expiryDate,
+                                    hsd: rec.expiryDate,
+                                    rootEmail: rec.rootEmail || this.aiSharedRootEmail,
+                                    userCode: rec.userCode,
                                     note: rec.note || ''
                                 });
                             }
@@ -1915,7 +1980,6 @@ ${rawClean}`;
                     try {
                         let finalHsdStr = '';
                         let actDateStr = this.formatDateStr(this.chatgptForm.activationDateIso || new Date());
-                        const orderCode = this.generateOrderCode();
 
                         if (this.chatgptForm.orderType === 'renew') {
                             const group = (this.groupedChatgptList || []).find(g => g.id == this.chatgptForm.selectedRenewId);
@@ -1946,29 +2010,20 @@ ${rawClean}`;
 
                         const custName = (this.chatgptForm.userName || 'Khách ChatGPT').trim();
 
-                        // Background Financial Sync to Sheet Tài Chính (DATA YTB/GCC)
-                        await this.syncToFinancialSheet({
-                            dateStr: actDateStr,
-                            orderCode: orderCode,
+                        // Call unified logFinancialOrder function (Reusing Nhập Đơn Tay logic)
+                        await this.logFinancialOrder({
+                            date: this.chatgptForm.activationDateIso,
+                            ctv: this.chatgptForm.ctv || 'Dnc',
                             email: custName,
                             product: 'ChatGPT Share',
                             duration: duration,
-                            ctv: this.chatgptForm.ctv || 'Dnc',
                             price: this.chatgptForm.price || 150000,
                             cost: this.chatgptForm.cost || 0,
-                            hsdStr: finalHsdStr,
+                            hsd: finalHsdStr,
+                            rootEmail: this.chatgptForm.rootEmail,
+                            userCode: this.chatgptForm.userCode,
                             note: this.chatgptForm.note || (this.chatgptForm.orderType === 'renew' ? `Gia hạn KH ${custName}` : '')
                         });
-
-                        // Set Result Data for In-Modal Customer Info Template & Copy Button
-                        this.manualOrderResultData = {
-                            orderCode: orderCode,
-                            email: custName,
-                            product: 'ChatGPT Share',
-                            hsd: finalHsdStr,
-                            price: Number(this.chatgptForm.price) || 0,
-                            note: this.chatgptForm.note || ''
-                        };
 
                         this.showToast('✅ Đã lưu thành công & tự động đồng bộ Sheet Tài Chính!');
                         this.buildChatgptList();
