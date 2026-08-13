@@ -606,9 +606,17 @@
                                     </table>
                                 </div>
 
+                                <div class="flex items-center justify-between bg-emerald-50/60 p-3 rounded-xl border border-emerald-100">
+                                    <label class="flex items-center gap-2.5 cursor-pointer text-xs font-bold text-gray-800">
+                                        <input type="checkbox" x-model="syncFinancial" class="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500">
+                                        <span>Tự động đồng bộ Batch sang Sheet Tài Chính (Nhập Đơn Tay)</span>
+                                    </label>
+                                    <span class="text-[11px] font-medium" :class="syncFinancial ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'" x-text="syncFinancial ? '🟢 Bật đồng bộ Sheet Tài Chính' : '⚪ Tắt (Không đẩy Tài Chính - Tránh trùng)'"></span>
+                                </div>
+
                                 <button @click="submitBatchAI()" :disabled="submitting" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-200 flex items-center justify-center gap-2">
                                     <i data-lucide="check-circle" class="w-4 h-4" :class="submitting ? 'animate-spin' : ''"></i>
-                                    <span>Lưu Tất Cả Kết Quả & Tự Động Đồng Bộ Sheet Tài Chính</span>
+                                    <span x-text="syncFinancial ? 'Lưu Tất Cả Kết Quả & Tự Động Đồng Bộ Sheet Tài Chính' : 'Lưu Tất Cả Kết Quả (Không Đồng Bộ Sheet Tài Chính)'"></span>
                                 </button>
                             </div>
                         </template>
@@ -729,10 +737,19 @@
                                 <textarea x-model="form.note" rows="2" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 font-mono focus:outline-none"></textarea>
                             </div>
 
+                            <!-- Ô TÍCH ĐỒNG BỘ TÀI CHÍNH HAY KHÔNG -->
+                            <div class="md:col-span-2 flex items-center justify-between bg-emerald-50/60 p-3 rounded-xl border border-emerald-100">
+                                <label class="flex items-center gap-2.5 cursor-pointer text-xs font-bold text-gray-800">
+                                    <input type="checkbox" x-model="syncFinancial" class="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500">
+                                    <span>Tự động đồng bộ đơn sang Sheet Tài Chính (Nhập Đơn Tay)</span>
+                                </label>
+                                <span class="text-[11px] font-medium" :class="syncFinancial ? 'text-emerald-600 font-bold' : 'text-amber-600 font-bold'" x-text="syncFinancial ? '🟢 Bật đồng bộ Sheet Tài Chính' : '⚪ Tắt (Không đẩy Tài Chính - Tránh trùng)'"></span>
+                            </div>
+
                             <div class="md:col-span-2">
                                 <button type="submit" :disabled="submitting" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs shadow-lg shadow-emerald-200 flex items-center justify-center gap-2">
                                     <i data-lucide="check-circle" class="w-4 h-4" :class="submitting ? 'animate-spin' : ''"></i>
-                                    <span x-text="submitting ? 'Đang Lưu & Đồng Bộ...' : (form.orderType === 'renew' ? 'Xác Nhận Gia Hạn & Đồng Bộ Tài Chính' : 'Xác Nhận Lưu Đơn Mới & Đồng Bộ Tài Chính')"></span>
+                                    <span x-text="submitting ? 'Đang Lưu...' : (form.orderType === 'renew' ? (syncFinancial ? 'Xác Nhận Gia Hạn & Đồng Bộ Tài Chính' : 'Xác Nhận Gia Hạn (Không Đồng Bộ Tài Chính)') : (syncFinancial ? 'Xác Nhận Lưu Đơn Mới & Đồng Bộ Tài Chính' : 'Xác Nhận Lưu Đơn Mới (Không Đồng Bộ Tài Chính)'))"></span>
                                 </button>
                             </div>
                         </form>
@@ -859,6 +876,7 @@
                 loading: false,
                 showModal: false,
                 submitting: false,
+                syncFinancial: true,
                 toastMessage: '',
                 
                 // Inline Edit State
@@ -1307,27 +1325,28 @@ Chỉ trả về DUY NHẤT mảng JSON thuần array of objects, KHÔNG kèm l�
                         });
                         const json = await res.json();
                         if (json && json.success) {
-                            // Automatically sync each AI record to Financial Sheet
-                            for (let rec of this.aiRecords) {
-                                const custName = (rec.userName || 'Khách Spotify').trim();
-                                const actIso = this.toIsoDateStr(rec.activationDate || new Date());
-                                const expStr = this.calculateExpiry(rec.activationDate || new Date(), rec.duration || 3);
-                                await this.logFinancialOrder({
-                                    date: actIso,
-                                    ctv: rec.ctv || 'Dnc',
-                                    email: custName,
-                                    product: 'Spotify',
-                                    duration: parseInt(rec.duration, 10) || 3,
-                                    price: rec.price || 40000,
-                                    cost: 0,
-                                    hsd: expStr,
-                                    rootEmail: rec.rootEmail || this.aiSharedRootEmail,
-                                    userCode: rec.userCode,
-                                    note: rec.note || ''
-                                });
+                            if (this.syncFinancial) {
+                                for (let rec of this.aiRecords) {
+                                    const custName = (rec.userName || 'Khách Spotify').trim();
+                                    const actIso = this.toIsoDateStr(rec.activationDate || new Date());
+                                    const expStr = this.calculateExpiry(rec.activationDate || new Date(), rec.duration || 3);
+                                    await this.logFinancialOrder({
+                                        date: actIso,
+                                        ctv: rec.ctv || 'Dnc',
+                                        email: custName,
+                                        product: 'Spotify',
+                                        duration: parseInt(rec.duration, 10) || 3,
+                                        price: rec.price || 40000,
+                                        cost: 0,
+                                        hsd: expStr,
+                                        rootEmail: rec.rootEmail || this.aiSharedRootEmail,
+                                        userCode: rec.userCode,
+                                        note: rec.note || ''
+                                    });
+                                }
                             }
 
-                            this.showToast(`✅ Đã lưu ${json.count || this.aiRecords.length} record Spotify & tự động đồng bộ Sheet Tài Chính!`);
+                            this.showToast(`✅ Đã lưu ${json.count || this.aiRecords.length} record Spotify${this.syncFinancial ? ' & đồng bộ Sheet Tài Chính!' : ' (Không đẩy Tài Chính)!'}`);
                             this.showModal = false;
                             this.fetchData();
                         }
@@ -1395,22 +1414,35 @@ Chỉ trả về DUY NHẤT mảng JSON thuần array of objects, KHÔNG kèm l�
 
                         const custName = (this.form.userName || 'Khách Spotify').trim();
 
-                        // Call unified logFinancialOrder function (Reusing Nhập Đơn Tay logic)
-                        await this.logFinancialOrder({
-                            date: this.form.activationDateIso,
-                            ctv: this.form.ctv || 'Dnc',
-                            email: custName,
-                            product: 'Spotify',
-                            duration: parseInt(this.form.duration, 10) || 1,
-                            price: this.form.price || 40000,
-                            cost: this.form.cost || 0,
-                            hsd: finalHsdStr,
-                            rootEmail: this.form.rootEmail,
-                            userCode: this.form.userCode,
-                            note: this.form.note || (this.form.orderType === 'renew' ? `Gia hạn Khách ${custName}` : '')
-                        });
+                        if (this.syncFinancial) {
+                            // Call unified logFinancialOrder function (Reusing Nhập Đơn Tay logic)
+                            await this.logFinancialOrder({
+                                date: this.form.activationDateIso,
+                                ctv: this.form.ctv || 'Dnc',
+                                email: custName,
+                                product: 'Spotify',
+                                duration: parseInt(this.form.duration, 10) || 1,
+                                price: this.form.price || 40000,
+                                cost: this.form.cost || 0,
+                                hsd: finalHsdStr,
+                                rootEmail: this.form.rootEmail,
+                                userCode: this.form.userCode,
+                                note: this.form.note || (this.form.orderType === 'renew' ? `Gia hạn Khách ${custName}` : '')
+                            });
+                        } else {
+                            // Render info template card in modal without pushing to Sheet Tài Chính
+                            const orderCode = this.generateOrderCode();
+                            this.manualOrderResultData = {
+                                orderCode: orderCode,
+                                email: custName,
+                                product: 'Spotify',
+                                hsd: finalHsdStr,
+                                price: Number(this.form.price) || 0,
+                                note: (this.form.note || '') + ' [Không đồng bộ Tài Chính]'
+                            };
+                        }
 
-                        this.showToast('✅ Đã lưu thành công & tự động đồng bộ Sheet Tài Chính!');
+                        this.showToast(`✅ Đã lưu thành công${this.syncFinancial ? ' & tự động đồng bộ Sheet Tài Chính!' : ' (Không đẩy Tài Chính)'}`);
                         this.fetchData();
                         this.$nextTick(() => { if (window.lucide) window.lucide.createIcons(); });
 
