@@ -66,6 +66,10 @@
         </a>
 
         <div class="flex items-center gap-3">
+            <a href="../ctv/" class="px-3 py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5">
+                <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                <span>Trang CTV Portal</span>
+            </a>
             <a href="../setup/" class="p-2.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-all border border-white/10" title="Cấu hình API & Apps Script">
                 <i data-lucide="settings" class="w-4 h-4"></i>
             </a>
@@ -211,10 +215,16 @@
                                             </span>
                                         </template>
                                     </div>
-                                    <div class="text-xs text-gray-400 flex items-center gap-3">
+                                    <div class="text-xs text-gray-400 flex flex-wrap items-center gap-3">
                                         <span>Mã Ticket: <strong class="font-mono text-gray-300" x-text="t.ticket_id"></strong></span>
                                         <span>•</span>
-                                        <span>Tạo lúc: <span x-text="formatDate(t.created_at)"></span></span>
+                                        <span>Báo lúc: <span x-text="formatDate(t.created_at)"></span></span>
+                                        <template x-if="t.status === 'Đã xử lý' && t.resolved_at">
+                                            <span class="text-emerald-400">
+                                                • Đã xong lúc <span x-text="formatDate(t.resolved_at)"></span>
+                                                <span class="text-gray-400 font-semibold" x-text="calcDuration(t.created_at, t.resolved_at)"></span>
+                                            </span>
+                                        </template>
                                     </div>
                                 </div>
 
@@ -240,7 +250,7 @@
                                             class="w-full bg-gray-950/80 border border-gray-700 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:border-indigo-500">
                                         <option value="Mới">🟡 Mới</option>
                                         <option value="Đang xử lý">🔵 Đang xử lý</option>
-                                        <option value="Đã xử lý">🟢 Đã xử lý</option>
+                                        <option value="Đã xử lý">🟢 Đã xử lý (Gửi mail)</option>
                                     </select>
                                 </div>
 
@@ -318,6 +328,20 @@
                         return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
                                d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
                     } catch (e) { return isoStr; }
+                },
+
+                calcDuration(startIso, endIso) {
+                    if (!startIso || !endIso) return '';
+                    try {
+                        const s = new Date(startIso).getTime();
+                        const e = new Date(endIso).getTime();
+                        if (isNaN(s) || isNaN(e) || e <= s) return '';
+                        const diffMins = Math.round((e - s) / 60000);
+                        if (diffMins < 60) return ` (sau ${diffMins} phút)`;
+                        const hrs = Math.floor(diffMins / 60);
+                        const mins = diffMins % 60;
+                        return ` (sau ${hrs}h ${mins}m)`;
+                    } catch (err) { return ''; }
                 },
 
                 getStatusBadgeClass(status) {
@@ -409,8 +433,11 @@
                             t.status = t.editStatus;
                             t.resolved_by = t.editResolvedBy;
                             t.note = t.editNote;
+                            if (t.status === 'Đã xử lý') {
+                                t.resolved_at = new Date().toISOString();
+                            }
                             this.calculateStats();
-                            this.showToast(`Đã lưu Ticket ${t.stt_group}`, 'success', 'check');
+                            this.showToast(res.message || `Đã lưu Ticket ${t.stt_group}`, 'success', 'check');
                         } else {
                             this.showToast(res.message, 'error');
                         }
@@ -489,6 +516,7 @@
                                 status: 'Mới',
                                 created_at: new Date(now.getTime() - 3600000).toISOString(),
                                 updated_at: new Date(now.getTime() - 1800000).toISOString(),
+                                resolved_at: '',
                                 is_recurring: true,
                                 recur_count: 2,
                                 report_count: 3,
@@ -501,6 +529,7 @@
                                 status: 'Đang xử lý',
                                 created_at: new Date(now.getTime() - 7200000).toISOString(),
                                 updated_at: new Date(now.getTime() - 3600000).toISOString(),
+                                resolved_at: '',
                                 is_recurring: false,
                                 recur_count: 0,
                                 report_count: 1,
