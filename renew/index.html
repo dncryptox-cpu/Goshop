@@ -263,25 +263,39 @@
                                 </div>
 
                                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                                    <div class="bg-gray-900/60 p-3 rounded-xl border border-gray-800/60">
-                                        <span class="text-gray-500 block mb-1">Cập nhật gần nhất</span>
-                                        <span class="text-gray-200 font-medium" x-text="formatDate(statusResult.updated_at)"></span>
+                                    <div class="bg-gray-900/60 p-3 rounded-xl border border-gray-800/60 space-y-1">
+                                        <span class="text-gray-500 block">📅 Thời gian báo lỗi</span>
+                                        <span class="text-gray-200 font-bold block" x-text="formatDate(statusResult.created_at || statusResult.updated_at)"></span>
+                                        <span class="text-[10px] text-indigo-300 block font-medium" x-text="formatRelativeTime(statusResult.created_at || statusResult.updated_at)"></span>
                                     </div>
-                                    <div class="bg-gray-900/60 p-3 rounded-xl border border-gray-800/60">
-                                        <span class="text-gray-500 block mb-1">Số khách đã báo</span>
-                                        <span class="text-gray-200 font-medium flex items-center gap-1.5">
-                                            <i data-lucide="users" class="w-4 h-4 text-indigo-400"></i>
-                                            <span class="font-bold text-white" x-text="statusResult.report_count"></span> thành viên nhóm
+                                    <div class="bg-gray-900/60 p-3 rounded-xl border border-gray-800/60 space-y-1">
+                                        <span class="text-gray-500 block">🔄 Cập nhật gần nhất</span>
+                                        <span class="text-gray-200 font-bold block" x-text="formatDate(statusResult.updated_at)"></span>
+                                        <span class="text-[10px] text-gray-400 block flex items-center gap-1">
+                                            <i data-lucide="users" class="w-3.5 h-3.5 text-indigo-400"></i>
+                                            <span class="font-bold text-white" x-text="statusResult.report_count"></span> thành viên nhóm đã báo
                                         </span>
                                     </div>
                                 </div>
 
+                                <template x-if="statusResult.status === 'Đã xử lý' && statusResult.resolved_at">
+                                    <div class="p-3.5 bg-emerald-950/40 border border-emerald-500/40 rounded-xl text-emerald-200 text-xs space-y-1">
+                                        <div class="flex items-center gap-2 font-bold text-emerald-300">
+                                            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+                                            🟢 Đã xử lý xong lúc <span x-text="formatDate(statusResult.resolved_at)"></span>
+                                        </div>
+                                        <p class="text-emerald-200/80 text-[11px]">
+                                            Thời gian khắc phục: <strong class="text-emerald-300" x-text="calcDuration(statusResult.created_at, statusResult.resolved_at)"></strong>
+                                        </p>
+                                    </div>
+                                </template>
+
                                 <div x-show="statusResult.is_recurring" class="p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-xl text-amber-200 text-xs space-y-1">
                                     <div class="flex items-center gap-2 font-bold text-amber-300">
                                         <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i>
-                                        Sự cố tái phát (Lần thứ <span x-text="statusResult.recur_count"></span>)
+                                        ⚡ Sự cố tái phát (Lần thứ <span x-text="statusResult.recur_count"></span> — Báo lại lúc <span x-text="formatDate(statusResult.updated_at)"></span>)
                                     </div>
-                                    <p class="text-amber-200/80">Sự cố này đã xảy ra lại gần đây. Đội ngũ kỹ thuật đang ưu tiên kiểm tra tận gốc để khắc phục dứt điểm.</p>
+                                    <p class="text-amber-200/80 text-[11px]">Sự cố này đã xảy ra lại gần đây. Đội ngũ kỹ thuật đang ưu tiên kiểm tra dứt điểm.</p>
                                 </div>
 
                                 <div class="text-[11px] text-gray-500 text-center pt-2">
@@ -347,6 +361,38 @@
                         return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
                                d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
                     } catch (e) { return isoStr; }
+                },
+
+                formatRelativeTime(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        const now = Date.now();
+                        const diffMs = now - d.getTime();
+                        if (diffMs < 0) return 'Vừa xong';
+                        const diffMins = Math.floor(diffMs / 60000);
+                        if (diffMins < 1) return 'Vừa xong';
+                        if (diffMins < 60) return `${diffMins} phút trước`;
+                        const diffHours = Math.floor(diffMins / 60);
+                        if (diffHours < 24) return `${diffHours} giờ trước`;
+                        const diffDays = Math.floor(diffHours / 24);
+                        return `${diffDays} ngày trước`;
+                    } catch (e) { return isoStr; }
+                },
+
+                calcDuration(startIso, endIso) {
+                    if (!startIso || !endIso) return '';
+                    try {
+                        const s = new Date(startIso).getTime();
+                        const e = new Date(endIso).getTime();
+                        if (isNaN(s) || isNaN(e) || e <= s) return '';
+                        const diffMins = Math.round((e - s) / 60000);
+                        if (diffMins < 60) return `sau ${diffMins} phút`;
+                        const hrs = Math.floor(diffMins / 60);
+                        const mins = diffMins % 60;
+                        return `sau ${hrs}h ${mins}m`;
+                    } catch (err) { return ''; }
                 },
 
                 getStatusBadgeClass(status) {
