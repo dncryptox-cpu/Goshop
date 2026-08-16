@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tra Cứu Trạng Thái Xử Lý Fam - Go DNC</title>
-    <meta name="description" content="Trang tra cứu trạng thái khắc phục sự cố nhóm tài khoản Fam (RN) tự động cho khách hàng Go DNC.">
+    <title>Báo Lỗi & Tra Cứu Fam Subscription - Go DNC</title>
+    <meta name="description" content="Hệ thống báo lỗi và tra cứu trạng thái xử lý sự cố nhóm tài khoản Fam (RN) tự động cho khách hàng Go DNC.">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -24,14 +24,14 @@
         [x-cloak] { display: none !important; }
     </style>
 </head>
-<body x-data="statusPageApp()" x-init="init()" class="antialiased min-h-screen flex flex-col justify-between relative overflow-x-hidden"
+<body x-data="unifiedApp()" x-init="init()" class="antialiased min-h-screen flex flex-col justify-between relative overflow-x-hidden"
       style="background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.15), transparent 50%), radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.1), transparent 50%), #070a13;">
 
     <!-- Top Accent Line -->
     <div class="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
 
     <!-- Header -->
-    <header class="py-5 px-4 max-w-4xl mx-auto w-full flex items-center justify-between z-10">
+    <header class="py-5 px-4 max-w-4xl mx-auto w-full flex flex-col sm:flex-row items-center justify-between gap-4 z-10">
         <a href="https://godnc.com/" class="flex items-center gap-2.5 group">
             <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 group-hover:scale-105 transition-transform">
                 <span class="font-black text-white text-lg tracking-wider">DNC</span>
@@ -39,129 +39,257 @@
             <div>
                 <div class="font-extrabold text-white text-base md:text-lg tracking-tight flex items-center gap-2">
                     Fam Issue Tracker
-                    <span class="text-[10px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">Tra Cứu</span>
+                    <span class="text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">RN System</span>
                 </div>
+                <p class="text-xs text-gray-400">Hỗ trợ sự cố nhóm tài khoản subscription</p>
             </div>
         </a>
 
-        <a href="../report/" class="flex items-center gap-1.5 text-xs bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 px-3.5 py-2 rounded-xl transition-all font-semibold">
-            <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
-            <span>Gửi báo lỗi mới</span>
-        </a>
+        <!-- Segmented Tab Switcher (Dàn 2 chức năng trên cùng 1 trang) -->
+        <div class="flex items-center bg-gray-900/90 p-1.5 rounded-2xl border border-white/10 shadow-inner">
+            <button @click="activeTab = 'report'; formMessage = { text: '', type: '' }"
+                    :class="activeTab === 'report' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30' : 'text-gray-400 hover:text-white'"
+                    class="px-4 py-2 rounded-xl text-xs md:text-sm transition-all flex items-center gap-2">
+                <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                <span>Báo Lỗi Fam</span>
+            </button>
+
+            <button @click="activeTab = 'status'; statusMessage = ''; if(statusEmail) checkStatus();"
+                    :class="activeTab === 'status' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30' : 'text-gray-400 hover:text-white'"
+                    class="px-4 py-2 rounded-xl text-xs md:text-sm transition-all flex items-center gap-2">
+                <i data-lucide="search" class="w-4 h-4"></i>
+                <span>Tra Cứu Trạng Thái</span>
+            </button>
+        </div>
     </header>
 
     <!-- Main Content Container -->
-    <main class="flex-grow flex items-center justify-center px-4 py-8 md:py-12 z-10">
+    <main class="flex-grow flex items-center justify-center px-4 py-6 md:py-10 z-10">
         <div class="w-full max-w-lg mx-auto">
 
             <div class="bg-gray-900/70 border border-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-6 md:p-8 relative overflow-hidden">
-                
-                <!-- Page Header -->
-                <div class="text-center mb-8">
-                    <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center mx-auto mb-3">
-                        <i data-lucide="search" class="w-6 h-6"></i>
+                <div class="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                <!-- ==================== TAB 1: BÁO LỖI FAM ==================== -->
+                <div x-show="activeTab === 'report'" x-transition x-cloak class="space-y-6">
+                    <div class="text-center mb-6">
+                        <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+                        </div>
+                        <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Gửi Báo Lỗi Nhóm (Fam)</h1>
+                        <p class="text-xs md:text-sm text-gray-400 mt-2">
+                            Nhập Email của bạn. Trạng thái báo lỗi sẽ áp dụng chung cho <strong class="text-indigo-300 font-semibold">toàn bộ 5 thành viên</strong> trong nhóm.
+                        </p>
                     </div>
-                    <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Tra Cứu Tiến Độ Xử Lý</h1>
-                    <p class="text-xs md:text-sm text-gray-400 mt-2">
-                        Nhập Email để kiểm tra xem báo lỗi của nhóm bạn đã được ghi nhận và xử lý tới đâu.
-                    </p>
-                </div>
 
-                <!-- Inline Error Message -->
-                <div x-show="errorMessage" x-transition x-cloak class="mb-5 p-4 rounded-2xl border bg-rose-950/60 border-rose-500/50 text-rose-200 text-xs font-medium flex items-start gap-2.5">
-                    <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-                    <span x-text="errorMessage"></span>
-                </div>
+                    <!-- Inline Feedback Message -->
+                    <div x-show="formMessage.text" x-transition x-cloak class="p-4 rounded-2xl border text-xs font-medium flex items-start gap-2.5"
+                         :class="{
+                             'bg-rose-950/60 border-rose-500/50 text-rose-200': formMessage.type === 'error',
+                             'bg-emerald-950/60 border-emerald-500/50 text-emerald-200': formMessage.type === 'success'
+                         }">
+                        <i :data-lucide="formMessage.type === 'error' ? 'alert-triangle' : 'check-circle-2'" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+                        <span x-text="formMessage.text"></span>
+                    </div>
 
-                <!-- Search Form -->
-                <form @submit.prevent="checkStatus()" class="space-y-4">
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        <div class="relative flex-grow">
-                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
-                                <i data-lucide="mail" class="w-4 h-4"></i>
+                    <!-- Form gửi báo lỗi -->
+                    <template x-if="!reportResult">
+                        <form @submit.prevent="submitReport()" class="space-y-4">
+                            <div>
+                                <label for="report-email" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
+                                    Email đăng ký nhận slot *
+                                </label>
+                                <div class="relative">
+                                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+                                        <i data-lucide="mail" class="w-4 h-4"></i>
+                                    </div>
+                                    <input type="email" id="report-email" x-model="reportEmail" required placeholder="vidu@gmail.com"
+                                           class="w-full bg-gray-950/60 border border-gray-800 rounded-xl pl-10 pr-4 py-3 text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm placeholder-gray-500">
+                                </div>
                             </div>
-                            <input type="email" x-model="email" required placeholder="Nhập email của bạn..."
-                                   class="w-full bg-gray-950/60 border border-gray-800 rounded-xl pl-10 pr-4 py-3 text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm placeholder-gray-500">
-                        </div>
-                        <button type="submit" :disabled="loading"
-                                class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm whitespace-nowrap disabled:opacity-50">
-                            <template x-if="!loading">
-                                <div class="flex items-center gap-1.5">
-                                    <i data-lucide="search" class="w-4 h-4"></i>
-                                    <span>Tra Cứu</span>
-                                </div>
-                            </template>
-                            <template x-if="loading">
-                                <div class="flex items-center gap-1.5">
-                                    <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    <span>Kiểm tra...</span>
-                                </div>
-                            </template>
-                        </button>
-                    </div>
-                </form>
 
-                <!-- Status Result Display -->
-                <div x-show="result" x-transition x-cloak class="mt-6">
-                    <template x-if="result && !result.has_ticket">
-                        <div class="p-6 bg-gray-950/60 border border-gray-800 rounded-2xl text-center space-y-3">
-                            <i data-lucide="check-circle-2" class="w-10 h-10 text-emerald-400 mx-auto"></i>
-                            <h3 class="text-base font-bold text-white">Fam <span class="font-mono text-indigo-300" x-text="result.stt_group"></span> hiện không có báo lỗi mở</h3>
-                            <p class="text-xs text-gray-400" x-text="result.message"></p>
-                            <a href="../report/" class="mt-3 px-4 py-2.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all">
-                                <i data-lucide="plus-circle" class="w-4 h-4"></i> Gửi báo lỗi cho Fam này
-                            </a>
-                        </div>
+                            <div>
+                                <label for="report-msg" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
+                                    Mô tả sự cố (không bắt buộc)
+                                </label>
+                                <textarea id="report-msg" x-model="reportMessage" rows="3" placeholder="Ví dụ: Tài khoản bị văng nhóm / Bị mất Premium / Cần cấp lại slot..."
+                                          class="w-full bg-gray-950/60 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm placeholder-gray-500"></textarea>
+                            </div>
+
+                            <button type="submit" :disabled="loading.report"
+                                    class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50">
+                                <template x-if="!loading.report">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="send" class="w-4 h-4"></i>
+                                        <span>Gửi Báo Lỗi Ngay</span>
+                                    </div>
+                                </template>
+                                <template x-if="loading.report">
+                                    <div class="flex items-center gap-2">
+                                        <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span>Đang ghi nhận...</span>
+                                    </div>
+                                </template>
+                            </button>
+                        </form>
                     </template>
 
-                    <template x-if="result && result.has_ticket">
-                        <div class="bg-gray-950/80 border border-gray-800 rounded-2xl p-6 space-y-4">
-                            <div class="flex items-center justify-between border-b border-gray-800 pb-4">
-                                <div>
-                                    <span class="text-xs text-gray-400 block">Mã nhóm Fam (5 người):</span>
-                                    <span class="text-3xl font-black text-indigo-400 font-mono tracking-tight" x-text="result.stt_group"></span>
-                                </div>
-                                <div class="text-right">
-                                    <span class="text-xs text-gray-400 block mb-1">Trạng thái</span>
-                                    <span class="px-3.5 py-1.5 rounded-full text-xs font-bold border inline-flex items-center gap-1.5"
-                                          :class="getStatusBadgeClass(result.status)">
-                                        <span class="w-2 h-2 rounded-full" :class="getStatusDotClass(result.status)"></span>
-                                        <span x-text="result.status"></span>
+                    <!-- Khối kết quả ngay sau khi gửi thành công -->
+                    <template x-if="reportResult">
+                        <div class="space-y-4">
+                            <div class="p-5 rounded-2xl border bg-gray-950/80 border-gray-800 space-y-4">
+                                <div class="flex items-start justify-between gap-3 border-b border-gray-800 pb-3">
+                                    <div>
+                                        <span class="text-xs text-gray-400 block">Mã nhóm Fam của bạn:</span>
+                                        <span class="text-3xl font-black text-indigo-400 font-mono tracking-tight" x-text="reportResult.stt_group"></span>
+                                    </div>
+                                    <span class="px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5"
+                                          :class="getStatusBadgeClass(reportResult.status)">
+                                        <span class="w-2 h-2 rounded-full animate-ping bg-amber-400"></span>
+                                        <span x-text="reportResult.status"></span>
                                     </span>
                                 </div>
+
+                                <p class="text-sm text-gray-200" x-text="reportResult.message"></p>
+
+                                <div x-show="reportResult.is_recurring" class="p-3 bg-rose-950/50 border border-rose-500/40 rounded-xl text-rose-200 text-xs flex items-start gap-2.5">
+                                    <i data-lucide="zap" class="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5"></i>
+                                    <div>
+                                        <strong class="font-semibold text-rose-300">Cảnh báo tái phát (Lần thứ <span x-text="reportResult.recur_count"></span>):</strong>
+                                        <span> Sự cố vừa xảy ra lại trong 24h. Kỹ thuật viên sẽ ưu tiên kiểm tra dứt điểm.</span>
+                                    </div>
+                                </div>
+
+                                <div class="p-3 bg-gray-900/60 rounded-xl text-[11px] text-gray-400 flex items-center gap-2">
+                                    <i data-lucide="users" class="w-4 h-4 text-indigo-400 flex-shrink-0"></i>
+                                    <span>Trạng thái này áp dụng đồng bộ cho cả 5 thành viên trong nhóm Fam <strong class="text-gray-200" x-text="reportResult.stt_group"></strong>.</span>
+                                </div>
                             </div>
 
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                                <div class="bg-gray-900/60 p-3 rounded-xl border border-gray-800/60">
-                                    <span class="text-gray-500 block mb-1">Cập nhật gần nhất</span>
-                                    <span class="text-gray-200 font-medium" x-text="formatDate(result.updated_at)"></span>
-                                </div>
-                                <div class="bg-gray-900/60 p-3 rounded-xl border border-gray-800/60">
-                                    <span class="text-gray-500 block mb-1">Số khách đã báo</span>
-                                    <span class="text-gray-200 font-medium flex items-center gap-1.5">
-                                        <i data-lucide="users" class="w-4 h-4 text-indigo-400"></i>
-                                        <span class="font-bold text-white" x-text="result.report_count"></span> thành viên nhóm
-                                    </span>
-                                </div>
-                            </div>
+                            <button @click="goToStatusTab(reportEmail)"
+                                    class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm">
+                                <i data-lucide="search" class="w-4 h-4"></i>
+                                <span>Tra Cứu Chi Tiết Tiến Độ Xử Lý</span>
+                            </button>
 
-                            <!-- Recurring Banner -->
-                            <div x-show="result.is_recurring" class="p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-xl text-amber-200 text-xs space-y-1">
-                                <div class="flex items-center gap-2 font-bold text-amber-300">
-                                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i>
-                                    Sự cố tái phát (Lần thứ <span x-text="result.recur_count"></span>)
-                                </div>
-                                <p class="text-amber-200/80">Sự cố này đã xảy ra lại gần đây. Đội ngũ kỹ thuật đang ưu tiên kiểm tra tận gốc để khắc phục dứt điểm.</p>
-                            </div>
-
-                            <div class="text-[11px] text-gray-500 text-center pt-2">
-                                Mã Ticket: <span class="font-mono text-gray-400" x-text="result.ticket_id"></span>
-                            </div>
+                            <button @click="reportResult = null; formMessage = { text: '', type: '' }"
+                                    class="w-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white font-medium py-2.5 rounded-xl text-xs transition-all">
+                                Báo lỗi cho tài khoản khác
+                            </button>
                         </div>
                     </template>
+                </div>
+
+                <!-- ==================== TAB 2: TRA CỨU TRẠNG THÁI ==================== -->
+                <div x-show="activeTab === 'status'" x-transition x-cloak class="space-y-6">
+                    <div class="text-center mb-6">
+                        <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center mx-auto mb-3">
+                            <i data-lucide="search" class="w-6 h-6"></i>
+                        </div>
+                        <h2 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Tra Cứu Tiến Độ Xử Lý</h2>
+                        <p class="text-xs md:text-sm text-gray-400 mt-2">
+                            Nhập Email của bạn để kiểm tra tiến độ khắc phục sự cố cho nhóm Fam (RN).
+                        </p>
+                    </div>
+
+                    <!-- Inline Error Message -->
+                    <div x-show="statusMessage" x-transition x-cloak class="p-4 rounded-2xl border bg-rose-950/60 border-rose-500/50 text-rose-200 text-xs font-medium flex items-start gap-2.5">
+                        <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+                        <span x-text="statusMessage"></span>
+                    </div>
+
+                    <!-- Form Search -->
+                    <form @submit.prevent="checkStatus()" class="space-y-4">
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <div class="relative flex-grow">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500">
+                                    <i data-lucide="mail" class="w-4 h-4"></i>
+                                </div>
+                                <input type="email" x-model="statusEmail" required placeholder="Nhập email của bạn..."
+                                       class="w-full bg-gray-950/60 border border-gray-800 rounded-xl pl-10 pr-4 py-3 text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm placeholder-gray-500">
+                            </div>
+                            <button type="submit" :disabled="loading.status"
+                                    class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm whitespace-nowrap disabled:opacity-50">
+                                <template x-if="!loading.status">
+                                    <div class="flex items-center gap-1.5">
+                                        <i data-lucide="search" class="w-4 h-4"></i>
+                                        <span>Tra Cứu</span>
+                                    </div>
+                                </template>
+                                <template x-if="loading.status">
+                                    <div class="flex items-center gap-1.5">
+                                        <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span>Kiểm tra...</span>
+                                    </div>
+                                </template>
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Kết quả Tra Cứu -->
+                    <div x-show="statusResult" x-transition x-cloak class="mt-6">
+                        <template x-if="statusResult && !statusResult.has_ticket">
+                            <div class="p-6 bg-gray-950/60 border border-gray-800 rounded-2xl text-center space-y-3">
+                                <i data-lucide="check-circle-2" class="w-10 h-10 text-emerald-400 mx-auto"></i>
+                                <h3 class="text-base font-bold text-white">Fam <span class="font-mono text-indigo-300" x-text="statusResult.stt_group"></span> hiện không có báo lỗi mở</h3>
+                                <p class="text-xs text-gray-400" x-text="statusResult.message"></p>
+                                <button @click="activeTab = 'report'; reportEmail = statusEmail; reportResult = null;" class="mt-3 px-4 py-2.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all">
+                                    <i data-lucide="plus-circle" class="w-4 h-4"></i> Gửi báo lỗi cho Fam này
+                                </button>
+                            </div>
+                        </template>
+
+                        <template x-if="statusResult && statusResult.has_ticket">
+                            <div class="bg-gray-950/80 border border-gray-800 rounded-2xl p-6 space-y-4">
+                                <div class="flex items-center justify-between border-b border-gray-800 pb-4">
+                                    <div>
+                                        <span class="text-xs text-gray-400 block">Mã nhóm Fam (5 người):</span>
+                                        <span class="text-3xl font-black text-indigo-400 font-mono tracking-tight" x-text="statusResult.stt_group"></span>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="text-xs text-gray-400 block mb-1">Trạng thái</span>
+                                        <span class="px-3.5 py-1.5 rounded-full text-xs font-bold border inline-flex items-center gap-1.5"
+                                              :class="getStatusBadgeClass(statusResult.status)">
+                                            <span class="w-2 h-2 rounded-full" :class="getStatusDotClass(statusResult.status)"></span>
+                                            <span x-text="statusResult.status"></span>
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                    <div class="bg-gray-900/60 p-3 rounded-xl border border-gray-800/60">
+                                        <span class="text-gray-500 block mb-1">Cập nhật gần nhất</span>
+                                        <span class="text-gray-200 font-medium" x-text="formatDate(statusResult.updated_at)"></span>
+                                    </div>
+                                    <div class="bg-gray-900/60 p-3 rounded-xl border border-gray-800/60">
+                                        <span class="text-gray-500 block mb-1">Số khách đã báo</span>
+                                        <span class="text-gray-200 font-medium flex items-center gap-1.5">
+                                            <i data-lucide="users" class="w-4 h-4 text-indigo-400"></i>
+                                            <span class="font-bold text-white" x-text="statusResult.report_count"></span> thành viên nhóm
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div x-show="statusResult.is_recurring" class="p-3.5 bg-amber-950/40 border border-amber-500/40 rounded-xl text-amber-200 text-xs space-y-1">
+                                    <div class="flex items-center gap-2 font-bold text-amber-300">
+                                        <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i>
+                                        Sự cố tái phát (Lần thứ <span x-text="statusResult.recur_count"></span>)
+                                    </div>
+                                    <p class="text-amber-200/80">Sự cố này đã xảy ra lại gần đây. Đội ngũ kỹ thuật đang ưu tiên kiểm tra tận gốc để khắc phục dứt điểm.</p>
+                                </div>
+
+                                <div class="text-[11px] text-gray-500 text-center pt-2">
+                                    Mã Ticket: <span class="font-mono text-gray-400" x-text="statusResult.ticket_id"></span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
                 </div>
 
             </div>
@@ -175,23 +303,39 @@
     </footer>
 
     <script>
-        function statusPageApp() {
+        function unifiedApp() {
             return {
+                activeTab: 'report',
                 webAppUrl: localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || '',
                 useMock: !localStorage.getItem('FAM_TRACKER_WEBAPP_URL'),
-                loading: false,
-                email: '',
-                errorMessage: '',
-                result: null,
+
+                loading: { report: false, status: false },
+
+                reportEmail: '',
+                reportMessage: '',
+                formMessage: { text: '', type: '' },
+                reportResult: null,
+
+                statusEmail: '',
+                statusMessage: '',
+                statusResult: null,
 
                 init() {
-                    // Tự đọc query param `?email=...` từ URL nếu có
                     const urlParams = new URLSearchParams(window.location.search);
                     const emailParam = urlParams.get('email');
+                    const tabParam = urlParams.get('tab');
+
+                    if (tabParam === 'status' || window.location.pathname.includes('/status')) {
+                        this.activeTab = 'status';
+                    }
+
                     if (emailParam) {
-                        this.email = emailParam.trim();
+                        this.statusEmail = emailParam.trim();
+                        this.reportEmail = emailParam.trim();
+                        this.activeTab = 'status';
                         this.checkStatus();
                     }
+
                     setTimeout(() => lucide.createIcons(), 50);
                 },
 
@@ -223,13 +367,48 @@
                     }
                 },
 
-                async checkStatus() {
-                    if (!this.email) return;
-                    this.loading = true;
-                    this.errorMessage = '';
-                    this.result = null;
+                goToStatusTab(email) {
+                    this.statusEmail = email;
+                    this.activeTab = 'status';
+                    this.checkStatus();
+                },
 
-                    const emailClean = this.email.trim().toLowerCase();
+                async submitReport() {
+                    if (!this.reportEmail) return;
+                    this.loading.report = true;
+                    this.formMessage = { text: '', type: '' };
+                    this.reportResult = null;
+
+                    const emailClean = this.reportEmail.trim().toLowerCase();
+
+                    try {
+                        let res;
+                        if (this.useMock) {
+                            res = await this.mockSubmit(emailClean, this.reportMessage);
+                        } else {
+                            res = await this.callApi('submitReport', { email: emailClean, message: this.reportMessage });
+                        }
+
+                        if (res.success) {
+                            this.reportResult = res;
+                        } else {
+                            this.formMessage = { text: res.message || 'Không tìm thấy tài khoản với email này.', type: 'error' };
+                        }
+                    } catch (err) {
+                        this.formMessage = { text: err.message || 'Hệ thống phản hồi chậm, vui lòng thử lại.', type: 'error' };
+                    } finally {
+                        this.loading.report = false;
+                        setTimeout(() => lucide.createIcons(), 50);
+                    }
+                },
+
+                async checkStatus() {
+                    if (!this.statusEmail) return;
+                    this.loading.status = true;
+                    this.statusMessage = '';
+                    this.statusResult = null;
+
+                    const emailClean = this.statusEmail.trim().toLowerCase();
 
                     try {
                         let res;
@@ -240,14 +419,14 @@
                         }
 
                         if (res.success) {
-                            this.result = res;
+                            this.statusResult = res;
                         } else {
-                            this.errorMessage = res.message || 'Không tìm thấy thông tin tài khoản.';
+                            this.statusMessage = res.message || 'Không tìm thấy thông tin tài khoản.';
                         }
                     } catch (err) {
-                        this.errorMessage = err.message || 'Không thể kết nối máy chủ.';
+                        this.statusMessage = err.message || 'Không thể kết nối máy chủ.';
                     } finally {
-                        this.loading = false;
+                        this.loading.status = false;
                         setTimeout(() => lucide.createIcons(), 50);
                     }
                 },
@@ -278,7 +457,7 @@
                     }
                 },
 
-                async mockCheckStatus(email) {
+                async mockSubmit(email, msg) {
                     await new Promise(r => setTimeout(r, 400));
                     const mockCache = JSON.parse(localStorage.getItem('MOCK_FAM_CACHE') || '{"khach1@gmail.com":"RN34","khach2@gmail.com":"RN34","admin@godnc.com":"RN34"}');
                     const sttGroup = mockCache[email];
@@ -287,6 +466,27 @@
                             success: false,
                             error: 'email_not_found',
                             message: 'Không tìm thấy tài khoản với email này. Có thể dữ liệu chưa được đồng bộ, vui lòng thử lại sau ít phút hoặc liên hệ CTV.'
+                        };
+                    }
+                    return {
+                        success: true,
+                        stt_group: sttGroup,
+                        status: 'Mới',
+                        is_recurring: false,
+                        recur_count: 0,
+                        message: `Đã tạo báo cáo sự cố thành công cho Fam ${sttGroup}.`
+                    };
+                },
+
+                async mockCheckStatus(email) {
+                    await new Promise(r => setTimeout(r, 400));
+                    const mockCache = JSON.parse(localStorage.getItem('MOCK_FAM_CACHE') || '{"khach1@gmail.com":"RN34","khach2@gmail.com":"RN34","admin@godnc.com":"RN34"}');
+                    const sttGroup = mockCache[email];
+                    if (!sttGroup) {
+                        return {
+                            success: false,
+                            error: 'email_not_found',
+                            message: 'Không tìm thấy tài khoản với email này. Có thể dữ liệu chưa me đồng bộ, vui lòng thử lại sau ít phút hoặc liên hệ CTV.'
                         };
                     }
                     return {
