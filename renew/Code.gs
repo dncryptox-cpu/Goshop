@@ -1,5 +1,5 @@
 /**
- * FAM ISSUE TRACKER - BACKEND APPS SCRIPT
+ * FAM ISSUE TRACKER - BACKEND APPS SCRIPT (OPTIMIZED v2)
  * SpreadSheet: FAM_ISSUE_TRACKER
  * 
  * Tự động đồng bộ cache từ kho TK (ID: 1Agq-0ITsQgzhwnWvQTUthAjS2e8zJfgNd8dGGkCDniA)
@@ -10,6 +10,7 @@
 const KHO_TK_ID = '1Agq-0ITsQgzhwnWvQTUthAjS2e8zJfgNd8dGGkCDniA';
 const KHO_TK_TAB_NAME = 'DATA';
 const RECUR_WINDOW_HOURS = 24; // Cấu hình thời gian tính tái phát (giờ)
+const STALE_CACHE_THRESHOLD_HOURS = 3; // Ngưỡng cảnh báo cache cũ (giờ)
 
 /**
  * Endpoint nhận Request qua HTTP GET / POST
@@ -64,6 +65,9 @@ function handleRequest(e) {
         break;
       case 'setupDatabase':
         result = setupDatabase();
+        break;
+      case 'getCacheInfo':
+        result = { success: true, cache_info: checkCacheHealth() };
         break;
       default:
         result = { success: false, message: 'Action không hợp lệ: ' + action };
@@ -126,7 +130,59 @@ function setupDatabase() {
 }
 
 /**
+ * Helper: Kiểm tra sức khỏe của cache email (tuổi cache, cảnh báo nếu > 3h)
+ */
+function checkCacheHealth() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+
+  if (!cacheSheet || cacheSheet.getLastRow() <= 1) {
+    return {
+      cache_stale: true,
+      stale_hours: 999,
+      last_synced_at: null,
+      count: 0
+    };
+  }
+
+  const data = cacheSheet.getDataRange().getValues();
+  let latestSynced = null;
+  let totalCount = data.length - 1;
+
+  for (let i = 1; i < data.length; i++) {
+    const syncedAtRaw = data[i][2];
+    if (syncedAtRaw) {
+      const d = new Date(syncedAtRaw);
+      if (!latestSynced || d > latestSynced) {
+        latestSynced = d;
+      }
+    }
+  }
+
+  if (!latestSynced || isNaN(latestSynced.getTime())) {
+    return {
+      cache_stale: true,
+      stale_hours: 999,
+      last_synced_at: null,
+      count: totalCount
+    };
+  }
+
+  const now = new Date();
+  const diffHours = (now.getTime() - latestSynced.getTime()) / (1000 * 3600);
+  const staleHoursRounded = Math.round(diffHours * 10) / 10;
+
+  return {
+    cache_stale: diffHours > STALE_CACHE_THRESHOLD_HOURS,
+    stale_hours: staleHoursRounded,
+    last_synced_at: latestSynced.toISOString(),
+    count: totalCount
+  };
+}
+
+/**
  * 2. Tự động đồng bộ cache Email -> STT từ Sheet Kho TK
+ * Chạy NỀN qua trigger hoặc nút thủ công trong Admin.
  * Đọc theo TÊN CỘT Header ('Email khách' và 'STT'), KHÔNG hardcode chỉ số cột.
  */
 function syncEmailLookupCache() {
@@ -209,6 +265,12 @@ function syncEmailLookupCache() {
       success: true, 
       count: rowsToInsert.length, 
       synced_at: nowIso, 
+      cache_info: {
+        cache_stale: false,
+        stale_hours: 0,
+        last_synced_at: nowIso,
+        count: rowsToInsert.length
+      },
       message: 'Đồng bộ thành công ' + rowsToInsert.length + ' tài khoản từ Kho TK!'
     };
   } catch (err) {
@@ -219,14 +281,14 @@ function syncEmailLookupCache() {
 }
 
 /**
- * Helper: Tra cứu STT group từ Email trong cache
+ * Helper: Tra cứu STT group từ Email CHỈ TRONG CACHE local.
+ * TUỆT ĐỐI KHÔNG gọi Kho TK live-lookup hay syncEmailLookupCache() ở đây.
  */
 function getSttGroupByEmail(emailClean) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
   if (!cacheSheet || cacheSheet.getLastRow() <= 1) {
-    // Thử auto sync nếu chưa có cache
-    syncEmailLookupCache();
+    return null;
   }
 
   const data = cacheSheet.getDataRange().getValues();
@@ -243,10 +305,15 @@ function getSttGroupByEmail(emailClean) {
 
 /**
  * API 1: submitReport(email, message)
+ * CHỈ đọc từ EMAIL_LOOKUP_CACHE. Tuyệt đối không mở sheet Kho TK.
  */
 function submitReport(emailRaw, message) {
   if (!emailRaw) {
-    return { success: false, message: 'Vui lòng nhập Email.' };
+    return { 
+      success: false, 
+      error: "missing_email",
+      message: "Vui lòng nhập Email." 
+    };
   }
 
   const emailClean = String(emailRaw).trim().toLowerCase();
@@ -255,7 +322,8 @@ function submitReport(emailRaw, message) {
   if (!sttGroup) {
     return {
       success: false,
-      message: 'Không tìm thấy tài khoản với email này. Vui lòng kiểm tra lại hoặc liên hệ CTV.'
+      error: "email_not_found",
+      message: "Không tìm thấy tài khoản với email này. Có thể dữ liệu chưa được đồng bộ, vui lòng thử lại sau ít phút hoặc liên hệ CTV."
     };
   }
 
@@ -275,7 +343,6 @@ function submitReport(emailRaw, message) {
 
     let openTicketRowIndex = -1;
     let openTicketData = null;
-
     let lastClosedTicket = null;
 
     // Duyệt danh sách tickets để tìm ticket mở hoặc ticket cũ nhất
@@ -323,7 +390,6 @@ function submitReport(emailRaw, message) {
       isRecurring = Boolean(openTicketData.is_recurring);
       recurCount = openTicketData.recur_count;
 
-      // Cập nhật updated_at của ticket ở row `openTicketRowIndex`
       ticketsSheet.getRange(openTicketRowIndex, 5).setValue(nowIso);
 
     } else {
@@ -342,7 +408,6 @@ function submitReport(emailRaw, message) {
       targetTicketId = 'TK-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
       ticketStatus = 'Mới';
 
-      // Insert 1 dòng vào TICKETS
       ticketsSheet.appendRow([
         targetTicketId,
         sttGroup,
@@ -367,6 +432,8 @@ function submitReport(emailRaw, message) {
       message || ''
     ]);
 
+    const cacheHealth = checkCacheHealth();
+
     return {
       success: true,
       stt_group: sttGroup,
@@ -374,6 +441,8 @@ function submitReport(emailRaw, message) {
       status: ticketStatus,
       is_recurring: isRecurring,
       recur_count: recurCount,
+      cache_stale: cacheHealth.cache_stale,
+      stale_hours: cacheHealth.stale_hours,
       message: openTicketData 
         ? 'Báo lỗi đã được ghi nhận. Fam ' + sttGroup + ' của bạn đang trong tiến trình xử lý.' 
         : 'Đã tạo báo cáo sự cố thành công cho Fam ' + sttGroup + '.'
@@ -391,7 +460,11 @@ function submitReport(emailRaw, message) {
  */
 function checkStatus(emailRaw) {
   if (!emailRaw) {
-    return { success: false, message: 'Vui lòng nhập Email.' };
+    return { 
+      success: false, 
+      error: "missing_email",
+      message: 'Vui lòng nhập Email.' 
+    };
   }
 
   const emailClean = String(emailRaw).trim().toLowerCase();
@@ -400,7 +473,8 @@ function checkStatus(emailRaw) {
   if (!sttGroup) {
     return {
       success: false,
-      message: 'Không tìm thấy tài khoản với email này trong hệ thống. Vui lòng kiểm tra lại.'
+      error: "email_not_found",
+      message: "Không tìm thấy tài khoản với email này. Có thể dữ liệu chưa được đồng bộ, vui lòng thử lại sau ít phút hoặc liên hệ CTV."
     };
   }
 
@@ -481,8 +555,14 @@ function listTickets(filterStatus) {
   const ticketsSheet = ss.getSheetByName('TICKETS');
   const reportsSheet = ss.getSheetByName('REPORTS');
 
+  const cacheHealth = checkCacheHealth();
+
   if (!ticketsSheet || ticketsSheet.getLastRow() <= 1) {
-    return { success: true, tickets: [] };
+    return { 
+      success: true, 
+      tickets: [],
+      cache_info: cacheHealth
+    };
   }
 
   // Map số lượng và danh sách email từ REPORTS
@@ -552,7 +632,11 @@ function listTickets(filterStatus) {
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
-  return { success: true, tickets: tickets };
+  return { 
+    success: true, 
+    tickets: tickets,
+    cache_info: cacheHealth
+  };
 }
 
 /**

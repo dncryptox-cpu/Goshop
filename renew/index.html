@@ -73,7 +73,7 @@
 
     <!-- Toast Notification -->
     <div x-show="toast.show" x-transition x-cloak
-         class="fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium backdrop-blur-md"
+         class="fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium backdrop-blur-md max-w-md"
          :class="{
              'bg-emerald-950/90 text-emerald-200 border-emerald-500/40': toast.type === 'success',
              'bg-rose-950/90 text-rose-200 border-rose-500/40': toast.type === 'error',
@@ -384,7 +384,22 @@
 
                 <!-- Admin Dashboard Main -->
                 <div x-show="adminUnlocked" class="space-y-6">
-                    
+
+                    <!-- Cache Stale Banner Warning if > 3h -->
+                    <div x-show="cacheInfo.cache_stale" x-transition class="p-4 bg-amber-950/70 border border-amber-500/60 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-200 text-xs shadow-lg">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="alert-triangle" class="w-5 h-5 flex-shrink-0 text-amber-400 animate-bounce"></i>
+                            <div>
+                                <span class="font-bold text-amber-300">⚠️ Cảnh báo Trigger Đồng Bộ:</span>
+                                <span> Cache email chưa được đồng bộ trong <strong x-text="cacheInfo.stale_hours"></strong> giờ (Lần cuối: <span x-text="formatDate(cacheInfo.last_synced_at)"></span>). Vui lòng kiểm tra lại Apps Script Trigger!</span>
+                            </div>
+                        </div>
+                        <button @click="syncCacheNow()" :disabled="loading.sync" class="px-3.5 py-1.5 bg-amber-500/30 hover:bg-amber-500/50 border border-amber-400/40 rounded-xl text-amber-200 font-bold transition-all whitespace-nowrap self-end sm:self-auto flex items-center gap-1.5">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.sync}"></i>
+                            <span>Đồng Bộ Ngay</span>
+                        </button>
+                    </div>
+
                     <!-- Admin Header Controls -->
                     <div class="bg-gray-900/70 border border-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-6">
                         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-5">
@@ -396,13 +411,22 @@
                                 <p class="text-xs text-gray-400 mt-1">Quản lý và ưu tiên các ticket sự cố Fam (RN)</p>
                             </div>
 
-                            <div class="flex items-center gap-3">
+                            <div class="flex flex-wrap items-center gap-3">
+                                <!-- Cache Info Badge -->
+                                <div class="text-[11px] text-gray-400 bg-gray-950/80 px-3 py-1.5 rounded-xl border border-gray-800 flex items-center gap-1.5">
+                                    <i data-lucide="database" class="w-3.5 h-3.5 text-indigo-400"></i>
+                                    <span>Cache: <strong class="text-white" x-text="cacheInfo.count || 0"></strong> email</span>
+                                    <span class="text-gray-600">•</span>
+                                    <span class="text-gray-400" x-text="formatDate(cacheInfo.last_synced_at)"></span>
+                                </div>
+
                                 <button @click="loadAdminTickets()" :disabled="loading.admin" class="px-3.5 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-white/10 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5">
                                     <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.admin}"></i>
                                     <span>Tải lại</span>
                                 </button>
+
                                 <button @click="syncCacheNow()" :disabled="loading.sync" class="px-3.5 py-2 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/30 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5">
-                                    <i data-lucide="database" class="w-3.5 h-3.5 text-indigo-400"></i>
+                                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5 text-indigo-400" :class="{'animate-spin': loading.sync}"></i>
                                     <span>Đồng bộ Kho TK</span>
                                 </button>
                             </div>
@@ -642,6 +666,7 @@
                 tickets: [],
                 adminFilter: 'Tất cả',
                 adminStats: { total: 0, open: 0, recurring: 0, resolved: 0 },
+                cacheInfo: { cache_stale: false, stale_hours: 0, last_synced_at: null, count: 0 },
 
                 toast: {
                     show: false,
@@ -676,7 +701,7 @@
                     this.toast.type = type;
                     this.toast.icon = icon;
                     this.toast.show = true;
-                    setTimeout(() => { this.toast.show = false; }, 4000);
+                    setTimeout(() => { this.toast.show = false; }, 4500);
                 },
 
                 formatDate(isoStr) {
@@ -713,7 +738,7 @@
                     }
                 },
 
-                // API Caller helper supporting JSON & JSONP/CORS
+                // API Caller helper với Timeout 15 giây (AbortController)
                 async callApi(action, payload = {}) {
                     if (this.useMock) {
                         return this.mockApi(action, payload);
@@ -727,15 +752,26 @@
                     const url = new URL(this.webAppUrl);
                     url.searchParams.append('action', action);
 
-                    const options = {
-                        method: 'POST',
-                        mode: 'cors',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify(payload)
-                    };
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 giây Timeout
 
-                    const response = await fetch(url.toString(), options);
-                    return await response.json();
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        return await response.json();
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        if (err.name === 'AbortError') {
+                            throw new Error('Hệ thống phản hồi chậm, vui lòng thử lại. Nếu tiếp tục xảy ra, liên hệ admin.');
+                        }
+                        throw err;
+                    }
                 },
 
                 // TAB 1 Submit
@@ -754,10 +790,11 @@
                             this.reportResult = res;
                             this.showToast(res.message, 'success', 'check-circle-2');
                         } else {
-                            this.showToast(res.message, 'error', 'alert-circle');
+                            // Hiện chính xác message lỗi từ backend (ví dụ: email_not_found)
+                            this.showToast(res.message || 'Không thể ghi nhận báo lỗi', 'error', 'alert-circle');
                         }
                     } catch (err) {
-                        this.showToast('Không thể kết nối API. Vui lòng kiểm tra lại cấu hình.', 'error', 'wifi-off');
+                        this.showToast(err.message || 'Không thể kết nối API.', 'error', 'wifi-off');
                     } finally {
                         this.loading.report = false;
                         setTimeout(() => lucide.createIcons(), 50);
@@ -778,10 +815,10 @@
                         if (res.success) {
                             this.statusResult = res;
                         } else {
-                            this.showToast(res.message, 'error', 'alert-circle');
+                            this.showToast(res.message || 'Lỗi kiểm tra trạng thái', 'error', 'alert-circle');
                         }
                     } catch (err) {
-                        this.showToast('Không thể kiểm tra trạng thái.', 'error', 'wifi-off');
+                        this.showToast(err.message || 'Không thể kiểm tra trạng thái.', 'error', 'wifi-off');
                     } finally {
                         this.loading.status = false;
                         setTimeout(() => lucide.createIcons(), 50);
@@ -790,7 +827,6 @@
 
                 // TAB 3 Unlock Admin
                 unlockAdmin() {
-                    // Mật khẩu admin mặc định
                     if (this.adminPassword === 'godnc888' || this.adminPassword === 'admin' || this.adminPassword === 'dnc') {
                         this.adminUnlocked = true;
                         this.loadAdminTickets();
@@ -812,10 +848,13 @@
                                 editNote: t.note || '',
                                 saving: false
                             }));
+                            if (res.cache_info) {
+                                this.cacheInfo = res.cache_info;
+                            }
                             this.calculateStats();
                         }
                     } catch (err) {
-                        this.showToast('Lỗi tải danh sách ticket admin', 'error');
+                        this.showToast(err.message || 'Lỗi tải danh sách ticket admin', 'error');
                     } finally {
                         this.loading.admin = false;
                         setTimeout(() => lucide.createIcons(), 50);
@@ -858,7 +897,7 @@
                             this.showToast(res.message, 'error');
                         }
                     } catch (err) {
-                        this.showToast('Lỗi lưu ticket', 'error');
+                        this.showToast(err.message || 'Lỗi lưu ticket', 'error');
                     } finally {
                         ticket.saving = false;
                         setTimeout(() => lucide.createIcons(), 50);
@@ -870,12 +909,22 @@
                     try {
                         const res = await this.callApi('syncCache', {});
                         if (res.success) {
+                            if (res.cache_info) {
+                                this.cacheInfo = res.cache_info;
+                            } else {
+                                this.cacheInfo = {
+                                    cache_stale: false,
+                                    stale_hours: 0,
+                                    last_synced_at: res.synced_at || new Date().toISOString(),
+                                    count: res.count || 0
+                                };
+                            }
                             this.showToast(res.message, 'success', 'database');
                         } else {
                             this.showToast(res.message, 'error');
                         }
                     } catch (err) {
-                        this.showToast('Lỗi đồng bộ Kho TK', 'error');
+                        this.showToast(err.message || 'Lỗi đồng bộ Kho TK', 'error');
                     } finally {
                         this.loading.sync = false;
                     }
@@ -908,7 +957,7 @@
                                 resolved_at: '',
                                 resolved_by: '',
                                 is_recurring: true,
-                                recur_count: 2, // High recur count for demonstration!
+                                recur_count: 2,
                                 note: 'Đã fix lại 2 lần sáng nay nhưng khách lại báo lỗi slot. Cần check lại tài khoản chủ.'
                             },
                             {
@@ -938,18 +987,31 @@
                 },
 
                 async mockApi(action, payload) {
-                    await new Promise(r => setTimeout(r, 400)); // Simulate net delay
+                    await new Promise(r => setTimeout(r, 300)); // Simulate net delay
                     this.initMockData();
 
                     const mockCache = JSON.parse(localStorage.getItem('MOCK_FAM_CACHE') || '{}');
                     const mockTickets = JSON.parse(localStorage.getItem('MOCK_TICKETS') || '[]');
                     const mockReports = JSON.parse(localStorage.getItem('MOCK_REPORTS') || '[]');
 
+                    const mockCacheInfo = {
+                        cache_stale: false,
+                        stale_hours: 0.5,
+                        last_synced_at: new Date(Date.now() - 1800000).toISOString(),
+                        count: Object.keys(mockCache).length
+                    };
+
                     if (action === 'submitReport') {
                         const emailClean = (payload.email || '').trim().toLowerCase();
-                        const sttGroup = mockCache[emailClean] || ('RN' + Math.floor(Math.random() * 50 + 10));
-                        mockCache[emailClean] = sttGroup;
-                        localStorage.setItem('MOCK_FAM_CACHE', JSON.stringify(mockCache));
+                        const sttGroup = mockCache[emailClean];
+                        
+                        if (!sttGroup) {
+                            return {
+                                success: false,
+                                error: "email_not_found",
+                                message: "Không tìm thấy tài khoản với email này. Có thể dữ liệu chưa được đồng bộ, vui lòng thử lại sau ít phút hoặc liên hệ CTV."
+                            };
+                        }
 
                         let openTicket = mockTickets.find(t => t.stt_group === sttGroup && t.status !== 'Đã xử lý');
                         const nowIso = new Date().toISOString();
@@ -1025,7 +1087,11 @@
                         const emailClean = (payload.email || '').trim().toLowerCase();
                         const sttGroup = mockCache[emailClean];
                         if (!sttGroup) {
-                            return { success: false, message: 'Không tìm thấy tài khoản với email này trong hệ thống.' };
+                            return {
+                                success: false,
+                                error: "email_not_found",
+                                message: "Không tìm thấy tài khoản với email này. Có thể dữ liệu chưa được đồng bộ, vui lòng thử lại sau ít phút hoặc liên hệ CTV."
+                            };
                         }
 
                         const groupTickets = mockTickets.filter(t => t.stt_group === sttGroup);
@@ -1070,7 +1136,11 @@
                             return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
                         });
 
-                        return { success: true, tickets: formattedTickets };
+                        return {
+                            success: true,
+                            tickets: formattedTickets,
+                            cache_info: mockCacheInfo
+                        };
                     }
 
                     if (action === 'updateTicketStatus') {
@@ -1088,7 +1158,20 @@
                     }
 
                     if (action === 'syncCache') {
-                        return { success: true, message: 'Đã mô phỏng đồng bộ dữ liệu từ Kho TK!' };
+                        const count = Object.keys(mockCache).length;
+                        const syncedAt = new Date().toISOString();
+                        return {
+                            success: true,
+                            count: count,
+                            synced_at: syncedAt,
+                            cache_info: {
+                                cache_stale: false,
+                                stale_hours: 0,
+                                last_synced_at: syncedAt,
+                                count: count
+                            },
+                            message: `Đồng bộ thành công ${count} tài khoản từ Kho TK!`
+                        };
                     }
 
                     return { success: false, message: 'Unknown mock action' };
