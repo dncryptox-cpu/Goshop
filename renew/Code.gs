@@ -64,7 +64,11 @@ function handleRequest(e) {
         result = listTickets(params.filterStatus);
         break;
       case 'updateTicketStatus':
-        result = updateTicketStatus(params.ticket_id, params.newStatus, params.resolvedBy, params.note);
+        const ticketIdParam = params.ticket_id || params.ticketId;
+        const newStatusParam = params.newStatus || params.status || params.new_status;
+        const resolvedByParam = params.resolvedBy || params.resolved_by;
+        const noteParam = params.note;
+        result = updateTicketStatus(ticketIdParam, newStatusParam, resolvedByParam, noteParam);
         break;
       case 'syncCache':
       case 'syncEmailLookupCache':
