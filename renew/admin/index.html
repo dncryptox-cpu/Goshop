@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard — Fam Issue Tracker Go DNC</title>
+    <meta name="description" content="Trang Quản Trị Hệ Thống Báo Lỗi Fam Subscription - Go DNC.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #070a13;
+            color: #f3f4f6;
+        }
+        [x-cloak] { display: none !important; }
+        
+        .pulse-red {
+            animation: pulseRed 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulseRed {
+            0%, 100% { opacity: 1; border-color: rgba(239, 68, 68, 0.8); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+            50% { opacity: 0.85; border-color: rgba(239, 68, 68, 0.4); box-shadow: 0 0 5px rgba(239, 68, 68, 0.1); }
+        }
+    </style>
+</head>
+<body x-data="adminPageApp()" x-init="init()" class="antialiased min-h-screen flex flex-col justify-between relative overflow-x-hidden"
+      style="background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.15), transparent 50%), radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.1), transparent 50%), #070a13;">
+
+    <!-- Top Accent Line -->
+    <div class="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+
+    <!-- Toast Notification -->
+    <div x-show="toast.show" x-transition x-cloak
+         class="fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border text-sm font-medium backdrop-blur-md max-w-md"
+         :class="{
+             'bg-emerald-950/90 text-emerald-200 border-emerald-500/40': toast.type === 'success',
+             'bg-rose-950/90 text-rose-200 border-rose-500/40': toast.type === 'error',
+             'bg-amber-950/90 text-amber-200 border-amber-500/40': toast.type === 'warning',
+             'bg-indigo-950/90 text-indigo-200 border-indigo-500/40': toast.type === 'info'
+         }">
+        <i :data-lucide="toast.icon || 'info'" class="w-5 h-5 flex-shrink-0"></i>
+        <span x-text="toast.message"></span>
+    </div>
+
+    <!-- Header -->
+    <header class="py-5 px-4 max-w-7xl mx-auto w-full flex items-center justify-between z-10 border-b border-white/5 pb-4">
+        <a href="https://godnc.com/" class="flex items-center gap-2.5 group">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 group-hover:scale-105 transition-transform">
+                <span class="font-black text-white text-lg tracking-wider">DNC</span>
+            </div>
+            <div>
+                <div class="font-extrabold text-white text-lg tracking-tight flex items-center gap-2">
+                    Fam Issue Tracker
+                    <span class="text-[10px] font-bold uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/30 px-2 py-0.5 rounded-full">Admin Portal</span>
+                </div>
+            </div>
+        </a>
+
+        <div class="flex items-center gap-3">
+            <a href="../setup/" class="p-2.5 text-gray-400 hover:text-white hover:bg-white/10 rounded-xl transition-all border border-white/10" title="Cấu hình API & Apps Script">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow px-4 py-8 md:py-10 z-10">
+        <div class="w-full max-w-6xl mx-auto">
+
+            <!-- LOCK SCREEN IF NOT UNLOCKED -->
+            <div x-show="!unlocked" class="bg-gray-900/70 border border-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-8 max-w-md mx-auto text-center my-12">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="lock" class="w-6 h-6"></i>
+                </div>
+                <h2 class="text-xl font-bold text-white mb-2">Đăng Nhập Quản Trị Viên</h2>
+                <p class="text-xs text-gray-400 mb-6">Nhập mật khẩu Admin để quản lý danh sách báo lỗi nhóm Fam (RN).</p>
+
+                <form @submit.prevent="unlock()" class="space-y-4">
+                    <input type="password" x-model="password" placeholder="Nhập mật khẩu admin..."
+                           class="w-full bg-gray-950/80 border border-gray-800 rounded-xl px-4 py-3 text-white text-center focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm">
+                    <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg transition-all text-sm">
+                        Mở Khóa Dashboard
+                    </button>
+                </form>
+            </div>
+
+            <!-- MAIN DASHBOARD CONTENT -->
+            <div x-show="unlocked" x-transition x-cloak class="space-y-6">
+
+                <!-- Cache Stale Warning Banner -->
+                <div x-show="cacheInfo.cache_stale" x-transition class="p-4 bg-amber-950/70 border border-amber-500/60 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-200 text-xs shadow-lg">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 flex-shrink-0 text-amber-400"></i>
+                        <div>
+                            <span class="font-bold text-amber-300">⚠️ Cảnh báo Trigger Đồng Bộ:</span>
+                            <span> Cache email chưa đồng bộ trong <strong x-text="cacheInfo.stale_hours"></strong> giờ (Lần cuối: <span x-text="formatDate(cacheInfo.last_synced_at)"></span>). Vui lòng kiểm tra lại Trigger định kỳ!</span>
+                        </div>
+                    </div>
+                    <button @click="syncCacheNow()" :disabled="loading.sync" class="px-3.5 py-1.5 bg-amber-500/30 hover:bg-amber-500/50 border border-amber-400/40 rounded-xl text-amber-200 font-bold transition-all whitespace-nowrap self-end sm:self-auto flex items-center gap-1.5">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.sync}"></i>
+                        <span>Đồng Bộ Ngay</span>
+                    </button>
+                </div>
+
+                <!-- Admin Dashboard Header & Controls -->
+                <div class="bg-gray-900/70 border border-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-6">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-5">
+                        <div>
+                            <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
+                                <i data-lucide="layout-dashboard" class="w-5 h-5 text-indigo-400"></i>
+                                Bảng Điều Khiển Ticket Sự Cố Fam
+                            </h2>
+                            <p class="text-xs text-gray-400 mt-1">Hệ thống xử lý ưu tiên ticket theo nhóm STT (RN)</p>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-3">
+                            <!-- Cache Info Badge -->
+                            <div class="text-[11px] text-gray-400 bg-gray-950/80 px-3 py-2 rounded-xl border border-gray-800 flex items-center gap-1.5">
+                                <i data-lucide="database" class="w-3.5 h-3.5 text-indigo-400"></i>
+                                <span>Cache: <strong class="text-white" x-text="cacheInfo.count || 0"></strong> email</span>
+                                <span class="text-gray-600">•</span>
+                                <span class="text-gray-400" x-text="formatDate(cacheInfo.last_synced_at)"></span>
+                            </div>
+
+                            <button @click="loadTickets()" :disabled="loading.admin" class="px-3.5 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-white/10 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.admin}"></i>
+                                <span>Tải lại</span>
+                            </button>
+
+                            <button @click="syncCacheNow()" :disabled="loading.sync" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-1.5">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.sync}"></i>
+                                <span>Đồng bộ Kho TK</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 4 Summary Stats Cards in 1 Row -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+                        <div class="bg-gray-950/60 p-4 rounded-2xl border border-gray-800">
+                            <div class="text-xs text-gray-400">Tổng Ticket</div>
+                            <div class="text-2xl font-black text-white mt-1" x-text="stats.total">0</div>
+                        </div>
+                        <div class="bg-amber-950/30 p-4 rounded-2xl border border-amber-500/30">
+                            <div class="text-xs text-amber-300">Đang Mở (Chưa xong)</div>
+                            <div class="text-2xl font-black text-amber-400 mt-1" x-text="stats.open">0</div>
+                        </div>
+                        <div class="bg-rose-950/30 p-4 rounded-2xl border border-rose-500/30">
+                            <div class="text-xs text-rose-300">Lỗi Tái Phát (Recurring)</div>
+                            <div class="text-2xl font-black text-rose-400 mt-1" x-text="stats.recurring">0</div>
+                        </div>
+                        <div class="bg-emerald-950/30 p-4 rounded-2xl border border-emerald-500/30">
+                            <div class="text-xs text-emerald-300">Đã Xử Lý</div>
+                            <div class="text-2xl font-black text-emerald-400 mt-1" x-text="stats.resolved">0</div>
+                        </div>
+                    </div>
+
+                    <!-- Status Filter -->
+                    <div class="flex items-center gap-2 mt-6 overflow-x-auto pb-1">
+                        <span class="text-xs text-gray-400 font-semibold mr-1">Lọc:</span>
+                        <template x-for="st in ['Tất cả', 'Mới', 'Đang xử lý', 'Đã xử lý', 'Tái phát']">
+                            <button @click="filterStatus = st"
+                                    :class="filterStatus === st ? 'bg-indigo-600 text-white font-bold shadow-md' : 'bg-gray-800/60 text-gray-400 hover:text-white'"
+                                    class="px-3.5 py-1.5 rounded-xl text-xs transition-all whitespace-nowrap">
+                                <span x-text="st"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Ticket List Cards -->
+                <div class="space-y-4">
+                    <template x-for="t in filteredTickets" :key="t.ticket_id">
+                        <div class="bg-gray-900/80 border rounded-2xl p-5 transition-all relative overflow-hidden"
+                             :class="{
+                                 'pulse-red bg-rose-950/20 border-rose-500/80': t.recur_count >= 2,
+                                 'border-amber-500/40 bg-amber-950/10': t.is_recurring && t.recur_count < 2,
+                                 'border-white/10': !t.is_recurring
+                             }">
+                            
+                            <!-- Highlight Header Banner if High Recur Count -->
+                            <div x-show="t.recur_count >= 2" class="mb-3 p-2.5 bg-rose-600 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl flex items-center justify-between shadow-lg">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="alert-octagon" class="w-4 h-4"></i>
+                                    <span>‼️ TÁI PHÁT NHIỀU LẦN (x<span x-text="t.recur_count"></span>) — CẦN ĐỔI ACC HOẶC FIX DỨT ĐIỂM</span>
+                                </div>
+                                <span class="bg-black/30 px-2 py-0.5 rounded text-[10px]">Ưu tiên tối cao</span>
+                            </div>
+
+                            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+                                <div class="space-y-1">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-2xl font-black text-indigo-400 font-mono" x-text="t.stt_group"></span>
+                                        <span class="px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5"
+                                              :class="getStatusBadgeClass(t.status)">
+                                            <span class="w-2 h-2 rounded-full" :class="getStatusDotClass(t.status)"></span>
+                                            <span x-text="t.status"></span>
+                                        </span>
+                                        <template x-if="t.is_recurring">
+                                            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1">
+                                                <i data-lucide="zap" class="w-3 h-3 text-rose-400"></i>
+                                                Tái phát x<span x-text="t.recur_count"></span>
+                                            </span>
+                                        </template>
+                                    </div>
+                                    <div class="text-xs text-gray-400 flex items-center gap-3">
+                                        <span>Mã Ticket: <strong class="font-mono text-gray-300" x-text="t.ticket_id"></strong></span>
+                                        <span>•</span>
+                                        <span>Tạo lúc: <span x-text="formatDate(t.created_at)"></span></span>
+                                    </div>
+                                </div>
+
+                                <!-- Customer Reports List Badge -->
+                                <div class="bg-gray-950/60 px-4 py-2 rounded-xl border border-gray-800 text-xs">
+                                    <div class="font-bold text-gray-200 flex items-center gap-1.5">
+                                        <i data-lucide="users" class="w-4 h-4 text-indigo-400"></i>
+                                        <span class="text-indigo-300 font-bold" x-text="t.report_count"></span> khách đã báo:
+                                    </div>
+                                    <div class="text-[11px] text-gray-400 mt-1 max-w-md truncate" :title="t.reported_emails?.join(', ')">
+                                        <span x-text="t.reported_emails?.slice(0,3).join(', ')"></span>
+                                        <span x-show="t.reported_emails?.length > 3">... (+<span x-text="t.reported_emails.length - 3"></span>)</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action Edit Panel -->
+                            <div class="mt-4 grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                                <!-- Status selector -->
+                                <div class="sm:col-span-3">
+                                    <label class="block text-[11px] font-semibold text-gray-400 uppercase mb-1">Đổi trạng thái</label>
+                                    <select x-model="t.editStatus"
+                                            class="w-full bg-gray-950/80 border border-gray-700 rounded-xl px-3 py-2 text-xs font-semibold text-white focus:border-indigo-500">
+                                        <option value="Mới">🟡 Mới</option>
+                                        <option value="Đang xử lý">🔵 Đang xử lý</option>
+                                        <option value="Đã xử lý">🟢 Đã xử lý</option>
+                                    </select>
+                                </div>
+
+                                <!-- Resolved By -->
+                                <div class="sm:col-span-3">
+                                    <label class="block text-[11px] font-semibold text-gray-400 uppercase mb-1">Nhân viên xử lý</label>
+                                    <input type="text" x-model="t.editResolvedBy" placeholder="Tên NV..."
+                                           class="w-full bg-gray-950/80 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-indigo-500">
+                                </div>
+
+                                <!-- Note -->
+                                <div class="sm:col-span-4">
+                                    <label class="block text-[11px] font-semibold text-gray-400 uppercase mb-1">Ghi chú nội bộ</label>
+                                    <input type="text" x-model="t.editNote" placeholder="Ví dụ: Đã đổi mật khẩu acc mẹ..."
+                                           class="w-full bg-gray-950/80 border border-gray-700 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:border-indigo-500">
+                                </div>
+
+                                <!-- Save Button -->
+                                <div class="sm:col-span-2">
+                                    <button @click="saveTicket(t)" :disabled="t.saving"
+                                            class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-3 rounded-xl text-xs shadow-md transition-all flex items-center justify-center gap-1.5 disabled:opacity-50">
+                                        <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                        <span x-text="t.saving ? 'Đang lưu...' : 'Lưu'"></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div x-show="filteredTickets.length === 0" class="p-12 text-center text-gray-500 bg-gray-900/40 rounded-2xl border border-gray-800">
+                        <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-2 opacity-50"></i>
+                        <p class="text-sm">Không tìm thấy ticket nào khớp với bộ lọc.</p>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 px-4 text-center border-t border-white/5 text-xs text-gray-500 z-10">
+        <p>© 2026 Go DNC — Fam Issue Tracker System (RN Groups). All rights reserved.</p>
+    </footer>
+
+    <script>
+        function adminPageApp() {
+            return {
+                webAppUrl: localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || '',
+                useMock: !localStorage.getItem('FAM_TRACKER_WEBAPP_URL'),
+                unlocked: false,
+                password: '',
+                tickets: [],
+                filterStatus: 'Tất cả',
+                stats: { total: 0, open: 0, recurring: 0, resolved: 0 },
+                cacheInfo: { cache_stale: false, stale_hours: 0, last_synced_at: null, count: 0 },
+                loading: { admin: false, sync: false },
+
+                toast: { show: false, message: '', type: 'info', icon: 'info' },
+
+                init() {
+                    setTimeout(() => lucide.createIcons(), 50);
+                },
+
+                showToast(msg, type = 'info', icon = 'info') {
+                    this.toast = { show: true, message: msg, type, icon };
+                    setTimeout(() => { this.toast.show = false; }, 4000);
+                },
+
+                formatDate(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
+                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    } catch (e) { return isoStr; }
+                },
+
+                getStatusBadgeClass(status) {
+                    switch (status) {
+                        case 'Mới': return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+                        case 'Đang xử lý': return 'bg-blue-500/20 text-blue-300 border-blue-500/40';
+                        case 'Đã xử lý': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+                        default: return 'bg-gray-500/20 text-gray-300 border-gray-500/40';
+                    }
+                },
+
+                getStatusDotClass(status) {
+                    switch (status) {
+                        case 'Mới': return 'bg-amber-400';
+                        case 'Đang xử lý': return 'bg-blue-400';
+                        case 'Đã xử lý': return 'bg-emerald-400';
+                        default: return 'bg-gray-400';
+                    }
+                },
+
+                unlock() {
+                    if (this.password === 'godnc888' || this.password === 'admin' || this.password === 'dnc') {
+                        this.unlocked = true;
+                        this.loadTickets();
+                        this.showToast('Mở khóa admin thành công!', 'success', 'unlock');
+                    } else {
+                        this.showToast('Mật khẩu không đúng!', 'error', 'lock');
+                    }
+                },
+
+                async loadTickets() {
+                    this.loading.admin = true;
+                    try {
+                        let res;
+                        if (this.useMock) {
+                            res = await this.mockListTickets();
+                        } else {
+                            res = await this.callApi('listTickets', {});
+                        }
+
+                        if (res.success) {
+                            this.tickets = (res.tickets || []).map(t => ({
+                                ...t,
+                                editStatus: t.status,
+                                editResolvedBy: t.resolved_by || '',
+                                editNote: t.note || '',
+                                saving: false
+                            }));
+                            if (res.cache_info) this.cacheInfo = res.cache_info;
+                            this.calculateStats();
+                        }
+                    } catch (err) {
+                        this.showToast(err.message || 'Lỗi tải danh sách ticket', 'error');
+                    } finally {
+                        this.loading.admin = false;
+                        setTimeout(() => lucide.createIcons(), 50);
+                    }
+                },
+
+                calculateStats() {
+                    this.stats.total = this.tickets.length;
+                    this.stats.open = this.tickets.filter(t => t.status !== 'Đã xử lý').length;
+                    this.stats.recurring = this.tickets.filter(t => t.is_recurring).length;
+                    this.stats.resolved = this.tickets.filter(t => t.status === 'Đã xử lý').length;
+                },
+
+                get filteredTickets() {
+                    if (this.filterStatus === 'Tất cả') return this.tickets;
+                    if (this.filterStatus === 'Tái phát') return this.tickets.filter(t => t.is_recurring);
+                    return this.tickets.filter(t => t.status === this.filterStatus);
+                },
+
+                async saveTicket(t) {
+                    t.saving = true;
+                    try {
+                        let res;
+                        if (this.useMock) {
+                            res = { success: true, message: 'Đã lưu trạng thái (Mock Mode)' };
+                        } else {
+                            res = await this.callApi('updateTicketStatus', {
+                                ticket_id: t.ticket_id,
+                                newStatus: t.editStatus,
+                                resolvedBy: t.editResolvedBy,
+                                note: t.editNote
+                            });
+                        }
+
+                        if (res.success) {
+                            t.status = t.editStatus;
+                            t.resolved_by = t.editResolvedBy;
+                            t.note = t.editNote;
+                            this.calculateStats();
+                            this.showToast(`Đã lưu Ticket ${t.stt_group}`, 'success', 'check');
+                        } else {
+                            this.showToast(res.message, 'error');
+                        }
+                    } catch (err) {
+                        this.showToast(err.message || 'Lỗi lưu ticket', 'error');
+                    } finally {
+                        t.saving = false;
+                        setTimeout(() => lucide.createIcons(), 50);
+                    }
+                },
+
+                async syncCacheNow() {
+                    this.loading.sync = true;
+                    try {
+                        let res;
+                        if (this.useMock) {
+                            res = {
+                                success: true,
+                                count: 1250,
+                                synced_at: new Date().toISOString(),
+                                cache_info: { cache_stale: false, stale_hours: 0, last_synced_at: new Date().toISOString(), count: 1250 },
+                                message: 'Đã giả lập đồng bộ 1250 tài khoản từ Kho TK!'
+                            };
+                        } else {
+                            res = await this.callApi('syncCache', {});
+                        }
+
+                        if (res.success) {
+                            if (res.cache_info) this.cacheInfo = res.cache_info;
+                            this.showToast(res.message, 'success', 'database');
+                        } else {
+                            this.showToast(res.message, 'error');
+                        }
+                    } catch (err) {
+                        this.showToast(err.message || 'Lỗi đồng bộ Kho TK', 'error');
+                    } finally {
+                        this.loading.sync = false;
+                    }
+                },
+
+                async callApi(action, payload) {
+                    const url = new URL(this.webAppUrl);
+                    url.searchParams.append('action', action);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        return await response.json();
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        if (err.name === 'AbortError') {
+                            throw new Error('Hệ thống phản hồi chậm, vui lòng thử lại. Nếu tiếp tục xảy ra, liên hệ admin.');
+                        }
+                        throw err;
+                    }
+                },
+
+                async mockListTickets() {
+                    await new Promise(r => setTimeout(r, 400));
+                    const now = new Date();
+                    return {
+                        success: true,
+                        tickets: [
+                            {
+                                ticket_id: 'TK-1001',
+                                stt_group: 'RN34',
+                                status: 'Mới',
+                                created_at: new Date(now.getTime() - 3600000).toISOString(),
+                                updated_at: new Date(now.getTime() - 1800000).toISOString(),
+                                is_recurring: true,
+                                recur_count: 2,
+                                report_count: 3,
+                                reported_emails: ['khach1@gmail.com', 'khach2@gmail.com', 'admin@godnc.com'],
+                                note: 'Check lại acc chủ'
+                            },
+                            {
+                                ticket_id: 'TK-1002',
+                                stt_group: 'RN12',
+                                status: 'Đang xử lý',
+                                created_at: new Date(now.getTime() - 7200000).toISOString(),
+                                updated_at: new Date(now.getTime() - 3600000).toISOString(),
+                                is_recurring: false,
+                                recur_count: 0,
+                                report_count: 1,
+                                reported_emails: ['khach4@gmail.com'],
+                                note: 'Đang cấp lại slot'
+                            }
+                        ],
+                        cache_info: {
+                            cache_stale: false,
+                            stale_hours: 0.5,
+                            last_synced_at: new Date(now.getTime() - 1800000).toISOString(),
+                            count: 1250
+                        }
+                    };
+                }
+            };
+        }
+    </script>
+</body>
+</html>
