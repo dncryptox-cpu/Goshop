@@ -143,7 +143,20 @@
                 </form>
 
                 <!-- Bảng check theo hàng -->
-                <div x-show="bulkFamResults.length > 0" x-cloak class="pt-3 border-t border-gray-100 space-y-2">
+                <div x-show="bulkFamResults.length > 0" x-cloak class="pt-3 border-t border-gray-100 space-y-3">
+                    
+                    <!-- Duplicate / Recently Resolved Warning Alert Banner -->
+                    <div x-show="bulkFamResults.some(r => r.ticket_status === 'Đã xử lý')" x-cloak
+                         class="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs space-y-1 shadow-sm">
+                        <div class="flex items-center gap-2 font-bold text-amber-800 text-sm">
+                            <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600 flex-shrink-0"></i>
+                            <span>CẢNH BÁO TRÙNG LẶP: CÓ TÀI KHOẢN ĐÃ ĐƯỢC KỸ THUẬT XỬ LÝ XONG GẦN ĐÂY!</span>
+                        </div>
+                        <p class="text-amber-800/90 leading-relaxed">
+                            Trong danh sách vừa check có tài khoản Fam đã được kỹ thuật <strong>xử lý hoàn tất</strong>. Vui lòng <strong>bảo khách hàng kiểm tra kỹ lại ứng dụng / tài khoản</strong> xem đã dùng bình thường chưa trước khi báo lại kỹ thuật, nhằm tránh báo trùng lặp gây mệt mỏi và quá tải cho nhân viên xử lý.
+                        </p>
+                    </div>
+
                     <div class="flex items-center justify-between text-xs font-bold text-gray-700">
                         <span>Bảng Kết Quả Kiểm Tra Theo Hàng (<span x-text="bulkFamResults.length"></span> email)</span>
                         <span class="text-[11px] text-gray-400 font-normal">Cập nhật: <span x-text="famLastUpdated"></span></span>
@@ -155,12 +168,12 @@
                                     <th class="px-4 py-3">Email Khách</th>
                                     <th class="px-4 py-3">Nhóm (STT)</th>
                                     <th class="px-4 py-3">Trạng Thái Real-time</th>
-                                    <th class="px-4 py-3">Ghi Chú & Thời Gian</th>
+                                    <th class="px-4 py-3">Ghi Chú & Khuyên Khách Check</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-100 bg-white">
                                 <template x-for="(r, idx) in bulkFamResults" :key="idx">
-                                    <tr :class="!r.found ? 'bg-red-50/30' : (r.ticket_status === 'Đã xử lý' ? 'bg-green-50/30' : 'hover:bg-gray-50')">
+                                    <tr :class="!r.found ? 'bg-red-50/30' : (r.ticket_status === 'Đã xử lý' ? 'bg-amber-50/70 border-l-4 border-amber-500' : 'hover:bg-gray-50')">
                                         <td class="px-4 py-3 font-medium text-gray-900 cursor-pointer hover:text-blue-600 hover:underline transition-all"
                                             @click="copyText(r.email)" title="Nhấn để sao chép email" x-text="r.email"></td>
                                         <td class="px-4 py-3 font-bold font-mono text-blue-600" x-text="r.stt_group || '---'"></td>
@@ -183,9 +196,14 @@
                                                 <div class="text-amber-700 font-medium" x-text="r.note || 'Đang chờ admin xử lý'"></div>
                                             </template>
                                             <template x-if="r.found && r.ticket_status === 'Đã xử lý'">
-                                                <div class="text-green-700 font-medium">
-                                                    Xong lúc <span x-text="formatFamDate(r.resolved_at)"></span>
-                                                    <span class="text-gray-500 font-semibold" x-text="calcFamDuration(r.created_at, r.resolved_at)"></span>
+                                                <div class="space-y-1">
+                                                    <div class="text-green-700 font-bold">
+                                                        Xong lúc <span x-text="formatFamDate(r.resolved_at)"></span>
+                                                        <span class="text-gray-500 font-normal" x-text="calcFamDuration(r.created_at, r.resolved_at)"></span>
+                                                    </div>
+                                                    <div class="text-[10px] text-amber-800 font-bold bg-amber-100/90 px-2 py-0.5 rounded border border-amber-300 inline-block">
+                                                        ⚠️ Nhắc khách check lại kỹ tài khoản trước khi báo lại!
+                                                    </div>
                                                 </div>
                                             </template>
                                         </td>
@@ -237,6 +255,20 @@
                     </div>
                 </div>
 
+                <!-- Ô tìm kiếm nhanh theo email hoặc mã nhóm -->
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                    <div class="relative w-full sm:w-80">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                            <i data-lucide="search" class="w-4 h-4"></i>
+                        </div>
+                        <input type="text" x-model="famSearchQuery" placeholder="🔍 Tìm nhanh email hoặc mã nhóm (RN34...)"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs font-medium focus:border-blue-600 focus:bg-white focus:outline-none transition-all placeholder-gray-400">
+                    </div>
+                    <span class="text-xs text-gray-400 font-medium whitespace-nowrap">
+                        Hiển thị: <strong class="text-blue-600 font-bold" x-text="getFilteredFamReports().length"></strong> / <span x-text="famReportsList.length"></span> báo cáo
+                    </span>
+                </div>
+
                 <!-- Bảng hiển thị tất cả các email đã báo của CTV này -->
                 <div class="overflow-x-auto rounded-xl border border-gray-200">
                     <table class="w-full text-left text-xs">
@@ -251,7 +283,7 @@
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 bg-white">
-                            <template x-for="(item, idx) in famReportsList" :key="item.report_id || idx">
+                            <template x-for="(item, idx) in getFilteredFamReports()" :key="item.report_id || idx">
                                 <tr class="hover:bg-gray-50 transition-colors">
                                     <td class="px-4 py-3 font-mono text-gray-400" x-text="idx + 1"></td>
                                     <td class="px-4 py-3 font-medium text-gray-900 cursor-pointer hover:text-blue-600 hover:underline transition-all"
@@ -282,8 +314,8 @@
                             </template>
                         </tbody>
                     </table>
-                    <div x-show="famReportsList.length === 0" class="p-8 text-center text-gray-400 text-xs">
-                        Chưa có dữ liệu báo cáo nào cho CTV <span x-text="currentUser?.name"></span>.
+                    <div x-show="getFilteredFamReports().length === 0" class="p-8 text-center text-gray-400 text-xs">
+                        Không tìm thấy báo cáo nào khớp với "<span class="font-bold text-gray-700" x-text="famSearchQuery"></span>".
                     </div>
                 </div>
             </div>
@@ -325,6 +357,17 @@
                 isLoadingFam: false,
                 famLastUpdated: '',
                 famMsg: { text: '', type: '' },
+                famSearchQuery: '',
+
+                getFilteredFamReports() {
+                    if (!this.famSearchQuery || !this.famSearchQuery.trim()) return this.famReportsList;
+                    const q = this.famSearchQuery.trim().toLowerCase();
+                    return this.famReportsList.filter(r =>
+                        (r.customer_email && r.customer_email.toLowerCase().includes(q)) ||
+                        (r.stt_group && r.stt_group.toLowerCase().includes(q)) ||
+                        (r.status && r.status.toLowerCase().includes(q))
+                    );
+                },
 
                 showToast(msg) {
                     this.toast = { show: true, message: msg };
