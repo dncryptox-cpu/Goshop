@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hệ Thống Báo Lỗi & Tra Cứu Fam Subscription - Go DNC</title>
-    <meta name="description" content="Trang báo lỗi lẻ, báo lỗi hàng loạt cho CTV và tra cứu tiến độ xử lý sự cố nhóm Fam (RN) tự động tại Go DNC.">
+    <title>Báo Lỗi & Tra Cứu Fam Subscription - Go DNC</title>
+    <meta name="description" content="Hệ thống báo lỗi và tra cứu trạng thái xử lý sự cố nhóm tài khoản Fam (RN) tự động cho khách hàng Go DNC.">
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -22,21 +22,9 @@
             color: #f3f4f6;
         }
         [x-cloak] { display: none !important; }
-        
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #0b0f19;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #374151;
-            border-radius: 9999px;
-        }
     </style>
 </head>
-<body x-data="unifiedApp()" x-init="init()" class="antialiased min-h-screen flex flex-col justify-between relative overflow-x-hidden"
+<body x-data="customerApp()" x-init="init()" class="antialiased min-h-screen flex flex-col justify-between relative overflow-x-hidden"
       style="background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.15), transparent 50%), radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.1), transparent 50%), #070a13;">
 
     <!-- Top Accent Line -->
@@ -53,65 +41,58 @@
                     Fam Issue Tracker
                     <span class="text-[10px] font-bold uppercase tracking-wider bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">RN System</span>
                 </div>
-                <p class="text-xs text-gray-400">Hỗ trợ báo lỗi khách lẻ & CTV hàng loạt</p>
+                <p class="text-xs text-gray-400">Hỗ trợ sự cố nhóm tài khoản subscription</p>
             </div>
         </a>
 
-        <!-- Segmented Mode Switcher (GộpKhách Lẻ + CTV + Tra Cứu vào 1 Trang) -->
-        <div class="flex items-center bg-gray-900/90 p-1 rounded-2xl border border-white/10 shadow-inner overflow-x-auto">
-            <button @click="switchMode('report')"
-                    :class="activeMode === 'report' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30' : 'text-gray-400 hover:text-white'"
-                    class="px-3 py-1.5 rounded-xl text-xs md:text-sm transition-all flex items-center gap-1.5 whitespace-nowrap">
-                <i data-lucide="user" class="w-3.5 h-3.5"></i>
-                <span>Báo Lỗi Lẻ</span>
+        <!-- Segmented Tab Switcher (Dành cho khách lẻ) -->
+        <div class="flex items-center bg-gray-900/90 p-1.5 rounded-2xl border border-white/10 shadow-inner">
+            <button @click="activeTab = 'report'; formMessage = { text: '', type: '' }"
+                    :class="activeTab === 'report' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30' : 'text-gray-400 hover:text-white'"
+                    class="px-4 py-2 rounded-xl text-xs md:text-sm transition-all flex items-center gap-2">
+                <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                <span>Báo Lỗi Fam</span>
             </button>
 
-            <button @click="switchMode('ctv')"
-                    :class="activeMode === 'ctv' ? 'bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30' : 'text-gray-400 hover:text-white'"
-                    class="px-3 py-1.5 rounded-xl text-xs md:text-sm transition-all flex items-center gap-1.5 whitespace-nowrap">
-                <i data-lucide="users" class="w-3.5 h-3.5"></i>
-                <span>CTV Hàng Loạt</span>
-            </button>
-
-            <button @click="switchMode('status')"
-                    :class="activeMode === 'status' ? 'bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30' : 'text-gray-400 hover:text-white'"
-                    class="px-3 py-1.5 rounded-xl text-xs md:text-sm transition-all flex items-center gap-1.5 whitespace-nowrap">
-                <i data-lucide="search" class="w-3.5 h-3.5"></i>
-                <span>Tra Cứu</span>
+            <button @click="activeTab = 'status'; statusMessage = ''; if(statusEmail) checkStatus();"
+                    :class="activeTab === 'status' ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30' : 'text-gray-400 hover:text-white'"
+                    class="px-4 py-2 rounded-xl text-xs md:text-sm transition-all flex items-center gap-2">
+                <i data-lucide="search" class="w-4 h-4"></i>
+                <span>Tra Cứu Trạng Thái</span>
             </button>
         </div>
     </header>
 
     <!-- Main Content Container -->
     <main class="flex-grow flex items-center justify-center px-4 py-6 md:py-10 z-10">
-        <div class="w-full" :class="activeMode === 'ctv' ? 'max-w-2xl' : 'max-w-lg'">
+        <div class="w-full max-w-lg mx-auto">
 
             <div class="bg-gray-900/70 border border-white/10 backdrop-blur-xl rounded-3xl shadow-2xl p-6 md:p-8 relative overflow-hidden space-y-6">
-                <div class="absolute -top-24 -right-24 w-48 h-48 rounded-full blur-3xl pointer-events-none"
-                     :class="activeMode === 'ctv' ? 'bg-emerald-500/10' : (activeMode === 'status' ? 'bg-purple-500/10' : 'bg-indigo-500/10')"></div>
+                <div class="absolute -top-24 -right-24 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-                <!-- ==================== MODE 1: KHÁCH LẺ BÁO LỖI ==================== -->
-                <div x-show="activeMode === 'report'" x-transition x-cloak class="space-y-6">
+                <!-- ==================== TAB 1: BÁO LỖI FAM ==================== -->
+                <div x-show="activeTab === 'report'" x-transition x-cloak class="space-y-6">
                     <div class="text-center mb-6">
                         <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center mx-auto mb-3">
                             <i data-lucide="alert-triangle" class="w-6 h-6"></i>
                         </div>
                         <h1 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Gửi Báo Lỗi Nhóm (Fam)</h1>
                         <p class="text-xs md:text-sm text-gray-400 mt-2">
-                            Nhập Email đăng ký slot. Trạng thái báo lỗi sẽ áp dụng chung cho <strong class="text-indigo-300 font-semibold">toàn bộ 5 thành viên</strong> trong nhóm.
+                            Nhập Email của bạn. Trạng thái báo lỗi sẽ áp dụng chung cho <strong class="text-indigo-300 font-semibold">toàn bộ 5 thành viên</strong> trong nhóm.
                         </p>
                     </div>
 
-                    <!-- Inline Message Alert -->
-                    <div x-show="reportMsg.text" x-transition x-cloak class="p-4 rounded-2xl border text-xs font-medium flex items-start gap-2.5"
+                    <!-- Inline Feedback Message -->
+                    <div x-show="formMessage.text" x-transition x-cloak class="p-4 rounded-2xl border text-xs font-medium flex items-start gap-2.5"
                          :class="{
-                             'bg-rose-950/60 border-rose-500/50 text-rose-200': reportMsg.type === 'error',
-                             'bg-emerald-950/60 border-emerald-500/50 text-emerald-200': reportMsg.type === 'success'
+                             'bg-rose-950/60 border-rose-500/50 text-rose-200': formMessage.type === 'error',
+                             'bg-emerald-950/60 border-emerald-500/50 text-emerald-200': formMessage.type === 'success'
                          }">
-                        <i :data-lucide="reportMsg.type === 'error' ? 'alert-triangle' : 'check-circle-2'" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-                        <span x-text="reportMsg.text"></span>
+                        <i :data-lucide="formMessage.type === 'error' ? 'alert-triangle' : 'check-circle-2'" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
+                        <span x-text="formMessage.text"></span>
                     </div>
 
+                    <!-- Form gửi báo lỗi -->
                     <template x-if="!reportResult">
                         <form @submit.prevent="submitReport()" class="space-y-4">
                             <div>
@@ -128,10 +109,10 @@
                             </div>
 
                             <div>
-                                <label for="report-desc" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
+                                <label for="report-msg" class="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-2">
                                     Mô tả sự cố (không bắt buộc)
                                 </label>
-                                <textarea id="report-desc" x-model="reportText" rows="3" placeholder="Ví dụ: Tài khoản bị văng nhóm / Bị mất Premium / Cần cấp lại slot..."
+                                <textarea id="report-msg" x-model="reportMessage" rows="3" placeholder="Ví dụ: Tài khoản bị văng nhóm / Bị mất Premium / Cần cấp lại slot..."
                                           class="w-full bg-gray-950/60 border border-gray-800 rounded-xl px-4 py-3 text-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all text-sm placeholder-gray-500"></textarea>
                             </div>
 
@@ -156,7 +137,7 @@
                         </form>
                     </template>
 
-                    <!-- Kết quả ngay sau khi gửi thành công -->
+                    <!-- Khối kết quả ngay sau khi gửi thành công -->
                     <template x-if="reportResult">
                         <div class="space-y-4">
                             <div class="p-5 rounded-2xl border bg-gray-950/80 border-gray-800 space-y-4">
@@ -188,13 +169,13 @@
                                 </div>
                             </div>
 
-                            <button @click="goToStatusMode(reportEmail)"
+                            <button @click="goToStatusTab(reportEmail)"
                                     class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm">
                                 <i data-lucide="search" class="w-4 h-4"></i>
                                 <span>Tra Cứu Chi Tiết Tiến Độ Xử Lý</span>
                             </button>
 
-                            <button @click="reportResult = null; reportMsg = { text: '', type: '' }"
+                            <button @click="reportResult = null; formMessage = { text: '', type: '' }"
                                     class="w-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white font-medium py-2.5 rounded-xl text-xs transition-all">
                                 Báo lỗi cho tài khoản khác
                             </button>
@@ -202,172 +183,25 @@
                     </template>
                 </div>
 
-                <!-- ==================== MODE 2: CTV BÁO LỖI HÀNG LOẠT ==================== -->
-                <div x-show="activeMode === 'ctv'" x-transition x-cloak class="space-y-6">
-                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-gray-800 pb-4">
-                        <div>
-                            <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
-                                <i data-lucide="users" class="w-5 h-5 text-emerald-400"></i>
-                                Báo Lỗi & Check Theo Hàng (CTV)
-                            </h2>
-                            <p class="text-xs text-gray-400 mt-1">Dán danh sách email hoặc đoạn tin nhắn chat, hệ thống tự tách email và báo trạng thái từng khách.</p>
-                        </div>
-
-                        <!-- CTV Selector -->
-                        <div class="flex items-center gap-2 bg-gray-950 px-3 py-1.5 rounded-xl border border-gray-800 text-xs">
-                            <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
-                            <span class="text-gray-400">Tên CTV:</span>
-                            <select x-model="ctvName" @change="saveCtvName()" class="bg-transparent font-bold text-white focus:outline-none cursor-pointer">
-                                <option value="Dnc">Dnc</option>
-                                <option value="Tuan">Tuan</option>
-                                <option value="Lộc">Lộc</option>
-                                <option value="Vương">Vương</option>
-                                <option value="Khác">Khác</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Alert Box CTV -->
-                    <div x-show="ctvMsg.text" x-transition x-cloak class="p-4 rounded-2xl border text-xs font-medium flex items-start gap-2.5"
-                         :class="{
-                             'bg-rose-950/60 border-rose-500/50 text-rose-200': ctvMsg.type === 'error',
-                             'bg-emerald-950/60 border-emerald-500/50 text-emerald-200': ctvMsg.type === 'success'
-                         }">
-                        <i :data-lucide="ctvMsg.type === 'error' ? 'alert-triangle' : 'check-circle-2'" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-                        <span x-text="ctvMsg.text"></span>
-                    </div>
-
-                    <form @submit.prevent="submitBulk()" class="space-y-4">
-                        <div>
-                            <div class="flex items-center justify-between mb-2">
-                                <label class="block text-xs font-semibold text-gray-300 uppercase tracking-wider">
-                                    Dán danh sách email hoặc đoạn chat *
-                                </label>
-                                <span class="text-[11px] text-gray-400 font-medium">Tối đa 50 email/lần</span>
-                            </div>
-                            <textarea x-model="bulkText" rows="5" required
-                                      placeholder="Dán danh sách email khách bị lỗi — mỗi dòng 1 email hoặc dán nguyên đoạn tin nhắn, hệ thống tự tách email ra...&#10;Ví dụ:&#10;khach1@gmail.com&#10;Shop ơi check giúp khach2@gmail.com bị văng nhóm nha"
-                                      class="w-full bg-gray-950/70 border border-gray-800 rounded-2xl p-4 text-white text-xs font-mono focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all placeholder-gray-600"></textarea>
-                        </div>
-
-                        <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
-                            <div class="text-xs text-gray-400">
-                                CTV thực hiện: <strong class="text-emerald-400 font-bold" x-text="ctvName"></strong>
-                            </div>
-
-                            <div class="flex items-center gap-2 w-full sm:w-auto">
-                                <button type="button" @click="refreshBulkStatus()" :disabled="loading.refresh || !bulkText.trim()"
-                                        class="flex-grow sm:flex-grow-0 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-200 border border-white/10 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5 disabled:opacity-40">
-                                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.refresh}"></i>
-                                    <span>Làm mới trạng thái</span>
-                                </button>
-
-                                <button type="submit" :disabled="loading.bulk || !bulkText.trim()"
-                                        class="flex-grow sm:flex-grow-0 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3 px-5 rounded-xl shadow-lg shadow-emerald-600/30 transition-all text-xs flex items-center justify-center gap-2 disabled:opacity-40">
-                                    <template x-if="!loading.bulk">
-                                        <div class="flex items-center gap-1.5">
-                                            <i data-lucide="send" class="w-3.5 h-3.5"></i>
-                                            <span>Xử Lý Danh Sách</span>
-                                        </div>
-                                    </template>
-                                    <template x-if="loading.bulk">
-                                        <div class="flex items-center gap-1.5">
-                                            <svg class="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            <span>Đang xử lý...</span>
-                                        </div>
-                                    </template>
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-
-                    <!-- Bảng Check Theo Hàng cho CTV -->
-                    <div x-show="bulkResults.length > 0" x-transition x-cloak class="pt-4 border-t border-gray-800 space-y-3">
-                        <div class="flex items-center justify-between">
-                            <h3 class="text-sm font-bold text-white flex items-center gap-2">
-                                <i data-lucide="list-checks" class="w-4 h-4 text-emerald-400"></i>
-                                Bảng Trạng Thái Theo Hàng (<span x-text="bulkResults.length"></span> email)
-                            </h3>
-                            <span class="text-[11px] text-gray-400">Lần xem cuối: <span x-text="lastUpdatedTime"></span></span>
-                        </div>
-
-                        <div class="overflow-x-auto rounded-2xl border border-gray-800">
-                            <table class="w-full text-left text-xs">
-                                <thead class="bg-gray-950 text-gray-400 uppercase font-semibold text-[10px] tracking-wider border-b border-gray-800">
-                                    <tr>
-                                        <th class="px-3.5 py-2.5">Email Khách</th>
-                                        <th class="px-3.5 py-2.5">Nhóm (STT)</th>
-                                        <th class="px-3.5 py-2.5">Trạng Thái</th>
-                                        <th class="px-3.5 py-2.5">Ghi Chú & Thời Gian</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-800/60 bg-gray-950/60">
-                                    <template x-for="(r, idx) in bulkResults" :key="idx">
-                                        <tr :class="!r.found ? 'bg-rose-950/20' : (r.ticket_status === 'Đã xử lý' ? 'bg-emerald-950/10' : 'hover:bg-gray-900/60')">
-                                            <td class="px-3.5 py-3 font-medium text-white break-all" x-text="r.email"></td>
-                                            <td class="px-3.5 py-3 font-bold font-mono text-indigo-400 whitespace-nowrap" x-text="r.stt_group || '---'"></td>
-                                            <td class="px-3.5 py-3 whitespace-nowrap">
-                                                <template x-if="r.found">
-                                                    <span class="px-2.5 py-1 rounded-full font-bold text-[11px] border inline-flex items-center gap-1"
-                                                          :class="getStatusBadgeClass(r.ticket_status)">
-                                                        <span class="w-1.5 h-1.5 rounded-full" :class="getStatusDotClass(r.ticket_status)"></span>
-                                                        <span x-text="r.ticket_status"></span>
-                                                    </span>
-                                                </template>
-                                                <template x-if="!r.found">
-                                                    <span class="px-2.5 py-1 rounded-full font-bold text-[11px] bg-rose-950/80 text-rose-300 border border-rose-500/40 inline-flex items-center gap-1">
-                                                        ❌ Không tìm thấy
-                                                    </span>
-                                                </template>
-                                            </td>
-                                            <td class="px-3.5 py-3 text-[11px]">
-                                                <template x-if="!r.found">
-                                                    <span class="text-rose-400 italic">Kiểm tra lại email</span>
-                                                </template>
-                                                <template x-if="r.found && r.ticket_status !== 'Đã xử lý'">
-                                                    <div class="space-y-0.5">
-                                                        <span class="text-amber-300 font-medium" x-text="r.note || 'Đã báo trước đó, admin đang xử lý'"></span>
-                                                        <template x-if="r.created_at">
-                                                            <div class="text-[10px] text-gray-400">Báo lúc <span x-text="formatDate(r.created_at)"></span></div>
-                                                        </template>
-                                                    </div>
-                                                </template>
-                                                <template x-if="r.found && r.ticket_status === 'Đã xử lý'">
-                                                    <div class="text-emerald-300 font-medium">
-                                                        Xong lúc <span x-text="formatDate(r.resolved_at)"></span>
-                                                        <span class="text-gray-400 font-semibold" x-text="calcDuration(r.created_at, r.resolved_at)"></span>
-                                                    </div>
-                                                </template>
-                                            </td>
-                                        </tr>
-                                    </template>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ==================== MODE 3: TRA CỨU TRẠNG THÁI ==================== -->
-                <div x-show="activeMode === 'status'" x-transition x-cloak class="space-y-6">
+                <!-- ==================== TAB 2: TRA CỨU TRẠNG THÁI ==================== -->
+                <div x-show="activeTab === 'status'" x-transition x-cloak class="space-y-6">
                     <div class="text-center mb-6">
                         <div class="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center mx-auto mb-3">
                             <i data-lucide="search" class="w-6 h-6"></i>
                         </div>
                         <h2 class="text-2xl md:text-3xl font-extrabold text-white tracking-tight">Tra Cứu Tiến Độ Xử Lý</h2>
                         <p class="text-xs md:text-sm text-gray-400 mt-2">
-                            Nhập Email của bạn để kiểm tra tiến độ khắc phục sự cố nhóm Fam (RN).
+                            Nhập Email của bạn để kiểm tra tiến độ khắc phục sự cố cho nhóm Fam (RN).
                         </p>
                     </div>
 
                     <!-- Inline Error Message -->
-                    <div x-show="statusMsg" x-transition x-cloak class="p-4 rounded-2xl border bg-rose-950/60 border-rose-500/50 text-rose-200 text-xs font-medium flex items-start gap-2.5">
+                    <div x-show="statusMessage" x-transition x-cloak class="p-4 rounded-2xl border bg-rose-950/60 border-rose-500/50 text-rose-200 text-xs font-medium flex items-start gap-2.5">
                         <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5"></i>
-                        <span x-text="statusMsg"></span>
+                        <span x-text="statusMessage"></span>
                     </div>
 
+                    <!-- Form Search -->
                     <form @submit.prevent="checkStatus()" class="space-y-4">
                         <div class="flex flex-col sm:flex-row gap-3">
                             <div class="relative flex-grow">
@@ -405,7 +239,7 @@
                                 <i data-lucide="check-circle-2" class="w-10 h-10 text-emerald-400 mx-auto"></i>
                                 <h3 class="text-base font-bold text-white">Fam <span class="font-mono text-indigo-300" x-text="statusResult.stt_group"></span> hiện không có báo lỗi mở</h3>
                                 <p class="text-xs text-gray-400" x-text="statusResult.message"></p>
-                                <button @click="switchMode('report'); reportEmail = statusEmail; reportResult = null;" class="mt-3 px-4 py-2.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all">
+                                <button @click="activeTab = 'report'; reportEmail = statusEmail; reportResult = null;" class="mt-3 px-4 py-2.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition-all">
                                     <i data-lucide="plus-circle" class="w-4 h-4"></i> Gửi báo lỗi cho Fam này
                                 </button>
                             </div>
@@ -469,61 +303,40 @@
     </footer>
 
     <script>
-        function unifiedApp() {
+        function customerApp() {
             return {
-                activeMode: 'report',
+                activeTab: 'report',
                 webAppUrl: localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || '',
                 useMock: !localStorage.getItem('FAM_TRACKER_WEBAPP_URL'),
 
-                ctvName: localStorage.getItem('FAM_TRACKER_CTV_NAME') || 'Dnc',
-
-                loading: { report: false, bulk: false, refresh: false, status: false },
+                loading: { report: false, status: false },
 
                 reportEmail: '',
-                reportText: '',
-                reportMsg: { text: '', type: '' },
+                reportMessage: '',
+                formMessage: { text: '', type: '' },
                 reportResult: null,
 
-                bulkText: '',
-                bulkResults: [],
-                lastUpdatedTime: '',
-                ctvMsg: { text: '', type: '' },
-
                 statusEmail: '',
-                statusMsg: '',
+                statusMessage: '',
                 statusResult: null,
 
                 init() {
                     const urlParams = new URLSearchParams(window.location.search);
                     const emailParam = urlParams.get('email');
-                    const modeParam = urlParams.get('mode') || urlParams.get('tab');
+                    const tabParam = urlParams.get('tab');
 
-                    if (modeParam === 'ctv' || window.location.pathname.includes('/ctv')) {
-                        this.activeMode = 'ctv';
-                    } else if (modeParam === 'status' || window.location.pathname.includes('/status')) {
-                        this.activeMode = 'status';
+                    if (tabParam === 'status' || window.location.pathname.includes('/status')) {
+                        this.activeTab = 'status';
                     }
 
                     if (emailParam) {
                         this.statusEmail = emailParam.trim();
                         this.reportEmail = emailParam.trim();
-                        this.activeMode = 'status';
+                        this.activeTab = 'status';
                         this.checkStatus();
                     }
 
                     setTimeout(() => lucide.createIcons(), 50);
-                },
-
-                switchMode(mode) {
-                    this.activeMode = mode;
-                    this.reportMsg = { text: '', type: '' };
-                    this.ctvMsg = { text: '', type: '' };
-                    this.statusMsg = '';
-                    setTimeout(() => lucide.createIcons(), 50);
-                },
-
-                saveCtvName() {
-                    localStorage.setItem('FAM_TRACKER_CTV_NAME', this.ctvName);
                 },
 
                 formatDate(isoStr) {
@@ -532,22 +345,8 @@
                         const d = new Date(isoStr);
                         if (isNaN(d.getTime())) return isoStr;
                         return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
-                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
                     } catch (e) { return isoStr; }
-                },
-
-                calcDuration(startIso, endIso) {
-                    if (!startIso || !endIso) return '';
-                    try {
-                        const s = new Date(startIso).getTime();
-                        const e = new Date(endIso).getTime();
-                        if (isNaN(s) || isNaN(e) || e <= s) return '';
-                        const diffMins = Math.round((e - s) / 60000);
-                        if (diffMins < 60) return ` (sau ${diffMins} phút)`;
-                        const hrs = Math.floor(diffMins / 60);
-                        const mins = diffMins % 60;
-                        return ` (sau ${hrs}h ${mins}m)`;
-                    } catch (err) { return ''; }
                 },
 
                 getStatusBadgeClass(status) {
@@ -568,16 +367,16 @@
                     }
                 },
 
-                goToStatusMode(email) {
+                goToStatusTab(email) {
                     this.statusEmail = email;
-                    this.activeMode = 'status';
+                    this.activeTab = 'status';
                     this.checkStatus();
                 },
 
                 async submitReport() {
                     if (!this.reportEmail) return;
                     this.loading.report = true;
-                    this.reportMsg = { text: '', type: '' };
+                    this.formMessage = { text: '', type: '' };
                     this.reportResult = null;
 
                     const emailClean = this.reportEmail.trim().toLowerCase();
@@ -585,75 +384,20 @@
                     try {
                         let res;
                         if (this.useMock) {
-                            res = await this.mockSubmit(emailClean, this.reportText);
+                            res = await this.mockSubmit(emailClean, this.reportMessage);
                         } else {
-                            res = await this.callApi('submitReport', { email: emailClean, message: this.reportText });
+                            res = await this.callApi('submitReport', { email: emailClean, message: this.reportMessage });
                         }
 
                         if (res.success) {
                             this.reportResult = res;
                         } else {
-                            this.reportMsg = { text: res.message || 'Không tìm thấy tài khoản với email này.', type: 'error' };
+                            this.formMessage = { text: res.message || 'Không tìm thấy tài khoản với email này.', type: 'error' };
                         }
                     } catch (err) {
-                        this.reportMsg = { text: err.message || 'Hệ thống phản hồi chậm, vui lòng thử lại.', type: 'error' };
+                        this.formMessage = { text: err.message || 'Hệ thống phản hồi chậm, vui lòng thử lại.', type: 'error' };
                     } finally {
                         this.loading.report = false;
-                        setTimeout(() => lucide.createIcons(), 50);
-                    }
-                },
-
-                async submitBulk() {
-                    if (!this.bulkText.trim()) return;
-                    this.loading.bulk = true;
-                    this.ctvMsg = { text: '', type: '' };
-
-                    try {
-                        let res;
-                        if (this.useMock) {
-                            res = await this.mockSubmitBulk(this.bulkText, this.ctvName);
-                        } else {
-                            res = await this.callApi('submitBulkReport', { rawText: this.bulkText, ctvName: this.ctvName });
-                        }
-
-                        if (res.success) {
-                            this.bulkResults = res.results || [];
-                            this.lastUpdatedTime = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-                            this.ctvMsg = { text: res.message, type: 'success' };
-                        } else {
-                            this.ctvMsg = { text: res.message || 'Lỗi khi xử lý danh sách', type: 'error' };
-                        }
-                    } catch (err) {
-                        this.ctvMsg = { text: err.message || 'Lỗi kết nối máy chủ.', type: 'error' };
-                    } finally {
-                        this.loading.bulk = false;
-                        setTimeout(() => lucide.createIcons(), 50);
-                    }
-                },
-
-                async refreshBulkStatus() {
-                    if (!this.bulkText.trim()) return;
-                    this.loading.refresh = true;
-
-                    try {
-                        let res;
-                        if (this.useMock) {
-                            res = await this.mockSubmitBulk(this.bulkText, this.ctvName);
-                        } else {
-                            res = await this.callApi('checkBulkStatus', { rawText: this.bulkText });
-                        }
-
-                        if (res.success) {
-                            this.bulkResults = res.results || [];
-                            this.lastUpdatedTime = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-                            this.ctvMsg = { text: res.message || 'Đã làm mới trạng thái mới nhất cho danh sách.', type: 'success' };
-                        } else {
-                            this.ctvMsg = { text: res.message || 'Lỗi làm mới trạng thái', type: 'error' };
-                        }
-                    } catch (err) {
-                        this.ctvMsg = { text: err.message || 'Lỗi kết nối máy chủ.', type: 'error' };
-                    } finally {
-                        this.loading.refresh = false;
                         setTimeout(() => lucide.createIcons(), 50);
                     }
                 },
@@ -661,7 +405,7 @@
                 async checkStatus() {
                     if (!this.statusEmail) return;
                     this.loading.status = true;
-                    this.statusMsg = '';
+                    this.statusMessage = '';
                     this.statusResult = null;
 
                     const emailClean = this.statusEmail.trim().toLowerCase();
@@ -677,10 +421,10 @@
                         if (res.success) {
                             this.statusResult = res;
                         } else {
-                            this.statusMsg = res.message || 'Không tìm thấy thông tin tài khoản.';
+                            this.statusMessage = res.message || 'Không tìm thấy thông tin tài khoản.';
                         }
                     } catch (err) {
-                        this.statusMsg = err.message || 'Không thể kết nối máy chủ.';
+                        this.statusMessage = err.message || 'Không thể kết nối máy chủ.';
                     } finally {
                         this.loading.status = false;
                         setTimeout(() => lucide.createIcons(), 50);
@@ -692,7 +436,7 @@
                     url.searchParams.append('action', action);
 
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 20000);
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
                     try {
                         const response = await fetch(url.toString(), {
@@ -707,7 +451,7 @@
                     } catch (err) {
                         clearTimeout(timeoutId);
                         if (err.name === 'AbortError') {
-                            throw new Error('Hệ thống phản hồi chậm khi xử lý. Vui lòng thử lại.');
+                            throw new Error('Hệ thống phản hồi chậm, vui lòng thử lại. Nếu tiếp tục xảy ra, liên hệ admin.');
                         }
                         throw err;
                     }
@@ -731,44 +475,6 @@
                         is_recurring: false,
                         recur_count: 0,
                         message: `Đã tạo báo cáo sự cố thành công cho Fam ${sttGroup}.`
-                    };
-                },
-
-                async mockSubmitBulk(text, ctv) {
-                    await new Promise(r => setTimeout(r, 400));
-                    const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-                    const unique = [...new Set(matches.map(m => m.toLowerCase()))];
-                    if (unique.length === 0) return { success: false, message: 'Không tìm thấy email hợp lệ nào.' };
-                    if (unique.length > 50) return { success: false, message: `Tìm thấy ${unique.length} email (vượt quá 50 email). Vui lòng chia nhỏ.` };
-
-                    const mockCache = JSON.parse(localStorage.getItem('MOCK_FAM_CACHE') || '{"khach1@gmail.com":"RN34","khach2@gmail.com":"RN34","admin@godnc.com":"RN34"}');
-                    const results = unique.map((em, idx) => {
-                        const stt = mockCache[em];
-                        if (stt) {
-                            const isResolved = idx === 3;
-                            return {
-                                email: em,
-                                found: true,
-                                stt_group: stt,
-                                ticket_status: isResolved ? 'Đã xử lý' : (idx === 1 ? 'Đang xử lý' : 'Mới'),
-                                created_at: new Date(Date.now() - 3600000).toISOString(),
-                                resolved_at: isResolved ? new Date(Date.now() - 3300000).toISOString() : '',
-                                is_recurring: idx === 1,
-                                recur_count: idx === 1 ? 2 : 0,
-                                note: isResolved ? 'Đã xử lý xong' : (idx === 1 ? 'Đã báo trước đó, admin đang xử lý' : 'Vừa ghi nhận')
-                            };
-                        }
-                        return { email: em, found: false, stt_group: '---', ticket_status: 'Không tìm thấy', note: 'Kiểm tra lại email' };
-                    });
-
-                    const found = results.filter(r => r.found).length;
-                    return {
-                        success: true,
-                        total: unique.length,
-                        found_count: found,
-                        not_found_count: unique.length - found,
-                        results: results,
-                        message: `Đã xử lý xong ${unique.length} email (${found} thành công, ${unique.length - found} không tìm thấy).`
                     };
                 },
 
