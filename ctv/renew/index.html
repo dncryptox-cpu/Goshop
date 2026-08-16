@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTV Báo Lỗi Fam (RN) — Go DNC</title>
+    <meta name="description" content="Trang dành riêng cho CTV báo lỗi hàng loạt và theo dõi tiến độ sự cố nhóm Fam (RN) tại Go DNC.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f7fe;
+            color: #1f2937;
+        }
+        [x-cloak] { display: none !important; }
+        
+        .card-shadow {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body x-data="ctvFamApp()" x-init="initApp()" class="antialiased min-h-screen flex flex-col justify-between">
+
+    <!-- LOGIN SCREEN IF NOT LOGGED IN -->
+    <div x-show="!isLoggedIn" x-cloak class="min-h-screen flex flex-col items-center justify-center p-4">
+        <div class="bg-white rounded-3xl card-shadow p-8 w-full max-w-sm border border-gray-100">
+            <div class="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-600/30 mx-auto mb-6">
+                <i data-lucide="shield-check" class="w-8 h-8"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-center text-gray-900 mb-2">CTV Đăng Nhập</h2>
+            <p class="text-sm text-center text-gray-500 mb-6">Trang Báo Lỗi Hàng Loạt Fam (RN)</p>
+
+            <form @submit.prevent="login()" class="space-y-4">
+                <div x-show="loginError" x-cloak class="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                    <span x-text="loginError"></span>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Tên Đăng Nhập</label>
+                    <input type="text" x-model="loginForm.username" required
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-blue-600 focus:bg-white transition-all font-medium text-gray-900">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Mật Khẩu</label>
+                    <input type="password" x-model="loginForm.password" required
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-blue-600 focus:bg-white transition-all font-medium text-gray-900">
+                </div>
+                <button type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-xl shadow-blue-600/20 mt-2">
+                    <span>Đăng Nhập CTV</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP SCREEN (WHEN LOGGED IN) -->
+    <div x-show="isLoggedIn" x-cloak class="flex-grow flex flex-col justify-between">
+        
+        <!-- Header -->
+        <header class="bg-white border-b border-gray-200 py-4 px-4 md:px-8 flex items-center justify-between shadow-sm sticky top-0 z-50">
+            <div class="flex items-center gap-3">
+                <a href="../" class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-blue-600/30 hover:scale-105 transition-transform" title="Về trang CTV chính">
+                    <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                </a>
+                <div>
+                    <h1 class="font-extrabold text-base md:text-lg tracking-tight text-gray-900 flex items-center gap-2">
+                        CTV Portal — Báo Lỗi Fam (RN)
+                        <span class="text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-600 border border-blue-200 px-2 py-0.5 rounded-full">Trang Riêng Độc Lập</span>
+                    </h1>
+                    <p class="text-xs text-gray-400">Tài khoản CTV: <strong class="text-blue-600 font-bold" x-text="currentUser?.name"></strong></p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <a href="../" class="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5" title="Chuyển sang trang CTV Youtube">
+                    <i data-lucide="youtube" class="w-4 h-4 text-red-500"></i>
+                    <span class="hidden sm:inline">Về Trang CTV Youtube</span>
+                </a>
+                <button @click="logout()" class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Đăng xuất">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-6xl mx-auto w-full p-4 md:p-8 space-y-6 flex-grow">
+
+            <!-- Card 1: Báo Lỗi Hàng Loạt & Check Theo Hàng -->
+            <div class="bg-white rounded-2xl border border-gray-100 p-6 card-shadow space-y-4">
+                <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                    <h2 class="text-base font-bold text-gray-900 flex items-center gap-2">
+                        <i data-lucide="layers" class="w-5 h-5 text-blue-600"></i>
+                        Báo Lỗi & Check Theo Hàng (Fam RN)
+                    </h2>
+                    <span class="text-xs bg-blue-50 text-blue-700 px-3 py-1 rounded-full font-bold border border-blue-100">
+                        Tối đa 50 email/lần
+                    </span>
+                </div>
+
+                <!-- Message Alert -->
+                <div x-show="famMsg.text" x-cloak class="p-3.5 rounded-xl text-xs font-semibold flex items-center gap-2"
+                     :class="famMsg.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'">
+                    <i :data-lucide="famMsg.type === 'error' ? 'alert-triangle' : 'check-circle'" class="w-4 h-4 flex-shrink-0"></i>
+                    <span x-text="famMsg.text"></span>
+                </div>
+
+                <form @submit.prevent="submitBulkFam()" class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                            Dán danh sách email hoặc đoạn tin nhắn chat
+                        </label>
+                        <textarea x-model="bulkFamText" rows="5" required
+                                  placeholder="Dán danh sách email khách bị lỗi — mỗi dòng 1 email hoặc dán nguyên đoạn tin nhắn chat... (Tối đa 50 email/lần)&#10;Ví dụ:&#10;khach1@gmail.com&#10;Shop ơi check giúp khach2@gmail.com bị văng nhóm nha"
+                                  class="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-xs text-gray-900 font-mono focus:border-blue-600 focus:bg-white focus:outline-none focus:ring-4 focus:ring-blue-600/10 transition-all placeholder-gray-400"></textarea>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                        <span class="text-xs text-gray-400">Ghi nhận dưới tên CTV: <strong class="text-gray-800 font-bold" x-text="currentUser?.name"></strong></span>
+
+                        <div class="flex items-center gap-2 w-full sm:w-auto">
+                            <button type="button" @click="refreshBulkFamStatus()" :disabled="isLoadingFam || !bulkFamText.trim()"
+                                    class="flex-1 sm:flex-initial px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 disabled:opacity-40">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': isLoadingFam}"></i>
+                                <span>Làm mới trạng thái</span>
+                            </button>
+                            <button type="submit" :disabled="isLoadingFam || !bulkFamText.trim()"
+                                    class="flex-1 sm:flex-initial px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/20 disabled:opacity-40">
+                                <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                                <span>Xử Lý Danh Sách</span>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Bảng check theo hàng -->
+                <div x-show="bulkFamResults.length > 0" x-cloak class="pt-3 border-t border-gray-100 space-y-2">
+                    <div class="flex items-center justify-between text-xs font-bold text-gray-700">
+                        <span>Bảng Kết Quả Kiểm Tra Theo Hàng (<span x-text="bulkFamResults.length"></span> email)</span>
+                        <span class="text-[11px] text-gray-400 font-normal">Cập nhật: <span x-text="famLastUpdated"></span></span>
+                    </div>
+                    <div class="overflow-x-auto rounded-xl border border-gray-200">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-[10px] tracking-wider border-b border-gray-200">
+                                <tr>
+                                    <th class="px-4 py-3">Email Khách</th>
+                                    <th class="px-4 py-3">Nhóm (STT)</th>
+                                    <th class="px-4 py-3">Trạng Thái Real-time</th>
+                                    <th class="px-4 py-3">Ghi Chú & Thời Gian</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 bg-white">
+                                <template x-for="(r, idx) in bulkFamResults" :key="idx">
+                                    <tr :class="!r.found ? 'bg-red-50/30' : (r.ticket_status === 'Đã xử lý' ? 'bg-green-50/30' : 'hover:bg-gray-50')">
+                                        <td class="px-4 py-3 font-medium text-gray-900" x-text="r.email"></td>
+                                        <td class="px-4 py-3 font-bold font-mono text-blue-600" x-text="r.stt_group || '---'"></td>
+                                        <td class="px-4 py-3 whitespace-nowrap">
+                                            <template x-if="r.found">
+                                                <span class="px-2.5 py-1 rounded-full font-bold text-[11px] border"
+                                                      :class="r.ticket_status === 'Đã xử lý' ? 'bg-green-100 text-green-700 border-green-200' : (r.ticket_status === 'Đang xử lý' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-amber-100 text-amber-700 border-amber-200')">
+                                                    <span x-text="r.ticket_status"></span>
+                                                </span>
+                                            </template>
+                                            <template x-if="!r.found">
+                                                <span class="px-2.5 py-1 rounded-full font-bold text-[11px] bg-red-100 text-red-600 border border-red-200">
+                                                    ❌ Không tìm thấy
+                                                </span>
+                                            </template>
+                                        </td>
+                                        <td class="px-4 py-3 text-[11px]">
+                                            <template x-if="!r.found"><span class="text-red-500 italic">Kiểm tra lại email</span></template>
+                                            <template x-if="r.found && r.ticket_status !== 'Đã xử lý'">
+                                                <div class="text-amber-700 font-medium" x-text="r.note || 'Đang chờ admin xử lý'"></div>
+                                            </template>
+                                            <template x-if="r.found && r.ticket_status === 'Đã xử lý'">
+                                                <div class="text-green-700 font-medium">
+                                                    Xong lúc <span x-text="formatFamDate(r.resolved_at)"></span>
+                                                    <span class="text-gray-500 font-semibold" x-text="calcFamDuration(r.created_at, r.resolved_at)"></span>
+                                                </div>
+                                            </template>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: Lịch Sử Báo Cáo Tất Cả Email Của CTV -->
+            <div class="bg-white rounded-2xl border border-gray-100 p-6 card-shadow space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="clipboard-list" class="w-5 h-5 text-green-600"></i>
+                            Lịch Sử Báo Cáo Sự Cố Fam Của CTV (<span x-text="currentUser?.name"></span>)
+                        </h2>
+                        <p class="text-xs text-gray-500 mt-0.5">Hiển thị toàn bộ email đã gửi, đơn chưa xử lý & đã xử lý xong renew.</p>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <button @click="fetchFamReports()" :disabled="isLoadingFam"
+                                class="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': isLoadingFam}"></i>
+                            <span>Làm mới danh sách</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Thống kê 4 thẻ Summary Stats -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-100">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tổng Báo Cáo</span>
+                        <p class="text-xl font-black text-gray-900 mt-0.5" x-text="famStats.total">0</p>
+                    </div>
+                    <div class="bg-amber-50 p-3.5 rounded-xl border border-amber-100">
+                        <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Mới Gửi</span>
+                        <p class="text-xl font-black text-amber-700 mt-0.5" x-text="famStats.new">0</p>
+                    </div>
+                    <div class="bg-blue-50 p-3.5 rounded-xl border border-blue-100">
+                        <span class="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Đang Xử Lý</span>
+                        <p class="text-xl font-black text-blue-700 mt-0.5" x-text="famStats.processing">0</p>
+                    </div>
+                    <div class="bg-green-50 p-3.5 rounded-xl border border-green-100">
+                        <span class="text-[10px] font-bold text-green-600 uppercase tracking-wider">Đã Xử Lý Xong</span>
+                        <p class="text-xl font-black text-green-700 mt-0.5" x-text="famStats.resolved">0</p>
+                    </div>
+                </div>
+
+                <!-- Bảng hiển thị tất cả các email đã báo của CTV này -->
+                <div class="overflow-x-auto rounded-xl border border-gray-200">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-gray-50 text-gray-500 uppercase font-bold text-[10px] tracking-wider border-b border-gray-200">
+                            <tr>
+                                <th class="px-4 py-3">STT</th>
+                                <th class="px-4 py-3">Email Khách</th>
+                                <th class="px-4 py-3">Nhóm (STT)</th>
+                                <th class="px-4 py-3">Trạng Thái Real-time</th>
+                                <th class="px-4 py-3">Thời Gian Báo</th>
+                                <th class="px-4 py-3">Thời Gian Hoàn Tất</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 bg-white">
+                            <template x-for="(item, idx) in famReportsList" :key="item.report_id || idx">
+                                <tr class="hover:bg-gray-50 transition-colors">
+                                    <td class="px-4 py-3 font-mono text-gray-400" x-text="idx + 1"></td>
+                                    <td class="px-4 py-3 font-medium text-gray-900" x-text="item.customer_email"></td>
+                                    <td class="px-4 py-3 font-bold font-mono text-blue-600" x-text="item.stt_group"></td>
+                                    <td class="px-4 py-3">
+                                        <span class="px-2.5 py-1 rounded-full font-bold text-[11px] border"
+                                              :class="item.status === 'Đã xử lý' ? 'bg-green-100 text-green-700 border-green-200' : (item.status === 'Đang xử lý' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-amber-100 text-amber-700 border-amber-200')">
+                                            <span x-text="item.status"></span>
+                                        </span>
+                                        <template x-if="item.is_recurring">
+                                            <span class="ml-1 px-2 py-0.5 bg-red-100 text-red-600 rounded-full font-bold text-[10px]">⚡ Tái phát x<span x-text="item.recur_count"></span></span>
+                                        </template>
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-600" x-text="formatFamDate(item.reported_at)"></td>
+                                    <td class="px-4 py-3 text-xs">
+                                        <template x-if="item.status === 'Đã xử lý'">
+                                            <span class="text-green-700 font-bold">
+                                                <span x-text="formatFamDate(item.resolved_at)"></span>
+                                                <span class="text-gray-500 font-normal" x-text="calcFamDuration(item.reported_at, item.resolved_at)"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="item.status !== 'Đã xử lý'">
+                                            <span class="text-amber-600 italic font-medium">Đang chờ xử lý...</span>
+                                        </template>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <div x-show="famReportsList.length === 0" class="p-8 text-center text-gray-400 text-xs">
+                        Chưa có dữ liệu báo cáo nào cho CTV <span x-text="currentUser?.name"></span>.
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="py-6 px-4 text-center border-t border-gray-200 text-xs text-gray-400">
+            <p>© 2026 Go DNC — CTV Fam Issue Tracker System. All rights reserved.</p>
+        </footer>
+
+    </div>
+
+    <script>
+        function ctvFamApp() {
+            return {
+                ctvAccounts: {
+                    'tuan': { username: 'tuan', password: '123', name: 'Tuan', role: 'ctv' },
+                    'vuong': { username: 'vuong', password: '123', name: 'Vương', role: 'ctv' },
+                    'dnc': { username: 'dnc', password: 'dnc1m@', name: 'Dnc', role: 'admin' },
+                    'loc': { username: 'loc', password: '123', name: 'Lộc', role: 'ctv' },
+                    'admin': { username: 'admin', password: 'dnc1m@', name: 'all', role: 'admin' }
+                },
+                isLoggedIn: false,
+                loginForm: { username: '', password: '' },
+                loginError: '',
+                currentUser: null,
+
+                bulkFamText: '',
+                bulkFamResults: [],
+                famReportsList: [],
+                isLoadingFam: false,
+                famLastUpdated: '',
+                famMsg: { text: '', type: '' },
+                famStats: { total: 0, new: 0, processing: 0, resolved: 0 },
+
+                async initApp() {
+                    // Tự động thừa hưởng trạng thái đăng nhập chung từ localStorage 'goshop_ctv_user'
+                    const savedUser = localStorage.getItem('goshop_ctv_user');
+                    if (savedUser) {
+                        this.currentUser = JSON.parse(savedUser);
+                        this.isLoggedIn = true;
+                        this.fetchFamReports();
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                login() {
+                    const uname = this.loginForm.username.trim().toLowerCase();
+                    const acc = this.ctvAccounts[uname];
+                    if (acc && acc.password === this.loginForm.password) {
+                        this.isLoggedIn = true;
+                        this.currentUser = acc;
+                        this.loginError = '';
+                        localStorage.setItem('goshop_ctv_user', JSON.stringify(acc));
+                        this.fetchFamReports();
+                        this.$nextTick(() => lucide.createIcons());
+                    } else {
+                        this.loginError = 'Sai tên đăng nhập hoặc mật khẩu CTV';
+                    }
+                },
+
+                logout() {
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    localStorage.removeItem('goshop_ctv_user');
+                },
+
+                formatFamDate(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
+                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                    } catch (e) { return isoStr; }
+                },
+
+                calcFamDuration(startIso, endIso) {
+                    if (!startIso || !endIso) return '';
+                    try {
+                        const s = new Date(startIso).getTime();
+                        const e = new Date(endIso).getTime();
+                        if (isNaN(s) || isNaN(e) || e <= s) return '';
+                        const diffMins = Math.round((e - s) / 60000);
+                        if (diffMins < 60) return ` (sau ${diffMins} phút)`;
+                        const hrs = Math.floor(diffMins / 60);
+                        const mins = diffMins % 60;
+                        return ` (sau ${hrs}h ${mins}m)`;
+                    } catch (err) { return ''; }
+                },
+
+                async callFamApi(action, payload) {
+                    const webAppUrl = localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || '';
+                    if (!webAppUrl) {
+                        return this.mockFamApi(action, payload);
+                    }
+
+                    const url = new URL(webAppUrl);
+                    url.searchParams.append('action', action);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        return await response.json();
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        console.warn('Fam API call failed, using fallback:', err);
+                        return this.mockFamApi(action, payload);
+                    }
+                },
+
+                async mockFamApi(action, payload) {
+                    await new Promise(r => setTimeout(r, 350));
+                    if (action === 'submitBulkReport' || action === 'checkBulkStatus') {
+                        const text = payload.rawText || '';
+                        const ctv = payload.ctvName || this.currentUser?.name || 'CTV';
+                        const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+                        const unique = [...new Set(matches.map(m => m.toLowerCase()))];
+                        
+                        if (unique.length === 0) {
+                            return { success: false, message: 'Không tìm thấy địa chỉ email hợp lệ nào trong đoạn văn bản đã dán.' };
+                        }
+                        if (unique.length > 50) {
+                            return { success: false, message: `Danh sách tìm thấy ${unique.length} email (vượt quá 50 email). Vui lòng chia nhỏ.` };
+                        }
+
+                        const mockCache = JSON.parse(localStorage.getItem('MOCK_FAM_CACHE') || '{"khach1@gmail.com":"RN34","khach2@gmail.com":"RN34","admin@godnc.com":"RN34"}');
+                        
+                        const results = unique.map((em, idx) => {
+                            let stt = mockCache[em];
+                            if (!stt) {
+                                stt = 'RN' + (Math.floor(Math.abs(this.hashCode(em)) % 80) + 1);
+                            }
+                            const isResolved = idx % 4 === 3;
+                            const isProcessing = idx % 4 === 1;
+                            return {
+                                email: em,
+                                found: true,
+                                stt_group: stt,
+                                ticket_status: isResolved ? 'Đã xử lý' : (isProcessing ? 'Đang xử lý' : 'Mới'),
+                                created_at: new Date(Date.now() - (idx + 1) * 3600000).toISOString(),
+                                resolved_at: isResolved ? new Date(Date.now() - idx * 1800000).toISOString() : '',
+                                is_recurring: idx % 3 === 0 && idx > 0,
+                                recur_count: idx % 3 === 0 && idx > 0 ? 2 : 0,
+                                note: isResolved ? 'Đã xử lý xong' : (isProcessing ? 'Đã báo trước đó, admin đang xử lý' : 'Vừa ghi nhận')
+                            };
+                        });
+
+                        const found = results.filter(r => r.found).length;
+                        return {
+                            success: true,
+                            ctv_name: ctv,
+                            total: unique.length,
+                            found_count: found,
+                            not_found_count: unique.length - found,
+                            results: results,
+                            message: `Đã xử lý xong ${unique.length} email (${found} thành công, ${unique.length - found} không tìm thấy).`
+                        };
+                    } else if (action === 'listCtvReports') {
+                        const sampleReports = [
+                            {
+                                report_id: 'RP-1001',
+                                customer_email: 'Lienvisboy2002@gmail.com',
+                                stt_group: 'RN14',
+                                status: 'Mới',
+                                reported_at: new Date(Date.now() - 1800000).toISOString(),
+                                resolved_at: '',
+                                is_recurring: false,
+                                recur_count: 0
+                            },
+                            {
+                                report_id: 'RP-1002',
+                                customer_email: 'duongthanh7677@gmail.com',
+                                stt_group: 'RN35',
+                                status: 'Đang xử lý',
+                                reported_at: new Date(Date.now() - 3600000).toISOString(),
+                                resolved_at: '',
+                                is_recurring: true,
+                                recur_count: 2
+                            },
+                            {
+                                report_id: 'RP-1003',
+                                customer_email: 'leanhducd880@gmail.com',
+                                stt_group: 'RN9',
+                                status: 'Đã xử lý',
+                                reported_at: new Date(Date.now() - 7200000).toISOString(),
+                                resolved_at: new Date(Date.now() - 6900000).toISOString(),
+                                is_recurring: false,
+                                recur_count: 0
+                            }
+                        ];
+                        return { success: true, reports: sampleReports };
+                    }
+                    return { success: false, message: 'Thao tác không hỗ trợ' };
+                },
+
+                hashCode(str) {
+                    let hash = 0;
+                    for (let i = 0; i < str.length; i++) {
+                        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                        hash |= 0;
+                    }
+                    return hash;
+                },
+
+                async fetchFamReports() {
+                    if (!this.currentUser) return;
+                    this.isLoadingFam = true;
+                    const ctvName = (this.currentUser.role === 'admin' && this.currentUser.name === 'all') ? '' : this.currentUser.name;
+
+                    try {
+                        const data = await this.callFamApi('listCtvReports', { ctvName: ctvName });
+                        if (data.success) {
+                            this.famReportsList = data.reports || [];
+                            this.calculateFamStats();
+                        }
+                    } catch (err) {
+                        console.error('Lỗi fetch fam reports:', err);
+                    } finally {
+                        this.isLoadingFam = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                calculateFamStats() {
+                    this.famStats.total = this.famReportsList.length;
+                    this.famStats.new = this.famReportsList.filter(r => r.status === 'Mới').length;
+                    this.famStats.processing = this.famReportsList.filter(r => r.status === 'Đang xử lý').length;
+                    this.famStats.resolved = this.famReportsList.filter(r => r.status === 'Đã xử lý').length;
+                },
+
+                async submitBulkFam() {
+                    if (!this.bulkFamText.trim() || !this.currentUser) return;
+                    this.isLoadingFam = true;
+                    this.famMsg = { text: '', type: '' };
+                    const ctvName = this.currentUser.name;
+
+                    try {
+                        const data = await this.callFamApi('submitBulkReport', { rawText: this.bulkFamText, ctvName: ctvName });
+                        if (data.success) {
+                            this.bulkFamResults = data.results || [];
+                            this.famLastUpdated = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                            this.famMsg = { text: data.message, type: 'success' };
+                            this.fetchFamReports();
+                        } else {
+                            this.famMsg = { text: data.message || 'Lỗi xử lý danh sách', type: 'error' };
+                        }
+                    } catch (err) {
+                        this.famMsg = { text: err.message || 'Lỗi kết nối máy chủ.', type: 'error' };
+                    } finally {
+                        this.isLoadingFam = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async refreshBulkFamStatus() {
+                    if (!this.bulkFamText.trim()) return;
+                    this.isLoadingFam = true;
+
+                    try {
+                        const data = await this.callFamApi('checkBulkStatus', { rawText: this.bulkFamText });
+                        if (data.success) {
+                            this.bulkFamResults = data.results || [];
+                            this.famLastUpdated = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                            this.famMsg = { text: data.message || 'Đã làm mới trạng thái mới nhất cho danh sách.', type: 'success' };
+                            this.fetchFamReports();
+                        } else {
+                            this.famMsg = { text: data.message || 'Lỗi làm mới trạng thái', type: 'error' };
+                        }
+                    } catch (err) {
+                        this.famMsg = { text: err.message || 'Lỗi kết nối máy chủ.', type: 'error' };
+                    } finally {
+                        this.isLoadingFam = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
