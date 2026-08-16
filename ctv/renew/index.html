@@ -161,7 +161,8 @@
                             <tbody class="divide-y divide-gray-100 bg-white">
                                 <template x-for="(r, idx) in bulkFamResults" :key="idx">
                                     <tr :class="!r.found ? 'bg-red-50/30' : (r.ticket_status === 'Đã xử lý' ? 'bg-green-50/30' : 'hover:bg-gray-50')">
-                                        <td class="px-4 py-3 font-medium text-gray-900" x-text="r.email"></td>
+                                        <td class="px-4 py-3 font-medium text-gray-900 cursor-pointer hover:text-blue-600 hover:underline transition-all"
+                                            @click="copyText(r.email)" title="Nhấn để sao chép email" x-text="r.email"></td>
                                         <td class="px-4 py-3 font-bold font-mono text-blue-600" x-text="r.stt_group || '---'"></td>
                                         <td class="px-4 py-3 whitespace-nowrap">
                                             <template x-if="r.found">
@@ -253,7 +254,8 @@
                             <template x-for="(item, idx) in famReportsList" :key="item.report_id || idx">
                                 <tr class="hover:bg-gray-50 transition-colors">
                                     <td class="px-4 py-3 font-mono text-gray-400" x-text="idx + 1"></td>
-                                    <td class="px-4 py-3 font-medium text-gray-900" x-text="item.customer_email"></td>
+                                    <td class="px-4 py-3 font-medium text-gray-900 cursor-pointer hover:text-blue-600 hover:underline transition-all"
+                                        @click="copyText(item.customer_email)" title="Nhấn để sao chép email" x-text="item.customer_email"></td>
                                     <td class="px-4 py-3 font-bold font-mono text-blue-600" x-text="item.stt_group"></td>
                                     <td class="px-4 py-3">
                                         <span class="px-2.5 py-1 rounded-full font-bold text-[11px] border"
@@ -288,6 +290,12 @@
 
         </main>
 
+        <!-- Toast Notification -->
+        <div x-show="toast.show" x-transition x-cloak class="fixed bottom-6 right-6 z-[100] bg-gray-900 text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 border border-gray-700">
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+            <span x-text="toast.message"></span>
+        </div>
+
         <!-- Footer -->
         <footer class="py-6 px-4 text-center border-t border-gray-200 text-xs text-gray-400">
             <p>© 2026 Go DNC — CTV Fam Issue Tracker System. All rights reserved.</p>
@@ -309,6 +317,7 @@
                 loginForm: { username: '', password: '' },
                 loginError: '',
                 currentUser: null,
+                toast: { show: false, message: '' },
 
                 bulkFamText: '',
                 bulkFamResults: [],
@@ -316,6 +325,38 @@
                 isLoadingFam: false,
                 famLastUpdated: '',
                 famMsg: { text: '', type: '' },
+
+                showToast(msg) {
+                    this.toast = { show: true, message: msg };
+                    setTimeout(() => { this.toast.show = false; }, 2500);
+                },
+
+                copyText(text) {
+                    if (!text || text === '--') return;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            this.showToast('Đã sao chép: ' + text);
+                        }).catch(() => {
+                            this.fallbackCopyText(text);
+                        });
+                    } else {
+                        this.fallbackCopyText(text);
+                    }
+                },
+
+                fallbackCopyText(text) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        this.showToast('Đã sao chép: ' + text);
+                    } catch (e) {}
+                    document.body.removeChild(textarea);
+                },
                 famStats: { total: 0, new: 0, processing: 0, resolved: 0 },
 
                 async initApp() {

@@ -230,13 +230,16 @@
 
                                 <!-- Customer Reports List Badge -->
                                 <div class="bg-gray-950/60 px-4 py-2 rounded-xl border border-gray-800 text-xs">
-                                    <div class="font-bold text-gray-200 flex items-center gap-1.5">
+                                    <div class="font-bold text-gray-200 flex items-center gap-1.5 mb-1">
                                         <i data-lucide="users" class="w-4 h-4 text-indigo-400"></i>
                                         <span class="text-indigo-300 font-bold" x-text="t.report_count"></span> khách đã báo:
                                     </div>
-                                    <div class="text-[11px] text-gray-400 mt-1 max-w-md truncate" :title="t.reported_emails?.join(', ')">
-                                        <span x-text="t.reported_emails?.slice(0,3).join(', ')"></span>
-                                        <span x-show="t.reported_emails?.length > 3">... (+<span x-text="t.reported_emails.length - 3"></span>)</span>
+                                    <div class="text-[11px] text-gray-400 max-w-md flex flex-wrap gap-1">
+                                        <template x-for="em in (t.reported_emails || [])" :key="em">
+                                            <span @click="copyText(em)"
+                                                  class="inline-block bg-gray-800/80 hover:bg-indigo-900/80 text-gray-300 hover:text-indigo-200 px-2 py-0.5 rounded cursor-pointer font-mono border border-gray-700/60 hover:border-indigo-500/50 transition-all"
+                                                  title="Bấm để sao chép email" x-text="em"></span>
+                                        </template>
                                     </div>
                                 </div>
                             </div>
@@ -318,6 +321,33 @@
                 showToast(msg, type = 'info', icon = 'info') {
                     this.toast = { show: true, message: msg, type, icon };
                     setTimeout(() => { this.toast.show = false; }, 4000);
+                },
+
+                copyText(text) {
+                    if (!text || text === '--') return;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            this.showToast('Đã sao chép email: ' + text, 'success', 'check-circle-2');
+                        }).catch(() => {
+                            this.fallbackCopyText(text);
+                        });
+                    } else {
+                        this.fallbackCopyText(text);
+                    }
+                },
+
+                fallbackCopyText(text) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        this.showToast('Đã sao chép email: ' + text, 'success', 'check-circle-2');
+                    } catch (e) {}
+                    document.body.removeChild(textarea);
                 },
 
                 formatDate(isoStr) {
