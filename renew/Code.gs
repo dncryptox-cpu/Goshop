@@ -829,6 +829,27 @@ function checkStatus(emailRaw) {
     }
   }
 
+  const historyTickets = [];
+  for (let r = 1; r < ticketsData.length; r++) {
+    const row = ticketsData[r];
+    if (String(row[1]).trim() === sttGroup) {
+      historyTickets.push({
+        ticket_id: row[0],
+        stt_group: row[1],
+        status: row[2],
+        created_at: row[3],
+        updated_at: row[4],
+        resolved_at: row[5],
+        resolved_by: row[6] || '',
+        is_recurring: Boolean(row[7]),
+        recur_count: Number(row[8] || 0),
+        note: row[9] || ''
+      });
+    }
+  }
+
+  historyTickets.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+
   return {
     success: true,
     has_ticket: true,
@@ -838,9 +859,12 @@ function checkStatus(emailRaw) {
     created_at: latestTicket.created_at,
     updated_at: latestTicket.updated_at,
     resolved_at: latestTicket.resolved_at,
+    resolved_by: latestTicket.resolved_by || '',
     is_recurring: latestTicket.is_recurring,
     recur_count: latestTicket.recur_count,
-    report_count: reportCount
+    note: latestTicket.note || '',
+    report_count: reportCount,
+    history_tickets: historyTickets
   };
 }
 
