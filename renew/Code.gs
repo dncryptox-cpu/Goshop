@@ -67,10 +67,14 @@ function handleRequest(e) {
         result = updateTicketStatus(params.ticket_id, params.newStatus, params.resolvedBy, params.note);
         break;
       case 'syncCache':
+      case 'syncEmailLookupCache':
         result = syncEmailLookupCache();
         break;
       case 'setupDatabase':
+      case 'setupTriggers':
+      case 'setupAutoSyncTrigger':
         result = setupDatabase();
+        setupAutoSyncTrigger();
         break;
       case 'getCacheInfo':
         result = { success: true, cache_info: checkCacheHealth() };
