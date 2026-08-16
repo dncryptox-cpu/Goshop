@@ -503,10 +503,6 @@
 
                 async callFamApi(action, payload) {
                     const webAppUrl = localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec';
-                    if (!webAppUrl) {
-                        return this.mockFamApi(action, payload);
-                    }
-
                     const url = new URL(webAppUrl);
                     url.searchParams.append('action', action);
 
@@ -525,89 +521,6 @@
                         return await response.json();
                     } catch (err) {
                         clearTimeout(timeoutId);
-                        console.warn('Fam API call failed, using fallback:', err);
-                        return this.mockFamApi(action, payload);
-                    }
-                },
-
-                async mockFamApi(action, payload) {
-                    await new Promise(r => setTimeout(r, 350));
-                    if (action === 'submitBulkReport' || action === 'checkBulkStatus') {
-                        const text = payload.rawText || '';
-                        const ctv = payload.ctvName || this.currentUser?.name || 'CTV';
-                        const matches = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
-                        const unique = [...new Set(matches.map(m => m.toLowerCase()))];
-                        
-                        if (unique.length === 0) {
-                            return { success: false, message: 'Không tìm thấy địa chỉ email hợp lệ nào trong đoạn văn bản đã dán.' };
-                        }
-                        if (unique.length > 50) {
-                            return { success: false, message: `Danh sách tìm thấy ${unique.length} email (vượt quá 50 email). Vui lòng chia nhỏ.` };
-                        }
-
-                        const mockCache = JSON.parse(localStorage.getItem('MOCK_FAM_CACHE') || '{"khach1@gmail.com":"RN34","khach2@gmail.com":"RN34","admin@godnc.com":"RN34"}');
-                        
-                        const results = unique.map((em, idx) => {
-                            let stt = mockCache[em];
-                            if (!stt) {
-                                stt = 'RN' + (Math.floor(Math.abs(this.hashCode(em)) % 80) + 1);
-                            }
-                            const isResolved = idx % 4 === 3;
-                            const isProcessing = idx % 4 === 1;
-                            return {
-                                email: em,
-                                found: true,
-                                stt_group: stt,
-                                ticket_status: isResolved ? 'Đã xử lý' : (isProcessing ? 'Đang xử lý' : 'Mới'),
-                                created_at: new Date(Date.now() - (idx + 1) * 3600000).toISOString(),
-                                resolved_at: isResolved ? new Date(Date.now() - idx * 1800000).toISOString() : '',
-                                is_recurring: idx % 3 === 0 && idx > 0,
-                                recur_count: idx % 3 === 0 && idx > 0 ? 2 : 0,
-                                note: isResolved ? 'Đã xử lý xong' : (isProcessing ? 'Đã báo trước đó, admin đang xử lý' : 'Vừa ghi nhận')
-                            };
-                        });
-
-                        const found = results.filter(r => r.found).length;
-                        return {
-                            success: true,
-                            ctv_name: ctv,
-                            total: unique.length,
-                            found_count: found,
-                            not_found_count: unique.length - found,
-                            results: results,
-                            message: `Đã xử lý xong ${unique.length} email (${found} thành công, ${unique.length - found} không tìm thấy).`
-                        };
-                    } else if (action === 'listCtvReports') {
-                        const sampleReports = [
-                            {
-                                report_id: 'RP-1001',
-                                customer_email: 'Lienvisboy2002@gmail.com',
-                                stt_group: 'RN14',
-                                status: 'Mới',
-                                reported_at: new Date(Date.now() - 1800000).toISOString(),
-                                resolved_at: '',
-                                is_recurring: false,
-                                recur_count: 0
-                            },
-                            {
-                                report_id: 'RP-1002',
-                                customer_email: 'duongthanh7677@gmail.com',
-                                stt_group: 'RN35',
-                                status: 'Đang xử lý',
-                                reported_at: new Date(Date.now() - 3600000).toISOString(),
-                                resolved_at: '',
-                                is_recurring: true,
-                                recur_count: 2
-                            },
-                            {
-                                report_id: 'RP-1003',
-                                customer_email: 'leanhducd880@gmail.com',
-                                stt_group: 'RN9',
-                                status: 'Đã xử lý',
-                                reported_at: new Date(Date.now() - 7200000).toISOString(),
-                                resolved_at: new Date(Date.now() - 6900000).toISOString(),
-                                is_recurring: false,
-                                recur_count: 0
                             }
                         ];
                         return { success: true, reports: sampleReports };
