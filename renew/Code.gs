@@ -1302,8 +1302,39 @@ function getTicketsFeed(ctvNameRaw, feedType) {
     return { success: true, total: 0, feed: [] };
   }
 
-  // 1. Map stt_group -> Owner Email & Set of CTV names & email -> ctv name from EMAIL_LOOKUP_CACHE
+  // 1. Map stt_group -> Owner Email directly from tab STOCK in Kho TK
   const sttOwnerMap = {};
+  try {
+    const khoSs = SpreadsheetApp.openById(KHO_TK_ID);
+    const stockSheet = khoSs.getSheetByName('STOCK') || khoSs.getSheetByName('Stock') || khoSs.getSheetByName('stock');
+    if (stockSheet && stockSheet.getLastRow() > 1) {
+      const sData = stockSheet.getDataRange().getValues();
+      let sSttCol = -1;
+      let sEmailCol = -1;
+      for (let r = 0; r < Math.min(10, sData.length); r++) {
+        for (let c = 0; c < sData[r].length; c++) {
+          const cellStr = String(sData[r][c] || '').trim().toLowerCase();
+          if (cellStr === 'stt' || cellStr === 'mã' || cellStr.includes('stt')) sSttCol = c;
+          if (cellStr === 'email' || cellStr.includes('email')) sEmailCol = c;
+        }
+        if (sSttCol !== -1 && sEmailCol !== -1) break;
+      }
+      if (sSttCol === -1) sSttCol = 0;
+      if (sEmailCol === -1) sEmailCol = 1;
+
+      for (let r = 1; r < sData.length; r++) {
+        const stt = String(sData[r][sSttCol] || '').trim();
+        const em = String(sData[r][sEmailCol] || '').trim().toLowerCase();
+        if (stt && em && em.includes('@')) {
+          sttOwnerMap[stt] = em;
+        }
+      }
+    }
+  } catch (errStock) {
+    Logger.log('Cảnh báo đọc tab STOCK trực tiếp: ' + errStock.toString());
+  }
+
+  // Also read cache for emailCtvMap & sttCtvMap, and fallback sttOwnerMap if needed
   const emailCtvMap = {};
   const sttCtvMap = {};
   if (cacheSheet && cacheSheet.getLastRow() > 1) {
@@ -1314,7 +1345,7 @@ function getTicketsFeed(ctvNameRaw, feedType) {
       const ownerEm = String(cData[i][3] || '').trim();
       const ctvVal = cData[i][4] ? String(cData[i][4]).trim() : '';
 
-      if (stt && ownerEm && ownerEm.includes('@')) {
+      if (stt && ownerEm && ownerEm.includes('@') && !sttOwnerMap[stt]) {
         sttOwnerMap[stt] = ownerEm;
       }
       if (em && ctvVal) {
