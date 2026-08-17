@@ -1277,7 +1277,8 @@ function getTicketsFeed(ctvNameRaw, feedType) {
     return { success: true, total: 0, feed: [] };
   }
 
-  // 1. Map stt_group -> Set of CTV names & email -> ctv name from EMAIL_LOOKUP_CACHE
+  // 1. Map stt_group -> Owner Email & Set of CTV names & email -> ctv name from EMAIL_LOOKUP_CACHE
+  const sttOwnerMap = {};
   const emailCtvMap = {};
   const sttCtvMap = {};
   if (cacheSheet && cacheSheet.getLastRow() > 1) {
@@ -1285,7 +1286,12 @@ function getTicketsFeed(ctvNameRaw, feedType) {
     for (let i = 1; i < cData.length; i++) {
       const em = String(cData[i][0] || '').trim().toLowerCase();
       const stt = String(cData[i][1] || '').trim();
+      const ownerEm = String(cData[i][3] || '').trim();
       const ctvVal = cData[i][4] ? String(cData[i][4]).trim() : '';
+
+      if (stt && ownerEm && ownerEm.includes('@')) {
+        sttOwnerMap[stt] = ownerEm;
+      }
       if (em && ctvVal) {
         emailCtvMap[em] = ctvVal;
       }
