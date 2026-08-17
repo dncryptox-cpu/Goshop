@@ -289,27 +289,59 @@ function syncEmailLookupCache() {
 
     Logger.log('Tìm thấy tiêu đề "Email khách" ở Hàng ' + (headerRowIdx + 1) + ', Cột ' + (emailColIdx + 1) + '. Bắt đầu đọc dữ liệu từ Hàng ' + (startDataRow + 1));
 
+    const cacheMap = {};
+    const ownerMap = {};
+    const ctvMap = {};
+    const nowIso = new Date().toISOString();
+
+    // Read Master/Owner emails directly from tab STOCK if present
+    const stockSheet = khoSpreadsheet.getSheetByName('STOCK') || khoSpreadsheet.getSheetByName('Stock') || khoSpreadsheet.getSheetByName('stock');
+    if (stockSheet && stockSheet.getLastRow() > 1) {
+      const stockData = stockSheet.getDataRange().getValues();
+      let sHeaderRowIdx = -1;
+      let sSttColIdx = -1;
+      let sEmailColIdx = -1;
+
+      for (let r = 0; r < Math.min(10, stockData.length); r++) {
+        const row = stockData[r];
+        for (let c = 0; c < row.length; c++) {
+          const cellStr = String(row[c] || '').trim().toLowerCase();
+          if (cellStr === 'stt' || cellStr === 'mã' || cellStr.includes('stt')) {
+            sSttColIdx = c;
+          }
+          if (cellStr === 'email' || cellStr === 'email gốc' || cellStr.includes('email')) {
+            sEmailColIdx = c;
+          }
+        }
+        if (sSttColIdx !== -1 && sEmailColIdx !== -1) {
+          sHeaderRowIdx = r;
+          break;
+        }
+      }
+
+      if (sSttColIdx === -1) sSttColIdx = 0;
+      if (sEmailColIdx === -1) sEmailColIdx = 1;
+      const sStartRow = sHeaderRowIdx !== -1 ? sHeaderRowIdx + 1 : 1;
+
+      for (let r = sStartRow; r < stockData.length; r++) {
+        const sttVal = String(stockData[r][sSttColIdx] || '').trim();
+        const emailVal = String(stockData[r][sEmailColIdx] || '').trim().toLowerCase();
+        if (sttVal && emailVal && emailVal.includes('@')) {
+          ownerMap[sttVal] = emailVal;
+        }
+      }
+      Logger.log('Đã đọc được ' + Object.keys(ownerMap).length + ' tài khoản chủ gia đình từ tab STOCK.');
+    }
+
+    // Read ownerColIdx in DATA sheet ONLY if header explicitly states owner/master/chủ fam
     let ownerColIdx = -1;
     const headerRow = data[headerRowIdx];
     for (let c = 0; c < headerRow.length; c++) {
       if (c === emailColIdx) continue;
       const cellStr = String(headerRow[c] || '').trim().toLowerCase();
-      if (cellStr.includes('chủ') || cellStr.includes('mẹ') || cellStr.includes('master') || 
-          cellStr.includes('quản trị') || cellStr.includes('gốc') || cellStr.includes('admin') || 
-          cellStr.includes('owner') || cellStr.includes('tài khoản') || cellStr.includes('acc') ||
-          cellStr.includes('mail') || cellStr.includes('gmail') || cellStr === 'id') {
+      if (cellStr.includes('chủ fam') || cellStr.includes('tài khoản mẹ') || cellStr.includes('email gốc') || cellStr.includes('master') || cellStr.includes('owner')) {
         ownerColIdx = c;
         break;
-      }
-    }
-
-    if (ownerColIdx === -1 && emailColIdx !== 1 && data.length > startDataRow) {
-      for (let r = startDataRow; r < Math.min(startDataRow + 10, data.length); r++) {
-        const val = String(data[r][1] || '').trim();
-        if (val.includes('@')) {
-          ownerColIdx = 1;
-          break;
-        }
       }
     }
 
@@ -321,11 +353,6 @@ function syncEmailLookupCache() {
         break;
       }
     }
-
-    const cacheMap = {};
-    const ownerMap = {};
-    const ctvMap = {};
-    const nowIso = new Date().toISOString();
 
     let currentSttGroup = '';
 
@@ -353,8 +380,6 @@ function syncEmailLookupCache() {
 
       if (ownerEmailClean && ownerEmailClean.includes('@') && !ownerMap[currentSttGroup]) {
         ownerMap[currentSttGroup] = ownerEmailClean;
-      } else if (emailClean && emailClean.includes('@') && !ownerMap[currentSttGroup]) {
-        ownerMap[currentSttGroup] = emailClean;
       }
 
       if (emailClean && emailClean.includes('@')) {
