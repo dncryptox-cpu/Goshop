@@ -1230,17 +1230,21 @@ function getFixedSlotsFeed(ctvNameRaw) {
     }
   }
 
-  // 2. Map ticket_id -> reports count & submitted_by CTVs from REPORTS
+  // 2. Map ticket_id -> reports count, emails & submitted_by CTVs from REPORTS
   const reportStatsMap = {};
   if (reportsSheet && reportsSheet.getLastRow() > 1) {
     const rData = reportsSheet.getDataRange().getValues();
     for (let i = 1; i < rData.length; i++) {
       const ticketId = String(rData[i][1]).trim();
+      const email = String(rData[i][2] || '').trim().toLowerCase();
       const submittedBy = rData[i][5] ? String(rData[i][5]).trim().toLowerCase() : '';
       if (!reportStatsMap[ticketId]) {
-        reportStatsMap[ticketId] = { count: 0, ctvs: new Set() };
+        reportStatsMap[ticketId] = { count: 0, ctvs: new Set(), emails: [] };
       }
       reportStatsMap[ticketId].count++;
+      if (email && reportStatsMap[ticketId].emails.indexOf(email) === -1) {
+        reportStatsMap[ticketId].emails.push(email);
+      }
       if (submittedBy) {
         reportStatsMap[ticketId].ctvs.add(submittedBy);
       }
@@ -1261,7 +1265,7 @@ function getFixedSlotsFeed(ctvNameRaw) {
       const resolvedAt = row[5] || row[4] || row[3];
       const note = row[9] || '';
 
-      const rStats = reportStatsMap[ticketId] || { count: 0, ctvs: new Set() };
+      const rStats = reportStatsMap[ticketId] || { count: 0, ctvs: new Set(), emails: [] };
       
       let isRelevant = false;
       if (ctvNameClean) {
@@ -1282,6 +1286,7 @@ function getFixedSlotsFeed(ctvNameRaw) {
         resolved_by: row[6] || 'Admin',
         note: note,
         affected_count: Math.max(1, rStats.count),
+        customer_emails: rStats.emails || [],
         is_relevant_to_ctv: isRelevant
       });
     }
