@@ -9,7 +9,7 @@
 const KHO_TK_ID = '1Agq-0ITsQgzhwnWvQTUthAjS2e8zJfgNd8dGGkCDniA';
 const KHO_TK_TAB_NAME = 'DATA';
 const RECUR_WINDOW_HOURS = 24; // Cấu hình thời gian tính tái phát (giờ)
-const STALE_CACHE_THRESHOLD_HOURS = 3; // Ngưỡng cảnh báo cache cũ (giờ)
+const STALE_CACHE_THRESHOLD_HOURS = 6; // Ngưỡng cảnh báo cache cũ (giờ)
 
 /**
  * Endpoint nhận Request qua HTTP GET / POST
@@ -326,6 +326,27 @@ function syncEmailLookupCache() {
     return { success: false, message: 'Lỗi đồng bộ cache: ' + err.toString() };
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * Tự động đăng ký Time-Driven Trigger đồng bộ mỗi 1 giờ trong Apps Script
+ */
+function setupAutoSyncTrigger() {
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === 'syncEmailLookupCache') {
+        return { success: true, message: 'Trigger tự động đồng bộ Kho TK mỗi 1 giờ đã tồn tại.' };
+      }
+    }
+    ScriptApp.newTrigger('syncEmailLookupCache')
+      .timeBased()
+      .everyHours(1)
+      .create();
+    return { success: true, message: 'Đã tạo Trigger tự động đồng bộ Kho TK mỗi 1 giờ thành công!' };
+  } catch (err) {
+    return { success: false, message: 'Lỗi đăng ký trigger tự động: ' + err.toString() };
   }
 }
 
@@ -880,7 +901,15 @@ function listTickets(filterStatus) {
   const ticketsSheet = ss.getSheetByName('TICKETS');
   const reportsSheet = ss.getSheetByName('REPORTS');
 
-  const cacheHealth = checkCacheHealth();
+  let cacheHealth = checkCacheHealth();
+  if (cacheHealth.cache_stale) {
+    try {
+      syncEmailLookupCache();
+      cacheHealth = checkCacheHealth();
+    } catch (e) {
+      Logger.log('Auto sync warning: ' + e.toString());
+    }
+  }
 
   if (!ticketsSheet || ticketsSheet.getLastRow() <= 1) {
     return { 
