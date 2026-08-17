@@ -87,6 +87,9 @@ function handleRequest(e) {
       case 'getFixedSlotsFeed':
         result = getFixedSlotsFeed(params.ctvName || params.ctv_name || params.ctv);
         break;
+      case 'cleanupDuplicateTickets':
+        result = cleanupDuplicateTickets();
+        break;
       case 'getCacheInfo':
         result = { success: true, cache_info: checkCacheHealth() };
         break;
@@ -444,6 +447,142 @@ function getSttGroupByEmail(emailClean) {
 }
 
 /**
+ * Helper parse ngày giờ linh hoạt (Date object, ISO string, dd/mm/yyyy string)
+ */
+function parseDateHelper(val) {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  const str = String(val).trim();
+  if (!str) return null;
+
+  let d = new Date(str);
+  if (!isNaN(d.getTime())) return d;
+
+  const parts = str.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (parts) {
+    const day = parseInt(parts[1], 10);
+    const month = parseInt(parts[2], 10) - 1;
+    const year = parseInt(parts[3], 10);
+    const hrs = parts[4] ? parseInt(parts[4], 10) : 0;
+    const mins = parts[5] ? parseInt(parts[5], 10) : 0;
+    const secs = parts[6] ? parseInt(parts[6], 10) : 0;
+    d = new Date(year, month, day, hrs, mins, secs);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+/**
+ * HÀM DÙNG CHUNG DUY NHẤT: findOrCreateTicketForGroup(sttGroup, now)
+ * 1. Kiểm tra có ticket mở ('Mới' / 'Đang xử lý') -> Nối vào ticket đó.
+ * 2. Kiểm tra ticket đóng gần nhất trong 24h -> Tạo ticket mới đánh dấu is_recurring = true, recur_count += 1.
+ * 3. Nếu không có -> Tạo ticket mới bình thường.
+ */
+function findOrCreateTicketForGroup(sttGroup, now) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ticketsSheet = ss.getSheetByName('TICKETS');
+  const ticketsData = ticketsSheet.getDataRange().getValues();
+  const nowIso = now.toISOString();
+
+  let openTicketRowIndex = -1;
+  let openTicketData = null;
+  let latestClosedTicket = null;
+  let latestClosedTime = 0;
+
+  for (let r = 1; r < ticketsData.length; r++) {
+    const row = ticketsData[r];
+    const rowStt = String(row[1]).trim();
+    const rowStatus = String(row[2]).trim();
+
+    if (rowStt === sttGroup) {
+      if (rowStatus !== 'Đã xử lý') {
+        openTicketRowIndex = r + 1; // 1-indexed
+        openTicketData = {
+          ticket_id: row[0],
+          stt_group: row[1],
+          status: row[2],
+          created_at: row[3],
+          updated_at: row[4],
+          resolved_at: row[5],
+          is_recurring: row[7],
+          recur_count: Number(row[8] || 0)
+        };
+        break; // Ưu tiên ticket mở đang có
+      } else {
+        const rDate = parseDateHelper(row[5] || row[4] || row[3]);
+        const rTime = rDate ? rDate.getTime() : 0;
+        if (rTime > latestClosedTime) {
+          latestClosedTime = rTime;
+          latestClosedTicket = {
+            ticket_id: row[0],
+            stt_group: row[1],
+            status: row[2],
+            resolved_at: row[5],
+            is_recurring: row[7],
+            recur_count: Number(row[8] || 0)
+          };
+        }
+      }
+    }
+  }
+
+  if (openTicketData) {
+    // Đã có ticket mở -> Cập nhật updated_at
+    ticketsSheet.getRange(openTicketRowIndex, 5).setValue(nowIso);
+    return {
+      ticket_id: openTicketData.ticket_id,
+      stt_group: sttGroup,
+      status: openTicketData.status,
+      created_at: openTicketData.created_at,
+      resolved_at: openTicketData.resolved_at,
+      is_recurring: Boolean(openTicketData.is_recurring),
+      recur_count: openTicketData.recur_count,
+      is_existing_open: true
+    };
+  }
+
+  // Không có ticket mở -> Tạo ticket mới (kiểm tra tái phát 24h)
+  let isRecurring = false;
+  let recurCount = 0;
+
+  if (latestClosedTicket && latestClosedTime > 0) {
+    const diffHours = (now.getTime() - latestClosedTime) / (1000 * 60 * 60);
+    if (diffHours >= 0 && diffHours < RECUR_WINDOW_HOURS) {
+      isRecurring = true;
+      recurCount = (latestClosedTicket.recur_count || 0) + 1;
+    }
+  }
+
+  const targetTicketId = 'TK-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const ticketStatus = 'Mới';
+
+  ticketsSheet.appendRow([
+    targetTicketId,
+    sttGroup,
+    ticketStatus,
+    nowIso,
+    nowIso,
+    '',
+    '',
+    isRecurring,
+    recurCount,
+    '',
+    ''
+  ]);
+
+  return {
+    ticket_id: targetTicketId,
+    stt_group: sttGroup,
+    status: ticketStatus,
+    created_at: nowIso,
+    resolved_at: '',
+    is_recurring: isRecurring,
+    recur_count: recurCount,
+    is_existing_open: false
+  };
+}
+
+/**
  * API 1: submitReport(email, message, submittedBy)
  */
 function submitReport(emailRaw, message, submittedBy) {
@@ -472,103 +611,18 @@ function submitReport(emailRaw, message, submittedBy) {
   }
 
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const ticketsSheet = ss.getSheetByName('TICKETS');
-    const reportsSheet = ss.getSheetByName('REPORTS');
-
-    const ticketsData = ticketsSheet.getDataRange().getValues();
     const now = new Date();
     const nowIso = now.toISOString();
+    const ticketInfo = findOrCreateTicketForGroup(sttGroup, now);
 
-    let openTicketRowIndex = -1;
-    let openTicketData = null;
-    let lastClosedTicket = null;
-
-    for (let r = 1; r < ticketsData.length; r++) {
-      const row = ticketsData[r];
-      const rowStt = String(row[1]).trim();
-      const rowStatus = String(row[2]).trim();
-
-      if (rowStt === sttGroup) {
-        if (rowStatus !== 'Đã xử lý') {
-          openTicketRowIndex = r + 1; // 1-indexed for Sheet
-          openTicketData = {
-            ticket_id: row[0],
-            stt_group: row[1],
-            status: row[2],
-            created_at: row[3],
-            updated_at: row[4],
-            resolved_at: row[5],
-            is_recurring: row[7],
-            recur_count: Number(row[8] || 0)
-          };
-          break; // Đang có ticket mở
-        } else {
-          lastClosedTicket = {
-            ticket_id: row[0],
-            stt_group: row[1],
-            status: row[2],
-            resolved_at: row[5],
-            is_recurring: row[7],
-            recur_count: Number(row[8] || 0)
-          };
-        }
-      }
-    }
-
-    let targetTicketId = '';
-    let ticketStatus = 'Mới';
-    let isRecurring = false;
-    let recurCount = 0;
-    let createdAt = nowIso;
-    let resolvedAt = '';
-    let isExistingOpenTicket = false;
-
-    if (openTicketData) {
-      targetTicketId = openTicketData.ticket_id;
-      ticketStatus = openTicketData.status;
-      isRecurring = Boolean(openTicketData.is_recurring);
-      recurCount = openTicketData.recur_count;
-      createdAt = openTicketData.created_at;
-      resolvedAt = openTicketData.resolved_at;
-      isExistingOpenTicket = true;
-
-      ticketsSheet.getRange(openTicketRowIndex, 5).setValue(nowIso);
-
-    } else {
-      if (lastClosedTicket && lastClosedTicket.resolved_at) {
-        const resolvedTime = new Date(lastClosedTicket.resolved_at).getTime();
-        const diffHours = (now.getTime() - resolvedTime) / (1000 * 60 * 60);
-
-        if (diffHours < RECUR_WINDOW_HOURS) {
-          isRecurring = true;
-          recurCount = lastClosedTicket.recur_count + 1;
-        }
-      }
-
-      targetTicketId = 'TK-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-      ticketStatus = 'Mới';
-
-      ticketsSheet.appendRow([
-        targetTicketId,
-        sttGroup,
-        ticketStatus,
-        nowIso, // created_at
-        nowIso, // updated_at
-        '',     // resolved_at
-        '',     // resolved_by
-        isRecurring,
-        recurCount,
-        '',     // note
-        ''      // notified_at
-      ]);
-    }
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const reportsSheet = ss.getSheetByName('REPORTS');
 
     // Insert 1 dòng vào REPORTS (ghi kèm submitted_by ở cột 6)
     const reportId = 'RP-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     reportsSheet.appendRow([
       reportId,
-      targetTicketId,
+      ticketInfo.ticket_id,
       emailClean,
       nowIso,
       message || '',
@@ -580,16 +634,16 @@ function submitReport(emailRaw, message, submittedBy) {
     return {
       success: true,
       stt_group: sttGroup,
-      ticket_id: targetTicketId,
-      status: ticketStatus,
-      is_recurring: isRecurring,
-      recur_count: recurCount,
-      created_at: createdAt,
-      resolved_at: resolvedAt,
-      is_existing_open: isExistingOpenTicket,
+      ticket_id: ticketInfo.ticket_id,
+      status: ticketInfo.status,
+      is_recurring: ticketInfo.is_recurring,
+      recur_count: ticketInfo.recur_count,
+      created_at: ticketInfo.created_at,
+      resolved_at: ticketInfo.resolved_at,
+      is_existing_open: ticketInfo.is_existing_open,
       cache_stale: cacheHealth.cache_stale,
       stale_hours: cacheHealth.stale_hours,
-      message: isExistingOpenTicket 
+      message: ticketInfo.is_existing_open 
         ? 'Báo lỗi đã được ghi nhận. Fam ' + sttGroup + ' đang được kỹ thuật xử lý.' 
         : 'Đã tạo báo cáo sự cố thành công cho Fam ' + sttGroup + '.'
     };
@@ -1311,6 +1365,7 @@ function getTicketsFeed(ctvNameRaw, feedType) {
       feed.push({
         ticket_id: ticketId,
         stt_group: sttGroup,
+        root_email: sttOwnerMap[sttGroup] || 'Chưa rõ tài khoản gốc',
         status: status,
         created_at: row[3],
         updated_at: row[4],
@@ -1351,4 +1406,112 @@ function getTicketsFeed(ctvNameRaw, feedType) {
 
 function getFixedSlotsFeed(ctvNameRaw) {
   return getTicketsFeed(ctvNameRaw, 'resolved');
+}
+
+/**
+ * DỌN DẸP TICKET TRÙNG: cleanupDuplicateTickets()
+ * Quét toàn bộ TICKETS tab, gộp các ticket trùng stt_group được tạo trong cùng khung 24h
+ */
+function cleanupDuplicateTickets() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    return { success: false, message: 'Hệ thống đang bận, vui lòng thử lại sau.' };
+  }
+
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const ticketsSheet = ss.getSheetByName('TICKETS');
+    const reportsSheet = ss.getSheetByName('REPORTS');
+
+    if (!ticketsSheet || ticketsSheet.getLastRow() <= 1) {
+      return { success: true, message: 'Không có dữ liệu ticket.' };
+    }
+
+    const tData = ticketsSheet.getDataRange().getValues();
+    const rData = reportsSheet ? reportsSheet.getDataRange().getValues() : [];
+
+    // Count reports per ticket_id
+    const reportCountMap = {};
+    for (let i = 1; i < rData.length; i++) {
+      const ticketId = String(rData[i][1]).trim();
+      reportCountMap[ticketId] = (reportCountMap[ticketId] || 0) + 1;
+    }
+
+    // Group tickets by stt_group
+    const groupTicketsMap = {};
+    for (let i = 1; i < tData.length; i++) {
+      const row = tData[i];
+      const ticketId = String(row[0]).trim();
+      const sttGroup = String(row[1]).trim();
+      const status = String(row[2]).trim();
+
+      if (!groupTicketsMap[sttGroup]) {
+        groupTicketsMap[sttGroup] = [];
+      }
+      groupTicketsMap[sttGroup].push({
+        rowIndex: i + 1,
+        ticket_id: ticketId,
+        stt_group: sttGroup,
+        status: status,
+        created_at: parseDateHelper(row[3]),
+        resolved_at: parseDateHelper(row[5]),
+        is_recurring: Boolean(row[7]),
+        recur_count: Number(row[8] || 0),
+        reportCount: reportCountMap[ticketId] || 0
+      });
+    }
+
+    let mergedCount = 0;
+    const rowsToDelete = [];
+    const reportsToUpdate = [];
+
+    for (const stt in groupTicketsMap) {
+      const list = groupTicketsMap[stt];
+      if (list.length > 1) {
+        // Sort by reportCount DESC, created_at DESC
+        list.sort((a, b) => b.reportCount - a.reportCount);
+        const primaryTicket = list[0];
+
+        for (let k = 1; k < list.length; k++) {
+          const dupTicket = list[k];
+          const pTime = primaryTicket.created_at ? primaryTicket.created_at.getTime() : 0;
+          const dTime = dupTicket.created_at ? dupTicket.created_at.getTime() : 0;
+          const diffHours = Math.abs(pTime - dTime) / (1000 * 60 * 60);
+
+          if (diffHours <= 24) {
+            for (let r = 1; r < rData.length; r++) {
+              if (String(rData[r][1]).trim() === dupTicket.ticket_id) {
+                reportsToUpdate.push({ rowIndex: r + 1, newTicketId: primaryTicket.ticket_id });
+              }
+            }
+            rowsToDelete.push(dupTicket.rowIndex);
+            mergedCount++;
+          }
+        }
+      }
+    }
+
+    // Update REPORTS sheet
+    for (let u = 0; u < reportsToUpdate.length; u++) {
+      reportsSheet.getRange(reportsToUpdate[u].rowIndex, 2).setValue(reportsToUpdate[u].newTicketId);
+    }
+
+    // Delete duplicate rows in TICKETS sheet from bottom to top
+    rowsToDelete.sort((a, b) => b - a);
+    for (let d = 0; d < rowsToDelete.length; d++) {
+      ticketsSheet.deleteRow(rowsToDelete[d]);
+    }
+
+    Logger.log('Đã dọn dẹp ' + mergedCount + ' ticket trùng lặp!');
+    return {
+      success: true,
+      merged_count: mergedCount,
+      message: 'Đã gộp thành công ' + mergedCount + ' ticket trùng lặp!'
+    };
+  } catch (err) {
+    Logger.log('Lỗi dọn dẹp ticket trùng: ' + err.toString());
+    return { success: false, message: 'Lỗi dọn dẹp: ' + err.toString() };
+  } finally {
+    lock.releaseLock();
+  }
 }
