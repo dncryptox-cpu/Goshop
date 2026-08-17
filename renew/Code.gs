@@ -324,36 +324,40 @@ function syncEmailLookupCache() {
     const ctvMap = {};
     const nowIso = new Date().toISOString();
 
+    let currentSttGroup = '';
+
     for (let r = startDataRow; r < data.length; r++) {
       const sttRaw = data[r][sttColIdx];
+      if (sttRaw && String(sttRaw).trim()) {
+        currentSttGroup = String(sttRaw).trim();
+      }
+
+      if (!currentSttGroup) continue;
+
+      // Extract email & CTV STRICTLY from current row r (no carry-forward!)
       const emailRaw = data[r][emailColIdx];
+      const emailClean = emailRaw ? String(emailRaw).trim().toLowerCase() : '';
 
-      if (sttRaw) {
-        const sttClean = String(sttRaw).trim();
-        const emailClean = emailRaw ? String(emailRaw).trim().toLowerCase() : '';
+      let ownerEmailClean = '';
+      if (ownerColIdx !== -1 && data[r][ownerColIdx]) {
+        ownerEmailClean = String(data[r][ownerColIdx]).trim().toLowerCase();
+      }
 
-        let ownerEmailClean = '';
-        if (ownerColIdx !== -1 && data[r][ownerColIdx]) {
-          ownerEmailClean = String(data[r][ownerColIdx]).trim().toLowerCase();
-        }
+      let ctvClean = '';
+      if (ctvColIdx !== -1 && data[r][ctvColIdx]) {
+        ctvClean = String(data[r][ctvColIdx]).trim();
+      }
 
-        let ctvClean = '';
-        if (ctvColIdx !== -1 && data[r][ctvColIdx]) {
-          ctvClean = String(data[r][ctvColIdx]).trim();
-        }
+      if (ownerEmailClean && ownerEmailClean.includes('@') && !ownerMap[currentSttGroup]) {
+        ownerMap[currentSttGroup] = ownerEmailClean;
+      } else if (emailClean && emailClean.includes('@') && !ownerMap[currentSttGroup]) {
+        ownerMap[currentSttGroup] = emailClean;
+      }
 
-        if (ownerEmailClean && ownerEmailClean.includes('@')) {
-          ownerMap[sttClean] = ownerEmailClean;
-        } else if (emailClean && emailClean.includes('@') && !ownerMap[sttClean]) {
-          ownerMap[sttClean] = emailClean;
-        }
-
-        if (emailClean && emailClean.includes('@')) {
-          cacheMap[emailClean] = sttClean;
-          if (ctvClean) {
-            ctvMap[emailClean] = ctvClean;
-          }
-        }
+      if (emailClean && emailClean.includes('@')) {
+        cacheMap[emailClean] = currentSttGroup;
+        // CTV is strictly bound to current row r only (never inherited from previous rows)
+        ctvMap[emailClean] = ctvClean || '';
       }
     }
 
@@ -1219,16 +1223,21 @@ function getTicketsFeed(ctvNameRaw, feedType) {
     return { success: true, total: 0, feed: [] };
   }
 
-  // 1. Map stt_group -> Set of CTV names from EMAIL_LOOKUP_CACHE
+  // 1. Map stt_group -> Set of CTV names & email -> ctv name from EMAIL_LOOKUP_CACHE
+  const emailCtvMap = {};
   const sttCtvMap = {};
   if (cacheSheet && cacheSheet.getLastRow() > 1) {
     const cData = cacheSheet.getDataRange().getValues();
     for (let i = 1; i < cData.length; i++) {
-      const stt = String(cData[i][1]).trim();
-      const ctvVal = cData[i][4] ? String(cData[i][4]).trim().toLowerCase() : '';
+      const em = String(cData[i][0] || '').trim().toLowerCase();
+      const stt = String(cData[i][1] || '').trim();
+      const ctvVal = cData[i][4] ? String(cData[i][4]).trim() : '';
+      if (em && ctvVal) {
+        emailCtvMap[em] = ctvVal;
+      }
       if (stt && ctvVal) {
         if (!sttCtvMap[stt]) sttCtvMap[stt] = new Set();
-        sttCtvMap[stt].add(ctvVal);
+        sttCtvMap[stt].add(ctvVal.toLowerCase());
       }
     }
   }
@@ -1240,7 +1249,7 @@ function getTicketsFeed(ctvNameRaw, feedType) {
     for (let i = 1; i < rData.length; i++) {
       const ticketId = String(rData[i][1]).trim();
       const email = String(rData[i][2] || '').trim().toLowerCase();
-      const submittedBy = rData[i][5] ? String(rData[i][5]).trim().toLowerCase() : '';
+      const submittedBy = rData[i][5] ? String(rData[i][5]).trim() : '';
       if (!reportStatsMap[ticketId]) {
         reportStatsMap[ticketId] = { count: 0, ctvs: new Set(), emails: [] };
       }
@@ -1248,8 +1257,11 @@ function getTicketsFeed(ctvNameRaw, feedType) {
       if (email && reportStatsMap[ticketId].emails.indexOf(email) === -1) {
         reportStatsMap[ticketId].emails.push(email);
       }
+      if (email && submittedBy && !emailCtvMap[email]) {
+        emailCtvMap[email] = submittedBy;
+      }
       if (submittedBy) {
-        reportStatsMap[ticketId].ctvs.add(submittedBy);
+        reportStatsMap[ticketId].ctvs.add(submittedBy.toLowerCase());
       }
     }
   }
@@ -1285,6 +1297,17 @@ function getTicketsFeed(ctvNameRaw, feedType) {
         }
       }
 
+      const customerDetails = [];
+      const emailList = rStats.emails || [];
+      for (let e = 0; e < emailList.length; e++) {
+        const em = emailList[e];
+        const ctvVal = emailCtvMap[em] || '';
+        customerDetails.push({
+          email: em,
+          ctv: ctvVal
+        });
+      }
+
       feed.push({
         ticket_id: ticketId,
         stt_group: sttGroup,
@@ -1297,7 +1320,8 @@ function getTicketsFeed(ctvNameRaw, feedType) {
         recur_count: recurCount,
         note: note,
         affected_count: Math.max(1, rStats.count),
-        customer_emails: rStats.emails || [],
+        customer_emails: emailList,
+        customer_details: customerDetails,
         is_relevant_to_ctv: isRelevant
       });
     }
