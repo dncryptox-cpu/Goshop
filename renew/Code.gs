@@ -80,6 +80,9 @@ function handleRequest(e) {
         result = setupDatabase();
         setupAutoSyncTrigger();
         break;
+      case 'getFixedSlotsFeed':
+        result = getFixedSlotsFeed(params.ctvName || params.ctv_name || params.ctv);
+        break;
       case 'getCacheInfo':
         result = { success: true, cache_info: checkCacheHealth() };
         break;
@@ -148,8 +151,13 @@ function setupDatabase() {
     cacheSheet = ss.insertSheet('EMAIL_LOOKUP_CACHE');
   }
   if (cacheSheet.getLastRow() === 0) {
-    cacheSheet.appendRow(['email', 'stt_group', 'synced_at', 'owner_email']);
-    cacheSheet.getRange(1, 1, 1, 4).setFontWeight('bold');
+    cacheSheet.appendRow(['email', 'stt_group', 'synced_at', 'owner_email', 'ctv']);
+    cacheSheet.getRange(1, 1, 1, 5).setFontWeight('bold');
+  } else {
+    const headers = cacheSheet.getRange(1, 1, 1, Math.max(5, cacheSheet.getLastColumn())).getValues()[0];
+    if (!headers[4] || String(headers[4]).trim() !== 'ctv') {
+      cacheSheet.getRange(1, 5).setValue('ctv').setFontWeight('bold');
+    }
   }
 
   return { success: true, message: 'Đã khởi tạo/cập nhật xong cấu trúc các tab TICKETS, REPORTS, EMAIL_LOOKUP_CACHE' };
@@ -298,8 +306,18 @@ function syncEmailLookupCache() {
       }
     }
 
+    let ctvColIdx = -1;
+    for (let c = 0; c < headerRow.length; c++) {
+      const cellStr = String(headerRow[c] || '').trim();
+      if (cellStr.toUpperCase() === 'CTV' || cellStr.toLowerCase() === 'ctv') {
+        ctvColIdx = c;
+        break;
+      }
+    }
+
     const cacheMap = {};
     const ownerMap = {};
+    const ctvMap = {};
     const nowIso = new Date().toISOString();
 
     for (let r = startDataRow; r < data.length; r++) {
@@ -315,6 +333,11 @@ function syncEmailLookupCache() {
           ownerEmailClean = String(data[r][ownerColIdx]).trim().toLowerCase();
         }
 
+        let ctvClean = '';
+        if (ctvColIdx !== -1 && data[r][ctvColIdx]) {
+          ctvClean = String(data[r][ctvColIdx]).trim();
+        }
+
         if (ownerEmailClean && ownerEmailClean.includes('@')) {
           ownerMap[sttClean] = ownerEmailClean;
         } else if (emailClean && emailClean.includes('@') && !ownerMap[sttClean]) {
@@ -323,6 +346,9 @@ function syncEmailLookupCache() {
 
         if (emailClean && emailClean.includes('@')) {
           cacheMap[emailClean] = sttClean;
+          if (ctvClean) {
+            ctvMap[emailClean] = ctvClean;
+          }
         }
       }
     }
@@ -331,17 +357,17 @@ function syncEmailLookupCache() {
     const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
     
     if (cacheSheet.getLastRow() > 1) {
-      cacheSheet.getRange(2, 1, cacheSheet.getLastRow() - 1, Math.max(4, cacheSheet.getLastColumn())).clearContent();
+      cacheSheet.getRange(2, 1, cacheSheet.getLastRow() - 1, Math.max(5, cacheSheet.getLastColumn())).clearContent();
     }
 
     const rowsToInsert = [];
     for (const email in cacheMap) {
       const stt = cacheMap[email];
-      rowsToInsert.push([email, stt, nowIso, ownerMap[stt] || '']);
+      rowsToInsert.push([email, stt, nowIso, ownerMap[stt] || '', ctvMap[email] || '']);
     }
 
     if (rowsToInsert.length > 0) {
-      cacheSheet.getRange(2, 1, rowsToInsert.length, 4).setValues(rowsToInsert);
+      cacheSheet.getRange(2, 1, rowsToInsert.length, 5).setValues(rowsToInsert);
     }
 
     Logger.log('THÀNH CÔNG: Đã ghi ' + rowsToInsert.length + ' dòng tài khoản vào tab EMAIL_LOOKUP_CACHE lúc ' + nowIso);
@@ -1171,4 +1197,106 @@ function updateTicketStatus(ticketId, newStatus, resolvedBy, note) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * API MỚI: getFixedSlotsFeed(ctvName) - Dành riêng cho Feed CTV
+ * Lấy toàn bộ TICKETS có status = 'Đã xử lý', sort theo resolved_at giảm dần.
+ * Đếm số khách bị ảnh hưởng (số dòng trong REPORTS với ticket_id đó).
+ * Kiểm tra trong EMAIL_LOOKUP_CACHE & REPORTS: nếu tồn tại ít nhất 1 dòng thuộc stt_group của ticket này VÀ ctv trùng ctvName → is_relevant_to_ctv = true.
+ */
+function getFixedSlotsFeed(ctvNameRaw) {
+  const ctvNameClean = ctvNameRaw ? String(ctvNameRaw).trim().toLowerCase() : '';
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ticketsSheet = ss.getSheetByName('TICKETS');
+  const reportsSheet = ss.getSheetByName('REPORTS');
+  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+
+  if (!ticketsSheet || ticketsSheet.getLastRow() <= 1) {
+    return { success: true, total: 0, feed: [] };
+  }
+
+  // 1. Map stt_group -> Set of CTV names from EMAIL_LOOKUP_CACHE
+  const sttCtvMap = {};
+  if (cacheSheet && cacheSheet.getLastRow() > 1) {
+    const cData = cacheSheet.getDataRange().getValues();
+    for (let i = 1; i < cData.length; i++) {
+      const stt = String(cData[i][1]).trim();
+      const ctvVal = cData[i][4] ? String(cData[i][4]).trim().toLowerCase() : '';
+      if (stt && ctvVal) {
+        if (!sttCtvMap[stt]) sttCtvMap[stt] = new Set();
+        sttCtvMap[stt].add(ctvVal);
+      }
+    }
+  }
+
+  // 2. Map ticket_id -> reports count & submitted_by CTVs from REPORTS
+  const reportStatsMap = {};
+  if (reportsSheet && reportsSheet.getLastRow() > 1) {
+    const rData = reportsSheet.getDataRange().getValues();
+    for (let i = 1; i < rData.length; i++) {
+      const ticketId = String(rData[i][1]).trim();
+      const submittedBy = rData[i][5] ? String(rData[i][5]).trim().toLowerCase() : '';
+      if (!reportStatsMap[ticketId]) {
+        reportStatsMap[ticketId] = { count: 0, ctvs: new Set() };
+      }
+      reportStatsMap[ticketId].count++;
+      if (submittedBy) {
+        reportStatsMap[ticketId].ctvs.add(submittedBy);
+      }
+    }
+  }
+
+  // 3. Scan TICKETS with status = 'Đã xử lý'
+  const tData = ticketsSheet.getDataRange().getValues();
+  const feed = [];
+
+  for (let i = 1; i < tData.length; i++) {
+    const row = tData[i];
+    const status = String(row[2]).trim();
+
+    if (status === 'Đã xử lý') {
+      const ticketId = String(row[0]).trim();
+      const sttGroup = String(row[1]).trim();
+      const resolvedAt = row[5] || row[4] || row[3];
+      const note = row[9] || '';
+
+      const rStats = reportStatsMap[ticketId] || { count: 0, ctvs: new Set() };
+      
+      let isRelevant = false;
+      if (ctvNameClean) {
+        if (sttCtvMap[sttGroup] && sttCtvMap[sttGroup].has(ctvNameClean)) {
+          isRelevant = true;
+        }
+        if (rStats.ctvs.has(ctvNameClean)) {
+          isRelevant = true;
+        }
+      }
+
+      feed.push({
+        ticket_id: ticketId,
+        stt_group: sttGroup,
+        status: status,
+        created_at: row[3],
+        resolved_at: resolvedAt,
+        resolved_by: row[6] || 'Admin',
+        note: note,
+        affected_count: Math.max(1, rStats.count),
+        is_relevant_to_ctv: isRelevant
+      });
+    }
+  }
+
+  // Sort: is_relevant_to_ctv = true first, then resolved_at descending
+  feed.sort((a, b) => {
+    if (a.is_relevant_to_ctv && !b.is_relevant_to_ctv) return -1;
+    if (!a.is_relevant_to_ctv && b.is_relevant_to_ctv) return 1;
+    return new Date(b.resolved_at || 0).getTime() - new Date(a.resolved_at || 0).getTime();
+  });
+
+  return {
+    success: true,
+    total: feed.length,
+    feed: feed
+  };
 }
