@@ -1387,11 +1387,29 @@ function getTicketsFeed(ctvNameRaw, feedType) {
       for (let e = 0; e < emailList.length; e++) {
         const em = emailList[e];
         const ctvVal = emailCtvMap[em] || '';
-        customerDetails.push({
-          email: em,
-          ctv: ctvVal
-        });
+        
+        // Privacy filter: If CTV name is specified, only include customers belonging to that CTV!
+        if (ctvNameClean && ctvNameClean !== 'admin') {
+          if (ctvVal && ctvVal.toLowerCase() === ctvNameClean) {
+            customerDetails.push({
+              email: em,
+              ctv: ctvVal
+            });
+          }
+        } else {
+          customerDetails.push({
+            email: em,
+            ctv: ctvVal
+          });
+        }
       }
+
+      // If CTV filter is active and there are 0 customers belonging to this CTV, skip ticket
+      if (ctvNameClean && ctvNameClean !== 'admin' && customerDetails.length === 0) {
+        continue;
+      }
+
+      const filteredEmailList = customerDetails.map(c => c.email);
 
       feed.push({
         ticket_id: ticketId,
@@ -1405,10 +1423,10 @@ function getTicketsFeed(ctvNameRaw, feedType) {
         is_recurring: isRecurring,
         recur_count: recurCount,
         note: note,
-        affected_count: Math.max(1, rStats.count),
-        customer_emails: emailList,
+        affected_count: customerDetails.length,
+        customer_emails: filteredEmailList,
         customer_details: customerDetails,
-        is_relevant_to_ctv: isRelevant
+        is_relevant_to_ctv: true
       });
     }
   }
