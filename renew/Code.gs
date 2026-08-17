@@ -280,9 +280,21 @@ function syncEmailLookupCache() {
       if (c === emailColIdx) continue;
       const cellStr = String(headerRow[c] || '').trim().toLowerCase();
       if (cellStr.includes('chủ') || cellStr.includes('mẹ') || cellStr.includes('master') || 
-          cellStr.includes('quản trị') || cellStr.includes('gốc') || cellStr.includes('admin') || cellStr.includes('owner')) {
+          cellStr.includes('quản trị') || cellStr.includes('gốc') || cellStr.includes('admin') || 
+          cellStr.includes('owner') || cellStr.includes('tài khoản') || cellStr.includes('acc') ||
+          cellStr.includes('mail') || cellStr.includes('gmail') || cellStr === 'id') {
         ownerColIdx = c;
         break;
+      }
+    }
+
+    if (ownerColIdx === -1 && emailColIdx !== 1 && data.length > startDataRow) {
+      for (let r = startDataRow; r < Math.min(startDataRow + 10, data.length); r++) {
+        const val = String(data[r][1] || '').trim();
+        if (val.includes('@')) {
+          ownerColIdx = 1;
+          break;
+        }
       }
     }
 
@@ -294,23 +306,23 @@ function syncEmailLookupCache() {
       const sttRaw = data[r][sttColIdx];
       const emailRaw = data[r][emailColIdx];
 
-      if (sttRaw && emailRaw) {
+      if (sttRaw) {
         const sttClean = String(sttRaw).trim();
-        const emailClean = String(emailRaw).trim().toLowerCase();
+        const emailClean = emailRaw ? String(emailRaw).trim().toLowerCase() : '';
 
-        if (emailClean && sttClean && emailClean.includes('@')) {
+        let ownerEmailClean = '';
+        if (ownerColIdx !== -1 && data[r][ownerColIdx]) {
+          ownerEmailClean = String(data[r][ownerColIdx]).trim().toLowerCase();
+        }
+
+        if (ownerEmailClean && ownerEmailClean.includes('@')) {
+          ownerMap[sttClean] = ownerEmailClean;
+        } else if (emailClean && emailClean.includes('@') && !ownerMap[sttClean]) {
+          ownerMap[sttClean] = emailClean;
+        }
+
+        if (emailClean && emailClean.includes('@')) {
           cacheMap[emailClean] = sttClean;
-
-          let ownerEmailClean = '';
-          if (ownerColIdx !== -1 && data[r][ownerColIdx]) {
-            ownerEmailClean = String(data[r][ownerColIdx]).trim().toLowerCase();
-          }
-
-          if (ownerEmailClean && ownerEmailClean.includes('@')) {
-            ownerMap[sttClean] = ownerEmailClean;
-          } else if (!ownerMap[sttClean]) {
-            ownerMap[sttClean] = emailClean;
-          }
         }
       }
     }
@@ -961,15 +973,38 @@ function listTickets(filterStatus) {
   }
 
   const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-  const ownerMap = {};
+  let ownerMap = {};
+  let hasOwnersInCache = false;
   if (cacheSheet && cacheSheet.getLastRow() > 1) {
     const cData = cacheSheet.getDataRange().getValues();
     for (let i = 1; i < cData.length; i++) {
       const stt = String(cData[i][1]).trim();
-      const owner = cData[i][3] ? String(cData[i][3]).trim().toLowerCase() : (cData[i][0] ? String(cData[i][0]).trim().toLowerCase() : '');
-      if (stt && owner && !ownerMap[stt]) {
-        ownerMap[stt] = owner;
+      const owner = cData[i][3] ? String(cData[i][3]).trim().toLowerCase() : '';
+      if (stt && owner) {
+        hasOwnersInCache = true;
+        if (!ownerMap[stt]) ownerMap[stt] = owner;
       }
+    }
+  }
+
+  // Auto-sync if cache has no owner email column populated yet
+  if (!hasOwnersInCache) {
+    try {
+      syncEmailLookupCache();
+      const newCacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+      if (newCacheSheet && newCacheSheet.getLastRow() > 1) {
+        const cData = newCacheSheet.getDataRange().getValues();
+        ownerMap = {};
+        for (let i = 1; i < cData.length; i++) {
+          const stt = String(cData[i][1]).trim();
+          const owner = cData[i][3] ? String(cData[i][3]).trim().toLowerCase() : (cData[i][0] ? String(cData[i][0]).trim().toLowerCase() : '');
+          if (stt && owner && !ownerMap[stt]) {
+            ownerMap[stt] = owner;
+          }
+        }
+      }
+    } catch (e) {
+      Logger.log('Auto sync owners warning: ' + e.toString());
     }
   }
 
@@ -991,11 +1026,12 @@ function listTickets(filterStatus) {
     }
 
     const reportInfo = reportMap[ticketId] || { count: 0, emails: [] };
+    const ownerEmail = ownerMap[sttGroup] || (reportInfo.emails && reportInfo.emails[0] ? reportInfo.emails[0] : '');
 
     tickets.push({
       ticket_id: ticketId,
       stt_group: sttGroup,
-      owner_email: ownerMap[sttGroup] || '',
+      owner_email: ownerEmail,
       status: status,
       created_at: row[3],
       updated_at: row[4],
