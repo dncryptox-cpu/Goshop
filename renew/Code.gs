@@ -148,8 +148,8 @@ function setupDatabase() {
     cacheSheet = ss.insertSheet('EMAIL_LOOKUP_CACHE');
   }
   if (cacheSheet.getLastRow() === 0) {
-    cacheSheet.appendRow(['email', 'stt_group', 'synced_at']);
-    cacheSheet.getRange(1, 1, 1, 3).setFontWeight('bold');
+    cacheSheet.appendRow(['email', 'stt_group', 'synced_at', 'owner_email']);
+    cacheSheet.getRange(1, 1, 1, 4).setFontWeight('bold');
   }
 
   return { success: true, message: 'Đã khởi tạo/cập nhật xong cấu trúc các tab TICKETS, REPORTS, EMAIL_LOOKUP_CACHE' };
@@ -274,7 +274,20 @@ function syncEmailLookupCache() {
 
     Logger.log('Tìm thấy tiêu đề "Email khách" ở Hàng ' + (headerRowIdx + 1) + ', Cột ' + (emailColIdx + 1) + '. Bắt đầu đọc dữ liệu từ Hàng ' + (startDataRow + 1));
 
+    let ownerColIdx = -1;
+    const headerRow = data[headerRowIdx];
+    for (let c = 0; c < headerRow.length; c++) {
+      if (c === emailColIdx) continue;
+      const cellStr = String(headerRow[c] || '').trim().toLowerCase();
+      if (cellStr.includes('chủ') || cellStr.includes('mẹ') || cellStr.includes('master') || 
+          cellStr.includes('quản trị') || cellStr.includes('gốc') || cellStr.includes('admin') || cellStr.includes('owner')) {
+        ownerColIdx = c;
+        break;
+      }
+    }
+
     const cacheMap = {};
+    const ownerMap = {};
     const nowIso = new Date().toISOString();
 
     for (let r = startDataRow; r < data.length; r++) {
@@ -287,6 +300,17 @@ function syncEmailLookupCache() {
 
         if (emailClean && sttClean && emailClean.includes('@')) {
           cacheMap[emailClean] = sttClean;
+
+          let ownerEmailClean = '';
+          if (ownerColIdx !== -1 && data[r][ownerColIdx]) {
+            ownerEmailClean = String(data[r][ownerColIdx]).trim().toLowerCase();
+          }
+
+          if (ownerEmailClean && ownerEmailClean.includes('@')) {
+            ownerMap[sttClean] = ownerEmailClean;
+          } else if (!ownerMap[sttClean]) {
+            ownerMap[sttClean] = emailClean;
+          }
         }
       }
     }
@@ -295,16 +319,17 @@ function syncEmailLookupCache() {
     const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
     
     if (cacheSheet.getLastRow() > 1) {
-      cacheSheet.getRange(2, 1, cacheSheet.getLastRow() - 1, 3).clearContent();
+      cacheSheet.getRange(2, 1, cacheSheet.getLastRow() - 1, Math.max(4, cacheSheet.getLastColumn())).clearContent();
     }
 
     const rowsToInsert = [];
     for (const email in cacheMap) {
-      rowsToInsert.push([email, cacheMap[email], nowIso]);
+      const stt = cacheMap[email];
+      rowsToInsert.push([email, stt, nowIso, ownerMap[stt] || '']);
     }
 
     if (rowsToInsert.length > 0) {
-      cacheSheet.getRange(2, 1, rowsToInsert.length, 3).setValues(rowsToInsert);
+      cacheSheet.getRange(2, 1, rowsToInsert.length, 4).setValues(rowsToInsert);
     }
 
     Logger.log('THÀNH CÔNG: Đã ghi ' + rowsToInsert.length + ' dòng tài khoản vào tab EMAIL_LOOKUP_CACHE lúc ' + nowIso);
@@ -935,12 +960,26 @@ function listTickets(filterStatus) {
     }
   }
 
+  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+  const ownerMap = {};
+  if (cacheSheet && cacheSheet.getLastRow() > 1) {
+    const cData = cacheSheet.getDataRange().getValues();
+    for (let i = 1; i < cData.length; i++) {
+      const stt = String(cData[i][1]).trim();
+      const owner = cData[i][3] ? String(cData[i][3]).trim().toLowerCase() : (cData[i][0] ? String(cData[i][0]).trim().toLowerCase() : '');
+      if (stt && owner && !ownerMap[stt]) {
+        ownerMap[stt] = owner;
+      }
+    }
+  }
+
   const tData = ticketsSheet.getDataRange().getValues();
   const tickets = [];
 
   for (let i = 1; i < tData.length; i++) {
     const row = tData[i];
     const ticketId = String(row[0]).trim();
+    const sttGroup = String(row[1]).trim();
     const status = String(row[2]).trim();
 
     if (filterStatus && filterStatus !== 'All' && filterStatus !== 'Tất cả') {
@@ -955,7 +994,8 @@ function listTickets(filterStatus) {
 
     tickets.push({
       ticket_id: ticketId,
-      stt_group: row[1],
+      stt_group: sttGroup,
+      owner_email: ownerMap[sttGroup] || '',
       status: status,
       created_at: row[3],
       updated_at: row[4],
