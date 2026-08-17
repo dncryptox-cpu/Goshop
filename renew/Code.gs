@@ -80,6 +80,10 @@ function handleRequest(e) {
         result = setupDatabase();
         setupAutoSyncTrigger();
         break;
+      case 'getTicketsFeed':
+      case 'getPendingFeed':
+        result = getTicketsFeed(params.ctvName || params.ctv_name || params.ctv, params.feedType || params.type || params.statusFilter || 'pending');
+        break;
       case 'getFixedSlotsFeed':
         result = getFixedSlotsFeed(params.ctvName || params.ctv_name || params.ctv);
         break;
@@ -1200,13 +1204,12 @@ function updateTicketStatus(ticketId, newStatus, resolvedBy, note) {
 }
 
 /**
- * API MỚI: getFixedSlotsFeed(ctvName) - Dành riêng cho Feed CTV
- * Lấy toàn bộ TICKETS có status = 'Đã xử lý', sort theo resolved_at giảm dần.
- * Đếm số khách bị ảnh hưởng (số dòng trong REPORTS với ticket_id đó).
- * Kiểm tra trong EMAIL_LOOKUP_CACHE & REPORTS: nếu tồn tại ít nhất 1 dòng thuộc stt_group của ticket này VÀ ctv trùng ctvName → is_relevant_to_ctv = true.
+ * API CHÍNH: getTicketsFeed(ctvName, feedType)
+ * feedType: 'pending' (Chưa xử lý - Khu 3) hoặc 'resolved' (Đã xử lý - Khu 2)
  */
-function getFixedSlotsFeed(ctvNameRaw) {
+function getTicketsFeed(ctvNameRaw, feedType) {
   const ctvNameClean = ctvNameRaw ? String(ctvNameRaw).trim().toLowerCase() : '';
+  const isPendingType = (feedType === 'pending' || feedType === 'Pending' || feedType === 'chờ' || feedType === 'cho');
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ticketsSheet = ss.getSheetByName('TICKETS');
   const reportsSheet = ss.getSheetByName('REPORTS');
@@ -1251,7 +1254,7 @@ function getFixedSlotsFeed(ctvNameRaw) {
     }
   }
 
-  // 3. Scan TICKETS with status = 'Đã xử lý'
+  // 3. Scan TICKETS with status filter
   const tData = ticketsSheet.getDataRange().getValues();
   const feed = [];
 
@@ -1259,10 +1262,15 @@ function getFixedSlotsFeed(ctvNameRaw) {
     const row = tData[i];
     const status = String(row[2]).trim();
 
-    if (status === 'Đã xử lý') {
+    const isResolvedStatus = (status === 'Đã xử lý');
+    const matchFilter = isPendingType ? !isResolvedStatus : isResolvedStatus;
+
+    if (matchFilter) {
       const ticketId = String(row[0]).trim();
       const sttGroup = String(row[1]).trim();
       const resolvedAt = row[5] || row[4] || row[3];
+      const isRecurring = Boolean(row[7]);
+      const recurCount = Number(row[8] || 0);
       const note = row[9] || '';
 
       const rStats = reportStatsMap[ticketId] || { count: 0, ctvs: new Set(), emails: [] };
@@ -1282,8 +1290,11 @@ function getFixedSlotsFeed(ctvNameRaw) {
         stt_group: sttGroup,
         status: status,
         created_at: row[3],
+        updated_at: row[4],
         resolved_at: resolvedAt,
         resolved_by: row[6] || 'Admin',
+        is_recurring: isRecurring,
+        recur_count: recurCount,
         note: note,
         affected_count: Math.max(1, rStats.count),
         customer_emails: rStats.emails || [],
@@ -1292,11 +1303,19 @@ function getFixedSlotsFeed(ctvNameRaw) {
     }
   }
 
-  // Sort: is_relevant_to_ctv = true first, then resolved_at descending
+  // Sort feed:
+  // First: is_relevant_to_ctv = true on top
+  // If pending feed: sort relevant tickets by created_at ASC (oldest waiting first)
+  // If resolved feed: sort by resolved_at DESC
   feed.sort((a, b) => {
     if (a.is_relevant_to_ctv && !b.is_relevant_to_ctv) return -1;
     if (!a.is_relevant_to_ctv && b.is_relevant_to_ctv) return 1;
-    return new Date(b.resolved_at || 0).getTime() - new Date(a.resolved_at || 0).getTime();
+
+    if (isPendingType) {
+      return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    } else {
+      return new Date(b.resolved_at || 0).getTime() - new Date(a.resolved_at || 0).getTime();
+    }
   });
 
   return {
@@ -1304,4 +1323,8 @@ function getFixedSlotsFeed(ctvNameRaw) {
     total: feed.length,
     feed: feed
   };
+}
+
+function getFixedSlotsFeed(ctvNameRaw) {
+  return getTicketsFeed(ctvNameRaw, 'resolved');
 }
