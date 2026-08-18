@@ -1367,8 +1367,6 @@ function getTicketsFeed(ctvNameRaw, feedType) {
 
   // Also read cache for emailCtvMap & sttCtvMap, and fallback sttOwnerMap if needed
   const emailCtvMap = {};
-  // Also read cache for emailCtvMap & sttCtvMap, and fallback sttOwnerMap if needed
-  const emailCtvMap = {};
   const sttCtvMap = {};
   const sttMembersMap = {};
   if (cacheSheet && cacheSheet.getLastRow() > 1) {
