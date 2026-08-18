@@ -392,7 +392,7 @@
                                     <div x-show="t.expanded" x-cloak class="pt-2 border-t border-gray-200 space-y-1.5">
                                         <template x-for="(rep, idx) in (t.reports || [])" :key="idx">
                                             <div class="p-1.5 rounded-lg bg-white border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px]">
-                                                <div class="flex items-center gap-2">
+                                                <div class="flex flex-wrap items-center gap-2">
                                                     <span @click.stop="insertEmailToNote(t, rep.customer_email)" class="font-mono text-blue-700 hover:underline cursor-pointer font-bold flex items-center gap-1" title="Bấm để chèn vào ghi chú">
                                                         <span x-text="rep.customer_email"></span>
                                                         <span class="text-[9px] text-blue-600 bg-blue-50 px-1 rounded border border-blue-200">+Note</span>
@@ -402,6 +402,14 @@
                                                     </template>
                                                     <template x-if="!rep.submitted_by">
                                                         <span class="px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded font-normal text-[10px]">Khách tự báo</span>
+                                                    </template>
+                                                    
+                                                    <template x-if="getZaloPhone(rep.message)">
+                                                        <button @click.stop="openZaloChat(t, rep.customer_email, getZaloPhone(rep.message))"
+                                                                class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-extrabold text-[10px] transition-all flex items-center gap-1 shadow-2xs cursor-pointer border border-emerald-500">
+                                                            <i data-lucide="message-square" class="w-3 h-3"></i>
+                                                            <span>💬 Chat Zalo (<span x-text="getZaloPhone(rep.message)"></span>)</span>
+                                                        </button>
                                                     </template>
                                                 </div>
                                                 <span class="text-gray-500 text-[10px]" x-text="formatDate(rep.reported_at)"></span>
@@ -570,6 +578,35 @@
                         const mins = diffMins % 60;
                         return ` (sau ${hrs}h ${mins}m)`;
                     } catch (err) { return ''; }
+                },
+
+                getZaloPhone(msg) {
+                    if (!msg) return null;
+                    const match = String(msg).match(/\[Zalo:\s*([0-9\s\+\.-]+)\]/i);
+                    return match ? match[1].replace(/\D+/g, '') : null;
+                },
+
+                openZaloChat(ticket, customerEmail, zaloPhone) {
+                    if (!zaloPhone) return;
+                    
+                    const stt = ticket ? ticket.stt_group : '';
+                    const owner = ticket ? ticket.owner_email : '';
+                    
+                    const msgTemplate = `✅ SHOP GO DNC BÁO KẾT QUẢ XỬ LÝ KHÁCH HÀNG
+-----------------------------------
+📌 Nhóm Fam: ${stt || 'RN'}
+📧 Email của bạn: ${customerEmail || ''}
+👑 Email Chủ Fam: ${owner || 'Đã cập nhật'}
+🎉 Tình trạng: Đã xử lý xong hoàn tất!
+
+👉 Bạn vui lòng kiểm tra lại ứng dụng/tài khoản nhé. Cảm ơn bạn đã ủng hộ Go DNC! ❤️`;
+
+                    this.copyText(msgTemplate);
+                    
+                    const cleanPhone = String(zaloPhone).replace(/\D+/g, '');
+                    window.open(`https://zalo.me/${cleanPhone}`, '_blank');
+                    
+                    this.showToast(`Đã mở Zalo ${cleanPhone} & copy sẵn tin nhắn mẫu! Nhấn Ctrl+V để Gửi.`, 'success', 'check-circle-2');
                 },
 
                 isOverdue(ticket) {

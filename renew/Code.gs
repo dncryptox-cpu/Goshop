@@ -46,7 +46,8 @@ function handleRequest(e) {
 
     switch (action) {
       case 'submitReport':
-        result = submitReport(params.email, params.message, params.submitted_by);
+        const zaloPhoneParam = params.zalo_phone || params.zaloPhone;
+        result = submitReport(params.email, params.message, params.submitted_by, zaloPhoneParam);
         break;
       case 'submitBulkReport':
         result = submitBulkReport(params.rawText, params.ctvName);
@@ -643,6 +644,14 @@ function submitReport(emailRaw, message, submittedBy) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const reportsSheet = ss.getSheetByName('REPORTS');
 
+    let finalMsg = message || '';
+    if (zaloPhoneRaw && String(zaloPhoneRaw).trim()) {
+      const zClean = String(zaloPhoneRaw).replace(/\D+/g, '');
+      if (zClean) {
+        finalMsg = '[Zalo: ' + zClean + '] ' + finalMsg;
+      }
+    }
+
     // Insert 1 dòng vào REPORTS (ghi kèm submitted_by ở cột 6)
     const reportId = 'RP-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     reportsSheet.appendRow([
@@ -650,7 +659,7 @@ function submitReport(emailRaw, message, submittedBy) {
       ticketInfo.ticket_id,
       emailClean,
       nowIso,
-      message || '',
+      finalMsg,
       submittedBy || ''
     ]);
 
