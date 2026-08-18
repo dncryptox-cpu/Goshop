@@ -1085,39 +1085,66 @@ function listTickets(filterStatus) {
     }
   }
 
+  // 1. Read Master/Owner emails directly from tab STOCK in Kho TK
+  const sttOwnerMap = {};
+  try {
+    const khoSs = SpreadsheetApp.openById(KHO_TK_ID);
+    const stockSheet = khoSs.getSheetByName('STOCK') || khoSs.getSheetByName('Stock') || khoSs.getSheetByName('stock');
+    if (stockSheet && stockSheet.getLastRow() > 1) {
+      const sData = stockSheet.getDataRange().getValues();
+      let sSttCol = -1;
+      let sEmailCol = -1;
+      for (let r = 0; r < Math.min(10, sData.length); r++) {
+        for (let c = 0; c < sData[r].length; c++) {
+          const cellStr = String(sData[r][c] || '').trim().toLowerCase();
+          if (cellStr === 'stt' || cellStr === 'mã' || cellStr.includes('stt')) sSttCol = c;
+          if (cellStr === 'email' || cellStr.includes('email')) sEmailCol = c;
+        }
+        if (sSttCol !== -1 && sEmailCol !== -1) break;
+      }
+      if (sSttCol === -1) sSttCol = 0;
+      if (sEmailCol === -1) sEmailCol = 1;
+
+      for (let r = 1; r < sData.length; r++) {
+        const stt = String(sData[r][sSttCol] || '').trim();
+        const em = String(sData[r][sEmailCol] || '').trim().toLowerCase();
+        if (stt && em && em.includes('@')) {
+          sttOwnerMap[stt] = em;
+        }
+      }
+    }
+  } catch (errStock) {
+    Logger.log('Warning reading STOCK in listTickets: ' + errStock.toString());
+  }
+
+  // 2. Read EMAIL_LOOKUP_CACHE for all customer emails & CTV per group
+  const cacheEntries = [];
+  const sttMembersMap = {};
   const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-  let ownerMap = {};
-  let hasOwnersInCache = false;
   if (cacheSheet && cacheSheet.getLastRow() > 1) {
     const cData = cacheSheet.getDataRange().getValues();
     for (let i = 1; i < cData.length; i++) {
-      const stt = String(cData[i][1]).trim();
+      const em = String(cData[i][0] || '').trim().toLowerCase();
+      const stt = String(cData[i][1] || '').trim();
       const owner = cData[i][3] ? String(cData[i][3]).trim().toLowerCase() : '';
-      if (stt && owner) {
-        hasOwnersInCache = true;
-        if (!ownerMap[stt]) ownerMap[stt] = owner;
-      }
-    }
-  }
+      const ctv = cData[i][4] ? String(cData[i][4]).trim() : '';
 
-  // Auto-sync if cache has no owner email column populated yet
-  if (!hasOwnersInCache) {
-    try {
-      syncEmailLookupCache();
-      const newCacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-      if (newCacheSheet && newCacheSheet.getLastRow() > 1) {
-        const cData = newCacheSheet.getDataRange().getValues();
-        ownerMap = {};
-        for (let i = 1; i < cData.length; i++) {
-          const stt = String(cData[i][1]).trim();
-          const owner = cData[i][3] ? String(cData[i][3]).trim().toLowerCase() : (cData[i][0] ? String(cData[i][0]).trim().toLowerCase() : '');
-          if (stt && owner && !ownerMap[stt]) {
-            ownerMap[stt] = owner;
-          }
-        }
+      if (stt && owner && owner.includes('@') && !sttOwnerMap[stt]) {
+        sttOwnerMap[stt] = owner;
       }
-    } catch (e) {
-      Logger.log('Auto sync owners warning: ' + e.toString());
+
+      if (em && stt) {
+        if (!sttMembersMap[stt]) sttMembersMap[stt] = [];
+        if (sttMembersMap[stt].findIndex(m => m.email === em) === -1) {
+          sttMembersMap[stt].push({ email: em, ctv: ctv });
+        }
+        cacheEntries.push({
+          email: em,
+          stt_group: stt,
+          owner_email: sttOwnerMap[stt] || owner || '',
+          ctv: ctv
+        });
+      }
     }
   }
 
@@ -1139,7 +1166,8 @@ function listTickets(filterStatus) {
     }
 
     const reportInfo = reportMap[ticketId] || { count: 0, emails: [] };
-    const ownerEmail = ownerMap[sttGroup] || (reportInfo.emails && reportInfo.emails[0] ? reportInfo.emails[0] : '');
+    const ownerEmail = sttOwnerMap[sttGroup] || (reportInfo.emails && reportInfo.emails[0] ? reportInfo.emails[0] : '');
+    const allMembers = sttMembersMap[sttGroup] || [];
 
     tickets.push({
       ticket_id: ticketId,
@@ -1155,7 +1183,8 @@ function listTickets(filterStatus) {
       note: row[9] || '',
       notified_at: row[10] || '',
       report_count: reportInfo.count,
-      reported_emails: reportInfo.emails
+      reported_emails: reportInfo.emails,
+      fam_all_members: allMembers
     });
   }
 
@@ -1174,6 +1203,8 @@ function listTickets(filterStatus) {
   return { 
     success: true, 
     tickets: tickets,
+    cache_entries: cacheEntries,
+    stt_members_map: sttMembersMap,
     cache_info: cacheHealth
   };
 }
