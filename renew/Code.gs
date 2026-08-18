@@ -528,8 +528,8 @@ function getSttOwnerEmail(sttGroup) {
 function sendTelegramNotification(message) {
   try {
     const props = PropertiesService.getScriptProperties();
-    const botToken = props.getProperty('BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
-    const chatId = props.getProperty('CHAT_ID') || props.getProperty('TELEGRAM_CHAT_ID');
+    const botToken = props.getProperty('BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN') || '7948647340:AAFWFVUHabmWqsoR53cbPgS5CVWWGjaIae4';
+    const chatId = props.getProperty('CHAT_ID') || props.getProperty('TELEGRAM_CHAT_ID') || '1134598172';
 
     if (!botToken || !chatId) {
       Logger.log('CẢNH BÁO TELEGRAM: Chưa cấu hình BOT_TOKEN hoặc CHAT_ID trong Script Properties.');
