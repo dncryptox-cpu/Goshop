@@ -1172,13 +1172,23 @@ function listTickets(filterStatus) {
     for (let i = 1; i < rData.length; i++) {
       const ticketId = String(rData[i][1]).trim();
       const email = String(rData[i][2]).trim();
+      const reportedAt = rData[i][3];
+      const message = String(rData[i][4] || '');
+      const submittedBy = String(rData[i][5] || '');
+
       if (!reportMap[ticketId]) {
-        reportMap[ticketId] = { count: 0, emails: [] };
+        reportMap[ticketId] = { count: 0, emails: [], reports: [] };
       }
       reportMap[ticketId].count++;
       if (email && reportMap[ticketId].emails.indexOf(email) === -1) {
         reportMap[ticketId].emails.push(email);
       }
+      reportMap[ticketId].reports.push({
+        customer_email: email,
+        reported_at: reportedAt,
+        message: message,
+        submitted_by: submittedBy
+      });
     }
   }
 
@@ -1281,6 +1291,7 @@ function listTickets(filterStatus) {
       notified_at: row[10] || '',
       report_count: reportInfo.count,
       reported_emails: reportInfo.emails,
+      reports: reportInfo.reports || [],
       fam_all_members: allMembers
     });
   }
