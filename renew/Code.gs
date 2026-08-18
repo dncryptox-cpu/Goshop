@@ -97,6 +97,12 @@ function handleRequest(e) {
       case 'getCacheInfo':
         result = { success: true, cache_info: checkCacheHealth() };
         break;
+      case 'toggleZaloSent':
+        const rIdParam = params.reportId || params.report_id;
+        const custEmailParam = params.customerEmail || params.email || params.customer_email;
+        const isSentParam = (params.isSent === 'true' || params.isSent === true || params.isSent === 1 || params.isSent === '1');
+        result = toggleZaloSent(rIdParam, custEmailParam, isSentParam);
+        break;
       default:
         result = { success: false, message: 'Action không hợp lệ: ' + action };
     }
@@ -1170,11 +1176,14 @@ function listTickets(filterStatus) {
   if (reportsSheet && reportsSheet.getLastRow() > 1) {
     const rData = reportsSheet.getDataRange().getValues();
     for (let i = 1; i < rData.length; i++) {
+      const reportId = String(rData[i][0] || '').trim();
       const ticketId = String(rData[i][1]).trim();
       const email = String(rData[i][2]).trim();
       const reportedAt = rData[i][3];
       const message = String(rData[i][4] || '');
       const submittedBy = String(rData[i][5] || '');
+      const zaloSentAt = rData[i][6] ? rData[i][6] : null;
+      const isZaloSent = Boolean(zaloSentAt);
 
       if (!reportMap[ticketId]) {
         reportMap[ticketId] = { count: 0, emails: [], reports: [] };
@@ -1184,10 +1193,13 @@ function listTickets(filterStatus) {
         reportMap[ticketId].emails.push(email);
       }
       reportMap[ticketId].reports.push({
+        report_id: reportId,
         customer_email: email,
         reported_at: reportedAt,
         message: message,
-        submitted_by: submittedBy
+        submitted_by: submittedBy,
+        zalo_sent_at: zaloSentAt,
+        is_zalo_sent: isZaloSent
       });
     }
   }
@@ -1816,7 +1828,43 @@ function proactiveQuickFix(rawText, resolvedBy) {
     success: true,
     count: fixedGroups.length,
     fixed_groups: fixedGroups,
-    message: `Đã ghi nhận ĐÃ FIX thành công cho ${fixedGroups.length} nhóm Fam: ${fixedGroups.join(', ')}.`
+    message: 'Đã cập nhật trạng thái "Đã xử lý" thành công cho ' + fixedGroups.length + ' nhóm: ' + fixedGroups.join(', ')
   };
 }
 
+/**
+  * Đánh dấu / Bỏ đánh dấu Trạng thái Báo Zalo Khách (Lưu tập trung ở Spreadsheet tab REPORTS Col 7)
+  */
+function toggleZaloSent(reportId, customerEmail, isSent) {
+  try {
+    const ss = getSpreadsheet();
+    const reportsSheet = ss.getSheetByName('REPORTS');
+    if (!reportsSheet || reportsSheet.getLastRow() < 2) {
+      return { success: false, error: 'Chưa có sheet REPORTS' };
+    }
+    const rData = reportsSheet.getDataRange().getValues();
+    let updated = 0;
+    const targetEmail = customerEmail ? String(customerEmail).trim().toLowerCase() : '';
+    const targetReportId = reportId ? String(reportId).trim() : '';
+
+    // Ghi tiêu đề cột G nếu chưa có
+    if (rData[0].length < 7 || String(rData[0][6] || '').trim() === '') {
+      reportsSheet.getRange(1, 7).setValue('zalo_sent_at');
+    }
+
+    for (let i = 1; i < rData.length; i++) {
+      const rId = String(rData[i][0] || '').trim();
+      const em = String(rData[i][2] || '').trim().toLowerCase();
+
+      if ((targetReportId && rId === targetReportId) || (targetEmail && em === targetEmail)) {
+        const valToSet = (isSent === true || isSent === 'true' || isSent === 1 || isSent === '1') ? new Date() : '';
+        reportsSheet.getRange(i + 1, 7).setValue(valToSet);
+        updated++;
+      }
+    }
+
+    return { success: true, updated: updated, is_sent: Boolean(isSent) };
+  } catch (err) {
+    return { success: false, error: err.toString() };
+  }
+}

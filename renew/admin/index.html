@@ -291,7 +291,7 @@
                                         <span>Chat Zalo</span>
                                     </button>
 
-                                    <button @click="toggleZaloSent(item.customer_email, item.zalo_phone)"
+                                    <button @click="toggleZaloSent(item.customer_email, item.ticket ? item.ticket.ticket_id : null, item.zalo_phone)"
                                             :class="isZaloSent(item.customer_email, item.zalo_phone) ? 'bg-amber-500/30 text-amber-200 border-amber-400/40' : 'bg-white/10 text-gray-300 hover:bg-white/20'"
                                             class="px-2 py-1.5 border rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                                             :title="isZaloSent(item.customer_email, item.zalo_phone) ? 'Bấm để hủy đánh dấu' : 'Bấm để đánh dấu đã báo Zalo'">
@@ -691,20 +691,47 @@
                 },
 
                 isZaloSent(email, phone) {
-                    const key = (email || '').toLowerCase() + '_' + (phone || '');
-                    return Boolean(this.zaloSentMap[key]);
+                    if (!email) return false;
+                    const em = email.toLowerCase().trim();
+                    if (this.zaloSentMap[em]) return true;
+                    if (phone) {
+                        const key = em + '_' + phone.trim();
+                        if (this.zaloSentMap[key]) return true;
+                    }
+                    return false;
                 },
 
-                toggleZaloSent(email, phone) {
-                    const key = (email || '').toLowerCase() + '_' + (phone || '');
-                    if (this.zaloSentMap[key]) {
-                        delete this.zaloSentMap[key];
-                        this.showToast('Đã hủy đánh dấu Zalo', 'info', 'rotate-ccw');
+                async toggleZaloSent(email, reportId = null, zaloPhone = '') {
+                    if (!email) return;
+                    const cleanEmail = email.toLowerCase().trim();
+                    const key = cleanEmail;
+                    const phoneKey = zaloPhone ? cleanEmail + '_' + zaloPhone.trim() : '';
+                    
+                    const isCurrentlySent = !!(this.zaloSentMap[key] || (phoneKey && this.zaloSentMap[phoneKey]));
+                    const nextState = !isCurrentlySent;
+
+                    if (nextState) {
+                        const nowIso = new Date().toISOString();
+                        this.zaloSentMap[key] = nowIso;
+                        if (phoneKey) this.zaloSentMap[phoneKey] = nowIso;
+                        this.showToast('✅ Đã đánh dấu Zalo cho ' + email, 'success', 'check-circle-2');
                     } else {
-                        this.zaloSentMap[key] = new Date().toISOString();
-                        this.showToast('✅ Đã đánh dấu đã gửi Zalo cho ' + email, 'success', 'check-circle-2');
+                        delete this.zaloSentMap[key];
+                        if (phoneKey) delete this.zaloSentMap[phoneKey];
+                        this.showToast('Đã hủy đánh dấu Zalo', 'info', 'rotate-ccw');
                     }
                     localStorage.setItem('fam_zalo_sent_map', JSON.stringify(this.zaloSentMap));
+
+                    // Đồng bộ trạng thái Zalo tập trung lên Google Spreadsheet backend cho mọi thiết bị
+                    try {
+                        await this.callApi('toggleZaloSent', {
+                            customerEmail: cleanEmail,
+                            reportId: reportId,
+                            isSent: nextState
+                        });
+                    } catch (err) {
+                        console.error('Lỗi sync Zalo status lên server:', err);
+                    }
                 },
 
                 init() {
@@ -860,7 +887,7 @@
                     return t.reported_emails ? t.reported_emails[0] : '';
                 },
 
-                openZaloChat(ticket, customerEmail, zaloPhone) {
+                async openZaloChat(ticket, customerEmail, zaloPhone) {
                     if (!zaloPhone) return;
                     
                     const stt = ticket ? ticket.stt_group : '';
@@ -878,15 +905,13 @@
                     // Synchronously copy to clipboard so Ctrl+V is guaranteed 100%
                     this.fallbackCopyText(msgTemplate);
                     
-                    // Tự động đánh dấu đã báo Zalo
-                    const key = (customerEmail || '').toLowerCase() + '_' + (zaloPhone || '');
-                    this.zaloSentMap[key] = new Date().toISOString();
-                    localStorage.setItem('fam_zalo_sent_map', JSON.stringify(this.zaloSentMap));
+                    // Tự động đánh dấu đã báo Zalo & Đồng bộ tập trung lên Server
+                    await this.toggleZaloSent(customerEmail, ticket ? ticket.ticket_id : null, zaloPhone);
 
                     const cleanPhone = String(zaloPhone).replace(/\D+/g, '');
                     window.open(`https://zalo.me/${cleanPhone}`, '_blank');
                     
-                    this.showToast(`📋 Đã tự động copy nội dung tin nhắn báo fix! Trong Zalo vừa mở ➔ Bấm Ctrl+V & Enter để gửi ngay!`, 'success', 'check-circle-2');
+                    this.showToast(`📋 Đã tự động copy tin nhắn báo fix! Trong Zalo vừa mở ➔ Bấm Ctrl+V & Enter để gửi ngay!`, 'success', 'check-circle-2');
                 },
 
                 isOverdue(ticket) {
@@ -1108,6 +1133,26 @@
                                 saving: false,
                                 expanded: false
                             }));
+
+                            // Nạp đồng bộ Trạng thái Báo Zalo từ Server (Google Sheets) sang Client
+                            (this.tickets || []).forEach(t => {
+                                if (t.reports) {
+                                    t.reports.forEach(r => {
+                                        if (r.is_zalo_sent || r.zalo_sent_at) {
+                                            if (r.customer_email) {
+                                                const cleanEm = r.customer_email.toLowerCase().trim();
+                                                const nowVal = r.zalo_sent_at || new Date().toISOString();
+                                                this.zaloSentMap[cleanEm] = nowVal;
+                                                const phone = this.getZaloPhone(r.message);
+                                                if (phone) {
+                                                    this.zaloSentMap[cleanEm + '_' + phone] = nowVal;
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                            localStorage.setItem('fam_zalo_sent_map', JSON.stringify(this.zaloSentMap));
 
                             this.calculateStats();
 
