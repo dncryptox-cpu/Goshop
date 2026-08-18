@@ -208,6 +208,42 @@
                     </div>
                 </div>
 
+                <!-- KHUNG TỔNG HỢP KHÁCH ĐĂNG KÝ NHẬN BÁO ZALO -->
+                <div x-show="zaloPendingList.length > 0" class="bg-gradient-to-r from-emerald-900 via-teal-900 to-emerald-950 border border-emerald-500/50 rounded-2xl p-4 text-white card-shadow space-y-3">
+                    <div class="flex items-center justify-between border-b border-white/10 pb-2">
+                        <div class="flex items-center gap-2">
+                            <i data-lucide="phone-call" class="w-4 h-4 text-emerald-300"></i>
+                            <h3 class="text-xs font-black uppercase tracking-wider text-emerald-200">
+                                📱 KHÁCH HÀNG ĐĂNG KÝ NHẬN THÔNG BÁO ZALO (<span x-text="zaloPendingList.length"></span> lượt)
+                            </h3>
+                        </div>
+                        <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">1-Click Mở Chat Zalo & Auto-Copy</span>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="item in zaloPendingList" :key="item.customer_email + item.zalo_phone">
+                            <div class="p-2.5 rounded-xl bg-white/10 border border-white/15 flex items-center justify-between gap-3 text-xs flex-grow sm:flex-grow-0">
+                                <div>
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="font-mono font-black text-amber-300 text-sm" x-text="item.stt_group"></span>
+                                        <span class="font-mono text-white text-xs font-bold" x-text="item.customer_email"></span>
+                                    </div>
+                                    <div class="text-[10px] text-emerald-300 font-bold flex items-center gap-1 pt-0.5">
+                                        <i data-lucide="phone" class="w-3 h-3"></i>
+                                        <span>Zalo: <strong x-text="item.zalo_phone" class="underline font-mono"></strong></span>
+                                        <span class="text-gray-300 font-normal ml-1" x-text="formatDate(item.reported_at)"></span>
+                                    </div>
+                                </div>
+                                <button @click="openZaloChat(item.ticket, item.customer_email, item.zalo_phone)"
+                                        class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-lg shadow-sm transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer">
+                                    <i data-lucide="message-square" class="w-3 h-3 text-gray-950"></i>
+                                    <span>Chat Zalo</span>
+                                </button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
                 <!-- STICKY SEARCH & CHIP FILTER BAR -->
                 <div class="sticky top-16 z-40 bg-white/95 backdrop-blur-md border border-gray-200 rounded-2xl p-3 card-shadow space-y-2.5">
                     <div class="relative">
@@ -350,6 +386,15 @@
                                                 <span>Chủ Fam: <strong x-text="t.owner_email" class="text-amber-950 font-extrabold underline"></strong></span>
                                                 <i data-lucide="copy" class="w-3.5 h-3.5 text-amber-700 group-hover:scale-110"></i>
                                             </span>
+                                        </template>
+
+                                        <!-- NÚT CHAT ZALO NỔI BẬT NẾU KHÁCH CÓ GỬI SĐT ZALO -->
+                                        <template x-if="getTicketZaloPhone(t)">
+                                            <button @click.stop="openZaloChat(t, getTicketZaloEmail(t), getTicketZaloPhone(t))"
+                                                    class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md border border-emerald-400 cursor-pointer">
+                                                <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+                                                <span>💬 Chat Zalo (<span x-text="getTicketZaloPhone(t)"></span>)</span>
+                                            </button>
                                         </template>
                                         
                                         <!-- SELECTOR CHỌN TRẠNG THÁI TRỰC TIẾP -->
@@ -539,6 +584,30 @@
 
                 toast: { show: false, message: '', type: 'info', icon: 'info' },
 
+                get zaloPendingList() {
+                    if (!this.tickets || this.tickets.length === 0) return [];
+                    const list = [];
+                    for (let i = 0; i < this.tickets.length; i++) {
+                        const t = this.tickets[i];
+                        if (!t.reports) continue;
+                        for (let j = 0; j < t.reports.length; j++) {
+                            const rep = t.reports[j];
+                            const phone = this.getZaloPhone(rep.message);
+                            if (phone) {
+                                list.push({
+                                    ticket: t,
+                                    stt_group: t.stt_group,
+                                    customer_email: rep.customer_email,
+                                    zalo_phone: phone,
+                                    reported_at: rep.reported_at,
+                                    status: t.status
+                                });
+                            }
+                        }
+                    }
+                    return list;
+                },
+
                 init() {
                     const savedAuth = localStorage.getItem('fam_admin_unlocked');
                     if (savedAuth === 'true') {
@@ -643,6 +712,24 @@
                     if (!msg) return null;
                     const match = String(msg).match(/\[Zalo:\s*([0-9\s\+\.-]+)\]/i);
                     return match ? match[1].replace(/\D+/g, '') : null;
+                },
+
+                getTicketZaloPhone(t) {
+                    if (!t || !t.reports) return null;
+                    for (let i = 0; i < t.reports.length; i++) {
+                        const phone = this.getZaloPhone(t.reports[i].message);
+                        if (phone) return phone;
+                    }
+                    return null;
+                },
+
+                getTicketZaloEmail(t) {
+                    if (!t || !t.reports) return '';
+                    for (let i = 0; i < t.reports.length; i++) {
+                        const phone = this.getZaloPhone(t.reports[i].message);
+                        if (phone) return t.reports[i].customer_email;
+                    }
+                    return t.reported_emails ? t.reported_emails[0] : '';
                 },
 
                 openZaloChat(ticket, customerEmail, zaloPhone) {
