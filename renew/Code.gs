@@ -502,12 +502,71 @@ function parseDateHelper(val) {
 }
 
 /**
- * HÀM DÙNG CHUNG DUY NHẤT: findOrCreateTicketForGroup(sttGroup, now)
- * 1. Kiểm tra có ticket mở ('Mới' / 'Đang xử lý') -> Nối vào ticket đó.
- * 2. Kiểm tra ticket đóng gần nhất trong 24h -> Tạo ticket mới đánh dấu is_recurring = true, recur_count += 1.
- * 3. Nếu không có -> Tạo ticket mới bình thường.
+/**
+ * Helper: Tra cứu Email Chủ Fam từ STT Group trong cache
  */
-function findOrCreateTicketForGroup(sttGroup, now) {
+function getSttOwnerEmail(sttGroup) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+    if (cacheSheet && cacheSheet.getLastRow() > 1) {
+      const data = cacheSheet.getDataRange().getValues();
+      for (let i = 1; i < data.length; i++) {
+        if (String(data[i][1]).trim().toUpperCase() === String(sttGroup).trim().toUpperCase() && data[i][3]) {
+          return String(data[i][3]).trim();
+        }
+      }
+    }
+  } catch (e) {}
+  return '';
+}
+
+/**
+ * GỬI THÔNG BÁO VỀ TELEGRAM BOT (@goshop86_bot)
+ * Đọc BOT_TOKEN và CHAT_ID từ Script Properties của Apps Script
+ */
+function sendTelegramNotification(message) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const botToken = props.getProperty('BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
+    const chatId = props.getProperty('CHAT_ID') || props.getProperty('TELEGRAM_CHAT_ID');
+
+    if (!botToken || !chatId) {
+      Logger.log('CẢNH BÁO TELEGRAM: Chưa cấu hình BOT_TOKEN hoặc CHAT_ID trong Script Properties.');
+      return false;
+    }
+
+    const url = 'https://api.telegram.org/bot' + botToken.trim() + '/sendMessage';
+    const payload = {
+      chat_id: chatId.trim(),
+      text: message,
+      parse_mode: 'HTML',
+      disable_web_page_preview: true
+    };
+
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+
+    const response = UrlFetchApp.fetch(url, options);
+    Logger.log('TELEGRAM RESPONSE: ' + response.getContentText());
+    return true;
+  } catch (err) {
+    Logger.log('LỖI GỬI TELEGRAM: ' + err.toString());
+    return false;
+  }
+}
+
+/**
+ * HÀM DÙNG CHUNG DUY NHẤT: findOrCreateTicketForGroup(sttGroup, now, customerEmail)
+ * 1. Kiểm tra có ticket mở ('Mới' / 'Đang xử lý') -> Nối vào ticket đó. (KHÔNG gửi Telegram)
+ * 2. Kiểm tra ticket đóng gần nhất trong 24h -> Tạo ticket mới đánh dấu is_recurring = true, recur_count += 1. (GỬI Telegram tái phát)
+ * 3. Nếu không có -> Tạo ticket mới bình thường. (GỬI Telegram sự cố mới)
+ */
+function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ticketsSheet = ss.getSheetByName('TICKETS');
   const ticketsData = ticketsSheet.getDataRange().getValues();
@@ -556,7 +615,7 @@ function findOrCreateTicketForGroup(sttGroup, now) {
   }
 
   if (openTicketData) {
-    // Đã có ticket mở -> Cập nhật updated_at
+    // Đã có ticket mở -> Cập nhật updated_at (KHÔNG GỬI TELEGRAM TRÁNH SPAM)
     ticketsSheet.getRange(openTicketRowIndex, 5).setValue(nowIso);
     return {
       ticket_id: openTicketData.ticket_id,
@@ -598,6 +657,32 @@ function findOrCreateTicketForGroup(sttGroup, now) {
     '',
     ''
   ]);
+
+  // GỬI THÔNG BÁO TELEGRAM KHI TẠO TICKET MỚI (TẠO MỚI HOẶC TÁI PHÁT)
+  try {
+    const ownerEmail = getSttOwnerEmail(sttGroup);
+    const formattedDate = Utilities.formatDate(now, Session.getScriptTimeZone() || 'GMT+7', 'HH:mm dd-MM-yyyy');
+    
+    let msg = '';
+    if (isRecurring) {
+      msg += `🚨 <b>Sự cố fam TÁI PHÁT: ${sttGroup}</b> (Lần thứ ${recurCount})\n`;
+      msg += `👤 Khách báo: ${customerEmail || 'Khách/CTV báo'}\n`;
+      if (ownerEmail) msg += `📧 Tài khoản gốc: ${ownerEmail}\n`;
+      msg += `🕐 Báo lúc: ${formattedDate}\n`;
+      msg += `🔁 Đây là lần tái phát thứ ${recurCount} trong 24h qua — cần kiểm tra kỹ hơn thay vì fix tạm.\n`;
+      msg += `👉 Admin xử lý tại: https://godnc.com/renew/admin/`;
+    } else {
+      msg += `🚨 <b>Sự cố fam mới: ${sttGroup}</b>\n`;
+      msg += `👤 Khách báo: ${customerEmail || 'Khách/CTV báo'}\n`;
+      if (ownerEmail) msg += `📧 Tài khoản gốc: ${ownerEmail}\n`;
+      msg += `🕐 Báo lúc: ${formattedDate}\n`;
+      msg += `👉 Admin xử lý tại: https://godnc.com/renew/admin/`;
+    }
+
+    sendTelegramNotification(msg);
+  } catch (telErr) {
+    Logger.log('Lỗi tạo tin nhắn Telegram: ' + telErr.toString());
+  }
 
   return {
     ticket_id: targetTicketId,
@@ -642,7 +727,7 @@ function submitReport(emailRaw, message, submittedBy) {
   try {
     const now = new Date();
     const nowIso = now.toISOString();
-    const ticketInfo = findOrCreateTicketForGroup(sttGroup, now);
+    const ticketInfo = findOrCreateTicketForGroup(sttGroup, now, emailClean);
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const reportsSheet = ss.getSheetByName('REPORTS');
