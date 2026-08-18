@@ -697,9 +697,9 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
 }
 
 /**
- * API 1: submitReport(email, message, submittedBy)
+ * API 1: submitReport(email, message, submittedBy, zaloPhoneRaw)
  */
-function submitReport(emailRaw, message, submittedBy) {
+function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
   if (!emailRaw) {
     return { 
       success: false, 
