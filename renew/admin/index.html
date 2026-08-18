@@ -220,18 +220,21 @@
                                 </div>
                             </div>
                             
-                            <div class="flex items-center gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
                                 <template x-if="famLookupResult.ticket">
                                     <span class="px-3 py-1 rounded-full text-xs font-extrabold border shadow-sm flex items-center gap-1.5"
                                           :class="famLookupResult.ticket.status === 'Đã xử lý' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'">
                                         <i :data-lucide="famLookupResult.ticket.status === 'Đã xử lý' ? 'check-circle' : 'alert-circle'" class="w-3.5 h-3.5"></i>
-                                        <span x-text="'Ticket hiện tại: ' + famLookupResult.ticket.status"></span>
+                                        <span x-text="'Ticket: ' + famLookupResult.ticket.status"></span>
                                     </span>
                                 </template>
-                                <template x-if="!famLookupResult.ticket">
-                                    <span class="px-3 py-1 bg-gray-800 text-gray-300 rounded-full text-xs font-bold border border-gray-700">
-                                        Chưa có báo lỗi mở
-                                    </span>
+
+                                <template x-if="!famLookupResult.ticket || famLookupResult.ticket.status !== 'Đã xử lý'">
+                                    <button @click="quickFixFamGroup(famLookupResult)"
+                                            class="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full text-xs font-extrabold transition-all flex items-center gap-1.5 shadow-md cursor-pointer border border-emerald-400">
+                                        <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                                        <span>🟢 Đánh Dấu Đã Fix (Hiện CTV Ngay)</span>
+                                    </button>
                                 </template>
                             </div>
                         </div>
@@ -734,6 +737,41 @@
                         members: members,
                         ticket: ticketForGroup || null
                     };
+                },
+
+                async quickFixFamGroup(famLookup) {
+                    if (!famLookup || !famLookup.stt_group) return;
+                    const stt = famLookup.stt_group;
+
+                    try {
+                        this.showToast(`Đang đánh dấu đã fix nhóm ${stt}...`, 'info', 'loader');
+                        
+                        let ticketId = famLookup.ticket ? famLookup.ticket.ticket_id : null;
+                        
+                        if (!ticketId) {
+                            const subRes = await this.callApi('submitBulkReport', {
+                                emailListStr: famLookup.owner_email && famLookup.owner_email.includes('@') ? famLookup.owner_email : stt,
+                                ctvName: 'Admin Proactive Fix'
+                            });
+                            if (subRes.success && subRes.ticket_ids && subRes.ticket_ids.length > 0) {
+                                ticketId = subRes.ticket_ids[0];
+                            }
+                        }
+
+                        if (ticketId) {
+                            await this.callApi('updateTicketStatus', {
+                                ticket_id: ticketId,
+                                newStatus: 'Đã xử lý',
+                                resolvedBy: 'Admin',
+                                note: 'Fixed proactively by Admin'
+                            });
+                        }
+
+                        this.showToast(`✅ Đã đánh dấu fix xong nhóm ${stt}! Các CTV liên quan sẽ thấy ngay lập tức.`, 'success', 'check-circle-2');
+                        await this.loadTickets(true);
+                    } catch (err) {
+                        this.showToast('Lỗi khi đánh dấu fix: ' + (err.message || err), 'error', 'alert-triangle');
+                    }
                 },
 
                 async loadTickets(isSilent = false) {

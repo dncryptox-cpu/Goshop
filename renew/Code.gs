@@ -1367,7 +1367,10 @@ function getTicketsFeed(ctvNameRaw, feedType) {
 
   // Also read cache for emailCtvMap & sttCtvMap, and fallback sttOwnerMap if needed
   const emailCtvMap = {};
+  // Also read cache for emailCtvMap & sttCtvMap, and fallback sttOwnerMap if needed
+  const emailCtvMap = {};
   const sttCtvMap = {};
+  const sttMembersMap = {};
   if (cacheSheet && cacheSheet.getLastRow() > 1) {
     const cData = cacheSheet.getDataRange().getValues();
     for (let i = 1; i < cData.length; i++) {
@@ -1381,6 +1384,12 @@ function getTicketsFeed(ctvNameRaw, feedType) {
       }
       if (em && ctvVal) {
         emailCtvMap[em] = ctvVal;
+      }
+      if (stt && em) {
+        if (!sttMembersMap[stt]) sttMembersMap[stt] = [];
+        if (sttMembersMap[stt].findIndex(m => m.email === em) === -1) {
+          sttMembersMap[stt].push({ email: em, ctv: ctvVal });
+        }
       }
       if (stt && ctvVal) {
         if (!sttCtvMap[stt]) sttCtvMap[stt] = new Set();
@@ -1444,11 +1453,26 @@ function getTicketsFeed(ctvNameRaw, feedType) {
         }
       }
 
+      // Combine reported emails with all members in Kho TK for this sttGroup
+      const combinedEmailMap = {};
+      (rStats.emails || []).forEach(em => {
+        if (em) combinedEmailMap[em.toLowerCase()] = em;
+      });
+      const khoMembers = sttMembersMap[sttGroup] || [];
+      khoMembers.forEach(m => {
+        if (m.email && !combinedEmailMap[m.email.toLowerCase()]) {
+          combinedEmailMap[m.email.toLowerCase()] = m.email;
+        }
+        if (m.email && m.ctv && !emailCtvMap[m.email.toLowerCase()]) {
+          emailCtvMap[m.email.toLowerCase()] = m.ctv;
+        }
+      });
+
       const customerDetails = [];
-      const emailList = rStats.emails || [];
+      const emailList = Object.values(combinedEmailMap);
       for (let e = 0; e < emailList.length; e++) {
         const em = emailList[e];
-        const ctvVal = emailCtvMap[em] || '';
+        const ctvVal = emailCtvMap[em.toLowerCase()] || emailCtvMap[em] || '';
         
         // Privacy filter: If CTV name is specified, only include customers belonging to that CTV!
         if (ctvNameClean && ctvNameClean !== 'admin') {
