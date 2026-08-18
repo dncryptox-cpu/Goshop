@@ -91,6 +91,9 @@ function handleRequest(e) {
       case 'cleanupDuplicateTickets':
         result = cleanupDuplicateTickets();
         break;
+      case 'proactiveQuickFix':
+        result = proactiveQuickFix(params.rawText || params.raw_text || params.items, params.resolvedBy || params.resolved_by || 'Admin');
+        break;
       case 'getCacheInfo':
         result = { success: true, cache_info: checkCacheHealth() };
         break;
@@ -1657,3 +1660,67 @@ function cleanupDuplicateTickets() {
     lock.releaseLock();
   }
 }
+
+/**
+ * API Admin: proactiveQuickFix(rawText, resolvedBy)
+ * Admin dán danh sách mã RN hoặc email vừa fix xong ➔ Tự động tìm stt_group & cập nhật/tạo ticket ĐÃ XỬ LÝ
+ */
+function proactiveQuickFix(rawText, resolvedBy) {
+  if (!rawText || !String(rawText).trim()) {
+    return { success: false, message: 'Vui lòng dán mã RN hoặc email vừa fix.' };
+  }
+
+  const textStr = String(rawText).trim();
+  
+  // Extract RN codes
+  const rnRegex = /\bRN\d+\b/gi;
+  const rnMatches = textStr.match(rnRegex) || [];
+  
+  // Extract Emails
+  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+  const emailMatches = textStr.match(emailRegex) || [];
+
+  const targetGroups = new Set();
+
+  rnMatches.forEach(rn => targetGroups.add(rn.toUpperCase()));
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+  const cacheMap = {};
+  if (cacheSheet && cacheSheet.getLastRow() > 1) {
+    const cData = cacheSheet.getDataRange().getValues();
+    for (let i = 1; i < cData.length; i++) {
+      const em = String(cData[i][0] || '').trim().toLowerCase();
+      const stt = String(cData[i][1] || '').trim().toUpperCase();
+      if (em && stt) cacheMap[em] = stt;
+    }
+  }
+
+  emailMatches.forEach(em => {
+    const cleanEm = em.toLowerCase();
+    if (cacheMap[cleanEm]) {
+      targetGroups.add(cacheMap[cleanEm]);
+    }
+  });
+
+  if (targetGroups.size === 0) {
+    return { success: false, message: 'Không tìm thấy mã RN hoặc email hợp lệ nào trong cache Kho TK.' };
+  }
+
+  const now = new Date();
+  const fixedGroups = Array.from(targetGroups);
+
+  for (let i = 0; i < fixedGroups.length; i++) {
+    const stt = fixedGroups[i];
+    const ticketInfo = findOrCreateTicketForGroup(stt, now);
+    updateTicketStatus(ticketInfo.ticket_id, 'Đã xử lý', resolvedBy || 'Admin', 'Admin chủ động fix hàng loạt');
+  }
+
+  return {
+    success: true,
+    count: fixedGroups.length,
+    fixed_groups: fixedGroups,
+    message: `Đã ghi nhận ĐÃ FIX thành công cho ${fixedGroups.length} nhóm Fam: ${fixedGroups.join(', ')}.`
+  };
+}
+
