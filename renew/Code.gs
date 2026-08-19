@@ -1973,24 +1973,11 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       ss = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
     }
 
-    // BƯỚC 1 — Bắt buộc kiểm tra email khách có tồn tại trong EMAIL_LOOKUP_CACHE không
-    let isFoundInCache = false;
-    const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-    if (cacheSheet && cacheSheet.getLastRow() > 1) {
-      const cData = cacheSheet.getDataRange().getValues();
-      for (let i = 1; i < cData.length; i++) {
-        const em = String(cData[i][0] || '').trim().toLowerCase();
-        if (em === cleanEmail) {
-          isFoundInCache = true;
-          break;
-        }
-      }
-    }
-
-    if (!isFoundInCache) {
+    // BƯỚC 1 — Kiểm tra email khách trong EMAIL_LOOKUP_CACHE & Fallback trực tiếp Kho TK (tab DATA)
+    if (!isCustomerEmailInCache(cleanEmail)) {
       return {
         success: false,
-        message: 'Email này không khớp với danh sách khách hàng, không thể cấp tài khoản bảo hành.'
+        message: 'Email này không khớp với danh sách khách hàng trong Kho TK, không thể cấp tài khoản bảo hành.'
       };
     }
 
@@ -2165,34 +2152,47 @@ function getSpreadsheet() {
 }
 
 /**
- * Helper kiểm tra email khách có trong tab EMAIL_LOOKUP_CACHE không
+ * Helper kiểm tra email khách có trong tab EMAIL_LOOKUP_CACHE hoặc trực tiếp trong Kho TK (tab DATA) không
  */
 function isCustomerEmailInCache(email) {
   if (!email) return false;
   const cleanEm = String(email).trim().toLowerCase();
   if (!cleanEm || !cleanEm.includes('@')) return false;
 
+  // 1. Kiểm tra trong tab EMAIL_LOOKUP_CACHE của FAM_ISSUE_TRACKER
   try {
-    let ss = null;
-    try {
-      ss = SpreadsheetApp.getActiveSpreadsheet();
-    } catch (e) {}
-    if (!ss) {
-      ss = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
-    }
-
+    const ss = getSpreadsheet();
     const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-    if (!cacheSheet || cacheSheet.getLastRow() < 2) return false;
-
-    const cData = cacheSheet.getDataRange().getValues();
-    for (let i = 1; i < cData.length; i++) {
-      const em = String(cData[i][0] || '').trim().toLowerCase();
-      if (em === cleanEm) {
-        return true;
+    if (cacheSheet && cacheSheet.getLastRow() > 1) {
+      const cData = cacheSheet.getDataRange().getValues();
+      for (let i = 1; i < cData.length; i++) {
+        const em = String(cData[i][0] || '').trim().toLowerCase();
+        if (em === cleanEm) {
+          return true;
+        }
       }
     }
   } catch (err) {
-    Logger.log('Lỗi check isCustomerEmailInCache: ' + err.toString());
+    Logger.log('Lỗi check EMAIL_LOOKUP_CACHE: ' + err.toString());
   }
+
+  // 2. FALLBACK QUÉT TRỰC TIẾP TRONG KHO TK (Kho TK | new - ytbdnc, tab DATA)
+  try {
+    const khoSs = SpreadsheetApp.openById(KHO_TK_ID);
+    const khoSheet = khoSs.getSheetByName(KHO_TK_TAB_NAME);
+    if (khoSheet && khoSheet.getLastRow() > 1) {
+      const khoData = khoSheet.getDataRange().getValues();
+      for (let i = 1; i < khoData.length; i++) {
+        const kEmail = String(khoData[i][10] || '').trim().toLowerCase(); // Cột K (Email khách)
+        const dEmail = String(khoData[i][3] || '').trim().toLowerCase();  // Cột D (ID/Email account)
+        if (kEmail === cleanEm || dEmail === cleanEm) {
+          return true;
+        }
+      }
+    }
+  } catch (err2) {
+    Logger.log('Lỗi fallback check Kho TK: ' + err2.toString());
+  }
+
   return false;
 }
