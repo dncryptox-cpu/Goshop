@@ -2101,6 +2101,7 @@ function assignWarrantyAccount(customerEmail, ctvName) {
 
     // GHI EMAIL KHÁCH VÀO SLOT TRỐNG VỪA TÌM ĐƯỢC
     warrantySheet.getRange(foundRowIndex, foundTargetColIndex).setValue(cleanEmail);
+    SpreadsheetApp.flush();
 
     // ĐỌC THÔNG TIN VỪA GÁN
     const rowData = data[foundRowIndex - 1];
