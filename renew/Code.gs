@@ -1955,7 +1955,7 @@ function getTOTPCode(secret2fa) {
 }
 
 /**
- * CẤP TÀI KHOẢN BẢO HÀNH TẠM (Tab WARRANTY trong FAM_ISSUE_TRACKER)
+ * CẤP TÀI KHOẢN BẢO HÀNH TẠM (Tab WARRANTY trong FAM_ISSUE_TRACKER - Hỗ trợ 3 cột BHCus1, BHCus2, BHCus3)
  */
 function assignWarrantyAccount(customerEmail, ctvName) {
   if (!customerEmail || !customerEmail.trim()) {
@@ -1964,17 +1964,31 @@ function assignWarrantyAccount(customerEmail, ctvName) {
 
   const cleanEmail = customerEmail.trim().toLowerCase();
 
-  // BƯỚC 1 — Bắt buộc kiểm tra email khách có tồn tại trong EMAIL_LOOKUP_CACHE không
-  if (!isCustomerEmailInCache(cleanEmail)) {
-    return {
-      success: false,
-      message: 'Email này không khớp với danh sách khách hàng, không thể cấp tài khoản bảo hành.'
-    };
-  }
-
-  // BƯỚC 2 — Cấp tài khoản bảo hành từ tab WARRANTY
   try {
     const ss = getSpreadsheet();
+
+    // BƯỚC 1 — Bắt buộc kiểm tra email khách có tồn tại trong EMAIL_LOOKUP_CACHE không
+    let isFoundInCache = false;
+    const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+    if (cacheSheet && cacheSheet.getLastRow() > 1) {
+      const cData = cacheSheet.getDataRange().getValues();
+      for (let i = 1; i < cData.length; i++) {
+        const em = String(cData[i][0] || '').trim().toLowerCase();
+        if (em === cleanEmail) {
+          isFoundInCache = true;
+          break;
+        }
+      }
+    }
+
+    if (!isFoundInCache) {
+      return {
+        success: false,
+        message: 'Email này không khớp với danh sách khách hàng, không thể cấp tài khoản bảo hành.'
+      };
+    }
+
+    // BƯỚC 2 — Cấp tài khoản bảo hành từ tab WARRANTY (hỗ trợ 3 cột BHCus1, BHCus2, BHCus3)
     let warrantySheet = ss.getSheetByName('WARRANTY') || ss.getSheetByName('Warranty') || ss.getSheetByName('warranty');
     if (!warrantySheet) {
       return { success: false, message: 'Không tìm thấy tab WARRANTY trong sheet FAM_ISSUE_TRACKER.' };
@@ -1987,12 +2001,13 @@ function assignWarrantyAccount(customerEmail, ctvName) {
 
     const data = warrantySheet.getDataRange().getValues();
     let foundRowIndex = -1;
-    let slotUsed = 0; // 1 (BHCus1 - Col G) hoặc 2 (BHCus2 - Col H)
+    let slotUsed = 0; // 1 (BHCus1 - Col G), 2 (BHCus2 - Col H), 3 (BHCus3 - Col I)
 
     // Dòng 1 là tiêu đề. Quét từ dòng 2 (r = 1)
     for (let r = 1; r < data.length; r++) {
       const bhCus1 = String(data[r][6] || '').trim();
       const bhCus2 = String(data[r][7] || '').trim();
+      const bhCus3 = String(data[r][8] || '').trim();
 
       if (!bhCus1) {
         foundRowIndex = r + 1; // 1-indexed row number
@@ -2002,6 +2017,10 @@ function assignWarrantyAccount(customerEmail, ctvName) {
         foundRowIndex = r + 1; // 1-indexed row number
         slotUsed = 2;
         break;
+      } else if (!bhCus3) {
+        foundRowIndex = r + 1; // 1-indexed row number
+        slotUsed = 3;
+        break;
       }
     }
 
@@ -2009,8 +2028,8 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       return { success: false, message: 'Hết tài khoản bảo hành tạm, vui lòng báo admin bổ sung.' };
     }
 
-    // Ghi customerEmail vào đúng cột (Col 7 / G nếu slot 1, Col 8 / H nếu slot 2)
-    const targetCol = slotUsed === 1 ? 7 : 8;
+    // Ghi customerEmail vào đúng cột (Col 7 / G nếu slot 1, Col 8 / H nếu slot 2, Col 9 / I nếu slot 3)
+    const targetCol = slotUsed === 1 ? 7 : (slotUsed === 2 ? 8 : 9);
     warrantySheet.getRange(foundRowIndex, targetCol).setValue(cleanEmail);
 
     // Đọc thông tin tài khoản bảo hành từ dòng vừa gán
