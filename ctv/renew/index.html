@@ -1220,13 +1220,13 @@
                     this.copyText(fullText);
                 },
 
-                async callFamApi(action, payload) {
+                async callFamApi(action, payload, timeoutMs = 15000) {
                     const webAppUrl = localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec';
                     const url = new URL(webAppUrl);
                     url.searchParams.append('action', action);
 
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 45000);
+                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
                     try {
                         const response = await fetch(url.toString(), {
@@ -1237,11 +1237,16 @@
                             signal: controller.signal
                         });
                         clearTimeout(timeoutId);
-                        return await response.json();
+                        const text = await response.text();
+                        try {
+                            return JSON.parse(text);
+                        } catch (jsonErr) {
+                            throw new Error('Máy chủ Apps Script chưa được triển khai bản mới (Deploy New Version). Vui lòng cập nhật WebApp.');
+                        }
                     } catch (err) {
                         clearTimeout(timeoutId);
                         if (err.name === 'AbortError') {
-                            throw new Error('Máy chủ phản hồi chậm (hết 45s). Vui lòng kiểm tra lại hoặc thử lại.');
+                            throw new Error('Hệ thống phản hồi chậm, vui lòng thử lại.');
                         }
                         throw err;
                     }

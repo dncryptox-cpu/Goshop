@@ -1929,11 +1929,6 @@ function getCurrentTOTPCode(base32Secret) {
     const counterBytes = new Array(8);
     let temp = timeStep;
     for (let i = 7; i >= 0; i--) {
-      counterBytes[i] = temp & 0xff;
-      temp = Math.floor(temp / 256);
-    }
-
-    // Calculate HMAC-SHA1 signature using Apps Script Utilities
     const hmacSigned = Utilities.computeHmacSha1Signature(counterBytes, keyBytes);
     const hmac = hmacSigned.map(b => (b < 0 ? b + 256 : b));
 
@@ -1983,9 +1978,12 @@ function getTOTPCode(secret2fa) {
 }
 
 /**
- * CẤP TÀI KHOẢN BẢO HÀNH TẠM (Tab WARRANTY trong FAM_ISSUE_TRACKER - Hỗ trợ 3 cột BHCus1, BHCus2, BHCus3)
+ * CẤP TÀI KHOẢN BẢO HÀNH TẠM (Tab WARRANTY trong FAM_ISSUE_TRACKER - Tối ưu 1-Read & 1-Write)
  */
 function assignWarrantyAccount(customerEmail, ctvName) {
+  const tStart = Date.now();
+  Logger.log('[PERF] Start assignWarrantyAccount for: ' + customerEmail);
+
   if (!customerEmail || !customerEmail.trim()) {
     return { success: false, message: 'Vui lòng nhập email khách hàng cần cấp tài khoản bảo hành.' };
   }
@@ -1993,23 +1991,22 @@ function assignWarrantyAccount(customerEmail, ctvName) {
   const cleanEmail = customerEmail.trim().toLowerCase();
 
   try {
-    let ss = null;
-    try {
-      ss = SpreadsheetApp.getActiveSpreadsheet();
-    } catch (e1) {}
-    if (!ss) {
-      ss = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
-    }
+    // Mở Spreadsheet ĐÚNG 1 LẦN
+    const ss = getSpreadsheet();
 
-    // BƯỚC 1 — Kiểm tra email khách trong EMAIL_LOOKUP_CACHE & Fallback trực tiếp Kho TK (tab DATA)
-    if (!isCustomerEmailInCache(cleanEmail)) {
+    // 1. Kiểm tra email khách trong Cache (dùng lại ss đã mở)
+    const isFound = isCustomerEmailInCache(cleanEmail, ss);
+    const tCache = Date.now();
+    Logger.log('[PERF] Step 1 (Cache Check): ' + (tCache - tStart) + ' ms');
+
+    if (!isFound) {
       return {
         success: false,
         message: 'Email này không khớp với danh sách khách hàng trong Kho TK, không thể cấp tài khoản bảo hành.'
       };
     }
 
-    // BƯỚC 2 — Cấp / Triệu hồi tài khoản bảo hành từ tab WARRANTY
+    // 2. Mở tab WARRANTY & Đọc toàn bộ dữ liệu ĐÚNG 1 LẦN
     let warrantySheet = ss.getSheetByName('WARRANTY') || ss.getSheetByName('Warranty') || ss.getSheetByName('warranty');
     if (!warrantySheet) {
       return { success: false, message: 'Không tìm thấy tab WARRANTY trong sheet FAM_ISSUE_TRACKER.' };
@@ -2021,9 +2018,12 @@ function assignWarrantyAccount(customerEmail, ctvName) {
     }
 
     const data = warrantySheet.getDataRange().getValues();
+    const tData = Date.now();
+    Logger.log('[PERF] Step 2 (Read WARRANTY Data): ' + (tData - tCache) + ' ms');
+
     const headers = data[0];
 
-    // YÊU CẦU 2: ĐỌC ĐỘNG TẤT CẢ CỘT BHCus* (BHCus1, BHCus2, BHCus3, ...)
+    // Đọc động tất cả cột BHCus*
     const bhCusCols = [];
     for (let c = 0; c < headers.length; c++) {
       const hStr = String(headers[c] || '').trim().toLowerCase();
@@ -2036,19 +2036,17 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       }
     }
 
-    // Fallback vào các cột G, H, I (col index 6, 7, 8) nếu header chưa đặt đúng tên BHCus*
     if (bhCusCols.length === 0) {
       bhCusCols.push({ colIndex: 6, headerName: 'BHCus1', slotNum: 1 });
       bhCusCols.push({ colIndex: 7, headerName: 'BHCus2', slotNum: 2 });
       bhCusCols.push({ colIndex: 8, headerName: 'BHCus3', slotNum: 3 });
     }
 
-    // YÊU CẦU 1: QUÉT XEM KHÁCH NÀY ĐÃ ĐƯỢC CẤP TRƯỚC ĐÓ Ở BẤT KỲ CỘT BHCus* NÀO CHƯA
+    // 3. Xử lý trong RAM: Quét xem khách đã từng được cấp chưa (Triệu hồi)
     for (let r = 1; r < data.length; r++) {
       for (let k = 0; k < bhCusCols.length; k++) {
         const cellVal = String(data[r][bhCusCols[k].colIndex] || '').trim().toLowerCase();
         if (cellVal === cleanEmail) {
-          // THẤY KHÁCH ĐÃ ĐƯỢC CẤP TRƯỚC ĐÓ! Triệu hồi lại đúng dòng tài khoản này.
           const rowData = data[r];
           const stt = rowData[0] || '';
           const accEmail = String(rowData[1] || '').trim();
@@ -2070,7 +2068,8 @@ function assignWarrantyAccount(customerEmail, ctvName) {
             }
           }
 
-          const totpResult = getCurrentTOTPCode(secret2fa);
+          const tDone = Date.now();
+          Logger.log('[PERF] Step 3 (Re-summon Match Found): ' + (tDone - tData) + ' ms. Total: ' + (tDone - tStart) + ' ms');
 
           return {
             success: true,
@@ -2080,8 +2079,8 @@ function assignWarrantyAccount(customerEmail, ctvName) {
             pass: pass,
             mkp: mkp,
             secret2fa: secret2fa,
-            totpCode: totpResult.code || '------',
-            secondsRemaining: totpResult.secondsRemaining || 30,
+            totpCode: '------',
+            secondsRemaining: 30,
             ngayRenew: ngayRenew,
             slotUsed: bhCusCols[k].slotNum,
             totalSlots: bhCusCols.length,
@@ -2092,7 +2091,7 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       }
     }
 
-    // YÊU CẦU 2: KHÁCH MỚI HOÀN TOÀN ➔ QUÉT TÌM SLOT TRỐNG ĐẦU TIÊN TỪ TRÁI SANG PHẢI
+    // 4. Xử lý trong RAM: Tìm slot BHCus* trống đầu tiên từ trái sang phải
     let foundRowIndex = -1;
     let foundTargetColIndex = -1;
     let slotUsed = 0;
@@ -2114,11 +2113,9 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       return { success: false, message: 'Hết tài khoản bảo hành tạm, vui lòng báo admin bổ sung.' };
     }
 
-    // GHI EMAIL KHÁCH VÀO SLOT TRỐNG VỪA TÌM ĐƯỢC
+    // Ghi kết quả ĐÚNG 1 LẦN duy nhất
     warrantySheet.getRange(foundRowIndex, foundTargetColIndex).setValue(cleanEmail);
-    SpreadsheetApp.flush();
 
-    // ĐỌC THÔNG TIN VỪA GÁN
     const rowData = data[foundRowIndex - 1];
     const stt = rowData[0] || '';
     const accEmail = String(rowData[1] || '').trim();
@@ -2140,7 +2137,8 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       }
     }
 
-    const totpResult = getCurrentTOTPCode(secret2fa);
+    const tDone = Date.now();
+    Logger.log('[PERF] Step 3 (Write Slot Done): ' + (tDone - tData) + ' ms. Total: ' + (tDone - tStart) + ' ms');
 
     return {
       success: true,
@@ -2150,8 +2148,8 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       pass: pass,
       mkp: mkp,
       secret2fa: secret2fa,
-      totpCode: totpResult.code || '------',
-      secondsRemaining: totpResult.secondsRemaining || 30,
+      totpCode: '------',
+      secondsRemaining: 30,
       ngayRenew: ngayRenew,
       slotUsed: slotUsed,
       totalSlots: bhCusCols.length,
@@ -2180,9 +2178,9 @@ function getSpreadsheet() {
 }
 
 /**
- * Helper kiểm tra email khách siêu tốc (CacheService + Read 1 Cột + Auto Sync Cache)
+ * Helper kiểm tra email khách siêu tốc (Tái sử dụng Spreadsheet object đã mở)
  */
-function isCustomerEmailInCache(email) {
+function isCustomerEmailInCache(email, targetSs) {
   if (!email) return false;
   const cleanEm = String(email).trim().toLowerCase();
   if (!cleanEm || !cleanEm.includes('@')) return false;
@@ -2194,9 +2192,9 @@ function isCustomerEmailInCache(email) {
     if (cachedVal === '1') return true;
   } catch (eMem) {}
 
-  // 1. Kiểm tra trong tab EMAIL_LOOKUP_CACHE (Chỉ đọc cột A - 0.05s)
+  // 1. Kiểm tra trong tab EMAIL_LOOKUP_CACHE (Dùng targetSs đã mở, 0.05s)
   try {
-    const ss = getSpreadsheet();
+    const ss = targetSs || getSpreadsheet();
     const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
     if (cacheSheet && cacheSheet.getLastRow() > 1) {
       const lastR = cacheSheet.getLastRow();
