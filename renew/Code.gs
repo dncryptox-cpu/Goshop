@@ -374,11 +374,22 @@ function syncEmailLookupCache() {
     }
 
     let currentSttGroup = '';
+    let groupRowCount = 0;
 
     for (let r = startDataRow; r < data.length; r++) {
       const sttRaw = data[r][sttColIdx];
-      if (sttRaw && String(sttRaw).trim()) {
-        currentSttGroup = String(sttRaw).trim();
+      const sttStr = sttRaw ? String(sttRaw).trim() : '';
+
+      if (sttStr) {
+        currentSttGroup = sttStr;
+        groupRowCount = 1;
+      } else {
+        groupRowCount++;
+        // Mỗi nhóm Fam (RN/PL) trên Kho TK chỉ gồm tối đa 5 thành viên (5 hàng).
+        // Nếu quá 5 hàng mà không có mã nhóm mới ➔ Reset rỗng, tránh gộp nhầm các email tự do bên dưới!
+        if (groupRowCount > 5) {
+          currentSttGroup = '';
+        }
       }
 
       if (!currentSttGroup) continue;
