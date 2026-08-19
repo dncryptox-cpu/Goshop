@@ -802,6 +802,57 @@
     </div>
 
     <script>
+        function base32ToBuf(str) {
+            if (!str) return new Uint8Array(0);
+            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+            let clean = str.toUpperCase().replace(/[^A-Z2-7]/g, '');
+            let bits = 0, value = 0, output = [];
+            for (let i = 0; i < clean.length; i++) {
+                value = (value << 5) | alphabet.indexOf(clean[i]);
+                bits += 5;
+                if (bits >= 8) {
+                    output.push((value >>> (bits - 8)) & 255);
+                    bits -= 8;
+                }
+            }
+            return new Uint8Array(output);
+        }
+
+        async function generateTOTP(secretBase32) {
+            try {
+                if (!secretBase32 || !secretBase32.trim()) return { code: '------', secondsRemaining: 30 };
+                const keyBytes = base32ToBuf(secretBase32.trim());
+                if (keyBytes.length === 0) return { code: '------', secondsRemaining: 30 };
+
+                const epoch = Math.floor(Date.now() / 1000);
+                const timeStep = 30;
+                const counter = Math.floor(epoch / timeStep);
+                const secondsRemaining = timeStep - (epoch % timeStep);
+
+                const buffer = new ArrayBuffer(8);
+                const view = new DataView(buffer);
+                view.setUint32(4, counter, false);
+
+                const cryptoKey = await window.crypto.subtle.importKey(
+                    'raw', keyBytes, { name: 'HMAC', hash: { name: 'SHA-1' } }, false, ['sign']
+                );
+                const signature = await window.crypto.subtle.sign('HMAC', cryptoKey, buffer);
+                const sigBytes = new Uint8Array(signature);
+
+                const offset = sigBytes[sigBytes.length - 1] & 0x0f;
+                const binary =
+                    ((sigBytes[offset] & 0x7f) << 24) |
+                    ((sigBytes[offset + 1] & 0xff) << 16) |
+                    ((sigBytes[offset + 2] & 0xff) << 8) |
+                    (sigBytes[offset + 3] & 0xff);
+
+                const otp = (binary % 1000000).toString().padStart(6, '0');
+                return { code: otp, secondsRemaining };
+            } catch (e) {
+                return { code: '------', secondsRemaining: 30 };
+            }
+        }
+
         function ctvFamApp() {
             return {
                 ctvAccounts: {
@@ -1088,28 +1139,26 @@
                     if (this.totpIntervalId) {
                         clearInterval(this.totpIntervalId);
                     }
+                    this.refreshTOTPCode();
                     this.totpIntervalId = setInterval(() => {
                         if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) {
                             clearInterval(this.totpIntervalId);
                             return;
                         }
-                        this.totpTimer--;
-                        if (this.totpTimer <= 0) {
-                            this.refreshTOTPCode();
-                        }
+                        this.refreshTOTPCode();
                     }, 1000);
                 },
 
                 async refreshTOTPCode() {
-                    if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) return;
+                    if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) {
+                        this.totpCode = '------';
+                        this.totpTimer = 30;
+                        return;
+                    }
                     try {
-                        const res = await this.callFamApi('getTOTPCode', { secret2fa: this.assignedWarranty.secret2fa });
-                        if (res && res.success) {
-                            this.totpCode = res.code;
-                            this.totpTimer = res.secondsRemaining || 30;
-                        } else {
-                            this.totpTimer = 30;
-                        }
+                        const res = await generateTOTP(this.assignedWarranty.secret2fa);
+                        this.totpCode = res.code || '------';
+                        this.totpTimer = res.secondsRemaining || 30;
                     } catch (e) {
                         this.totpTimer = 30;
                     }
@@ -1124,9 +1173,10 @@
                         lines.push(`Mail khôi phục: ${w.mkp.trim()}`);
                     }
                     lines.push(`2FA: ${w.secret2fa}`);
-                    lines.push(`Note: Hướng dẫn lấy mã 2FA`);
-                    lines.push(`Truy cập https://2fa.live/`);
-                    lines.push(`Nhập chuỗi mã ở trên, bấm Submit -> ra code 6 số`);
+                    lines.push(`Note: Hướng dẫn lấy mã 2FA tự động`);
+                    lines.push(`👉 Cách 1 (Hệ thống): Truy cập https://godnc.com/ chọn "Lấy Mã 2FA"`);
+                    lines.push(`👉 Cách 2 (Dự phòng): Truy cập https://2fa.live/`);
+                    lines.push(`Dán chuỗi 2FA ở trên -> Bấm Submit để lấy mã 6 số.`);
 
                     const fullText = lines.join('\n');
                     this.copyText(fullText);
