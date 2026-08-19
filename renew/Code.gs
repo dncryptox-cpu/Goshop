@@ -2044,6 +2044,8 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       bhCusCols.push({ colIndex: 6, headerName: 'BHCus1', slotNum: 1 });
       bhCusCols.push({ colIndex: 7, headerName: 'BHCus2', slotNum: 2 });
       bhCusCols.push({ colIndex: 8, headerName: 'BHCus3', slotNum: 3 });
+      bhCusCols.push({ colIndex: 9, headerName: 'BHCus4', slotNum: 4 });
+      bhCusCols.push({ colIndex: 10, headerName: 'BHCus5', slotNum: 5 });
     }
 
     // 3. Xử lý trong RAM: Quét xem khách đã từng được cấp chưa (Triệu hồi)
