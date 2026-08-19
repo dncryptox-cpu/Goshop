@@ -2078,6 +2078,20 @@ function assignWarrantyAccount(customerEmail, ctvName) {
 }
 
 /**
+ * Helper lấy Spreadsheet FAM_ISSUE_TRACKER (Tự động thử getActiveSpreadsheet trước, fallback openById)
+ */
+function getSpreadsheet() {
+  let ss = null;
+  try {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  } catch (err) {}
+  if (!ss) {
+    ss = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
+  }
+  return ss;
+}
+
+/**
  * Helper kiểm tra email khách có trong tab EMAIL_LOOKUP_CACHE không
  */
 function isCustomerEmailInCache(email) {
