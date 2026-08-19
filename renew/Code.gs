@@ -1965,7 +1965,13 @@ function assignWarrantyAccount(customerEmail, ctvName) {
   const cleanEmail = customerEmail.trim().toLowerCase();
 
   try {
-    const ss = getSpreadsheet();
+    let ss = null;
+    try {
+      ss = SpreadsheetApp.getActiveSpreadsheet();
+    } catch (e1) {}
+    if (!ss) {
+      ss = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
+    }
 
     // BƯỚC 1 — Bắt buộc kiểm tra email khách có tồn tại trong EMAIL_LOOKUP_CACHE không
     let isFoundInCache = false;
@@ -2100,7 +2106,14 @@ function isCustomerEmailInCache(email) {
   if (!cleanEm || !cleanEm.includes('@')) return false;
 
   try {
-    const ss = getSpreadsheet();
+    let ss = null;
+    try {
+      ss = SpreadsheetApp.getActiveSpreadsheet();
+    } catch (e) {}
+    if (!ss) {
+      ss = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
+    }
+
     const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
     if (!cacheSheet || cacheSheet.getLastRow() < 2) return false;
 
