@@ -1509,6 +1509,8 @@ function getTicketsFeed(ctvNameRaw, feedType) {
   const emailCtvMap = {};
   const sttCtvMap = {};
   const sttMembersMap = {};
+  const cacheGroupMap = {};
+
   if (cacheSheet && cacheSheet.getLastRow() > 1) {
     const cData = cacheSheet.getDataRange().getValues();
     for (let i = 1; i < cData.length; i++) {
@@ -1517,6 +1519,9 @@ function getTicketsFeed(ctvNameRaw, feedType) {
       const ownerEm = String(cData[i][3] || '').trim();
       const ctvVal = cData[i][4] ? String(cData[i][4]).trim() : '';
 
+      if (em && stt) {
+        cacheGroupMap[em] = stt;
+      }
       if (stt && ownerEm && ownerEm.includes('@') && !sttOwnerMap[stt]) {
         sttOwnerMap[stt] = ownerEm;
       }
@@ -1594,7 +1599,13 @@ function getTicketsFeed(ctvNameRaw, feedType) {
       // Combine reported emails with all members in Kho TK for this sttGroup
       const combinedEmailMap = {};
       (rStats.emails || []).forEach(em => {
-        if (em) combinedEmailMap[em.toLowerCase()] = em;
+        if (em) {
+          const emClean = em.toLowerCase();
+          const mappedStt = cacheGroupMap[emClean];
+          if (!mappedStt || mappedStt === sttGroup) {
+            combinedEmailMap[emClean] = em;
+          }
+        }
       });
       const khoMembers = sttMembersMap[sttGroup] || [];
       khoMembers.forEach(m => {
