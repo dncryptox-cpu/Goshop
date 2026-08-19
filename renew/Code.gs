@@ -1994,7 +1994,7 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       };
     }
 
-    // BƯỚC 2 — Cấp tài khoản bảo hành từ tab WARRANTY (hỗ trợ 3 cột BHCus1, BHCus2, BHCus3)
+    // BƯỚC 2 — Cấp / Triệu hồi tài khoản bảo hành từ tab WARRANTY
     let warrantySheet = ss.getSheetByName('WARRANTY') || ss.getSheetByName('Warranty') || ss.getSheetByName('warranty');
     if (!warrantySheet) {
       return { success: false, message: 'Không tìm thấy tab WARRANTY trong sheet FAM_ISSUE_TRACKER.' };
@@ -2006,39 +2006,103 @@ function assignWarrantyAccount(customerEmail, ctvName) {
     }
 
     const data = warrantySheet.getDataRange().getValues();
-    let foundRowIndex = -1;
-    let slotUsed = 0; // 1 (BHCus1 - Col G), 2 (BHCus2 - Col H), 3 (BHCus3 - Col I)
+    const headers = data[0];
 
-    // Dòng 1 là tiêu đề. Quét từ dòng 2 (r = 1)
-    for (let r = 1; r < data.length; r++) {
-      const bhCus1 = String(data[r][6] || '').trim();
-      const bhCus2 = String(data[r][7] || '').trim();
-      const bhCus3 = String(data[r][8] || '').trim();
-
-      if (!bhCus1) {
-        foundRowIndex = r + 1; // 1-indexed row number
-        slotUsed = 1;
-        break;
-      } else if (!bhCus2) {
-        foundRowIndex = r + 1; // 1-indexed row number
-        slotUsed = 2;
-        break;
-      } else if (!bhCus3) {
-        foundRowIndex = r + 1; // 1-indexed row number
-        slotUsed = 3;
-        break;
+    // YÊU CẦU 2: ĐỌC ĐỘNG TẤT CẢ CỘT BHCus* (BHCus1, BHCus2, BHCus3, ...)
+    const bhCusCols = [];
+    for (let c = 0; c < headers.length; c++) {
+      const hStr = String(headers[c] || '').trim().toLowerCase();
+      if (hStr.startsWith('bhcus')) {
+        bhCusCols.push({
+          colIndex: c,
+          headerName: String(headers[c]).trim(),
+          slotNum: bhCusCols.length + 1
+        });
       }
     }
 
-    if (foundRowIndex === -1 || slotUsed === 0) {
+    // Fallback vào các cột G, H, I (col index 6, 7, 8) nếu header chưa đặt đúng tên BHCus*
+    if (bhCusCols.length === 0) {
+      bhCusCols.push({ colIndex: 6, headerName: 'BHCus1', slotNum: 1 });
+      bhCusCols.push({ colIndex: 7, headerName: 'BHCus2', slotNum: 2 });
+      bhCusCols.push({ colIndex: 8, headerName: 'BHCus3', slotNum: 3 });
+    }
+
+    // YÊU CẦU 1: QUÉT XEM KHÁCH NÀY ĐÃ ĐƯỢC CẤP TRƯỚC ĐÓ Ở BẤT KỲ CỘT BHCus* NÀO CHƯA
+    for (let r = 1; r < data.length; r++) {
+      for (let k = 0; k < bhCusCols.length; k++) {
+        const cellVal = String(data[r][bhCusCols[k].colIndex] || '').trim().toLowerCase();
+        if (cellVal === cleanEmail) {
+          // THẤY KHÁCH ĐÃ ĐƯỢC CẤP TRƯỚC ĐÓ! Triệu hồi lại đúng dòng tài khoản này.
+          const rowData = data[r];
+          const stt = rowData[0] || '';
+          const accEmail = String(rowData[1] || '').trim();
+          const pass = String(rowData[2] || '').trim();
+          const mkp = String(rowData[3] || '').trim();
+          const secret2fa = String(rowData[4] || '').trim();
+          
+          let ngayRenew = '---';
+          if (rowData[5]) {
+            try {
+              const d = new Date(rowData[5]);
+              if (!isNaN(d.getTime())) {
+                ngayRenew = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+              } else {
+                ngayRenew = String(rowData[5]);
+              }
+            } catch (e) {
+              ngayRenew = String(rowData[5]);
+            }
+          }
+
+          const totpResult = getCurrentTOTPCode(secret2fa);
+
+          return {
+            success: true,
+            isReassigned: true,
+            stt: stt,
+            email: accEmail,
+            pass: pass,
+            mkp: mkp,
+            secret2fa: secret2fa,
+            totpCode: totpResult.code || '------',
+            secondsRemaining: totpResult.secondsRemaining || 30,
+            ngayRenew: ngayRenew,
+            slotUsed: bhCusCols[k].slotNum,
+            totalSlots: bhCusCols.length,
+            customerEmail: cleanEmail,
+            message: 'Khách hàng này đã được cấp tài khoản bảo hành trước đó. Đã triệu hồi lại tài khoản!'
+          };
+        }
+      }
+    }
+
+    // YÊU CẦU 2: KHÁCH MỚI HOÀN TOÀN ➔ QUÉT TÌM SLOT TRỐNG ĐẦU TIÊN TỪ TRÁI SANG PHẢI
+    let foundRowIndex = -1;
+    let foundTargetColIndex = -1;
+    let slotUsed = 0;
+
+    for (let r = 1; r < data.length; r++) {
+      for (let k = 0; k < bhCusCols.length; k++) {
+        const val = String(data[r][bhCusCols[k].colIndex] || '').trim();
+        if (!val) {
+          foundRowIndex = r + 1; // 1-indexed row
+          foundTargetColIndex = bhCusCols[k].colIndex + 1; // 1-indexed col
+          slotUsed = bhCusCols[k].slotNum;
+          break;
+        }
+      }
+      if (foundRowIndex !== -1) break;
+    }
+
+    if (foundRowIndex === -1 || foundTargetColIndex === -1) {
       return { success: false, message: 'Hết tài khoản bảo hành tạm, vui lòng báo admin bổ sung.' };
     }
 
-    // Ghi customerEmail vào đúng cột (Col 7 / G nếu slot 1, Col 8 / H nếu slot 2, Col 9 / I nếu slot 3)
-    const targetCol = slotUsed === 1 ? 7 : (slotUsed === 2 ? 8 : 9);
-    warrantySheet.getRange(foundRowIndex, targetCol).setValue(cleanEmail);
+    // GHI EMAIL KHÁCH VÀO SLOT TRỐNG VỪA TÌM ĐƯỢC
+    warrantySheet.getRange(foundRowIndex, foundTargetColIndex).setValue(cleanEmail);
 
-    // Đọc thông tin tài khoản bảo hành từ dòng vừa gán
+    // ĐỌC THÔNG TIN VỪA GÁN
     const rowData = data[foundRowIndex - 1];
     const stt = rowData[0] || '';
     const accEmail = String(rowData[1] || '').trim();
@@ -2064,6 +2128,7 @@ function assignWarrantyAccount(customerEmail, ctvName) {
 
     return {
       success: true,
+      isReassigned: false,
       stt: stt,
       email: accEmail,
       pass: pass,
@@ -2073,6 +2138,7 @@ function assignWarrantyAccount(customerEmail, ctvName) {
       secondsRemaining: totpResult.secondsRemaining || 30,
       ngayRenew: ngayRenew,
       slotUsed: slotUsed,
+      totalSlots: bhCusCols.length,
       customerEmail: cleanEmail,
       message: 'Cấp tài khoản bảo hành tạm thành công!'
     };
