@@ -111,6 +111,9 @@ function handleRequest(e) {
       case 'auditAffectedTickets':
         result = auditAffectedTickets();
         break;
+      case 'executeCleanUpAfterConfirmation':
+        result = executeCleanUpAfterConfirmation(params);
+        break;
       case 'getTOTPCode':
         const wSecret = params.secret2fa || params.secret || params.secret_2fa;
         result = getTOTPCode(wSecret);
@@ -2351,4 +2354,90 @@ function auditAffectedTickets() {
     ticket79_tickets: ticket79Audit,
     abnormal_tickets: abnormalTicketsAudit
   };
+}
+
+/**
+ * HÀM THỰC THI DỌN DẸP / GÁN LẠI TICKET VÀ REPORT SAU KHU DNL XÁC NHẬN:
+ * 1. Chạy syncEmailLookupCache() lấy map nhóm chuẩn
+ * 2. Đọc REPORTS, gán lại ticket_id mới theo nhóm chuẩn của từng email (hoặc tách khỏi PL394/79)
+ * 3. Xóa các dòng ticket rác (như ticket 79 nếu là rác)
+ */
+function executeCleanUpAfterConfirmation(options) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    return { success: false, message: 'Hệ thống đang bận, thử lại sau 5s.' };
+  }
+
+  try {
+    const syncRes = syncEmailLookupCache();
+    const ss = getSpreadsheet();
+    const ticketsSheet = ss.getSheetByName('TICKETS');
+    const reportsSheet = ss.getSheetByName('REPORTS');
+    const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+
+    const cleanCacheMap = {};
+    if (cacheSheet && cacheSheet.getLastRow() > 1) {
+      const cData = cacheSheet.getDataRange().getValues();
+      for (let i = 1; i < cData.length; i++) {
+        const em = String(cData[i][0] || '').trim().toLowerCase();
+        const stt = String(cData[i][1] || '').trim();
+        if (em && stt) cleanCacheMap[em] = stt;
+      }
+    }
+
+    let updatedReportCount = 0;
+    let deletedTicketCount = 0;
+
+    // 1. Re-link REPORTS rows attached to PL394 or 79 to their TRUE groups
+    if (reportsSheet && reportsSheet.getLastRow() > 1) {
+      const rData = reportsSheet.getDataRange().getValues();
+      for (let i = 1; i < rData.length; i++) {
+        const email = String(rData[i][2] || '').trim().toLowerCase();
+        const trueGroup = cleanCacheMap[email];
+        
+        if (trueGroup) {
+          // Find or create correct ticket for trueGroup
+          const now = parseDateHelper(rData[i][3]) || new Date();
+          const targetTicket = findOrCreateTicketForGroup(trueGroup, now, email);
+          if (targetTicket && targetTicket.ticket_id) {
+            reportsSheet.getRange(i + 1, 2).setValue(targetTicket.ticket_id);
+            updatedReportCount++;
+          }
+        }
+      }
+    }
+
+    // 2. Remove orphaned tickets with 0 reports or invalid group '79' if empty
+    if (ticketsSheet && ticketsSheet.getLastRow() > 1) {
+      const tData = ticketsSheet.getDataRange().getValues();
+      const rData = reportsSheet ? reportsSheet.getDataRange().getValues() : [];
+      const activeTicketIds = new Set();
+      for (let r = 1; r < rData.length; r++) {
+        activeTicketIds.add(String(rData[r][1]).trim());
+      }
+
+      for (let r = tData.length - 1; r >= 1; r--) {
+        const tId = String(tData[r][0]).trim();
+        const sttGroup = String(tData[r][1]).trim();
+        if ((sttGroup === '79' || !activeTicketIds.has(tId)) && sttGroup !== 'PL394') {
+          // If ticket 79 or ticket with no reports remaining
+          if (!activeTicketIds.has(tId)) {
+            ticketsSheet.deleteRow(r + 1);
+            deletedTicketCount++;
+          }
+        }
+      }
+    }
+
+    return {
+      success: true,
+      updated_reports: updatedReportCount,
+      deleted_tickets: deletedTicketCount,
+      message: 'Đã hoàn tất dọn dẹp và cập nhật lại toàn bộ Ticket / Report theo đúng nhóm chuẩn!'
+    };
+  } catch (err) {
+    return { success: false, message: 'Lỗi dọn dẹp: ' + err.toString() };
+  } finally {
+    lock.releaseLock();
+  }
 }
