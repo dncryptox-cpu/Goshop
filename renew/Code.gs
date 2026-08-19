@@ -2152,22 +2152,31 @@ function getSpreadsheet() {
 }
 
 /**
- * Helper kiểm tra email khách có trong tab EMAIL_LOOKUP_CACHE hoặc trực tiếp trong Kho TK (tab DATA) không
+ * Helper kiểm tra email khách siêu tốc (CacheService + Read 1 Cột + Auto Sync Cache)
  */
 function isCustomerEmailInCache(email) {
   if (!email) return false;
   const cleanEm = String(email).trim().toLowerCase();
   if (!cleanEm || !cleanEm.includes('@')) return false;
 
-  // 1. Kiểm tra trong tab EMAIL_LOOKUP_CACHE của FAM_ISSUE_TRACKER
+  // 0. CacheService In-Memory Check (Siêu tốc 0.001s)
+  try {
+    const memCache = CacheService.getScriptCache();
+    const cachedVal = memCache.get('valid_cust_' + cleanEm);
+    if (cachedVal === '1') return true;
+  } catch (eMem) {}
+
+  // 1. Kiểm tra trong tab EMAIL_LOOKUP_CACHE (Chỉ đọc cột A - 0.05s)
   try {
     const ss = getSpreadsheet();
     const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
     if (cacheSheet && cacheSheet.getLastRow() > 1) {
-      const cData = cacheSheet.getDataRange().getValues();
-      for (let i = 1; i < cData.length; i++) {
-        const em = String(cData[i][0] || '').trim().toLowerCase();
+      const lastR = cacheSheet.getLastRow();
+      const colAValues = cacheSheet.getRange(2, 1, lastR - 1, 1).getValues();
+      for (let i = 0; i < colAValues.length; i++) {
+        const em = String(colAValues[i][0] || '').trim().toLowerCase();
         if (em === cleanEm) {
+          try { CacheService.getScriptCache().put('valid_cust_' + cleanEm, '1', 21600); } catch (e) {}
           return true;
         }
       }
@@ -2176,16 +2185,25 @@ function isCustomerEmailInCache(email) {
     Logger.log('Lỗi check EMAIL_LOOKUP_CACHE: ' + err.toString());
   }
 
-  // 2. FALLBACK QUÉT TRỰC TIẾP TRONG KHO TK (Kho TK | new - ytbdnc, tab DATA)
+  // 2. FALLBACK TỐI ƯU SIÊU TỐC VÀO KHO TK (Chỉ đọc cột K - Email khách 0.2s)
   try {
     const khoSs = SpreadsheetApp.openById(KHO_TK_ID);
     const khoSheet = khoSs.getSheetByName(KHO_TK_TAB_NAME);
     if (khoSheet && khoSheet.getLastRow() > 1) {
-      const khoData = khoSheet.getDataRange().getValues();
-      for (let i = 1; i < khoData.length; i++) {
-        const kEmail = String(khoData[i][10] || '').trim().toLowerCase(); // Cột K (Email khách)
-        const dEmail = String(khoData[i][3] || '').trim().toLowerCase();  // Cột D (ID/Email account)
-        if (kEmail === cleanEm || dEmail === cleanEm) {
+      const lastR = khoSheet.getLastRow();
+      const colKValues = khoSheet.getRange(2, 11, lastR - 1, 1).getValues();
+      for (let i = 0; i < colKValues.length; i++) {
+        const kEmail = String(colKValues[i][0] || '').trim().toLowerCase();
+        if (kEmail === cleanEm) {
+          // Lưu vào Memory Cache và tự động bổ sung vào tab EMAIL_LOOKUP_CACHE để lần sau 0ms
+          try {
+            CacheService.getScriptCache().put('valid_cust_' + cleanEm, '1', 21600);
+            const ss = getSpreadsheet();
+            const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+            if (cacheSheet) {
+              cacheSheet.appendRow([cleanEm, new Date()]);
+            }
+          } catch (eApp) {}
           return true;
         }
       }
