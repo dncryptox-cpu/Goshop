@@ -108,6 +108,9 @@ function handleRequest(e) {
         const wCtvName = params.ctvName || params.ctv || params.ctv_name;
         result = assignWarrantyAccount(wCustEmail, wCtvName);
         break;
+      case 'auditAffectedTickets':
+        result = auditAffectedTickets();
+        break;
       case 'getTOTPCode':
         const wSecret = params.secret2fa || params.secret || params.secret_2fa;
         result = getTOTPCode(wSecret);
@@ -2235,4 +2238,117 @@ function isCustomerEmailInCache(email) {
   }
 
   return false;
+}
+
+/**
+ * AUDIT TICKET VÀ REPORT BỊ ẢNH HƯỞNG BỞI LỖI CARRY-FORWARD CŨ:
+ * 1. Sync lại EMAIL_LOOKUP_CACHE với logic 5-dòng mới
+ * 2. Quét toàn bộ dòng trong TICKETS và REPORTS cho PL394, Ticket "79", và các ticket bất thường > 5 member
+ * 3. Đánh giá stt_group thật của từng email
+ * 4. Trả về bảng đối chiếu trước/sau hoàn chỉnh cho DNL duyệt!
+ */
+function auditAffectedTickets() {
+  const syncRes = syncEmailLookupCache();
+  
+  const ss = getSpreadsheet();
+  const ticketsSheet = ss.getSheetByName('TICKETS');
+  const reportsSheet = ss.getSheetByName('REPORTS');
+  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+
+  const cleanCacheMap = {};
+  if (cacheSheet && cacheSheet.getLastRow() > 1) {
+    const cData = cacheSheet.getDataRange().getValues();
+    for (let i = 1; i < cData.length; i++) {
+      const em = String(cData[i][0] || '').trim().toLowerCase();
+      const stt = String(cData[i][1] || '').trim();
+      if (em && stt) {
+        cleanCacheMap[em] = stt;
+      }
+    }
+  }
+
+  let is79RealGroupInKho = false;
+  try {
+    const khoSs = SpreadsheetApp.openById(KHO_TK_ID);
+    const dataSheet = khoSs.getSheetByName(KHO_TK_TAB_NAME);
+    if (dataSheet && dataSheet.getLastRow() > 1) {
+      const dData = dataSheet.getDataRange().getValues();
+      for (let r = 0; r < dData.length; r++) {
+        const valStr = String(dData[r][0] || '').trim();
+        if (valStr === '79' || valStr === 'RN79' || valStr === 'PL79') {
+          is79RealGroupInKho = true;
+          break;
+        }
+      }
+    }
+  } catch (e) {}
+
+  const ticketMap = {};
+  if (ticketsSheet && ticketsSheet.getLastRow() > 1) {
+    const tData = ticketsSheet.getDataRange().getValues();
+    for (let r = 1; r < tData.length; r++) {
+      const tId = String(tData[r][0] || '').trim();
+      const sttGroup = String(tData[r][1] || '').trim();
+      const status = String(tData[r][2] || '').trim();
+      const createdAt = tData[r][3];
+      ticketMap[tId] = {
+        rowIndex: r + 1,
+        ticket_id: tId,
+        stt_group: sttGroup,
+        status: status,
+        created_at: createdAt,
+        reports: []
+      };
+    }
+  }
+
+  if (reportsSheet && reportsSheet.getLastRow() > 1) {
+    const rData = reportsSheet.getDataRange().getValues();
+    for (let r = 1; r < rData.length; r++) {
+      const rId = String(rData[r][0] || '').trim();
+      const tId = String(rData[r][1] || '').trim();
+      const em = String(rData[r][2] || '').trim().toLowerCase();
+      const reportedAt = rData[r][3];
+      const msg = String(rData[r][4] || '');
+      const ctv = String(rData[r][5] || '');
+
+      if (ticketMap[tId]) {
+        ticketMap[tId].reports.push({
+          rowIndex: r + 1,
+          report_id: rId,
+          email: em,
+          reported_at: reportedAt,
+          message: msg,
+          submitted_by: ctv,
+          true_stt_group: cleanCacheMap[em] || 'RÁC (Không thuộc nhóm nào)'
+        });
+      }
+    }
+  }
+
+  const pl394Audit = [];
+  const ticket79Audit = [];
+  const abnormalTicketsAudit = [];
+
+  for (const tId in ticketMap) {
+    const t = ticketMap[tId];
+    if (t.stt_group === 'PL394') {
+      pl394Audit.push(t);
+    }
+    if (t.stt_group === '79' || t.stt_group === 'RN79' || t.stt_group === 'PL79') {
+      ticket79Audit.push(t);
+    }
+    if (t.reports.length > 5 && t.stt_group !== 'PL394' && t.stt_group !== '79') {
+      abnormalTicketsAudit.push(t);
+    }
+  }
+
+  return {
+    success: true,
+    synced_cache_count: Object.keys(cleanCacheMap).length,
+    is_79_real_group_in_kho: is79RealGroupInKho,
+    pl394_tickets: pl394Audit,
+    ticket79_tickets: ticket79Audit,
+    abnormal_tickets: abnormalTicketsAudit
+  };
 }
