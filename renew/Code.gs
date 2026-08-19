@@ -1929,6 +1929,10 @@ function getCurrentTOTPCode(base32Secret) {
     const counterBytes = new Array(8);
     let temp = timeStep;
     for (let i = 7; i >= 0; i--) {
+      counterBytes[i] = temp & 0xff;
+      temp = Math.floor(temp / 256);
+    }
+
     const hmacSigned = Utilities.computeHmacSha1Signature(counterBytes, keyBytes);
     const hmac = hmacSigned.map(b => (b < 0 ? b + 256 : b));
 
