@@ -103,6 +103,15 @@ function handleRequest(e) {
         const isSentParam = (params.isSent === 'true' || params.isSent === true || params.isSent === 1 || params.isSent === '1');
         result = toggleZaloSent(rIdParam, custEmailParam, isSentParam);
         break;
+      case 'assignWarrantyAccount':
+        const wCustEmail = params.customerEmail || params.email || params.customer_email;
+        const wCtvName = params.ctvName || params.ctv || params.ctv_name;
+        result = assignWarrantyAccount(wCustEmail, wCtvName);
+        break;
+      case 'getTOTPCode':
+        const wSecret = params.secret2fa || params.secret || params.secret_2fa;
+        result = getTOTPCode(wSecret);
+        break;
       default:
         result = { success: false, message: 'Action không hợp lệ: ' + action };
     }
@@ -1867,4 +1876,210 @@ function toggleZaloSent(reportId, customerEmail, isSent) {
   } catch (err) {
     return { success: false, error: err.toString() };
   }
+}
+
+/**
+ * TÍNH MÃ 6 SỐ TOTP THEO CHUẨN RFC 6238 (HMAC-SHA1, 30 GIÂY)
+ */
+function getCurrentTOTPCode(base32Secret) {
+  if (!base32Secret) {
+    return { success: false, code: '------', secondsRemaining: 0 };
+  }
+  
+  try {
+    const cleanSecret = String(base32Secret).replace(/\s+/g, '').toUpperCase();
+    const keyBytes = base32ToBytes(cleanSecret);
+    if (!keyBytes || keyBytes.length === 0) {
+      return { success: false, code: '------', secondsRemaining: 0 };
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const timeStep = Math.floor(nowSec / 30);
+    const secondsRemaining = 30 - (nowSec % 30);
+
+    // Convert timeStep to 8-byte big-endian array
+    const counterBytes = new Array(8);
+    let temp = timeStep;
+    for (let i = 7; i >= 0; i--) {
+      counterBytes[i] = temp & 0xff;
+      temp = Math.floor(temp / 256);
+    }
+
+    // Calculate HMAC-SHA1 signature using Apps Script Utilities
+    const hmacSigned = Utilities.computeHmacSha1Signature(counterBytes, keyBytes);
+    const hmac = hmacSigned.map(b => (b < 0 ? b + 256 : b));
+
+    // Dynamic truncation according to RFC 4226 / RFC 6238
+    const offset = hmac[hmac.length - 1] & 0x0f;
+    const binary = ((hmac[offset] & 0x7f) << 24) |
+                   ((hmac[offset + 1] & 0xff) << 16) |
+                   ((hmac[offset + 2] & 0xff) << 8) |
+                   (hmac[offset + 3] & 0xff);
+
+    const otp = binary % 1000000;
+    const codeStr = String(otp).padStart(6, '0');
+
+    return {
+      success: true,
+      code: codeStr,
+      secondsRemaining: secondsRemaining
+    };
+  } catch (err) {
+    Logger.log('Lỗi tính TOTP: ' + err.toString());
+    return { success: false, code: '------', secondsRemaining: 0, error: err.toString() };
+  }
+}
+
+/**
+ * Decode chuỗi Base32 (RFC 4648) thành mảng Byte
+ */
+function base32ToBytes(base32) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (let i = 0; i < base32.length; i++) {
+    const char = base32.charAt(i);
+    const val = alphabet.indexOf(char);
+    if (val !== -1) {
+      bits += val.toString(2).padStart(5, '0');
+    }
+  }
+  const bytes = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(parseInt(bits.substr(i, 8), 2));
+  }
+  return bytes;
+}
+
+function getTOTPCode(secret2fa) {
+  return getCurrentTOTPCode(secret2fa);
+}
+
+/**
+ * CẤP TÀI KHOẢN BẢO HÀNH TẠM (Tab WARRANTY trong FAM_ISSUE_TRACKER)
+ */
+function assignWarrantyAccount(customerEmail, ctvName) {
+  if (!customerEmail || !customerEmail.trim()) {
+    return { success: false, message: 'Vui lòng nhập email khách hàng cần cấp tài khoản bảo hành.' };
+  }
+
+  const cleanEmail = customerEmail.trim().toLowerCase();
+
+  // BƯỚC 1 — Bắt buộc kiểm tra email khách có tồn tại trong EMAIL_LOOKUP_CACHE không
+  if (!isCustomerEmailInCache(cleanEmail)) {
+    return {
+      success: false,
+      message: 'Email này không khớp với danh sách khách hàng, không thể cấp tài khoản bảo hành.'
+    };
+  }
+
+  // BƯỚC 2 — Cấp tài khoản bảo hành từ tab WARRANTY
+  try {
+    const ss = getSpreadsheet();
+    let warrantySheet = ss.getSheetByName('WARRANTY') || ss.getSheetByName('Warranty') || ss.getSheetByName('warranty');
+    if (!warrantySheet) {
+      return { success: false, message: 'Không tìm thấy tab WARRANTY trong sheet FAM_ISSUE_TRACKER.' };
+    }
+
+    const lastRow = warrantySheet.getLastRow();
+    if (lastRow < 2) {
+      return { success: false, message: 'Hết tài khoản bảo hành tạm, vui lòng báo admin bổ sung.' };
+    }
+
+    const data = warrantySheet.getDataRange().getValues();
+    let foundRowIndex = -1;
+    let slotUsed = 0; // 1 (BHCus1 - Col G) hoặc 2 (BHCus2 - Col H)
+
+    // Dòng 1 là tiêu đề. Quét từ dòng 2 (r = 1)
+    for (let r = 1; r < data.length; r++) {
+      const bhCus1 = String(data[r][6] || '').trim();
+      const bhCus2 = String(data[r][7] || '').trim();
+
+      if (!bhCus1) {
+        foundRowIndex = r + 1; // 1-indexed row number
+        slotUsed = 1;
+        break;
+      } else if (!bhCus2) {
+        foundRowIndex = r + 1; // 1-indexed row number
+        slotUsed = 2;
+        break;
+      }
+    }
+
+    if (foundRowIndex === -1 || slotUsed === 0) {
+      return { success: false, message: 'Hết tài khoản bảo hành tạm, vui lòng báo admin bổ sung.' };
+    }
+
+    // Ghi customerEmail vào đúng cột (Col 7 / G nếu slot 1, Col 8 / H nếu slot 2)
+    const targetCol = slotUsed === 1 ? 7 : 8;
+    warrantySheet.getRange(foundRowIndex, targetCol).setValue(cleanEmail);
+
+    // Đọc thông tin tài khoản bảo hành từ dòng vừa gán
+    const rowData = data[foundRowIndex - 1];
+    const stt = rowData[0] || '';
+    const accEmail = String(rowData[1] || '').trim();
+    const pass = String(rowData[2] || '').trim();
+    const mkp = String(rowData[3] || '').trim();
+    const secret2fa = String(rowData[4] || '').trim();
+    
+    let ngayRenew = '---';
+    if (rowData[5]) {
+      try {
+        const d = new Date(rowData[5]);
+        if (!isNaN(d.getTime())) {
+          ngayRenew = d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        } else {
+          ngayRenew = String(rowData[5]);
+        }
+      } catch (e) {
+        ngayRenew = String(rowData[5]);
+      }
+    }
+
+    const totpResult = getCurrentTOTPCode(secret2fa);
+
+    return {
+      success: true,
+      stt: stt,
+      email: accEmail,
+      pass: pass,
+      mkp: mkp,
+      secret2fa: secret2fa,
+      totpCode: totpResult.code || '------',
+      secondsRemaining: totpResult.secondsRemaining || 30,
+      ngayRenew: ngayRenew,
+      slotUsed: slotUsed,
+      customerEmail: cleanEmail,
+      message: 'Cấp tài khoản bảo hành tạm thành công!'
+    };
+
+  } catch (err) {
+    Logger.log('Lỗi assignWarrantyAccount: ' + err.toString());
+    return { success: false, message: 'Lỗi xử lý máy chủ: ' + err.toString() };
+  }
+}
+
+/**
+ * Helper kiểm tra email khách có trong tab EMAIL_LOOKUP_CACHE không
+ */
+function isCustomerEmailInCache(email) {
+  if (!email) return false;
+  const cleanEm = String(email).trim().toLowerCase();
+  if (!cleanEm || !cleanEm.includes('@')) return false;
+
+  try {
+    const ss = getSpreadsheet();
+    const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+    if (!cacheSheet || cacheSheet.getLastRow() < 2) return false;
+
+    const cData = cacheSheet.getDataRange().getValues();
+    for (let i = 1; i < cData.length; i++) {
+      const em = String(cData[i][0] || '').trim().toLowerCase();
+      if (em === cleanEm) {
+        return true;
+      }
+    }
+  } catch (err) {
+    Logger.log('Lỗi check isCustomerEmailInCache: ' + err.toString());
+  }
+  return false;
 }
