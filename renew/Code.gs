@@ -2639,6 +2639,17 @@ function getMailPhuRequests(statusFilter) {
     return { success: true, total: 0, requests: [] };
   }
 
+  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+  const ctvCacheMap = {};
+  if (cacheSheet && cacheSheet.getLastRow() > 1) {
+    const cData = cacheSheet.getDataRange().getValues();
+    for (let i = 1; i < cData.length; i++) {
+      const em = String(cData[i][0] || '').trim().toLowerCase();
+      const ctv = String(cData[i][4] || '').trim();
+      if (em && ctv) ctvCacheMap[em] = ctv;
+    }
+  }
+
   const data = reqSheet.getDataRange().getValues();
   const requests = [];
 
@@ -2657,12 +2668,19 @@ function getMailPhuRequests(statusFilter) {
       if (status !== statusFilter) continue;
     }
 
+    let ctvName = ctvCacheMap[primaryEmail] || '';
+    if (!ctvName) {
+      const direct = lookupCustomerInfoFromKhoTK(primaryEmail);
+      if (direct && direct.ctv) ctvName = direct.ctv;
+    }
+
     requests.push({
       request_id: requestId,
       stt_group: sttGroup,
       primary_email: primaryEmail,
       mail_phu: mailPhu,
       ngay_het_han: ngayHetHan,
+      ctv: ctvName,
       requested_at: requestedAt,
       status: status,
       note: note
@@ -2777,8 +2795,17 @@ function lookupCustomerInfoFromKhoTK(primaryEmail) {
       headerRowIdx = 0;
     }
 
+    let ctvColIdx = -1;
+    const hRow = data[headerRowIdx] || [];
+    for (let c = 0; c < hRow.length; c++) {
+      const hStr = String(hRow[c] || '').trim().toLowerCase();
+      if (hStr === 'ctv') {
+        ctvColIdx = c;
+        break;
+      }
+    }
+
     if (dateColIdx === -1) {
-      const hRow = data[headerRowIdx] || [];
       for (let c = 0; c < hRow.length; c++) {
         const hStr = String(hRow[c] || '').trim().toLowerCase();
         if (hStr.includes('date') || hStr.includes('renew') || hStr.includes('hạn') || hStr.includes('hsd') || hStr.includes('ngày')) {
@@ -2813,10 +2840,15 @@ function lookupCustomerInfoFromKhoTK(primaryEmail) {
             ngayHetHanStr = String(rawDate).trim();
           }
         }
+        let ctvStr = '';
+        if (ctvColIdx !== -1 && data[r][ctvColIdx]) {
+          ctvStr = String(data[r][ctvColIdx]).trim();
+        }
         return {
           found: true,
           stt_group: currentGroup || 'KHO_TK',
-          ngay_het_han: ngayHetHanStr
+          ngay_het_han: ngayHetHanStr,
+          ctv: ctvStr
         };
       }
     }
