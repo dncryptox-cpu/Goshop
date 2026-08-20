@@ -128,6 +128,9 @@ function handleRequest(e) {
         const mpNote = params.note;
         result = updateMailPhuStatus(mpReqId, mpStatus, mpNote);
         break;
+      case 'deleteMailPhuRequest':
+        result = deleteMailPhuRequest(params.requestId || params.request_id);
+        break;
       case 'getTOTPCode':
         const wSecret = params.secret2fa || params.secret || params.secret_2fa;
         result = getTOTPCode(wSecret);
@@ -2589,6 +2592,9 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
     sttGroup = 'KHO_TK';
   }
 
+  const nowIso = new Date().toISOString();
+  const formattedHSD = formatDateOnlyHelper(ngayHetHan);
+
   let reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
   if (!reqSheet) {
     reqSheet = ss.insertSheet('MAIL_PHU_REQUESTS');
@@ -2604,15 +2610,62 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
     ]);
   }
 
+  // Quét xem đã có yêu cầu đang chờ (Mới / Đã mời) của primaryEmail này chưa
+  const data = reqSheet.getDataRange().getValues();
+  let existingRowIdx = -1;
+  let existingOldMailPhu = '';
+  let existingReqId = '';
+
+  for (let r = 1; r < data.length; r++) {
+    const em = String(data[r][2] || '').trim().toLowerCase();
+    const st = String(data[r][6] || '').trim();
+    if (em === primaryEmail && (st === 'Mới' || st === 'Đã mời')) {
+      existingRowIdx = r + 1; // 1-indexed row index
+      existingReqId = String(data[r][0] || '').trim();
+      existingOldMailPhu = String(data[r][3] || '').trim().toLowerCase();
+      break;
+    }
+  }
+
+  if (existingRowIdx !== -1) {
+    // Cập nhật lại dòng đang chờ cũ (Xóa/ghi đè mail phụ cũ bằng mail phụ mới)
+    reqSheet.getRange(existingRowIdx, 2).setValue(sttGroup);
+    reqSheet.getRange(existingRowIdx, 4).setValue(mailPhu);
+    if (formattedHSD) reqSheet.getRange(existingRowIdx, 5).setValue(formattedHSD);
+    reqSheet.getRange(existingRowIdx, 6).setValue(nowIso);
+    reqSheet.getRange(existingRowIdx, 7).setValue('Mới');
+
+    let noteText = '';
+    if (existingOldMailPhu && existingOldMailPhu !== mailPhu) {
+      noteText = `Đã đổi mail phụ từ ${existingOldMailPhu} sang ${mailPhu}`;
+    } else {
+      noteText = `Làm mới thời gian yêu cầu lúc ${formattedHSD}`;
+    }
+    reqSheet.getRange(existingRowIdx, 8).setValue(noteText);
+
+    return {
+      success: true,
+      request_id: existingReqId,
+      stt_group: sttGroup,
+      primary_email: primaryEmail,
+      mail_phu: mailPhu,
+      ngay_het_han: formattedHSD,
+      is_updated: true,
+      message: (existingOldMailPhu && existingOldMailPhu !== mailPhu)
+        ? `🔄 Đã cập nhật lại yêu cầu: Thay thế mail phụ cũ bằng mail phụ mới (${mailPhu})!`
+        : `⚠️ Email ${primaryEmail} đã có yêu cầu đổi mail phụ đang chờ. Hệ thống đã làm mới mốc thời gian cho yêu cầu này!`
+    };
+  }
+
+  // Nếu chưa có yêu cầu đang chờ ➔ Thêm mới 1 dòng
   const requestId = 'MP-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-  const nowIso = new Date().toISOString();
 
   reqSheet.appendRow([
     requestId,
     sttGroup,
     primaryEmail,
     mailPhu,
-    ngayHetHan,
+    formattedHSD,
     nowIso,
     'Mới',
     ''
@@ -2624,7 +2677,8 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
     stt_group: sttGroup,
     primary_email: primaryEmail,
     mail_phu: mailPhu,
-    ngay_het_han: ngayHetHan,
+    ngay_het_han: formattedHSD,
+    is_updated: false,
     message: `Đã ghi nhận yêu cầu đổi sang mail phụ ${mailPhu}. Đội ngũ sẽ mời email này vào nhóm trong thời gian sớm nhất.`
   };
 }
@@ -2857,4 +2911,64 @@ function lookupCustomerInfoFromKhoTK(primaryEmail) {
   }
 
   return { found: false, stt_group: '', ngay_het_han: '' };
+}
+
+/**
+ * Admin API: Xóa yêu cầu mail phụ bị sai / dư thừa
+ */
+function deleteMailPhuRequest(requestId) {
+  if (!requestId) return { success: false, message: 'Thiếu request_id.' };
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(15000)) {
+    return { success: false, message: 'Hệ thống đang bận, vui lòng thử lại.' };
+  }
+
+  try {
+    const ss = getSpreadsheet();
+    const reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
+    if (!reqSheet || reqSheet.getLastRow() <= 1) {
+      return { success: false, message: 'Chưa có dữ liệu.' };
+    }
+
+    const data = reqSheet.getDataRange().getValues();
+    for (let r = data.length - 1; r >= 1; r--) {
+      if (String(data[r][0]).trim() === String(requestId).trim()) {
+        reqSheet.deleteRow(r + 1);
+        return { success: true, request_id: requestId, message: 'Đã xóa yêu cầu đổi mail phụ thành công!' };
+      }
+    }
+    return { success: false, message: 'Không tìm thấy request_id: ' + requestId };
+  } catch (err) {
+    return { success: false, message: 'Lỗi xóa yêu cầu: ' + err.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Helper: Chuẩn hóa ngày thành định dạng dd/MM/yyyy sạch
+ */
+function formatDateOnlyHelper(rawDate) {
+  if (!rawDate) return '';
+  if (rawDate instanceof Date) {
+    if (isNaN(rawDate.getTime())) return '';
+    return Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
+  }
+  const str = String(rawDate).trim();
+  if (!str) return '';
+
+  if (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(str)) {
+    return str;
+  }
+
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const day = String(parsed.getDate()).padStart(2, '0');
+    const month = String(parsed.getMonth() + 1).padStart(2, '0');
+    const year = parsed.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+
+  return str;
 }

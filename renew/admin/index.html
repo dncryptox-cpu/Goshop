@@ -543,27 +543,36 @@
 
                                         <div class="flex items-center justify-between text-[11px] text-gray-600 pt-0.5">
                                             <span>📅 Hạn gia hạn (HSD):</span>
-                                            <strong class="font-mono font-bold" :class="req.ngay_het_han ? 'text-purple-900 bg-purple-100 px-2 py-0.5 rounded border border-purple-200' : 'text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 italic'" x-text="req.ngay_het_han || 'Chưa cập nhật HSD (Bấm Sync Kho TK)'"></strong>
+                                            <strong class="font-mono font-bold" :class="req.ngay_het_han ? 'text-purple-900 bg-purple-100 px-2 py-0.5 rounded border border-purple-200' : 'text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 italic'" x-text="formatDateOnly(req.ngay_het_han) || 'Chưa cập nhật HSD (Bấm Sync Kho TK)'"></strong>
                                         </div>
                                     </div>
 
                                     <!-- NÚT HÀNH ĐỘNG CỦA ADMIN -->
-                                    <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-200/60">
-                                        <template x-if="req.status === 'Mới'">
-                                            <button @click="updateMailPhuStatus(req.request_id, 'Đã mời')"
-                                                    class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1 cursor-pointer">
-                                                <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
-                                                <span>✅ Đánh dấu Đã mời</span>
-                                            </button>
-                                        </template>
+                                    <div class="flex items-center justify-between gap-2 pt-1 border-t border-gray-200/60">
+                                        <button @click="deleteMailPhuRequest(req.request_id)"
+                                                class="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                                title="Xóa yêu cầu gửi sai / dư thừa">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5 text-red-500"></i>
+                                            <span>Xóa</span>
+                                        </button>
 
-                                        <template x-if="req.status === 'Đã mời'">
-                                            <button @click="updateMailPhuStatus(req.request_id, 'Hoàn tất')"
-                                                    class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1 cursor-pointer">
-                                                <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
-                                                <span>☑ Đánh dấu Hoàn tất</span>
-                                            </button>
-                                        </template>
+                                        <div class="flex items-center gap-2">
+                                            <template x-if="req.status === 'Mới'">
+                                                <button @click="updateMailPhuStatus(req.request_id, 'Đã mời')"
+                                                        class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1 cursor-pointer">
+                                                    <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+                                                    <span>✅ Đánh dấu Đã mời</span>
+                                                </button>
+                                            </template>
+
+                                            <template x-if="req.status === 'Đã mời'">
+                                                <button @click="updateMailPhuStatus(req.request_id, 'Hoàn tất')"
+                                                        class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1 cursor-pointer">
+                                                    <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
+                                                    <span>☑ Đánh dấu Hoàn tất</span>
+                                                </button>
+                                            </template>
+                                        </div>
                                     </div>
                                 </div>
                             </template>
@@ -951,6 +960,27 @@
                     return list;
                 },
 
+                formatDateOnly(rawStr) {
+                    if (!rawStr) return '';
+                    const str = String(rawStr).trim();
+                    if (!str) return '';
+
+                    if (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(str)) {
+                        return str;
+                    }
+
+                    try {
+                        const d = new Date(str);
+                        if (isNaN(d.getTime())) return str;
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const year = d.getFullYear();
+                        return `${day}/${month}/${year}`;
+                    } catch (e) {
+                        return str;
+                    }
+                },
+
                 async updateMailPhuStatus(requestId, newStatus) {
                     if (!requestId || !newStatus) return;
                     try {
@@ -963,6 +993,22 @@
                             await this.fetchMailPhuRequests();
                         } else {
                             this.showToast('❌ Lỗi: ' + (res.message || 'Không thể cập nhật'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    }
+                },
+
+                async deleteMailPhuRequest(requestId) {
+                    if (!requestId) return;
+                    if (!confirm('⚠️ Bạn có chắc chắn muốn XÓA yêu cầu đổi mail phụ này?')) return;
+                    try {
+                        const res = await this.callApi('deleteMailPhuRequest', { requestId: requestId });
+                        if (res && res.success) {
+                            this.showToast('🗑️ Đã xóa yêu cầu đổi mail phụ thành công!', 'success', 'trash-2');
+                            await this.fetchMailPhuRequests();
+                        } else {
+                            this.showToast('❌ Lỗi: ' + (res.message || 'Không thể xóa'), 'error');
                         }
                     } catch (err) {
                         this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
