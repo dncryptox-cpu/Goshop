@@ -197,16 +197,42 @@ function setupDatabase() {
     cacheSheet = ss.insertSheet('EMAIL_LOOKUP_CACHE');
   }
   if (cacheSheet.getLastRow() === 0) {
-    cacheSheet.appendRow(['email', 'stt_group', 'synced_at', 'owner_email', 'ctv']);
-    cacheSheet.getRange(1, 1, 1, 5).setFontWeight('bold');
+    cacheSheet.appendRow(['email', 'stt_group', 'synced_at', 'owner_email', 'ctv', 'ngay_het_han']);
+    cacheSheet.getRange(1, 1, 1, 6).setFontWeight('bold');
   } else {
-    const headers = cacheSheet.getRange(1, 1, 1, Math.max(5, cacheSheet.getLastColumn())).getValues()[0];
-    if (!headers[4] || String(headers[4]).trim() !== 'ctv') {
-      cacheSheet.getRange(1, 5).setValue('ctv').setFontWeight('bold');
+    const headers = cacheSheet.getRange(1, 1, 1, Math.max(6, cacheSheet.getLastColumn())).getValues()[0];
+    if (!headers[5] || String(headers[5]).trim() !== 'ngay_het_han') {
+      cacheSheet.getRange(1, 6).setValue('ngay_het_han').setFontWeight('bold');
     }
   }
 
-  return { success: true, message: 'Đã khởi tạo/cập nhật xong cấu trúc các tab TICKETS, REPORTS, EMAIL_LOOKUP_CACHE' };
+  // Tab MAIL_PHU_REQUESTS
+  let mailPhuSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
+  if (!mailPhuSheet) {
+    mailPhuSheet = ss.insertSheet('MAIL_PHU_REQUESTS');
+  }
+  if (mailPhuSheet.getLastRow() === 0) {
+    mailPhuSheet.appendRow([
+      'request_id', 'stt_group', 'primary_email', 'mail_phu',
+      'ngay_het_han', 'requested_at', 'status', 'note'
+    ]);
+    mailPhuSheet.getRange(1, 1, 1, 8).setFontWeight('bold');
+  }
+
+  // Tab WARRANTY
+  let warrantySheet = ss.getSheetByName('WARRANTY');
+  if (!warrantySheet) {
+    warrantySheet = ss.insertSheet('WARRANTY');
+  }
+  if (warrantySheet.getLastRow() === 0) {
+    warrantySheet.appendRow([
+      'STT', 'Email', 'Pass', 'MKP', '2fa', 'Ngày Renew',
+      'BHCus1', 'BHCus2', 'BHCus3', 'BHCus4', 'BHCus5'
+    ]);
+    warrantySheet.getRange(1, 1, 1, 11).setFontWeight('bold');
+  }
+
+  return { success: true, message: 'Đã khởi tạo/cập nhật xong cấu trúc toàn bộ các tab TICKETS, REPORTS, EMAIL_LOOKUP_CACHE, MAIL_PHU_REQUESTS, WARRANTY!' };
 }
 
 /**
