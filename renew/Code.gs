@@ -427,12 +427,31 @@ function syncEmailLookupCache() {
     }
 
     let dateColIdx = -1;
+    // Tìm chính xác cột 'Date' (cột N - Expiration Date/HSD), 'Ngày hết hạn' hoặc 'HSD'
     for (let c = 0; c < headerRow.length; c++) {
-      const cellStr = String(headerRow[c] || '').trim().toLowerCase();
-      if (cellStr === 'date' || cellStr === 'ngày hết hạn' || cellStr === 'hạn gia hạn' || cellStr === 'ngày mua' || cellStr.includes('date') || cellStr.includes('hạn')) {
+      const cellRaw = String(headerRow[c] || '').trim();
+      const cellLower = cellRaw.toLowerCase();
+      if (cellRaw === 'Date' || cellLower === 'ngày hết hạn' || cellLower === 'hạn gia hạn' || cellLower === 'hsd') {
         dateColIdx = c;
         break;
       }
+    }
+
+    // Nếu không khớp chính xác, tìm tiêu đề chứa 'date' hoặc 'hsd' nhưng BỎ QUA 'mua' và 'renew'
+    if (dateColIdx === -1) {
+      for (let c = 0; c < headerRow.length; c++) {
+        const cellLower = String(headerRow[c] || '').trim().toLowerCase();
+        if (cellLower.includes('mua') || cellLower.includes('renew')) continue;
+        if (cellLower.includes('date') || cellLower.includes('hạn') || cellLower.includes('hsd')) {
+          dateColIdx = c;
+          break;
+        }
+      }
+    }
+
+    // Mặc định fallback Kho TK tab DATA là cột N (index 13)
+    if (dateColIdx === -1) {
+      dateColIdx = 13;
     }
 
     const ngayHetHanMap = {};
@@ -2830,7 +2849,6 @@ function lookupCustomerInfoFromKhoTK(primaryEmail) {
 
     let headerRowIdx = -1;
     let emailColIdx = -1;
-    let dateColIdx = -1;
     const maxScanRows = Math.min(10, data.length);
 
     for (let r = 0; r < maxScanRows; r++) {
@@ -2840,38 +2858,45 @@ function lookupCustomerInfoFromKhoTK(primaryEmail) {
         if (cellStr === 'email khách' || cellStr.includes('email khách')) {
           headerRowIdx = r;
           emailColIdx = c;
-        }
-        if (cellStr.includes('date') || cellStr.includes('renew') || cellStr.includes('hạn') || cellStr.includes('hsd')) {
-          dateColIdx = c;
+          break;
         }
       }
-      if (headerRowIdx !== -1 && emailColIdx !== -1) break;
+      if (headerRowIdx !== -1) break;
     }
 
     if (headerRowIdx === -1 || emailColIdx === -1) {
-      emailColIdx = 1;
-      headerRowIdx = 0;
+      emailColIdx = 10; // Default Column K ('Email khách')
+      headerRowIdx = 4;
     }
 
     let ctvColIdx = -1;
+    let dateColIdx = -1;
     const hRow = data[headerRowIdx] || [];
+
     for (let c = 0; c < hRow.length; c++) {
-      const hStr = String(hRow[c] || '').trim().toLowerCase();
-      if (hStr === 'ctv') {
+      const hStr = String(hRow[c] || '').trim();
+      const hLower = hStr.toLowerCase();
+      if (hLower === 'ctv') {
         ctvColIdx = c;
-        break;
+      }
+      if (hStr === 'Date' || hLower === 'ngày hết hạn' || hLower === 'hạn gia hạn' || hLower === 'hsd') {
+        dateColIdx = c;
       }
     }
 
     if (dateColIdx === -1) {
       for (let c = 0; c < hRow.length; c++) {
-        const hStr = String(hRow[c] || '').trim().toLowerCase();
-        if (hStr.includes('date') || hStr.includes('renew') || hStr.includes('hạn') || hStr.includes('hsd') || hStr.includes('ngày')) {
+        const hLower = String(hRow[c] || '').trim().toLowerCase();
+        if (hLower.includes('mua') || hLower.includes('renew')) continue;
+        if (hLower.includes('date') || hLower.includes('hạn') || hLower.includes('hsd')) {
           dateColIdx = c;
           break;
         }
       }
-      if (dateColIdx === -1) dateColIdx = 5;
+    }
+
+    if (dateColIdx === -1) {
+      dateColIdx = 13; // Column N ('Date')
     }
 
     let currentGroup = '';
