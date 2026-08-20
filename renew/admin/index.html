@@ -443,6 +443,125 @@
                     </div>
                 </div>
 
+                <!-- 📋 QUẢN LÝ YÊU CẦU ĐỔI MAIL PHỤ (MAIL_PHU_REQUESTS) -->
+                <div class="bg-white border border-gray-200 rounded-3xl p-4 sm:p-5 card-shadow space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                                <i data-lucide="mail-plus" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xs sm:text-sm font-black tracking-tight text-gray-900 flex items-center gap-2">
+                                    📋 YÊU CẦU ĐỔI SANG MAIL PHỤ (MAIL_PHU_REQUESTS)
+                                </h3>
+                                <p class="text-[11px] text-gray-500 font-medium">
+                                    Danh sách email phụ do khách gửi yêu cầu mượn slot riêng — Admin/CTV thực hiện mời vào nhóm thủ công
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Chip lọc status Mail Phụ -->
+                        <div class="flex items-center gap-1.5 overflow-x-auto text-xs self-start sm:self-auto">
+                            <template x-for="st in ['Tất cả', 'Mới', 'Đã mời', 'Hoàn tất']" :key="st">
+                                <button @click="mailPhuFilterStatus = st"
+                                        :class="mailPhuFilterStatus === st ? 'bg-purple-600 text-white font-extrabold shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 font-bold'"
+                                        class="px-3 py-1 rounded-xl transition-all whitespace-nowrap text-xs cursor-pointer">
+                                    <span x-text="st"></span>
+                                    <span x-show="st === 'Mới' && mailPhuRequests.filter(r => r.status === 'Mới').length > 0"
+                                          class="ml-1 px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-extrabold"
+                                          x-text="mailPhuRequests.filter(r => r.status === 'Mới').length"></span>
+                                </button>
+                            </template>
+                            
+                            <button @click="fetchMailPhuRequests()" class="p-1 text-gray-400 hover:text-purple-600 cursor-pointer" title="Tải lại danh sách yêu cầu mail phụ">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="loadingMailPhuAdmin ? 'animate-spin' : ''"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- DANH SÁCH YÊU CẦU MAIL PHỤ -->
+                    <div class="space-y-3">
+                        <template x-if="filteredMailPhuRequests.length === 0">
+                            <div class="p-8 text-center text-xs text-gray-400 italic bg-gray-50 rounded-2xl border border-gray-100">
+                                🍃 Chưa có yêu cầu đổi mail phụ nào phù hợp với bộ lọc.
+                            </div>
+                        </template>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <template x-for="req in filteredMailPhuRequests" :key="req.request_id">
+                                <div class="bg-gray-50/80 hover:bg-white border rounded-2xl p-3.5 space-y-2.5 transition-all card-shadow relative overflow-hidden"
+                                     :class="req.status === 'Mới' ? 'border-amber-300 ring-1 ring-amber-400/30' : (req.status === 'Đã mời' ? 'border-purple-300' : 'border-gray-200 opacity-75')">
+                                    
+                                    <div class="flex items-center justify-between gap-2 border-b border-gray-200/60 pb-2">
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-mono font-black text-purple-700 text-base" x-text="req.stt_group || 'KHO_TK'"></span>
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
+                                                  :class="{
+                                                      'bg-amber-100 text-amber-800 border border-amber-300': req.status === 'Mới',
+                                                      'bg-purple-100 text-purple-800 border border-purple-300': req.status === 'Đã mời',
+                                                      'bg-emerald-100 text-emerald-800 border border-emerald-300': req.status === 'Hoàn tất'
+                                                  }"
+                                                  x-text="req.status"></span>
+                                        </div>
+
+                                        <span class="text-[10px] text-gray-400 font-medium" x-text="formatRelativeTime(req.requested_at)"></span>
+                                    </div>
+
+                                    <!-- THÔNG TIN CHÍNH: PRIMARY EMAIL & MAIL PHỤ NEEDED -->
+                                    <div class="space-y-1.5 text-xs">
+                                        <!-- Primary Email -->
+                                        <div class="flex items-center justify-between text-gray-600">
+                                            <span>Email hiện tại (lỗi):</span>
+                                            <div class="flex items-center gap-1.5">
+                                                <strong class="font-mono text-gray-900 font-bold select-all" x-text="req.primary_email"></strong>
+                                                <button @click="copyText(req.primary_email)" class="text-purple-600 hover:text-purple-800 text-[10px] font-bold underline cursor-pointer">Copy</button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Mail Phụ Cần Add (Highlight Nổi Bật) -->
+                                        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2 flex items-center justify-between text-emerald-950 font-bold">
+                                            <div class="flex items-center gap-1.5">
+                                                <i data-lucide="mail" class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0"></i>
+                                                <span>Mail phụ cần add:</span>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-mono text-emerald-800 text-xs font-black select-all" x-text="req.mail_phu"></span>
+                                                <button @click="copyText(req.mail_phu)" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-black cursor-pointer shadow-2xs">Copy</button>
+                                            </div>
+                                        </div>
+
+                                        <template x-if="req.ngay_het_han">
+                                            <div class="flex items-center justify-between text-[11px] text-gray-500 pt-0.5">
+                                                <span>📅 Hạn gia hạn hiện tại:</span>
+                                                <strong class="font-mono text-gray-700" x-text="req.ngay_het_han"></strong>
+                                            </div>
+                                        </template>
+                                    </div>
+
+                                    <!-- NÚT HÀNH ĐỘNG CỦA ADMIN -->
+                                    <div class="flex items-center justify-end gap-2 pt-1 border-t border-gray-200/60">
+                                        <template x-if="req.status === 'Mới'">
+                                            <button @click="updateMailPhuStatus(req.request_id, 'Đã mời')"
+                                                    class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1 cursor-pointer">
+                                                <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+                                                <span>✅ Đánh dấu Đã mời</span>
+                                            </button>
+                                        </template>
+
+                                        <template x-if="req.status === 'Đã mời'">
+                                            <button @click="updateMailPhuStatus(req.request_id, 'Hoàn tất')"
+                                                    class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1 cursor-pointer">
+                                                <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
+                                                <span>☑ Đánh dấu Hoàn tất</span>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- STICKY SEARCH & CHIP FILTER BAR -->
                 <div class="sticky top-16 z-40 bg-white/95 backdrop-blur-md border border-gray-200 rounded-2xl p-3 card-shadow space-y-2.5">
                     <div class="relative">
@@ -793,7 +912,53 @@
                 cacheInfo: { cache_stale: false, stale_hours: 0, last_synced_at: null, count: 0 },
                 loading: { admin: false, sync: false, quickFix: false },
 
+                // STATE CHO QUẢN LÝ YÊU CẦU MAIL PHỤ
+                mailPhuRequests: [],
+                mailPhuFilterStatus: 'Mới',
+                loadingMailPhuAdmin: false,
+
                 toast: { show: false, message: '', type: 'info', icon: 'info' },
+
+                async fetchMailPhuRequests() {
+                    this.loadingMailPhuAdmin = true;
+                    try {
+                        const res = await this.callApi('getMailPhuRequests', { statusFilter: 'Tất cả' });
+                        if (res && res.success) {
+                            this.mailPhuRequests = res.requests || [];
+                        }
+                    } catch (err) {
+                        console.error('Lỗi tải danh sách mail phụ:', err);
+                    } finally {
+                        this.loadingMailPhuAdmin = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                get filteredMailPhuRequests() {
+                    let list = [...(this.mailPhuRequests || [])];
+                    if (this.mailPhuFilterStatus && this.mailPhuFilterStatus !== 'Tất cả') {
+                        list = list.filter(r => r.status === this.mailPhuFilterStatus);
+                    }
+                    return list;
+                },
+
+                async updateMailPhuStatus(requestId, newStatus) {
+                    if (!requestId || !newStatus) return;
+                    try {
+                        const res = await this.callApi('updateMailPhuStatus', {
+                            requestId: requestId,
+                            newStatus: newStatus
+                        });
+                        if (res && res.success) {
+                            this.showToast('🎉 Đã chuyển trạng thái sang "' + newStatus + '"!', 'success', 'check-circle-2');
+                            await this.fetchMailPhuRequests();
+                        } else {
+                            this.showToast('❌ Lỗi: ' + (res.message || 'Không thể cập nhật'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    }
+                },
 
                 get zaloPendingList() {
                     if (!this.tickets || this.tickets.length === 0) return [];
@@ -880,12 +1045,14 @@
                         this.unlocked = true;
                         this.role = localStorage.getItem('fam_admin_role') || 'staff';
                         this.loadTickets();
+                        this.fetchMailPhuRequests();
                     }
 
-                    // Tự động polling làm mới danh sách ticket mỗi 60 giây
+                    // Tự động polling làm mới danh sách ticket & mail phụ mỗi 60 giây
                     setInterval(() => {
                         if (this.unlocked && !this.loading.admin) {
                             this.loadTickets(true);
+                            this.fetchMailPhuRequests();
                         }
                     }, 60000);
 
@@ -907,6 +1074,7 @@
                         localStorage.setItem('fam_admin_unlocked', 'true');
                         localStorage.setItem('fam_admin_role', 'admin');
                         this.loadTickets();
+                        this.fetchMailPhuRequests();
                         this.showToast('👑 Quản Lý đăng nhập thành công (Xem Zalo full)', 'success', 'crown');
                     } else if (u === 'goshop' && p === 'goshop') {
                         this.role = 'staff';
@@ -914,6 +1082,7 @@
                         localStorage.setItem('fam_admin_unlocked', 'true');
                         localStorage.setItem('fam_admin_role', 'staff');
                         this.loadTickets();
+                        this.fetchMailPhuRequests();
                         this.showToast('👤 Nhân Viên đăng nhập thành công', 'info', 'user');
                     } else {
                         alert('❌ Sai Tên đăng nhập hoặc Mật khẩu! Vui lòng thử lại.');

@@ -114,6 +114,20 @@ function handleRequest(e) {
       case 'executeCleanUpAfterConfirmation':
         result = executeCleanUpAfterConfirmation(params);
         break;
+      case 'submitMailPhuRequest':
+        const pEmail = params.primaryEmail || params.primary_email || params.email;
+        const mPhu = params.mailPhu || params.mail_phu || params.secondary_email;
+        result = submitMailPhuRequest(pEmail, mPhu);
+        break;
+      case 'getMailPhuRequests':
+        result = getMailPhuRequests(params.statusFilter || params.status);
+        break;
+      case 'updateMailPhuStatus':
+        const mpReqId = params.requestId || params.request_id;
+        const mpStatus = params.newStatus || params.status || params.new_status;
+        const mpNote = params.note;
+        result = updateMailPhuStatus(mpReqId, mpStatus, mpNote);
+        break;
       case 'getTOTPCode':
         const wSecret = params.secret2fa || params.secret || params.secret_2fa;
         result = getTOTPCode(wSecret);
@@ -379,6 +393,16 @@ function syncEmailLookupCache() {
       }
     }
 
+    let dateColIdx = -1;
+    for (let c = 0; c < headerRow.length; c++) {
+      const cellStr = String(headerRow[c] || '').trim().toLowerCase();
+      if (cellStr === 'date' || cellStr === 'ngày hết hạn' || cellStr === 'hạn gia hạn' || cellStr === 'ngày mua' || cellStr.includes('date') || cellStr.includes('hạn')) {
+        dateColIdx = c;
+        break;
+      }
+    }
+
+    const ngayHetHanMap = {};
     let currentSttGroup = '';
     let groupRowCount = 0;
 
@@ -391,8 +415,6 @@ function syncEmailLookupCache() {
         groupRowCount = 1;
       } else {
         groupRowCount++;
-        // Mỗi nhóm Fam (RN/PL) trên Kho TK chỉ gồm tối đa 5 thành viên (5 hàng).
-        // Nếu quá 5 hàng mà không có mã nhóm mới ➔ Reset rỗng, tránh gộp nhầm các email tự do bên dưới!
         if (groupRowCount > 5) {
           currentSttGroup = '';
         }
@@ -414,32 +436,46 @@ function syncEmailLookupCache() {
         ctvClean = String(data[r][ctvColIdx]).trim();
       }
 
+      let ngayHetHanClean = '';
+      if (dateColIdx !== -1 && data[r][dateColIdx]) {
+        const rawDate = data[r][dateColIdx];
+        if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+          ngayHetHanClean = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
+        } else {
+          ngayHetHanClean = String(rawDate).trim();
+        }
+      }
+
       if (ownerEmailClean && ownerEmailClean.includes('@') && !ownerMap[currentSttGroup]) {
         ownerMap[currentSttGroup] = ownerEmailClean;
       }
 
       if (emailClean && emailClean.includes('@')) {
         cacheMap[emailClean] = currentSttGroup;
-        // CTV is strictly bound to current row r only (never inherited from previous rows)
         ctvMap[emailClean] = ctvClean || '';
+        ngayHetHanMap[emailClean] = ngayHetHanClean || '';
       }
     }
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
     
+    if (cacheSheet.getLastColumn() < 6) {
+      cacheSheet.getRange(1, 6).setValue('ngay_het_han');
+    }
+
     if (cacheSheet.getLastRow() > 1) {
-      cacheSheet.getRange(2, 1, cacheSheet.getLastRow() - 1, Math.max(5, cacheSheet.getLastColumn())).clearContent();
+      cacheSheet.getRange(2, 1, cacheSheet.getLastRow() - 1, Math.max(6, cacheSheet.getLastColumn())).clearContent();
     }
 
     const rowsToInsert = [];
     for (const email in cacheMap) {
       const stt = cacheMap[email];
-      rowsToInsert.push([email, stt, nowIso, ownerMap[stt] || '', ctvMap[email] || '']);
+      rowsToInsert.push([email, stt, nowIso, ownerMap[stt] || '', ctvMap[email] || '', ngayHetHanMap[email] || '']);
     }
 
     if (rowsToInsert.length > 0) {
-      cacheSheet.getRange(2, 1, rowsToInsert.length, 5).setValues(rowsToInsert);
+      cacheSheet.getRange(2, 1, rowsToInsert.length, 6).setValues(rowsToInsert);
     }
 
     Logger.log('THÀNH CÔNG: Đã ghi ' + rowsToInsert.length + ' dòng tài khoản vào tab EMAIL_LOOKUP_CACHE lúc ' + nowIso);
@@ -2441,6 +2477,218 @@ function executeCleanUpAfterConfirmation(options) {
     };
   } catch (err) {
     return { success: false, message: 'Lỗi dọn dẹp: ' + err.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * YÊU CẦU 3 — ĐỔI SANG MAIL PHỤ: submitMailPhuRequest(primaryEmail, mailPhu)
+ */
+function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
+  if (!primaryEmailRaw || !mailPhuRaw) {
+    return { success: false, message: 'Vui lòng nhập đầy đủ Email hiện tại và Email phụ.' };
+  }
+
+  const primaryEmail = String(primaryEmailRaw).trim().toLowerCase();
+  const mailPhu = String(mailPhuRaw).trim().toLowerCase();
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(mailPhu)) {
+    return { success: false, message: 'Email phụ không đúng định dạng. Vui lòng kiểm tra lại.' };
+  }
+
+  if (primaryEmail === mailPhu) {
+    return { success: false, message: 'Email phụ phải khác với Email hiện tại.' };
+  }
+
+  const ss = getSpreadsheet();
+  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+  
+  let sttGroup = '';
+  let ngayHetHan = '';
+  let isFound = false;
+
+  if (cacheSheet && cacheSheet.getLastRow() > 1) {
+    const cData = cacheSheet.getDataRange().getValues();
+    for (let i = 1; i < cData.length; i++) {
+      const em = String(cData[i][0] || '').trim().toLowerCase();
+      if (em === primaryEmail) {
+        sttGroup = String(cData[i][1] || '').trim();
+        ngayHetHan = cData[i][5] ? String(cData[i][5]).trim() : '';
+        isFound = true;
+        break;
+      }
+    }
+  }
+
+  if (!isFound) {
+    if (!isCustomerEmailInCache(primaryEmail, ss)) {
+      return {
+        success: false,
+        message: 'Email này không khớp với danh sách khách hàng, không thể xử lý yêu cầu.'
+      };
+    }
+    const updatedCacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+    if (updatedCacheSheet && updatedCacheSheet.getLastRow() > 1) {
+      const uData = updatedCacheSheet.getDataRange().getValues();
+      for (let i = 1; i < uData.length; i++) {
+        const em = String(uData[i][0] || '').trim().toLowerCase();
+        if (em === primaryEmail) {
+          sttGroup = String(uData[i][1] || '').trim();
+          ngayHetHan = uData[i][5] ? String(uData[i][5]).trim() : '';
+          break;
+        }
+      }
+    }
+  }
+
+  if (!sttGroup) {
+    sttGroup = 'KHO_TK';
+  }
+
+  let reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
+  if (!reqSheet) {
+    reqSheet = ss.insertSheet('MAIL_PHU_REQUESTS');
+    reqSheet.appendRow([
+      'request_id',
+      'stt_group',
+      'primary_email',
+      'mail_phu',
+      'ngay_het_han',
+      'requested_at',
+      'status',
+      'note'
+    ]);
+  }
+
+  const requestId = 'MP-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  const nowIso = new Date().toISOString();
+
+  reqSheet.appendRow([
+    requestId,
+    sttGroup,
+    primaryEmail,
+    mailPhu,
+    ngayHetHan,
+    nowIso,
+    'Mới',
+    ''
+  ]);
+
+  return {
+    success: true,
+    request_id: requestId,
+    stt_group: sttGroup,
+    primary_email: primaryEmail,
+    mail_phu: mailPhu,
+    ngay_het_han: ngayHetHan,
+    message: `Đã ghi nhận yêu cầu đổi sang mail phụ ${mailPhu}. Đội ngũ sẽ mời email này vào nhóm trong thời gian sớm nhất.`
+  };
+}
+
+/**
+ * YÊU CẦU 4 — ADMIN: getMailPhuRequests(statusFilter)
+ */
+function getMailPhuRequests(statusFilter) {
+  const ss = getSpreadsheet();
+  const reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
+  if (!reqSheet || reqSheet.getLastRow() <= 1) {
+    return { success: true, total: 0, requests: [] };
+  }
+
+  const data = reqSheet.getDataRange().getValues();
+  const requests = [];
+
+  for (let r = 1; r < data.length; r++) {
+    const row = data[r];
+    const requestId = String(row[0] || '').trim();
+    const sttGroup = String(row[1] || '').trim();
+    const primaryEmail = String(row[2] || '').trim();
+    const mailPhu = String(row[3] || '').trim();
+    const ngayHetHan = String(row[4] || '').trim();
+    const requestedAt = row[5];
+    const status = String(row[6] || 'Mới').trim();
+    const note = String(row[7] || '').trim();
+
+    if (statusFilter && statusFilter !== 'Tất cả' && statusFilter !== 'All') {
+      if (status !== statusFilter) continue;
+    }
+
+    requests.push({
+      request_id: requestId,
+      stt_group: sttGroup,
+      primary_email: primaryEmail,
+      mail_phu: mailPhu,
+      ngay_het_han: ngayHetHan,
+      requested_at: requestedAt,
+      status: status,
+      note: note
+    });
+  }
+
+  requests.sort((a, b) => {
+    const aNew = (a.status === 'Mới') ? 0 : (a.status === 'Đã mời' ? 1 : 2);
+    const bNew = (b.status === 'Mới') ? 0 : (b.status === 'Đã mời' ? 1 : 2);
+    if (aNew !== bNew) return aNew - bNew;
+
+    return new Date(b.requested_at || 0).getTime() - new Date(a.requested_at || 0).getTime();
+  });
+
+  return {
+    success: true,
+    total: requests.length,
+    requests: requests
+  };
+}
+
+/**
+ * YÊU CẦU 4 — ADMIN: updateMailPhuStatus(requestId, newStatus, note)
+ */
+function updateMailPhuStatus(requestId, newStatus, note) {
+  if (!requestId || !newStatus) {
+    return { success: false, message: 'Thiếu request_id hoặc newStatus.' };
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(15000)) {
+    return { success: false, message: 'Hệ thống đang bận, vui lòng thử lại sau.' };
+  }
+
+  try {
+    const ss = getSpreadsheet();
+    const reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
+    if (!reqSheet || reqSheet.getLastRow() <= 1) {
+      return { success: false, message: 'Chưa có yêu cầu nào.' };
+    }
+
+    const data = reqSheet.getDataRange().getValues();
+    let targetRowIndex = -1;
+
+    for (let r = 1; r < data.length; r++) {
+      if (String(data[r][0]).trim() === String(requestId).trim()) {
+        targetRowIndex = r + 1;
+        break;
+      }
+    }
+
+    if (targetRowIndex === -1) {
+      return { success: false, message: 'Không tìm thấy request_id: ' + requestId };
+    }
+
+    reqSheet.getRange(targetRowIndex, 7).setValue(newStatus);
+    if (note !== undefined && note !== null && String(note).trim() !== '') {
+      reqSheet.getRange(targetRowIndex, 8).setValue(note);
+    }
+
+    return {
+      success: true,
+      request_id: requestId,
+      new_status: newStatus,
+      message: 'Đã cập nhật trạng thái "' + newStatus + '" thành công!'
+    };
+  } catch (err) {
+    return { success: false, message: 'Lỗi cập nhật: ' + err.toString() };
   } finally {
     lock.releaseLock();
   }
