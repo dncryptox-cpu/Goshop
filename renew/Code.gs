@@ -2550,22 +2550,38 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
 
   if (!isFound) {
     if (!isCustomerEmailInCache(primaryEmail, ss)) {
-      return {
-        success: false,
-        message: 'Email này không khớp với danh sách khách hàng, không thể xử lý yêu cầu.'
-      };
-    }
-    const updatedCacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-    if (updatedCacheSheet && updatedCacheSheet.getLastRow() > 1) {
-      const uData = updatedCacheSheet.getDataRange().getValues();
-      for (let i = 1; i < uData.length; i++) {
-        const em = String(uData[i][0] || '').trim().toLowerCase();
-        if (em === primaryEmail) {
-          sttGroup = String(uData[i][1] || '').trim();
-          ngayHetHan = uData[i][5] ? String(uData[i][5]).trim() : '';
-          break;
+      // Direct Kho TK lookup fallback
+      const directInfo = lookupCustomerInfoFromKhoTK(primaryEmail);
+      if (!directInfo.found) {
+        return {
+          success: false,
+          message: 'Email này không khớp với danh sách khách hàng trong Kho TK, không thể xử lý yêu cầu.'
+        };
+      }
+      sttGroup = directInfo.stt_group;
+      ngayHetHan = directInfo.ngay_het_han;
+    } else {
+      const updatedCacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+      if (updatedCacheSheet && updatedCacheSheet.getLastRow() > 1) {
+        const uData = updatedCacheSheet.getDataRange().getValues();
+        for (let i = 1; i < uData.length; i++) {
+          const em = String(uData[i][0] || '').trim().toLowerCase();
+          if (em === primaryEmail) {
+            sttGroup = String(uData[i][1] || '').trim();
+            ngayHetHan = uData[i][5] ? String(uData[i][5]).trim() : '';
+            break;
+          }
         }
       }
+    }
+  }
+
+  // Fallback: If ngayHetHan is still empty, look up direct Kho TK
+  if (!ngayHetHan) {
+    const directInfo = lookupCustomerInfoFromKhoTK(primaryEmail);
+    if (directInfo.found) {
+      if (!sttGroup || sttGroup === 'KHO_TK') sttGroup = directInfo.stt_group;
+      if (directInfo.ngay_het_han) ngayHetHan = directInfo.ngay_het_han;
     }
   }
 
@@ -2718,4 +2734,95 @@ function updateMailPhuStatus(requestId, newStatus, note) {
   } finally {
     lock.releaseLock();
   }
+}
+
+/**
+ * Helper: Tra trực tiếp Kho TK tab DATA để lấy stt_group và ngay_het_han nếu Cache chưa có
+ */
+function lookupCustomerInfoFromKhoTK(primaryEmail) {
+  if (!primaryEmail) return { found: false, stt_group: '', ngay_het_han: '' };
+  
+  const targetEmail = String(primaryEmail).trim().toLowerCase();
+  
+  try {
+    const khoSpreadsheet = SpreadsheetApp.openById(KHO_TK_ID);
+    const dataSheet = khoSpreadsheet.getSheetByName(KHO_TK_TAB_NAME);
+    if (!dataSheet) return { found: false, stt_group: '', ngay_het_han: '' };
+
+    const data = dataSheet.getDataRange().getValues();
+    if (data.length <= 1) return { found: false, stt_group: '', ngay_het_han: '' };
+
+    let headerRowIdx = -1;
+    let emailColIdx = -1;
+    let dateColIdx = -1;
+    const maxScanRows = Math.min(10, data.length);
+
+    for (let r = 0; r < maxScanRows; r++) {
+      const row = data[r];
+      for (let c = 0; c < row.length; c++) {
+        const cellStr = String(row[c] || '').trim().toLowerCase();
+        if (cellStr === 'email khách' || cellStr.includes('email khách')) {
+          headerRowIdx = r;
+          emailColIdx = c;
+        }
+        if (cellStr.includes('date') || cellStr.includes('renew') || cellStr.includes('hạn') || cellStr.includes('hsd')) {
+          dateColIdx = c;
+        }
+      }
+      if (headerRowIdx !== -1 && emailColIdx !== -1) break;
+    }
+
+    if (headerRowIdx === -1 || emailColIdx === -1) {
+      emailColIdx = 1;
+      headerRowIdx = 0;
+    }
+
+    if (dateColIdx === -1) {
+      const hRow = data[headerRowIdx] || [];
+      for (let c = 0; c < hRow.length; c++) {
+        const hStr = String(hRow[c] || '').trim().toLowerCase();
+        if (hStr.includes('date') || hStr.includes('renew') || hStr.includes('hạn') || hStr.includes('hsd') || hStr.includes('ngày')) {
+          dateColIdx = c;
+          break;
+        }
+      }
+      if (dateColIdx === -1) dateColIdx = 5;
+    }
+
+    let currentGroup = '';
+    let groupRowCount = 0;
+
+    for (let r = headerRowIdx + 1; r < data.length; r++) {
+      const sttVal = String(data[r][0] || '').trim();
+      if (sttVal) {
+        currentGroup = sttVal;
+        groupRowCount = 1;
+      } else {
+        groupRowCount++;
+        if (groupRowCount > 5) currentGroup = '';
+      }
+
+      const em = String(data[r][emailColIdx] || '').trim().toLowerCase();
+      if (em === targetEmail) {
+        let ngayHetHanStr = '';
+        if (dateColIdx !== -1 && data[r][dateColIdx]) {
+          const rawDate = data[r][dateColIdx];
+          if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+            ngayHetHanStr = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
+          } else {
+            ngayHetHanStr = String(rawDate).trim();
+          }
+        }
+        return {
+          found: true,
+          stt_group: currentGroup || 'KHO_TK',
+          ngay_het_han: ngayHetHanStr
+        };
+      }
+    }
+  } catch (err) {
+    Logger.log('Lỗi lookupCustomerInfoFromKhoTK: ' + err.toString());
+  }
+
+  return { found: false, stt_group: '', ngay_het_han: '' };
 }
