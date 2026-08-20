@@ -131,6 +131,10 @@ function handleRequest(e) {
       case 'deleteMailPhuRequest':
         result = deleteMailPhuRequest(params.requestId || params.request_id);
         break;
+      case 'checkMailPhuStatus':
+        const chkEmail = params.primaryEmail || params.primary_email || params.email;
+        result = checkMailPhuStatus(chkEmail);
+        break;
       case 'getTOTPCode':
         const wSecret = params.secret2fa || params.secret || params.secret_2fa;
         result = getTOTPCode(wSecret);
@@ -2971,4 +2975,45 @@ function formatDateOnlyHelper(rawDate) {
   }
 
   return str;
+}
+
+/**
+ * Tra cứu xem email chính đã có yêu cầu đổi mail phụ trước đó hay chưa
+ */
+function checkMailPhuStatus(primaryEmailRaw) {
+  if (!primaryEmailRaw) {
+    return { success: true, has_existing: false };
+  }
+  
+  const primaryEmail = String(primaryEmailRaw).trim().toLowerCase();
+  const ss = getSpreadsheet();
+  const reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
+  if (!reqSheet || reqSheet.getLastRow() <= 1) {
+    return { success: true, has_existing: false };
+  }
+
+  const data = reqSheet.getDataRange().getValues();
+  for (let r = data.length - 1; r >= 1; r--) {
+    const em = String(data[r][2] || '').trim().toLowerCase();
+    if (em === primaryEmail) {
+      const st = String(data[r][6] || 'Mới').trim();
+      const mPhu = String(data[r][3] || '').trim();
+      const hsd = String(data[r][4] || '').trim();
+      const reqAt = data[r][5];
+      
+      return {
+        success: true,
+        has_existing: true,
+        request_id: String(data[r][0] || '').trim(),
+        stt_group: String(data[r][1] || '').trim(),
+        primary_email: primaryEmail,
+        mail_phu: mPhu,
+        ngay_het_han: formatDateOnlyHelper(hsd),
+        status: st,
+        requested_at: reqAt
+      };
+    }
+  }
+
+  return { success: true, has_existing: false };
 }

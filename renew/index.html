@@ -606,7 +606,7 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-bold text-gray-700 mb-1">Email hiện tại (email gặp sự cố):</label>
-                        <input type="email" x-model="mailPhuPrimaryEmail" placeholder="vd: nguyenvanA@gmail.com"
+                        <input type="email" x-model="mailPhuPrimaryEmail" @input.debounce.400ms="checkExistingMailPhuRequest()" @change="checkExistingMailPhuRequest()" placeholder="vd: nguyenvanA@gmail.com"
                                class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:outline-none transition-all">
                     </div>
 
@@ -617,6 +617,25 @@
                     </div>
                 </div>
 
+                <!-- THÔNG BÁO NẾU ĐÃ TỪNG GỬI YÊU CẦU ĐỔI MAIL PHỤ -->
+                <template x-if="existingMailPhuInfo">
+                    <div class="bg-amber-50 border border-amber-300/80 rounded-xl p-3.5 text-xs text-amber-950 space-y-1 font-medium card-shadow">
+                        <div class="flex items-center justify-between font-bold text-amber-900 border-b border-amber-200/80 pb-1.5">
+                            <span class="flex items-center gap-1.5">
+                                <i data-lucide="info" class="w-4 h-4 text-amber-600 flex-shrink-0"></i>
+                                <span>Email này đã có yêu cầu đổi sang Mail Phụ trước đó!</span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-200/80 text-amber-900 border border-amber-400/60" x-text="existingMailPhuInfo.status"></span>
+                        </div>
+                        <div class="pt-1 text-gray-800">
+                            • Mail phụ hiện tại đã gửi: <strong class="font-mono text-purple-900 font-extrabold select-all" x-text="existingMailPhuInfo.mail_phu"></strong>
+                        </div>
+                        <div class="text-[11px] text-amber-800 italic pt-0.5">
+                            💡 Nếu bạn muốn đổi sang mail phụ khác, hãy điền email mới vào ô bên phải và bấm nút bên dưới để cập nhật lại cho Admin.
+                        </div>
+                    </div>
+                </template>
+
                 <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
                     <button @click="submitMailPhuRequest()"
                             :disabled="isSubmittingMailPhu || !mailPhuPrimaryEmail.trim() || !mailPhuSecondaryEmail.trim()"
@@ -624,7 +643,7 @@
                         <template x-if="!isSubmittingMailPhu">
                             <span class="flex items-center gap-2">
                                 <i data-lucide="send" class="w-4 h-4"></i>
-                                <span>🚀 Gửi Yêu Cầu Đổi Mail Phụ</span>
+                                <span x-text="existingMailPhuInfo ? '🔄 Cập Nhật Sang Mail Phụ Mới' : '🚀 Gửi Yêu Cầu Đổi Mail Phụ'"></span>
                             </span>
                         </template>
                         <template x-if="isSubmittingMailPhu">
@@ -756,6 +775,30 @@
                 isSubmittingMailPhu: false,
                 mailPhuError: '',
                 mailPhuSuccessResult: null,
+                existingMailPhuInfo: null,
+                isCheckingExistingMailPhu: false,
+
+                async checkExistingMailPhuRequest() {
+                    const email = String(this.mailPhuPrimaryEmail || '').trim().toLowerCase();
+                    if (!email || !email.includes('@')) {
+                        this.existingMailPhuInfo = null;
+                        return;
+                    }
+                    this.isCheckingExistingMailPhu = true;
+                    try {
+                        const res = await this.callApi('checkMailPhuStatus', { primaryEmail: email });
+                        if (res && res.success && res.has_existing) {
+                            this.existingMailPhuInfo = res;
+                        } else {
+                            this.existingMailPhuInfo = null;
+                        }
+                    } catch (err) {
+                        console.error('Lỗi kiểm tra mail phụ:', err);
+                    } finally {
+                        this.isCheckingExistingMailPhu = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
 
                 async submitMailPhuRequest() {
                     if (!this.mailPhuPrimaryEmail || !this.mailPhuPrimaryEmail.trim() || !this.mailPhuSecondaryEmail || !this.mailPhuSecondaryEmail.trim()) {
@@ -781,6 +824,7 @@
 
                         if (res && res.success) {
                             this.mailPhuSuccessResult = res;
+                            await this.checkExistingMailPhuRequest();
                         } else {
                             this.mailPhuError = res ? (res.message || 'Không thể xử lý yêu cầu.') : 'Lỗi kết nối server.';
                         }
