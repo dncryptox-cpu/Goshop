@@ -12,6 +12,119 @@ const RECUR_WINDOW_HOURS = 24; // Cấu hình thời gian tính tái phát (gi�
 const STALE_CACHE_THRESHOLD_HOURS = 6; // Ngưỡng cảnh báo cache cũ (giờ)
 
 /**
+ * BỘ ĐỆM BỘ NHỚ SIÊU TỐC TRONG 1 LẦN THỰC THI (REQUEST-SCOPED CACHE)
+ */
+const _REQUEST_CACHE = {
+  spreadsheet: null,
+  sheets: {},
+  sheetValues: {},
+  sheetObjects: {},
+  khoTkValues: null
+};
+
+function clearRequestCache() {
+  _REQUEST_CACHE.spreadsheet = null;
+  _REQUEST_CACHE.sheets = {};
+  _REQUEST_CACHE.sheetValues = {};
+  _REQUEST_CACHE.sheetObjects = {};
+  _REQUEST_CACHE.khoTkValues = null;
+}
+
+function getSpreadsheetCached() {
+  if (!_REQUEST_CACHE.spreadsheet) {
+    try {
+      _REQUEST_CACHE.spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    } catch (err) {}
+    if (!_REQUEST_CACHE.spreadsheet) {
+      _REQUEST_CACHE.spreadsheet = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
+    }
+  }
+  return _REQUEST_CACHE.spreadsheet;
+}
+
+function getSpreadsheet() {
+  return getSpreadsheetCached();
+}
+
+function getSheetCached(sheetName) {
+  if (!_REQUEST_CACHE.sheets[sheetName]) {
+    const ss = getSpreadsheetCached();
+    _REQUEST_CACHE.sheets[sheetName] = ss.getSheetByName(sheetName);
+  }
+  return _REQUEST_CACHE.sheets[sheetName];
+}
+
+function readSheetValuesCached(sheetName) {
+  if (!_REQUEST_CACHE.sheetValues[sheetName]) {
+    const sheet = getSheetCached(sheetName);
+    if (!sheet || sheet.getLastRow() === 0) {
+      _REQUEST_CACHE.sheetValues[sheetName] = [];
+    } else {
+      _REQUEST_CACHE.sheetValues[sheetName] = sheet.getDataRange().getValues();
+    }
+  }
+  return _REQUEST_CACHE.sheetValues[sheetName];
+}
+
+function readSheetAsObjects(sheetName) {
+  if (!_REQUEST_CACHE.sheetObjects[sheetName]) {
+    const values = readSheetValuesCached(sheetName);
+    if (values.length <= 1) {
+      _REQUEST_CACHE.sheetObjects[sheetName] = [];
+    } else {
+      const headers = values[0].map(h => String(h || '').trim());
+      const objects = [];
+      for (let r = 1; r < values.length; r++) {
+        const obj = { _rowIndex: r + 1, _rowValues: values[r] };
+        const row = values[r];
+        for (let c = 0; c < headers.length; c++) {
+          obj[headers[c]] = row[c];
+        }
+        objects.push(obj);
+      }
+      _REQUEST_CACHE.sheetObjects[sheetName] = objects;
+    }
+  }
+  return _REQUEST_CACHE.sheetObjects[sheetName];
+}
+
+function appendRowFast(sheetName, rowArray) {
+  const sheet = getSheetCached(sheetName);
+  if (!sheet) return;
+  sheet.appendRow(rowArray);
+  
+  delete _REQUEST_CACHE.sheetValues[sheetName];
+  delete _REQUEST_CACHE.sheetObjects[sheetName];
+}
+
+function updateRowRangeFast(sheetName, rowIndex, startCol, rowValuesArray) {
+  const sheet = getSheetCached(sheetName);
+  if (!sheet || !rowValuesArray || rowValuesArray.length === 0) return;
+  sheet.getRange(rowIndex, startCol, 1, rowValuesArray.length).setValues([rowValuesArray]);
+
+  delete _REQUEST_CACHE.sheetValues[sheetName];
+  delete _REQUEST_CACHE.sheetObjects[sheetName];
+}
+
+function getKhoTKDataCached() {
+  if (!_REQUEST_CACHE.khoTkValues) {
+    try {
+      const khoSpreadsheet = SpreadsheetApp.openById(KHO_TK_ID);
+      const dataSheet = khoSpreadsheet.getSheetByName(KHO_TK_TAB_NAME);
+      if (dataSheet && dataSheet.getLastRow() > 1) {
+        _REQUEST_CACHE.khoTkValues = dataSheet.getDataRange().getValues();
+      } else {
+        _REQUEST_CACHE.khoTkValues = [];
+      }
+    } catch (err) {
+      Logger.log('Lỗi đọc Kho TK: ' + err.toString());
+      _REQUEST_CACHE.khoTkValues = [];
+    }
+  }
+  return _REQUEST_CACHE.khoTkValues;
+}
+
+/**
  * Endpoint nhận Request qua HTTP GET / POST
  */
 function doGet(e) {
@@ -23,6 +136,7 @@ function doPost(e) {
 }
 
 function handleRequest(e) {
+  clearRequestCache();
   const output = ContentService.createTextOutput();
   output.setMimeType(ContentService.MimeType.JSON);
   
@@ -577,19 +691,11 @@ function setupAutoSyncTrigger() {
  * Helper: Tra cứu STT group từ Email CHỈ TRONG CACHE local.
  */
 function getSttGroupByEmail(emailClean) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-  if (!cacheSheet || cacheSheet.getLastRow() <= 1) {
-    return null;
-  }
-
-  const data = cacheSheet.getDataRange().getValues();
-  if (data.length <= 1) return null;
-
-  for (let i = 1; i < data.length; i++) {
-    const rowEmail = String(data[i][0]).trim().toLowerCase();
-    if (rowEmail === emailClean) {
-      return String(data[i][1]).trim();
+  const cache = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
+  const target = String(emailClean || '').trim().toLowerCase();
+  for (let i = 0; i < cache.length; i++) {
+    if (String(cache[i]['email'] || '').trim().toLowerCase() === target) {
+      return String(cache[i]['stt_group'] || '').trim();
     }
   }
   return null;
@@ -622,19 +728,17 @@ function parseDateHelper(val) {
 }
 
 /**
-/**
  * Helper: Tra cứu Email Chủ Fam từ STT Group trong cache
  */
 function getSttOwnerEmail(sttGroup) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-    if (cacheSheet && cacheSheet.getLastRow() > 1) {
-      const data = cacheSheet.getDataRange().getValues();
-      for (let i = 1; i < data.length; i++) {
-        if (String(data[i][1]).trim().toUpperCase() === String(sttGroup).trim().toUpperCase() && data[i][3]) {
-          return String(data[i][3]).trim();
-        }
+    const cache = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
+    const targetGroup = String(sttGroup || '').trim().toUpperCase();
+    for (let i = 0; i < cache.length; i++) {
+      const g = String(cache[i]['stt_group'] || '').trim().toUpperCase();
+      const owner = cache[i]['owner_email'];
+      if (g === targetGroup && owner) {
+        return String(owner).trim();
       }
     }
   } catch (e) {}
@@ -687,9 +791,7 @@ function sendTelegramNotification(message) {
  * 3. Nếu không có -> Tạo ticket mới bình thường. (GỬI Telegram sự cố mới)
  */
 function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const ticketsSheet = ss.getSheetByName('TICKETS');
-  const ticketsData = ticketsSheet.getDataRange().getValues();
+  const tickets = readSheetAsObjects('TICKETS');
   const nowIso = now.toISOString();
 
   let openTicketRowIndex = -1;
@@ -697,37 +799,37 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
   let latestClosedTicket = null;
   let latestClosedTime = 0;
 
-  for (let r = 1; r < ticketsData.length; r++) {
-    const row = ticketsData[r];
-    const rowStt = String(row[1]).trim();
-    const rowStatus = String(row[2]).trim();
+  for (let r = 0; r < tickets.length; r++) {
+    const obj = tickets[r];
+    const rowStt = String(obj['stt_group'] || '').trim();
+    const rowStatus = String(obj['status'] || '').trim();
 
     if (rowStt === sttGroup) {
       if (rowStatus !== 'Đã xử lý') {
-        openTicketRowIndex = r + 1; // 1-indexed
+        openTicketRowIndex = obj._rowIndex; // 1-indexed sheet row
         openTicketData = {
-          ticket_id: row[0],
-          stt_group: row[1],
-          status: row[2],
-          created_at: row[3],
-          updated_at: row[4],
-          resolved_at: row[5],
-          is_recurring: row[7],
-          recur_count: Number(row[8] || 0)
+          ticket_id: obj['ticket_id'],
+          stt_group: obj['stt_group'],
+          status: obj['status'],
+          created_at: obj['created_at'],
+          updated_at: obj['updated_at'],
+          resolved_at: obj['resolved_at'],
+          is_recurring: obj['is_recurring'],
+          recur_count: Number(obj['recur_count'] || 0)
         };
         break; // Ưu tiên ticket mở đang có
       } else {
-        const rDate = parseDateHelper(row[5] || row[4] || row[3]);
+        const rDate = parseDateHelper(obj['resolved_at'] || obj['updated_at'] || obj['created_at']);
         const rTime = rDate ? rDate.getTime() : 0;
         if (rTime > latestClosedTime) {
           latestClosedTime = rTime;
           latestClosedTicket = {
-            ticket_id: row[0],
-            stt_group: row[1],
-            status: row[2],
-            resolved_at: row[5],
-            is_recurring: row[7],
-            recur_count: Number(row[8] || 0)
+            ticket_id: obj['ticket_id'],
+            stt_group: obj['stt_group'],
+            status: obj['status'],
+            resolved_at: obj['resolved_at'],
+            is_recurring: obj['is_recurring'],
+            recur_count: Number(obj['recur_count'] || 0)
           };
         }
       }
@@ -735,8 +837,8 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
   }
 
   if (openTicketData) {
-    // Đã có ticket mở -> Cập nhật updated_at (KHÔNG GỬI TELEGRAM TRÁNH SPAM)
-    ticketsSheet.getRange(openTicketRowIndex, 5).setValue(nowIso);
+    // Đã có ticket mở -> Cập nhật updated_at (1-call updateFast, KHÔNG GỬI TELEGRAM TRÁNH SPAM)
+    updateRowRangeFast('TICKETS', openTicketRowIndex, 5, [nowIso]);
     return {
       ticket_id: openTicketData.ticket_id,
       stt_group: sttGroup,
@@ -764,7 +866,7 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
   const targetTicketId = 'TK-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const ticketStatus = 'Mới';
 
-  ticketsSheet.appendRow([
+  appendRowFast('TICKETS', [
     targetTicketId,
     sttGroup,
     ticketStatus,
@@ -862,7 +964,7 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
 
     // Insert 1 dòng vào REPORTS (ghi kèm submitted_by ở cột 6)
     const reportId = 'RP-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-    reportsSheet.appendRow([
+    appendRowFast('REPORTS', [
       reportId,
       ticketInfo.ticket_id,
       emailClean,
@@ -1484,19 +1586,21 @@ function updateTicketStatus(ticketId, newStatus, resolvedBy, note) {
     }
 
     const nowIso = new Date().toISOString();
+    const rowValues = data[targetRowIndex - 1] ? [...data[targetRowIndex - 1]] : [];
+    while (rowValues.length < 11) rowValues.push('');
 
-    ticketsSheet.getRange(targetRowIndex, 3).setValue(newStatus);
-    ticketsSheet.getRange(targetRowIndex, 5).setValue(nowIso);
+    rowValues[2] = newStatus; // status
+    rowValues[4] = nowIso; // updated_at
     if (note !== undefined && note !== null) {
-      ticketsSheet.getRange(targetRowIndex, 10).setValue(note);
+      rowValues[9] = note; // note
     }
 
     let emailSentCount = 0;
 
     if (newStatus === 'Đã xử lý') {
-      ticketsSheet.getRange(targetRowIndex, 6).setValue(nowIso); // resolved_at
+      rowValues[5] = nowIso; // resolved_at
       if (resolvedBy) {
-        ticketsSheet.getRange(targetRowIndex, 7).setValue(resolvedBy); // resolved_by
+        rowValues[6] = resolvedBy; // resolved_by
       }
 
       if (!currentTicket.notified_at) {
@@ -2554,55 +2658,33 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
     return { success: false, message: 'Email phụ phải khác với Email hiện tại.' };
   }
 
-  const ss = getSpreadsheet();
-  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-  
+  const cacheObjects = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
   let sttGroup = '';
   let ngayHetHan = '';
   let isFound = false;
 
-  if (cacheSheet && cacheSheet.getLastRow() > 1) {
-    const cData = cacheSheet.getDataRange().getValues();
-    for (let i = 1; i < cData.length; i++) {
-      const em = String(cData[i][0] || '').trim().toLowerCase();
-      if (em === primaryEmail) {
-        sttGroup = String(cData[i][1] || '').trim();
-        ngayHetHan = cData[i][5] ? String(cData[i][5]).trim() : '';
-        isFound = true;
-        break;
-      }
+  for (let i = 0; i < cacheObjects.length; i++) {
+    const em = String(cacheObjects[i]['email'] || '').trim().toLowerCase();
+    if (em === primaryEmail) {
+      sttGroup = String(cacheObjects[i]['stt_group'] || '').trim();
+      ngayHetHan = cacheObjects[i]['ngay_het_han'] ? String(cacheObjects[i]['ngay_het_han']).trim() : '';
+      isFound = true;
+      break;
     }
   }
 
   if (!isFound) {
-    if (!isCustomerEmailInCache(primaryEmail, ss)) {
-      // Direct Kho TK lookup fallback
-      const directInfo = lookupCustomerInfoFromKhoTK(primaryEmail);
-      if (!directInfo.found) {
-        return {
-          success: false,
-          message: 'Email này không khớp với danh sách khách hàng trong Kho TK, không thể xử lý yêu cầu.'
-        };
-      }
-      sttGroup = directInfo.stt_group;
-      ngayHetHan = directInfo.ngay_het_han;
-    } else {
-      const updatedCacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
-      if (updatedCacheSheet && updatedCacheSheet.getLastRow() > 1) {
-        const uData = updatedCacheSheet.getDataRange().getValues();
-        for (let i = 1; i < uData.length; i++) {
-          const em = String(uData[i][0] || '').trim().toLowerCase();
-          if (em === primaryEmail) {
-            sttGroup = String(uData[i][1] || '').trim();
-            ngayHetHan = uData[i][5] ? String(uData[i][5]).trim() : '';
-            break;
-          }
-        }
-      }
+    const directInfo = lookupCustomerInfoFromKhoTK(primaryEmail);
+    if (!directInfo.found) {
+      return {
+        success: false,
+        message: 'Email này không khớp với danh sách khách hàng trong Kho TK, không thể xử lý yêu cầu.'
+      };
     }
+    sttGroup = directInfo.stt_group;
+    ngayHetHan = directInfo.ngay_het_han;
   }
 
-  // Fallback: If ngayHetHan is still empty, look up direct Kho TK
   if (!ngayHetHan) {
     const directInfo = lookupCustomerInfoFromKhoTK(primaryEmail);
     if (directInfo.found) {
@@ -2611,9 +2693,7 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
     }
   }
 
-  if (!sttGroup) {
-    sttGroup = 'KHO_TK';
-  }
+  if (!sttGroup) sttGroup = 'KHO_TK';
 
   const nowIso = new Date().toISOString();
   const formattedHSD = formatDateOnlyHelper(ngayHetHan);
@@ -2634,37 +2714,41 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
   }
 
   // Quét xem đã có yêu cầu đang chờ (Mới / Đã mời) của primaryEmail này chưa
-  const data = reqSheet.getDataRange().getValues();
+  const reqObjects = readSheetAsObjects('MAIL_PHU_REQUESTS');
   let existingRowIdx = -1;
   let existingOldMailPhu = '';
   let existingReqId = '';
 
-  for (let r = 1; r < data.length; r++) {
-    const em = String(data[r][2] || '').trim().toLowerCase();
-    const st = String(data[r][6] || '').trim();
+  for (let r = 0; r < reqObjects.length; r++) {
+    const em = String(reqObjects[r]['primary_email'] || '').trim().toLowerCase();
+    const st = String(reqObjects[r]['status'] || '').trim();
     if (em === primaryEmail && (st === 'Mới' || st === 'Đã mời')) {
-      existingRowIdx = r + 1; // 1-indexed row index
-      existingReqId = String(data[r][0] || '').trim();
-      existingOldMailPhu = String(data[r][3] || '').trim().toLowerCase();
+      existingRowIdx = reqObjects[r]._rowIndex; // 1-indexed row index
+      existingReqId = String(reqObjects[r]['request_id'] || '').trim();
+      existingOldMailPhu = String(reqObjects[r]['mail_phu'] || '').trim().toLowerCase();
       break;
     }
   }
 
   if (existingRowIdx !== -1) {
-    // Cập nhật lại dòng đang chờ cũ (Xóa/ghi đè mail phụ cũ bằng mail phụ mới)
-    reqSheet.getRange(existingRowIdx, 2).setValue(sttGroup);
-    reqSheet.getRange(existingRowIdx, 4).setValue(mailPhu);
-    if (formattedHSD) reqSheet.getRange(existingRowIdx, 5).setValue(formattedHSD);
-    reqSheet.getRange(existingRowIdx, 6).setValue(nowIso);
-    reqSheet.getRange(existingRowIdx, 7).setValue('Mới');
-
     let noteText = '';
     if (existingOldMailPhu && existingOldMailPhu !== mailPhu) {
       noteText = `Đã đổi mail phụ từ ${existingOldMailPhu} sang ${mailPhu}`;
     } else {
       noteText = `Làm mới thời gian yêu cầu lúc ${formattedHSD}`;
     }
-    reqSheet.getRange(existingRowIdx, 8).setValue(noteText);
+
+    // 1-call batch update row
+    updateRowRangeFast('MAIL_PHU_REQUESTS', existingRowIdx, 1, [
+      existingReqId,
+      sttGroup,
+      primaryEmail,
+      mailPhu,
+      formattedHSD,
+      nowIso,
+      'Mới',
+      noteText
+    ]);
 
     return {
       success: true,
@@ -2680,10 +2764,10 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
     };
   }
 
-  // Nếu chưa có yêu cầu đang chờ ➔ Thêm mới 1 dòng
+  // Thêm mới 1 dòng siêu tốc
   const requestId = 'MP-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
 
-  reqSheet.appendRow([
+  appendRowFast('MAIL_PHU_REQUESTS', [
     requestId,
     sttGroup,
     primaryEmail,
@@ -2710,36 +2794,31 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
  * YÊU CẦU 4 — ADMIN: getMailPhuRequests(statusFilter)
  */
 function getMailPhuRequests(statusFilter) {
-  const ss = getSpreadsheet();
-  const reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
-  if (!reqSheet || reqSheet.getLastRow() <= 1) {
+  const reqObjects = readSheetAsObjects('MAIL_PHU_REQUESTS');
+  if (reqObjects.length === 0) {
     return { success: true, total: 0, requests: [] };
   }
 
-  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+  const cacheObjects = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
   const ctvCacheMap = {};
-  if (cacheSheet && cacheSheet.getLastRow() > 1) {
-    const cData = cacheSheet.getDataRange().getValues();
-    for (let i = 1; i < cData.length; i++) {
-      const em = String(cData[i][0] || '').trim().toLowerCase();
-      const ctv = String(cData[i][4] || '').trim();
-      if (em && ctv) ctvCacheMap[em] = ctv;
-    }
+  for (let i = 0; i < cacheObjects.length; i++) {
+    const em = String(cacheObjects[i]['email'] || '').trim().toLowerCase();
+    const ctv = String(cacheObjects[i]['ctv'] || '').trim();
+    if (em && ctv) ctvCacheMap[em] = ctv;
   }
 
-  const data = reqSheet.getDataRange().getValues();
   const requests = [];
 
-  for (let r = 1; r < data.length; r++) {
-    const row = data[r];
-    const requestId = String(row[0] || '').trim();
-    const sttGroup = String(row[1] || '').trim();
-    const primaryEmail = String(row[2] || '').trim();
-    const mailPhu = String(row[3] || '').trim();
-    const ngayHetHan = String(row[4] || '').trim();
-    const requestedAt = row[5];
-    const status = String(row[6] || 'Mới').trim();
-    const note = String(row[7] || '').trim();
+  for (let r = 0; r < reqObjects.length; r++) {
+    const obj = reqObjects[r];
+    const requestId = String(obj['request_id'] || '').trim();
+    const sttGroup = String(obj['stt_group'] || '').trim();
+    const primaryEmail = String(obj['primary_email'] || '').trim();
+    const mailPhu = String(obj['mail_phu'] || '').trim();
+    const ngayHetHan = String(obj['ngay_het_han'] || '').trim();
+    const requestedAt = obj['requested_at'];
+    const status = String(obj['status'] || 'Mới').trim();
+    const note = String(obj['note'] || '').trim();
 
     if (statusFilter && statusFilter !== 'Tất cả' && statusFilter !== 'All') {
       if (status !== statusFilter) continue;
@@ -2793,30 +2872,30 @@ function updateMailPhuStatus(requestId, newStatus, note) {
   }
 
   try {
-    const ss = getSpreadsheet();
-    const reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
-    if (!reqSheet || reqSheet.getLastRow() <= 1) {
-      return { success: false, message: 'Chưa có yêu cầu nào.' };
-    }
+    const reqObjects = readSheetAsObjects('MAIL_PHU_REQUESTS');
+    let targetObj = null;
 
-    const data = reqSheet.getDataRange().getValues();
-    let targetRowIndex = -1;
-
-    for (let r = 1; r < data.length; r++) {
-      if (String(data[r][0]).trim() === String(requestId).trim()) {
-        targetRowIndex = r + 1;
+    for (let r = 0; r < reqObjects.length; r++) {
+      if (String(reqObjects[r]['request_id']).trim() === String(requestId).trim()) {
+        targetObj = reqObjects[r];
         break;
       }
     }
 
-    if (targetRowIndex === -1) {
+    if (!targetObj) {
       return { success: false, message: 'Không tìm thấy request_id: ' + requestId };
     }
 
-    reqSheet.getRange(targetRowIndex, 7).setValue(newStatus);
+    const rowIdx = targetObj._rowIndex;
+    const currentValues = targetObj._rowValues ? [...targetObj._rowValues] : [];
+    while (currentValues.length < 8) currentValues.push('');
+    
+    currentValues[6] = newStatus;
     if (note !== undefined && note !== null && String(note).trim() !== '') {
-      reqSheet.getRange(targetRowIndex, 8).setValue(note);
+      currentValues[7] = note;
     }
+
+    updateRowRangeFast('MAIL_PHU_REQUESTS', rowIdx, 1, currentValues);
 
     return {
       success: true,
@@ -2840,12 +2919,8 @@ function lookupCustomerInfoFromKhoTK(primaryEmail) {
   const targetEmail = String(primaryEmail).trim().toLowerCase();
   
   try {
-    const khoSpreadsheet = SpreadsheetApp.openById(KHO_TK_ID);
-    const dataSheet = khoSpreadsheet.getSheetByName(KHO_TK_TAB_NAME);
-    if (!dataSheet) return { found: false, stt_group: '', ngay_het_han: '' };
-
-    const data = dataSheet.getDataRange().getValues();
-    if (data.length <= 1) return { found: false, stt_group: '', ngay_het_han: '' };
+    const data = getKhoTKDataCached();
+    if (!data || data.length <= 1) return { found: false, stt_group: '', ngay_het_han: '' };
 
     let headerRowIdx = -1;
     let emailColIdx = -1;
@@ -3011,26 +3086,25 @@ function checkMailPhuStatus(primaryEmailRaw) {
   }
   
   const primaryEmail = String(primaryEmailRaw).trim().toLowerCase();
-  const ss = getSpreadsheet();
-  const reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
-  if (!reqSheet || reqSheet.getLastRow() <= 1) {
+  const reqObjects = readSheetAsObjects('MAIL_PHU_REQUESTS');
+  if (reqObjects.length === 0) {
     return { success: true, has_existing: false };
   }
 
-  const data = reqSheet.getDataRange().getValues();
-  for (let r = data.length - 1; r >= 1; r--) {
-    const em = String(data[r][2] || '').trim().toLowerCase();
+  for (let r = reqObjects.length - 1; r >= 0; r--) {
+    const obj = reqObjects[r];
+    const em = String(obj['primary_email'] || '').trim().toLowerCase();
     if (em === primaryEmail) {
-      const st = String(data[r][6] || 'Mới').trim();
-      const mPhu = String(data[r][3] || '').trim();
-      const hsd = String(data[r][4] || '').trim();
-      const reqAt = data[r][5];
+      const st = String(obj['status'] || 'Mới').trim();
+      const mPhu = String(obj['mail_phu'] || '').trim();
+      const hsd = String(obj['ngay_het_han'] || '').trim();
+      const reqAt = obj['requested_at'];
       
       return {
         success: true,
         has_existing: true,
-        request_id: String(data[r][0] || '').trim(),
-        stt_group: String(data[r][1] || '').trim(),
+        request_id: String(obj['request_id'] || '').trim(),
+        stt_group: String(obj['stt_group'] || '').trim(),
         primary_email: primaryEmail,
         mail_phu: mPhu,
         ngay_het_han: formatDateOnlyHelper(hsd),
