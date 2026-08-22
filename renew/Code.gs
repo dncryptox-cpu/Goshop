@@ -3157,10 +3157,10 @@ function checkMailPhuStatus(primaryEmailRaw) {
  * Tự động phân loại ticket PL đang "Chưa xử lý" dựa trên đối chiếu chéo dữ liệu
  * 1. Đọc WARRANTY -> Tập hợp email đang dùng TK bảo hành
  * 2. Đọc MAIL_PHU_REQUESTS -> Tập hợp primary_email yêu cầu đổi mail phụ
- * 3. Đọc TICKETS + REPORTS -> Lọc ticket PL đang mở (status !== 'Đã xử lý')
+ * 3. Đọc TICKETS + REPORTS + EMAIL_LOOKUP_CACHE -> Lọc ticket PL đang mở (status !== 'Đã xử lý')
  * 4. Gán ưu tiên 1: WARRANTY -> resolution_type = "Dùng TK bảo hành"
  * 5. Gán ưu tiên 2: MAIL_PHU_REQUESTS -> resolution_type = "Đổi mail phụ"
- * 6. Ghi gộp siêu tốc các dòng được cập nhật bằng updateRowRangeFast
+ * 6. Gửi email thông báo khách & Ghi gộp siêu tốc các dòng được cập nhật bằng updateRowRangeFast
  */
 function autoClassifyPlusTickets() {
   const startTime = Date.now();
@@ -3205,7 +3205,23 @@ function autoClassifyPlusTickets() {
       Logger.log('Warning reading MAIL_PHU_REQUESTS in autoClassifyPlusTickets: ' + mpErr.toString());
     }
 
-    // 3. Collect REPORTS mapped to ticket_id
+    // 3. Collect sttOwnerMap from EMAIL_LOOKUP_CACHE
+    const sttOwnerMap = {};
+    try {
+      const cacheObjects = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
+      for (let c = 0; c < cacheObjects.length; c++) {
+        const cRow = cacheObjects[c]._rowValues || [];
+        const stt = String(cRow[1] || '').trim();
+        const owner = cRow[3] ? String(cRow[3]).trim().toLowerCase() : '';
+        if (stt && owner && owner.includes('@') && !sttOwnerMap[stt]) {
+          sttOwnerMap[stt] = owner;
+        }
+      }
+    } catch (cErr) {
+      Logger.log('Warning reading EMAIL_LOOKUP_CACHE in autoClassifyPlusTickets: ' + cErr.toString());
+    }
+
+    // 4. Collect REPORTS mapped to ticket_id
     const reportEmailsMap = {};
     const rObjects = readSheetAsObjects('REPORTS');
     for (let r = 0; r < rObjects.length; r++) {
@@ -3218,7 +3234,7 @@ function autoClassifyPlusTickets() {
       }
     }
 
-    // 4. Read TICKETS
+    // 5. Read TICKETS
     const tObjects = readSheetAsObjects('TICKETS');
     let classifiedCount = 0;
     let warrantyCount = 0;
@@ -3241,6 +3257,9 @@ function autoClassifyPlusTickets() {
       const ticketEmails = new Set();
       if (reportEmailsMap[ticketId]) {
         reportEmailsMap[ticketId].forEach(e => ticketEmails.add(e));
+      }
+      if (sttOwnerMap[sttGroup]) {
+        ticketEmails.add(sttOwnerMap[sttGroup]);
       }
 
       // Priority 1: Check WARRANTY
@@ -3267,6 +3286,31 @@ function autoClassifyPlusTickets() {
         rowVal[6] = 'System-Auto'; // resolved_by
         rowVal[9] = `Tự động phân loại: ${resType}`; // note
         rowVal[11] = resType; // resolution_type
+
+        // Send notification email to customer if not already notified
+        if (!rowVal[10]) {
+          const custEmails = reportEmailsMap[ticketId] ? Array.from(reportEmailsMap[ticketId]) : [];
+          const resolvedTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
+                                  new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+          for (let eIdx = 0; eIdx < custEmails.length; eIdx++) {
+            const email = custEmails[eIdx];
+            try {
+              MailApp.sendEmail({
+                to: email,
+                subject: '[Go DNC] Sự cố nhóm tài khoản Fam ' + sttGroup + ' đã được khắc phục',
+                body: 'Chào bạn,\n\n' +
+                      'Sự cố nhóm tài khoản Fam (' + sttGroup + ') của bạn đã được đội ngũ kỹ thuật Go DNC xử lý hoàn tất lúc ' + resolvedTimeStr + '.\n\n' +
+                      'Nếu bạn vẫn gặp gián đoạn hoặc cần hỗ trợ thêm, vui lòng gửi báo lỗi mới tại: https://godnc.com/renew/\n\n' +
+                      'Cảm ơn bạn đã đồng hành cùng Go DNC!\n' +
+                      'Trân trọng,\nĐội ngũ Kỹ Thuật Go DNC'
+              });
+            } catch (mailErr) {
+              Logger.log('CẢNH BÁO gửi mail tự động thất bại cho ' + email + ': ' + mailErr.toString());
+            }
+          }
+          rowVal[10] = nowIso; // notified_at
+        }
 
         // Fast update single row in RAM / Sheet
         updateRowRangeFast('TICKETS', tObj._rowIndex, 1, rowVal);
