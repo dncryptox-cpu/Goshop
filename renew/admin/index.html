@@ -495,10 +495,18 @@
                                 </div>
                             </div>
 
-                            <button @click="loadTickets()" :disabled="loading.admin" class="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto border border-white/20">
-                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.admin}"></i>
-                                <span>Tải Lại Danh Sách</span>
-                            </button>
+                            <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                                <button @click="autoClassifyPlusTickets()" :disabled="loadingAutoClassify || loading.admin"
+                                        class="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-gray-950 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer shadow-lg border border-amber-300 disabled:opacity-50">
+                                    <i data-lucide="sparkles" class="w-4 h-4 text-gray-950" :class="loadingAutoClassify ? 'animate-spin' : ''"></i>
+                                    <span x-text="loadingAutoClassify ? 'Đang tự động phân loại...' : '⚡ Tự Động Phân Loại Toàn Bộ'"></span>
+                                </button>
+
+                                <button @click="loadTickets()" :disabled="loading.admin" class="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-white/20">
+                                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.admin}"></i>
+                                    <span>Tải Lại Danh Sách</span>
+                                </button>
+                            </div>
                         </div>
 
                         <!-- 6 ô Thống Kê Nhanh -->
@@ -1146,6 +1154,7 @@
                 warrantyAssignedEmails: [],
                 plusSearchQuery: '',
                 plusFilterStatus: 'Tất cả',
+                loadingAutoClassify: false,
 
                 // STATE CHO QUẢN LÝ YÊU CẦU MAIL PHỤ
                 mailPhuRequests: [],
@@ -1153,6 +1162,25 @@
                 loadingMailPhuAdmin: false,
 
                 toast: { show: false, message: '', type: 'info', icon: 'info' },
+
+                async autoClassifyPlusTickets() {
+                    if (this.loadingAutoClassify) return;
+                    this.loadingAutoClassify = true;
+                    try {
+                        const res = await this.callApi('autoClassifyPlusTickets', {});
+                        if (res && res.success) {
+                            this.showToast(res.message || '🎉 Đã hoàn tất tự động phân loại ticket PL!', 'success', 'sparkles');
+                            await this.loadTickets(true);
+                        } else {
+                            this.showToast('❌ Lỗi tự động phân loại: ' + (res.message || 'Hệ thống bận'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    } finally {
+                        this.loadingAutoClassify = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
 
                 setAdminTab(tabName) {
                     this.activeAdminTab = tabName;

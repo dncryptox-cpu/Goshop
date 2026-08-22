@@ -261,6 +261,9 @@ function handleRequest(e) {
         const wSecret = params.secret2fa || params.secret || params.secret_2fa;
         result = getTOTPCode(wSecret);
         break;
+      case 'autoClassifyPlusTickets':
+        result = autoClassifyPlusTickets();
+        break;
       default:
         result = { success: false, message: 'Action không hợp lệ: ' + action };
     }
@@ -3148,4 +3151,143 @@ function checkMailPhuStatus(primaryEmailRaw) {
   }
 
   return { success: true, has_existing: false };
+}
+
+/**
+ * Tự động phân loại ticket PL đang "Chưa xử lý" dựa trên đối chiếu chéo dữ liệu
+ * 1. Đọc WARRANTY -> Tập hợp email đang dùng TK bảo hành
+ * 2. Đọc MAIL_PHU_REQUESTS -> Tập hợp primary_email yêu cầu đổi mail phụ
+ * 3. Đọc TICKETS + REPORTS -> Lọc ticket PL đang mở (status !== 'Đã xử lý')
+ * 4. Gán ưu tiên 1: WARRANTY -> resolution_type = "Dùng TK bảo hành"
+ * 5. Gán ưu tiên 2: MAIL_PHU_REQUESTS -> resolution_type = "Đổi mail phụ"
+ * 6. Ghi gộp siêu tốc các dòng được cập nhật bằng updateRowRangeFast
+ */
+function autoClassifyPlusTickets() {
+  const startTime = Date.now();
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    return { success: false, message: 'Hệ thống đang bận, vui lòng thử lại sau ít giây.' };
+  }
+
+  try {
+    const ss = getSpreadsheetCached();
+
+    // 1. Collect WARRANTY customer emails
+    const warrantyCustomerEmails = new Set();
+    try {
+      const wObjects = readSheetAsObjects('WARRANTY');
+      for (let w = 0; w < wObjects.length; w++) {
+        const rowVal = wObjects[w]._rowValues || [];
+        for (let c = 6; c < rowVal.length; c++) {
+          const em = String(rowVal[c] || '').trim().toLowerCase();
+          if (em && em.includes('@')) {
+            warrantyCustomerEmails.add(em);
+          }
+        }
+      }
+    } catch (wErr) {
+      Logger.log('Warning reading WARRANTY in autoClassifyPlusTickets: ' + wErr.toString());
+    }
+
+    // 2. Collect MAIL_PHU_REQUESTS primary emails
+    const mailPhuPrimaryEmails = new Set();
+    try {
+      const mpObjects = readSheetAsObjects('MAIL_PHU_REQUESTS');
+      for (let m = 0; m < mpObjects.length; m++) {
+        const rowVal = mpObjects[m]._rowValues || [];
+        const pEm = String(rowVal[1] || '').trim().toLowerCase(); // primary_email
+        if (pEm && pEm.includes('@')) {
+          mailPhuPrimaryEmails.add(pEm);
+        }
+      }
+    } catch (mpErr) {
+      Logger.log('Warning reading MAIL_PHU_REQUESTS in autoClassifyPlusTickets: ' + mpErr.toString());
+    }
+
+    // 3. Collect REPORTS mapped to ticket_id
+    const reportEmailsMap = {};
+    const rObjects = readSheetAsObjects('REPORTS');
+    for (let r = 0; r < rObjects.length; r++) {
+      const rRow = rObjects[r]._rowValues || [];
+      const tId = String(rRow[1] || '').trim();
+      const em = String(rRow[2] || '').trim().toLowerCase();
+      if (tId && em && em.includes('@')) {
+        if (!reportEmailsMap[tId]) reportEmailsMap[tId] = new Set();
+        reportEmailsMap[tId].add(em);
+      }
+    }
+
+    // 4. Read TICKETS
+    const tObjects = readSheetAsObjects('TICKETS');
+    let classifiedCount = 0;
+    let warrantyCount = 0;
+    let mailPhuCount = 0;
+    const nowIso = new Date().toISOString();
+
+    for (let i = 0; i < tObjects.length; i++) {
+      const tObj = tObjects[i];
+      const rowVal = tObj._rowValues ? [...tObj._rowValues] : [];
+      const ticketId = String(rowVal[0] || '').trim();
+      const sttGroup = String(rowVal[1] || '').trim();
+      const status = String(rowVal[2] || '').trim();
+
+      // Only evaluate open PL tickets (stt_group matching /^PL\d+$/i)
+      if (status === 'Đã xử lý' || !/^PL\d+$/i.test(sttGroup)) {
+        continue;
+      }
+
+      // Collect all emails associated with this ticket
+      const ticketEmails = new Set();
+      if (reportEmailsMap[ticketId]) {
+        reportEmailsMap[ticketId].forEach(e => ticketEmails.add(e));
+      }
+
+      // Priority 1: Check WARRANTY
+      let isWarranty = false;
+      ticketEmails.forEach(e => {
+        if (warrantyCustomerEmails.has(e)) isWarranty = true;
+      });
+
+      // Priority 2: Check MAIL_PHU_REQUESTS
+      let isMailPhu = false;
+      if (!isWarranty) {
+        ticketEmails.forEach(e => {
+          if (mailPhuPrimaryEmails.has(e)) isMailPhu = true;
+        });
+      }
+
+      if (isWarranty || isMailPhu) {
+        while (rowVal.length < 12) rowVal.push('');
+
+        const resType = isWarranty ? 'Dùng TK bảo hành' : 'Đổi mail phụ';
+        rowVal[2] = 'Đã xử lý'; // status
+        rowVal[4] = nowIso; // updated_at
+        rowVal[5] = nowIso; // resolved_at
+        rowVal[6] = 'System-Auto'; // resolved_by
+        rowVal[9] = `Tự động phân loại: ${resType}`; // note
+        rowVal[11] = resType; // resolution_type
+
+        // Fast update single row in RAM / Sheet
+        updateRowRangeFast('TICKETS', tObj._rowIndex, 1, rowVal);
+        classifiedCount++;
+        if (isWarranty) warrantyCount++;
+        if (isMailPhu) mailPhuCount++;
+      }
+    }
+
+    const elapsedMs = Date.now() - startTime;
+    return {
+      success: true,
+      message: `🎉 Đã tự động phân loại và đóng ${classifiedCount} ticket PL (${warrantyCount} dùng TK bảo hành, ${mailPhuCount} đổi mail phụ) trong ${(elapsedMs / 1000).toFixed(2)}s!`,
+      classified_count: classifiedCount,
+      warranty_count: warrantyCount,
+      mail_phu_count: mailPhuCount,
+      elapsed_ms: elapsedMs
+    };
+  } catch (err) {
+    return { success: false, message: 'Lỗi tự động phân loại ticket PL: ' + err.toString() };
+  } finally {
+    lock.releaseLock();
+  }
 }
