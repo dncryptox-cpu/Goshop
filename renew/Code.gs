@@ -2734,6 +2734,7 @@ function submitMailPhuRequest(primaryEmailRaw, mailPhuRaw) {
   const nowIso = new Date().toISOString();
   const formattedHSD = formatDateOnlyHelper(ngayHetHan);
 
+  const ss = getSpreadsheetCached();
   let reqSheet = ss.getSheetByName('MAIL_PHU_REQUESTS');
   if (!reqSheet) {
     reqSheet = ss.insertSheet('MAIL_PHU_REQUESTS');
