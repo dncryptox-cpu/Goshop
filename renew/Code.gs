@@ -183,7 +183,15 @@ function handleRequest(e) {
         const newStatusParam = params.newStatus || params.status || params.new_status;
         const resolvedByParam = params.resolvedBy || params.resolved_by;
         const noteParam = params.note;
-        result = updateTicketStatus(ticketIdParam, newStatusParam, resolvedByParam, noteParam);
+        const resTypeParam = params.resolutionType || params.resolution_type;
+        result = updateTicketStatus(ticketIdParam, newStatusParam, resolvedByParam, noteParam, resTypeParam);
+        break;
+      case 'resolveTicketWithType':
+        const rTicketId = params.ticket_id || params.ticketId;
+        const rResType = params.resolutionType || params.resolution_type || 'Fix thường';
+        const rResolvedBy = params.resolvedBy || params.resolved_by || 'Admin';
+        const rNote = params.note;
+        result = updateTicketStatus(rTicketId, 'Đã xử lý', rResolvedBy, rNote, rResType);
         break;
       case 'syncCache':
       case 'syncEmailLookupCache':
@@ -270,7 +278,7 @@ function handleRequest(e) {
 
 /**
  * 1. Khởi tạo cấu trúc các Sheet nếu chưa có
- * Cột TICKETS (11): ticket_id, stt_group, status, created_at, updated_at, resolved_at, resolved_by, is_recurring, recur_count, note, notified_at
+ * Cột TICKETS (12): ticket_id, stt_group, status, created_at, updated_at, resolved_at, resolved_by, is_recurring, recur_count, note, notified_at, resolution_type
  * Cột REPORTS (6): report_id, ticket_id, customer_email, reported_at, message, submitted_by
  */
 function setupDatabase() {
@@ -285,13 +293,16 @@ function setupDatabase() {
     ticketsSheet.appendRow([
       'ticket_id', 'stt_group', 'status', 'created_at', 
       'updated_at', 'resolved_at', 'resolved_by', 
-      'is_recurring', 'recur_count', 'note', 'notified_at'
+      'is_recurring', 'recur_count', 'note', 'notified_at', 'resolution_type'
     ]);
-    ticketsSheet.getRange(1, 1, 1, 11).setFontWeight('bold');
+    ticketsSheet.getRange(1, 1, 1, 12).setFontWeight('bold');
   } else {
-    const headers = ticketsSheet.getRange(1, 1, 1, Math.max(11, ticketsSheet.getLastColumn())).getValues()[0];
+    const headers = ticketsSheet.getRange(1, 1, 1, Math.max(12, ticketsSheet.getLastColumn())).getValues()[0];
     if (!headers[10] || String(headers[10]).trim() !== 'notified_at') {
       ticketsSheet.getRange(1, 11).setValue('notified_at').setFontWeight('bold');
+    }
+    if (!headers[11] || String(headers[11]).trim() !== 'resolution_type') {
+      ticketsSheet.getRange(1, 12).setValue('resolution_type').setFontWeight('bold');
     }
   }
 
@@ -1483,6 +1494,23 @@ function listTickets(filterStatus) {
     }
   }
 
+  // 3. Read WARRANTY customer emails for cross-reference matching
+  const warrantyCustomerEmails = new Set();
+  try {
+    const wObjects = readSheetAsObjects('WARRANTY');
+    for (let w = 0; w < wObjects.length; w++) {
+      const rowVal = wObjects[w]._rowValues || [];
+      for (let c = 6; c < rowVal.length; c++) {
+        const em = String(rowVal[c] || '').trim().toLowerCase();
+        if (em && em.includes('@')) {
+          warrantyCustomerEmails.add(em);
+        }
+      }
+    }
+  } catch (wErr) {
+    Logger.log('Warning reading WARRANTY in listTickets: ' + wErr.toString());
+  }
+
   const tData = ticketsSheet.getDataRange().getValues();
   const tickets = [];
 
@@ -1517,6 +1545,7 @@ function listTickets(filterStatus) {
       recur_count: Number(row[8] || 0),
       note: row[9] || '',
       notified_at: row[10] || '',
+      resolution_type: row[11] ? String(row[11]).trim() : '',
       report_count: reportInfo.count,
       reported_emails: reportInfo.emails,
       reports: reportInfo.reports || [],
@@ -1541,15 +1570,16 @@ function listTickets(filterStatus) {
     tickets: tickets,
     cache_entries: cacheEntries,
     stt_members_map: sttMembersMap,
+    warranty_assigned_emails: Array.from(warrantyCustomerEmails),
     cache_info: cacheHealth
   };
 }
 
 /**
- * API 4: updateTicketStatus(ticket_id, newStatus, resolvedBy, note)
+ * API 4: updateTicketStatus(ticket_id, newStatus, resolvedBy, note, resolutionType)
  * Tự động gửi mail thông báo khi chuyển thành 'Đã xử lý'
  */
-function updateTicketStatus(ticketId, newStatus, resolvedBy, note) {
+function updateTicketStatus(ticketId, newStatus, resolvedBy, note, resolutionType) {
   if (!ticketId || !newStatus) {
     return { success: false, message: 'Thiếu ticket_id hoặc newStatus.' };
   }
@@ -1587,7 +1617,7 @@ function updateTicketStatus(ticketId, newStatus, resolvedBy, note) {
 
     const nowIso = new Date().toISOString();
     const rowValues = data[targetRowIndex - 1] ? [...data[targetRowIndex - 1]] : [];
-    while (rowValues.length < 11) rowValues.push('');
+    while (rowValues.length < 12) rowValues.push('');
 
     rowValues[2] = newStatus; // status
     rowValues[4] = nowIso; // updated_at
@@ -1601,6 +1631,9 @@ function updateTicketStatus(ticketId, newStatus, resolvedBy, note) {
       rowValues[5] = nowIso; // resolved_at
       if (resolvedBy) {
         rowValues[6] = resolvedBy; // resolved_by
+      }
+      if (resolutionType) {
+        rowValues[11] = resolutionType; // resolution_type
       }
 
       if (!currentTicket.notified_at) {

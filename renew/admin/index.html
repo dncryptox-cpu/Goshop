@@ -129,6 +129,35 @@
             <!-- MAIN DASHBOARD CONTENT -->
             <div x-show="unlocked" x-transition x-cloak class="space-y-5">
 
+                <!-- TAB SWITCHER HEADER BAR -->
+                <div class="flex items-center gap-2 border-b border-gray-200 pb-3 mb-2 overflow-x-auto">
+                    <button @click="setAdminTab('all')"
+                            :class="activeAdminTab === 'all' ? 'bg-blue-600 text-white font-black shadow-md' : 'bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold'"
+                            class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                        <span>🛠️ Tất Cả Ticket</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/20 font-bold" x-text="tickets.length"></span>
+                    </button>
+
+                    <button @click="setAdminTab('plus')"
+                            :class="activeAdminTab === 'plus' ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black shadow-md' : 'bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 font-bold'"
+                            class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="zap" class="w-4 h-4 text-amber-300"></i>
+                        <span>⚡ Xử Lý Fam Plus (PL)</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] bg-amber-400 text-gray-950 font-black" x-text="plusTickets.length"></span>
+                    </button>
+
+                    <button @click="setAdminTab('mailphu')"
+                            :class="activeAdminTab === 'mailphu' ? 'bg-purple-700 text-white font-black shadow-md' : 'bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold'"
+                            class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="mail-plus" class="w-4 h-4"></i>
+                        <span>📋 Đổi Mail Phụ</span>
+                        <span x-show="mailPhuRequests.filter(r => r.status === 'Mới').length > 0"
+                              class="px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-bold"
+                              x-text="mailPhuRequests.filter(r => r.status === 'Mới').length"></span>
+                    </button>
+                </div>
+
                 <!-- Cache Stale Warning Banner -->
                 <div x-show="cacheInfo.cache_stale" x-transition class="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900 text-xs shadow-sm">
                     <div class="flex items-center gap-3">
@@ -143,6 +172,9 @@
                         <span>Đồng Bộ Ngay</span>
                     </button>
                 </div>
+
+                <!-- TAB 1: TẤT CẢ TICKETS & BÁO LỖI CHUNG -->
+                <div x-show="activeAdminTab === 'all'" x-transition x-cloak class="space-y-5">
 
                 <!-- Admin Controls Bar Header -->
                 <div class="bg-white border border-gray-200 rounded-2xl card-shadow p-5 space-y-4">
@@ -443,8 +475,187 @@
                     </div>
                 </div>
 
-                <!-- 📋 QUẢN LÝ YÊU CẦU ĐỔI MAIL PHỤ (MAIL_PHU_REQUESTS) -->
-                <div class="bg-white border border-gray-200 rounded-3xl p-4 sm:p-5 card-shadow space-y-4">
+                </div> <!-- END TAB 1 -->
+
+                <!-- TAB 2: ⚡ XỬ LÝ FAM PLUS (PL) -->
+                <div x-show="activeAdminTab === 'plus'" x-transition x-cloak class="space-y-4">
+                    <!-- Header Banner -->
+                    <div class="bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 text-white rounded-3xl p-5 card-shadow space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-2xl bg-amber-400 text-gray-950 flex items-center justify-center font-black shadow-lg">
+                                    <i data-lucide="zap" class="w-6 h-6"></i>
+                                </div>
+                                <div>
+                                    <h2 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                                        Xử Lý Sự Cố Nhóm Fam Plus (PL)
+                                        <span class="text-[10px] font-black uppercase tracking-wider bg-amber-400 text-gray-950 px-2 py-0.5 rounded-full">Khu Chuyên Bằng</span>
+                                    </h2>
+                                    <p class="text-xs text-purple-200">Không gian làm việc xử lý dứt điểm backlog ticket các nhóm PL (PL391, PL392, PL394...)</p>
+                                </div>
+                            </div>
+
+                            <button @click="loadTickets()" :disabled="loading.admin" class="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto border border-white/20">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.admin}"></i>
+                                <span>Tải Lại Danh Sách</span>
+                            </button>
+                        </div>
+
+                        <!-- 6 ô Thống Kê Nhanh -->
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 pt-1">
+                            <div class="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10">
+                                <div class="text-[10px] text-purple-200 font-extrabold uppercase">Tổng Ticket PL</div>
+                                <div class="text-xl font-black text-white mt-0.5" x-text="plusStats.total"></div>
+                            </div>
+                            <div class="bg-amber-500/20 backdrop-blur-md rounded-2xl p-3 border border-amber-400/30">
+                                <div class="text-[10px] text-amber-200 font-extrabold uppercase">🟡 Đang Mở</div>
+                                <div class="text-xl font-black text-amber-300 mt-0.5" x-text="plusStats.open"></div>
+                            </div>
+                            <div class="bg-emerald-500/20 backdrop-blur-md rounded-2xl p-3 border border-emerald-400/30">
+                                <div class="text-[10px] text-emerald-200 font-extrabold uppercase">✅ Fix Thường</div>
+                                <div class="text-xl font-black text-emerald-300 mt-0.5" x-text="plusStats.fixThuong"></div>
+                            </div>
+                            <div class="bg-rose-500/20 backdrop-blur-md rounded-2xl p-3 border border-rose-400/30">
+                                <div class="text-[10px] text-rose-200 font-extrabold uppercase">🚫 Khách Hủy</div>
+                                <div class="text-xl font-black text-rose-300 mt-0.5" x-text="plusStats.khachHuy"></div>
+                            </div>
+                            <div class="bg-purple-500/20 backdrop-blur-md rounded-2xl p-3 border border-purple-400/30">
+                                <div class="text-[10px] text-purple-200 font-extrabold uppercase">✉️ Đổi Mail Phụ</div>
+                                <div class="text-xl font-black text-purple-300 mt-0.5" x-text="plusStats.doiMailPhu"></div>
+                            </div>
+                            <div class="bg-blue-500/20 backdrop-blur-md rounded-2xl p-3 border border-blue-400/30">
+                                <div class="text-[10px] text-blue-200 font-extrabold uppercase">🛡️ Dùng TK Bảo Hành</div>
+                                <div class="text-xl font-black text-blue-300 mt-0.5" x-text="plusStats.dungBaoHanh"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Thanh Tìm Kiếm & Bộ Lọc Tab Plus -->
+                    <div class="bg-white border border-gray-200 rounded-2xl p-3 card-shadow space-y-2.5">
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-400">
+                                <i data-lucide="search" class="w-4 h-4"></i>
+                            </div>
+                            <input type="text" x-model="plusSearchQuery"
+                                   placeholder="🔍 Tìm nhanh ticket PL theo mã (vd: PL394) hoặc email khách..."
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl pl-10 pr-9 py-2.5 text-gray-900 text-xs font-semibold focus:bg-white focus:border-purple-600 focus:outline-none transition-all placeholder-gray-400">
+                            <button x-show="plusSearchQuery" @click="plusSearchQuery = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-700">
+                                <i data-lucide="x" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+
+                        <div class="flex items-center gap-1.5 overflow-x-auto pb-0.5 text-xs">
+                            <span class="text-gray-500 font-bold mr-1 text-[11px]">Lọc Hướng Xử Lý:</span>
+                            <template x-for="st in ['Tất cả', 'Chưa xử lý', 'Fix thường', 'Khách hủy', 'Đổi mail phụ', 'Dùng TK bảo hành']" :key="st">
+                                <button @click="plusFilterStatus = st"
+                                        :class="plusFilterStatus === st ? 'bg-purple-700 text-white font-extrabold shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 font-bold'"
+                                        class="px-3 py-1 rounded-xl transition-all whitespace-nowrap text-xs cursor-pointer">
+                                    <span x-text="st"></span>
+                                </button>
+                            </template>
+                            <div class="ml-auto text-[11px] text-gray-500 font-medium">
+                                Khớp <strong class="text-purple-700 font-bold" x-text="filteredPlusTickets.length"></strong> ticket PL
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DANH SÁCH TICKET PL CARD UI -->
+                    <div class="space-y-4">
+                        <template x-if="filteredPlusTickets.length === 0">
+                            <div class="p-12 text-center text-gray-400 bg-white rounded-2xl border border-gray-200 card-shadow space-y-2">
+                                <i data-lucide="inbox" class="w-10 h-10 mx-auto opacity-40 text-purple-600"></i>
+                                <p class="text-sm font-bold text-gray-800">Không tìm thấy ticket PL nào phù hợp với bộ lọc.</p>
+                            </div>
+                        </template>
+
+                        <template x-for="t in filteredPlusTickets" :key="t.ticket_id">
+                            <div class="bg-white border rounded-3xl p-4 sm:p-5 card-shadow transition-all space-y-3.5"
+                                 :class="t.status === 'Đã xử lý' ? 'border-gray-200 opacity-80 bg-gray-50/50' : 'border-purple-200 hover:border-purple-400'">
+                                
+                                <!-- Ticket Header Compact Bar -->
+                                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                                    <div class="space-y-1">
+                                        <div class="flex items-center flex-wrap gap-2.5">
+                                            <!-- Mã Nhóm PL -->
+                                            <span class="text-2xl font-black text-purple-700 font-mono tracking-tight" x-text="t.stt_group"></span>
+
+                                            <!-- Status Badge -->
+                                            <span class="px-2.5 py-0.5 rounded-xl text-xs font-black border"
+                                                  :class="t.status === 'Đã xử lý' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'"
+                                                  x-text="t.status"></span>
+
+                                            <!-- Resolution Type Badge (nếu đã gán) -->
+                                            <template x-if="t.resolution_type">
+                                                <span class="px-2.5 py-0.5 rounded-xl text-xs font-black bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs"
+                                                      x-text="'🏷️ ' + t.resolution_type"></span>
+                                            </template>
+
+                                            <!-- BADGE 1: ĐỐI CHIẾU CHÉO MAIL PHỤ REQUESTS -->
+                                            <template x-if="getMailPhuMatchInfo(t)">
+                                                <span class="px-2.5 py-0.5 rounded-xl text-xs font-black bg-purple-600 text-white border border-purple-700 shadow-sm flex items-center gap-1">
+                                                    <i data-lucide="mail-plus" class="w-3.5 h-3.5"></i>
+                                                    <span x-text="'✉️ Đã yêu cầu đổi mail phụ (' + getMailPhuMatchInfo(t).status + ')'"></span>
+                                                </span>
+                                            </template>
+
+                                            <!-- BADGE 2: ĐỐI CHIẾU CHÉO WARRANTY -->
+                                            <template x-if="isWarrantyAssigned(t)">
+                                                <span class="px-2.5 py-0.5 rounded-xl text-xs font-black bg-blue-600 text-white border border-blue-700 shadow-sm flex items-center gap-1">
+                                                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                                                    <span>🛡️ Đang dùng TK bảo hành</span>
+                                                </span>
+                                            </template>
+                                        </div>
+
+                                        <!-- Email Chủ Fam & Khách báo -->
+                                        <div class="text-xs text-gray-600 flex items-center flex-wrap gap-2 pt-1">
+                                            <template x-if="t.owner_email">
+                                                <span class="font-mono bg-gray-100 px-2 py-0.5 rounded font-bold text-gray-800">
+                                                    👑 Owner: <strong x-text="t.owner_email"></strong>
+                                                </span>
+                                            </template>
+                                            <span>👥 Khách báo: <strong class="font-mono text-purple-700" x-text="t.reported_emails ? t.reported_emails.join(', ') : ''"></strong></span>
+                                            <span class="text-gray-400">•</span>
+                                            <span class="text-gray-500 font-medium" x-text="formatRelativeTime(t.created_at)"></span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 4 NÚT CHIP XỬ LÝ DỨT ĐIỂM (CHỈ CÓ Ở TAB PLUS) -->
+                                    <div class="flex items-center gap-1.5 flex-wrap self-start md:self-auto">
+                                        <button @click="resolveTicketWithType(t, 'Fix thường')" :disabled="t.saving"
+                                                :class="t.resolution_type === 'Fix thường' ? 'bg-emerald-700 text-white ring-2 ring-emerald-500 font-black' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-bold border border-emerald-300'"
+                                                class="px-3 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50">
+                                            <span>✅ Fix thường</span>
+                                        </button>
+
+                                        <button @click="resolveTicketWithType(t, 'Khách hủy')" :disabled="t.saving"
+                                                :class="t.resolution_type === 'Khách hủy' ? 'bg-rose-700 text-white ring-2 ring-rose-500 font-black' : 'bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold border border-rose-300'"
+                                                class="px-3 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50">
+                                            <span>🚫 Khách hủy</span>
+                                        </button>
+
+                                        <button @click="resolveTicketWithType(t, 'Đổi mail phụ')" :disabled="t.saving"
+                                                :class="t.resolution_type === 'Đổi mail phụ' ? 'bg-purple-700 text-white ring-2 ring-purple-500 font-black' : 'bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold border border-purple-300'"
+                                                class="px-3 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50">
+                                            <span>✉️ Đổi mail phụ</span>
+                                        </button>
+
+                                        <button @click="resolveTicketWithType(t, 'Dùng TK bảo hành')" :disabled="t.saving"
+                                                :class="t.resolution_type === 'Dùng TK bảo hành' ? 'bg-blue-700 text-white ring-2 ring-blue-500 font-black' : 'bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold border border-blue-300'"
+                                                class="px-3 py-1.5 rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50">
+                                            <span>🛡️ Dùng TK bảo hành</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </template>
+                    </div>
+                </div> <!-- END TAB 2 -->
+
+                <!-- TAB 3: QUẢN LÝ YÊU CẦU ĐỔI MAIL PHỤ (MAIL_PHU_REQUESTS) -->
+                <div x-show="activeAdminTab === 'mailphu'" x-transition x-cloak
+                     class="bg-white border border-gray-200 rounded-3xl p-4 sm:p-5 card-shadow space-y-4">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
                         <div class="flex items-center gap-2.5">
                             <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
@@ -930,12 +1141,155 @@
                 cacheInfo: { cache_stale: false, stale_hours: 0, last_synced_at: null, count: 0 },
                 loading: { admin: false, sync: false, quickFix: false },
 
+                // STATE CHO TAB VÀ ROUTING
+                activeAdminTab: 'all', // 'all', 'plus', 'mailphu'
+                warrantyAssignedEmails: [],
+                plusSearchQuery: '',
+                plusFilterStatus: 'Tất cả',
+
                 // STATE CHO QUẢN LÝ YÊU CẦU MAIL PHỤ
                 mailPhuRequests: [],
                 mailPhuFilterStatus: 'Mới',
                 loadingMailPhuAdmin: false,
 
                 toast: { show: false, message: '', type: 'info', icon: 'info' },
+
+                setAdminTab(tabName) {
+                    this.activeAdminTab = tabName;
+                    if (window.history && window.history.replaceState) {
+                        const newUrl = tabName === 'plus' ? '#plus' : (tabName === 'mailphu' ? '#mailphu' : '#all');
+                        window.history.replaceState(null, '', newUrl);
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                checkRoutingFromUrl() {
+                    const hash = (window.location.hash || '').toLowerCase();
+                    const path = (window.location.pathname || '').toLowerCase();
+                    const searchTab = new URLSearchParams(window.location.search).get('tab');
+
+                    if (hash === '#plus' || path.includes('/plus') || searchTab === 'plus') {
+                        this.activeAdminTab = 'plus';
+                    } else if (hash === '#mailphu' || path.includes('/mailphu') || searchTab === 'mailphu') {
+                        this.activeAdminTab = 'mailphu';
+                    } else {
+                        this.activeAdminTab = 'all';
+                    }
+                },
+
+                get plusTickets() {
+                    return (this.tickets || []).filter(t => t.stt_group && /^PL\d+$/i.test(String(t.stt_group).trim()));
+                },
+
+                get plusStats() {
+                    const list = this.plusTickets;
+                    return {
+                        total: list.length,
+                        open: list.filter(t => t.status !== 'Đã xử lý').length,
+                        fixThuong: list.filter(t => t.resolution_type === 'Fix thường').length,
+                        khachHuy: list.filter(t => t.resolution_type === 'Khách hủy').length,
+                        doiMailPhu: list.filter(t => t.resolution_type === 'Đổi mail phụ').length,
+                        dungBaoHanh: list.filter(t => t.resolution_type === 'Dùng TK bảo hành').length
+                    };
+                },
+
+                get filteredPlusTickets() {
+                    let list = [...this.plusTickets];
+
+                    if (this.plusSearchQuery && this.plusSearchQuery.trim()) {
+                        const q = this.plusSearchQuery.trim().toLowerCase();
+                        list = list.filter(t => {
+                            const sttMatch = t.stt_group && t.stt_group.toLowerCase().includes(q);
+                            const ticketIdMatch = t.ticket_id && t.ticket_id.toLowerCase().includes(q);
+                            const ownerMatch = t.owner_email && t.owner_email.toLowerCase().includes(q);
+                            const emailMatch = t.reported_emails && t.reported_emails.some(em => em.toLowerCase().includes(q));
+                            return sttMatch || ticketIdMatch || ownerMatch || emailMatch;
+                        });
+                    }
+
+                    if (this.plusFilterStatus === 'Chưa xử lý') {
+                        list = list.filter(t => t.status !== 'Đã xử lý');
+                    } else if (this.plusFilterStatus === 'Fix thường') {
+                        list = list.filter(t => t.resolution_type === 'Fix thường');
+                    } else if (this.plusFilterStatus === 'Khách hủy') {
+                        list = list.filter(t => t.resolution_type === 'Khách hủy');
+                    } else if (this.plusFilterStatus === 'Đổi mail phụ') {
+                        list = list.filter(t => t.resolution_type === 'Đổi mail phụ');
+                    } else if (this.plusFilterStatus === 'Dùng TK bảo hành') {
+                        list = list.filter(t => t.resolution_type === 'Dùng TK bảo hành');
+                    }
+
+                    return list.sort((a, b) => {
+                        const aOpen = a.status !== 'Đã xử lý';
+                        const bOpen = b.status !== 'Đã xử lý';
+                        if (aOpen && !bOpen) return -1;
+                        if (!aOpen && bOpen) return 1;
+                        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+                    });
+                },
+
+                getMailPhuMatchInfo(ticket) {
+                    if (!ticket || !this.mailPhuRequests || this.mailPhuRequests.length === 0) return null;
+                    const ticketEmails = new Set();
+                    if (ticket.owner_email) ticketEmails.add(ticket.owner_email.toLowerCase().trim());
+                    if (ticket.reported_emails) {
+                        ticket.reported_emails.forEach(e => ticketEmails.add(e.toLowerCase().trim()));
+                    }
+
+                    for (let r = 0; r < this.mailPhuRequests.length; r++) {
+                        const req = this.mailPhuRequests[r];
+                        const pEm = String(req.primary_email || '').trim().toLowerCase();
+                        const mPhu = String(req.mail_phu || '').trim().toLowerCase();
+
+                        if (ticketEmails.has(pEm) || ticketEmails.has(mPhu)) {
+                            return {
+                                status: req.status || 'Mới',
+                                mail_phu: req.mail_phu,
+                                primary_email: req.primary_email
+                            };
+                        }
+                    }
+                    return null;
+                },
+
+                isWarrantyAssigned(ticket) {
+                    if (!ticket || !this.warrantyAssignedEmails || this.warrantyAssignedEmails.length === 0) return false;
+                    const ticketEmails = [];
+                    if (ticket.owner_email) ticketEmails.push(ticket.owner_email.toLowerCase().trim());
+                    if (ticket.reported_emails) {
+                        ticket.reported_emails.forEach(e => ticketEmails.push(e.toLowerCase().trim()));
+                    }
+                    return ticketEmails.some(em => this.warrantyAssignedEmails.indexOf(em) !== -1);
+                },
+
+                async resolveTicketWithType(ticket, resolutionType) {
+                    if (!ticket || !ticket.ticket_id) return;
+                    ticket.saving = true;
+
+                    const resolvedBy = this.role === 'admin' ? 'Admin' : 'Nhân Viên';
+                    try {
+                        const res = await this.callApi('resolveTicketWithType', {
+                            ticket_id: ticket.ticket_id,
+                            resolutionType: resolutionType,
+                            resolvedBy: resolvedBy,
+                            note: `Đã xử lý theo hướng: ${resolutionType}`
+                        });
+
+                        if (res && res.success) {
+                            ticket.status = 'Đã xử lý';
+                            ticket.editStatus = 'Đã xử lý';
+                            ticket.resolution_type = resolutionType;
+                            this.showToast(`🎉 Đã lưu kết quả "${resolutionType}" cho nhóm ${ticket.stt_group}!`, 'success', 'check-circle-2');
+                        } else {
+                            this.showToast('❌ Không thể lưu: ' + (res.message || 'Lỗi hệ thống'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    } finally {
+                        ticket.saving = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
 
                 async fetchMailPhuRequests() {
                     this.loadingMailPhuAdmin = true;
@@ -1095,6 +1449,9 @@
                 },
 
                 init() {
+                    this.checkRoutingFromUrl();
+                    window.addEventListener('hashchange', () => this.checkRoutingFromUrl());
+
                     const savedAuth = localStorage.getItem('fam_admin_unlocked');
                     if (savedAuth === 'true') {
                         this.unlocked = true;
@@ -1521,6 +1878,7 @@
                         if (res.success) {
                             this.cacheEntries = res.cache_entries || [];
                             this.sttMembersMap = res.stt_members_map || {};
+                            this.warrantyAssignedEmails = res.warranty_assigned_emails || [];
                             this.tickets = (res.tickets || []).map(t => ({
                                 ...t,
                                 editStatus: t.status,
