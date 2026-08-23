@@ -92,6 +92,9 @@ function doPost(e) {
     if (action === 'login_user') {
       return loginUser(data.email, data.passwordHash);
     }
+    if (action === 'auto_provision_or_login') {
+      return autoProvisionOrLoginUser(data.email);
+    }
     if (action === 'check_email_exists') {
       return checkEmailExists(data.email);
     }
@@ -3339,6 +3342,159 @@ function rejectOrder(pendingOrderId, note) {
   return responseJSON({ status: 'error', message: 'Không tìm thấy đơn hàng chờ' });
 }
 
+function checkKnownCustomer(cleanEmail) {
+  if (!cleanEmail) return { isCustomer: false };
+
+  try {
+    var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+    // 1. Check DATAGoc
+    var sheetDg = ss.getSheetByName("DATAGoc") || ss.getSheetByName("DATAGOC") || ss.getSheetByName("DataGoc");
+    if (sheetDg) {
+      var vDg = sheetDg.getDataRange().getValues();
+      for (var i = 1; i < vDg.length; i++) {
+        var rowEm = String(vDg[i][2] || '').trim().toLowerCase();
+        if (rowEm === cleanEmail) {
+          var name = String(vDg[i][0] || '').trim();
+          return { isCustomer: true, name: name && !name.includes('@') ? name : cleanEmail.split('@')[0] };
+        }
+      }
+    }
+
+    // 2. Check DON_HANG_MOI
+    var sheetDhm = ss.getSheetByName("DON_HANG_MOI");
+    if (sheetDhm) {
+      var vDhm = sheetDhm.getDataRange().getValues();
+      for (var j = 1; j < vDhm.length; j++) {
+        var dhmEm = String(vDhm[j][1] || '').trim().toLowerCase();
+        if (dhmEm === cleanEmail) {
+          return { isCustomer: true, name: cleanEmail.split('@')[0] };
+        }
+      }
+    }
+
+    // 3. Check MB_ORDERS
+    var sheetOrd = ss.getSheetByName("MB_ORDERS");
+    if (sheetOrd) {
+      var vOrd = sheetOrd.getDataRange().getValues();
+      for (var o = 1; o < vOrd.length; o++) {
+        var ordEm = String(vOrd[o][1] || '').trim().toLowerCase();
+        if (ordEm === cleanEmail) {
+          return { isCustomer: true, name: cleanEmail.split('@')[0] };
+        }
+      }
+    }
+  } catch (err1) {}
+
+  // 4. Check EMAIL_LOOKUP_CACHE & REPORTS in Fam Issue Tracker (1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY)
+  try {
+    var famSs = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
+    var cacheSheet = famSs.getSheetByName("EMAIL_LOOKUP_CACHE");
+    if (cacheSheet) {
+      var vCache = cacheSheet.getDataRange().getValues();
+      for (var k = 1; k < vCache.length; k++) {
+        var cacheEm = String(vCache[k][0] || '').trim().toLowerCase();
+        if (cacheEm === cleanEmail) {
+          return { isCustomer: true, name: cleanEmail.split('@')[0] };
+        }
+      }
+    }
+    var repSheet = famSs.getSheetByName("REPORTS");
+    if (repSheet) {
+      var vRep = repSheet.getDataRange().getValues();
+      for (var m = 1; m < vRep.length; m++) {
+        var repEm = String(vRep[m][2] || '').trim().toLowerCase();
+        if (repEm === cleanEmail) {
+          return { isCustomer: true, name: cleanEmail.split('@')[0] };
+        }
+      }
+    }
+  } catch (errFam) {}
+
+  // 5. Check RENEW / FAMRENEW in 1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc
+  try {
+    var renewSs = SpreadsheetApp.openById('1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc');
+    var rSheet = renewSs.getSheetByName("RENEW") || renewSs.getSheetByName("FAMRENEW");
+    if (rSheet) {
+      var vR = rSheet.getDataRange().getValues();
+      for (var n = 1; n < vR.length; n++) {
+        var rowEm = String(vR[n][3] || vR[n][4] || '').trim().toLowerCase();
+        if (rowEm === cleanEmail) {
+          return { isCustomer: true, name: cleanEmail.split('@')[0] };
+        }
+      }
+    }
+  } catch (errRenew) {}
+
+  return { isCustomer: false };
+}
+
+function autoProvisionOrLoginUser(email) {
+  if (!email) return responseJSON({ status: 'error', message: 'Vui lòng nhập email' });
+
+  var cleanEmail = String(email).trim().toLowerCase();
+  var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanEmail)) {
+    return responseJSON({ status: 'error', message: 'Định dạng email không hợp lệ' });
+  }
+
+  var ss = SpreadsheetApp.openById('1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c');
+  var userSheet = ss.getSheetByName('MB_USERS');
+  if (!userSheet) {
+    userSheet = ss.insertSheet('MB_USERS');
+    userSheet.appendRow(["id", "email", "password_hash", "display_name", "phone", "created_at", "status", "note"]);
+    userSheet.getRange(1, 1, 1, 8).setFontWeight("bold").setBackground("#e0e7ff");
+  }
+
+  var data = userSheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    var rowEmail = String(data[i][1]).trim().toLowerCase();
+    var rowStatus = String(data[i][6] || 'active').trim().toLowerCase();
+    var rowName = String(data[i][3] || rowEmail.split('@')[0]).trim();
+    var rowNote = String(data[i][7] || '').trim();
+
+    if (rowEmail === cleanEmail) {
+      if (rowStatus === 'banned') {
+        return responseJSON({ status: 'error', message: 'Tài khoản đã bị khóa, liên hệ admin (Zalo 0398.057.191)' });
+      }
+      var isAuto = (rowNote === 'Tự động cấp — chưa từng đăng ký');
+      return responseJSON({
+        status: 'success',
+        email: rowEmail,
+        displayName: rowName,
+        note: rowNote,
+        isAutoProvisioned: isAuto,
+        message: 'Tài khoản đã tồn tại'
+      });
+    }
+  }
+
+  // Not in MB_USERS -> Check if known customer
+  var known = checkKnownCustomer(cleanEmail);
+  if (!known.isCustomer) {
+    return responseJSON({
+      status: 'error',
+      message: 'Email này không tồn tại trong hệ thống dữ liệu khách hàng. Vui lòng kiểm tra lại email hoặc liên hệ hỗ trợ.'
+    });
+  }
+
+  // Auto-create in MB_USERS with default password '123456' (SHA-256)
+  var defaultHash = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+  var userId = 'USR-' + Date.now();
+  var name = String(known.name || cleanEmail.split('@')[0]).trim();
+  var noteStr = 'Tự động cấp — chưa từng đăng ký';
+
+  userSheet.appendRow([userId, cleanEmail, defaultHash, name, '', new Date().toISOString(), 'active', noteStr]);
+
+  return responseJSON({
+    status: 'success',
+    email: cleanEmail,
+    displayName: name,
+    note: noteStr,
+    isAutoProvisioned: true,
+    message: 'Đã tự động cấp tài khoản mặc định'
+  });
+}
+
 function registerUser(email, passwordHash, displayName, phone) {
   if (!email || !passwordHash || !phone) {
     return responseJSON({ status: 'error', message: 'Vui lòng nhập đầy đủ email, mật khẩu và số điện thoại' });
@@ -3366,8 +3522,29 @@ function registerUser(email, passwordHash, displayName, phone) {
 
   var data = userSheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).trim().toLowerCase() === cleanEmail) {
-      return responseJSON({ status: 'error', message: 'Email này đã được đăng ký' });
+    var rowEmail = String(data[i][1]).trim().toLowerCase();
+    var rowNote = String(data[i][7] || '').trim();
+
+    if (rowEmail === cleanEmail) {
+      if (rowNote === 'Tự động cấp — chưa từng đăng ký') {
+        var rowNum = i + 1;
+        var name = String(displayName || cleanEmail.split('@')[0]).trim();
+        userSheet.getRange(rowNum, 3).setValue(String(passwordHash).trim());
+        userSheet.getRange(rowNum, 4).setValue(name);
+        userSheet.getRange(rowNum, 5).setValue(cleanPhone);
+        userSheet.getRange(rowNum, 8).setValue('Đã đăng ký chính thức');
+
+        return responseJSON({
+          status: 'success',
+          message: 'Đăng ký tài khoản thành công',
+          userId: String(data[i][0] || ('USR-' + Date.now())),
+          email: cleanEmail,
+          displayName: name,
+          phone: cleanPhone
+        });
+      } else {
+        return responseJSON({ status: 'error', message: 'Email này đã được đăng ký' });
+      }
     }
   }
 
@@ -3386,7 +3563,7 @@ function registerUser(email, passwordHash, displayName, phone) {
 }
 
 function loginUser(email, passwordHash) {
-  if (!email || !passwordHash) {
+  if (!email) {
     return responseJSON({ status: 'error', message: 'Vui lòng nhập email và mật khẩu' });
   }
 
@@ -3403,6 +3580,7 @@ function loginUser(email, passwordHash) {
     var rowHash = String(data[i][2]).trim();
     var rowStatus = String(data[i][6] || 'active').trim().toLowerCase();
     var rowName = String(data[i][3] || rowEmail.split('@')[0]).trim();
+    var rowNote = String(data[i][7] || '').trim();
 
     if (rowEmail === cleanEmail) {
       if (rowStatus === 'banned') {
@@ -3412,12 +3590,21 @@ function loginUser(email, passwordHash) {
         return responseJSON({
           status: 'success',
           email: rowEmail,
-          displayName: rowName
+          displayName: rowName,
+          note: rowNote,
+          isAutoProvisioned: (rowNote === 'Tự động cấp — chưa từng đăng ký')
         });
       } else {
         return responseJSON({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
       }
     }
+  }
+
+  // If not in MB_USERS, but login password supplied is '123456' or '123'
+  var hash123456 = '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92';
+  var hash123 = 'a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3';
+  if (passwordHash && (String(passwordHash).trim() === hash123456 || String(passwordHash).trim() === hash123)) {
+    return autoProvisionOrLoginUser(cleanEmail);
   }
 
   return responseJSON({ status: 'error', message: 'Email hoặc mật khẩu không đúng' });
@@ -3433,7 +3620,12 @@ function checkEmailExists(email) {
   var data = userSheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
     if (String(data[i][1]).trim().toLowerCase() === cleanEmail) {
-      return responseJSON({ status: 'success', exists: true });
+      var rowNote = String(data[i][7] || '').trim();
+      if (rowNote === 'Tự động cấp — chưa từng đăng ký') {
+        return responseJSON({ status: 'success', exists: false, isAutoProvisioned: true });
+      } else {
+        return responseJSON({ status: 'success', exists: true });
+      }
     }
   }
   return responseJSON({ status: 'success', exists: false });

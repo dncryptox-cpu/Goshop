@@ -10,8 +10,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <!-- Alpine.js -->
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     
@@ -26,8 +24,480 @@
             box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
         }
     </style>
+
+    <script>
+        function base32ToBuf(str) {
+            if (!str) return new Uint8Array(0);
+            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+            let clean = str.toUpperCase().replace(/[^A-Z2-7]/g, '');
+            let bits = 0, value = 0, output = [];
+            for (let i = 0; i < clean.length; i++) {
+                value = (value << 5) | alphabet.indexOf(clean[i]);
+                bits += 5;
+                if (bits >= 8) {
+                    output.push((value >>> (bits - 8)) & 255);
+                    bits -= 8;
+                }
+            }
+            return new Uint8Array(output);
+        }
+
+        async function generateTOTP(secretBase32) {
+            try {
+                if (!secretBase32 || !secretBase32.trim()) return { code: '------', secondsRemaining: 30 };
+                const keyBytes = base32ToBuf(secretBase32.trim());
+                if (keyBytes.length === 0) return { code: '------', secondsRemaining: 30 };
+
+                const epoch = Math.floor(Date.now() / 1000);
+                const timeStep = 30;
+                const counter = Math.floor(epoch / timeStep);
+                const secondsRemaining = timeStep - (epoch % timeStep);
+
+                const buffer = new ArrayBuffer(8);
+                const view = new DataView(buffer);
+                view.setUint32(4, counter, false);
+
+                const cryptoKey = await window.crypto.subtle.importKey(
+                    'raw', keyBytes, { name: 'HMAC', hash: { name: 'SHA-1' } }, false, ['sign']
+                );
+                const signature = await window.crypto.subtle.sign('HMAC', cryptoKey, buffer);
+                const sigBytes = new Uint8Array(signature);
+
+                const offset = sigBytes[sigBytes.length - 1] & 0x0f;
+                const binary =
+                    ((sigBytes[offset] & 0x7f) << 24) |
+                    ((sigBytes[offset + 1] & 0xff) << 16) |
+                    ((sigBytes[offset + 2] & 0xff) << 8) |
+                    (sigBytes[offset + 3] & 0xff);
+
+                const otp = (binary % 1000000).toString().padStart(6, '0');
+                return { code: otp, secondsRemaining };
+            } catch (e) {
+                return { code: '------', secondsRemaining: 30 };
+            }
+        }
+
+        function customerStatusApp() {
+            return {
+                webAppUrl: (typeof localStorage !== 'undefined' ? localStorage.getItem('FAM_TRACKER_WEBAPP_URL') : null) || 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec',
+                statusEmail: '',
+                errorMessage: '',
+                statusResult: null,
+                loading: false,
+                familyCheckState: '',
+
+                showReportForm: false,
+                reportMessage: '',
+                zaloPhone: '',
+                submittingReport: false,
+
+                directEmail: '',
+                directZalo: '',
+                directMessage: '',
+                submittingDirectReport: false,
+
+                // STATE CHO CẤP TK BẢO HÀNH TẠM
+                warrantyCustomerEmail: '',
+                isAssigningWarranty: false,
+                warrantyError: '',
+                assignedWarranty: null,
+                totpTab: 'code',
+                totpCode: '------',
+                totpTimer: 30,
+                totpIntervalId: null,
+
+                // STATE CHO ĐỔI SANG MAIL PHỤ
+                mailPhuPrimaryEmail: '',
+                mailPhuSecondaryEmail: '',
+                isSubmittingMailPhu: false,
+                mailPhuError: '',
+                mailPhuSuccessResult: null,
+                existingMailPhuInfo: null,
+                isCheckingExistingMailPhu: false,
+
+                async checkExistingMailPhuRequest() {
+                    const email = String(this.mailPhuPrimaryEmail || '').trim().toLowerCase();
+                    if (!email || !email.includes('@')) {
+                        this.existingMailPhuInfo = null;
+                        return;
+                    }
+                    this.isCheckingExistingMailPhu = true;
+                    try {
+                        const res = await this.callApi('checkMailPhuStatus', { primaryEmail: email });
+                        if (res && res.success && res.has_existing) {
+                            this.existingMailPhuInfo = res;
+                        } else {
+                            this.existingMailPhuInfo = null;
+                        }
+                    } catch (err) {
+                        console.error('Lỗi kiểm tra mail phụ:', err);
+                    } finally {
+                        this.isCheckingExistingMailPhu = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async submitMailPhuRequest() {
+                    if (!this.mailPhuPrimaryEmail || !this.mailPhuPrimaryEmail.trim() || !this.mailPhuSecondaryEmail || !this.mailPhuSecondaryEmail.trim()) {
+                        this.mailPhuError = 'Vui lòng nhập đầy đủ Email hiện tại và Email phụ.';
+                        return;
+                    }
+
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    if (!emailRegex.test(this.mailPhuSecondaryEmail.trim())) {
+                        this.mailPhuError = 'Email phụ không hợp lệ (cần chứa ký tự @ và tên miền domain).';
+                        return;
+                    }
+
+                    this.isSubmittingMailPhu = true;
+                    this.mailPhuError = '';
+                    this.mailPhuSuccessResult = null;
+
+                    try {
+                        const res = await this.callApi('submitMailPhuRequest', {
+                            primaryEmail: this.mailPhuPrimaryEmail.trim(),
+                            mailPhu: this.mailPhuSecondaryEmail.trim()
+                        });
+
+                        if (res && res.success) {
+                            this.mailPhuSuccessResult = res;
+                            await this.checkExistingMailPhuRequest();
+                        } else {
+                            this.mailPhuError = res ? (res.message || 'Không thể xử lý yêu cầu.') : 'Lỗi kết nối server.';
+                        }
+                    } catch (err) {
+                        this.mailPhuError = 'Lỗi gửi yêu cầu: ' + err.message;
+                    } finally {
+                        this.isSubmittingMailPhu = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async submitAssignWarranty() {
+                    if (!this.warrantyCustomerEmail || !this.warrantyCustomerEmail.trim()) return;
+
+                    this.isAssigningWarranty = true;
+                    this.warrantyError = '';
+                    this.assignedWarranty = null;
+
+                    try {
+                        const payload = {
+                            customerEmail: this.warrantyCustomerEmail.trim(),
+                            ctvName: 'Khách trực tiếp (godnc.com/renew)'
+                        };
+                        const res = await this.callApi('assignWarrantyAccount', payload);
+
+                        if (res && res.success) {
+                            this.assignedWarranty = res;
+                            this.totpCode = res.totpCode || '------';
+                            this.totpTimer = res.secondsRemaining || 30;
+                            
+                            this.startTOTPTimer();
+                        } else {
+                            this.warrantyError = res.message || 'Không thể cấp tài khoản bảo hành tạm.';
+                        }
+                    } catch (err) {
+                        this.warrantyError = 'Lỗi kết nối máy chủ: ' + (err.message || err);
+                    } finally {
+                        this.isAssigningWarranty = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                startTOTPTimer() {
+                    if (this.totpIntervalId) {
+                        clearInterval(this.totpIntervalId);
+                    }
+                    this.refreshTOTPCode();
+                    this.totpIntervalId = setInterval(() => {
+                        if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) {
+                            clearInterval(this.totpIntervalId);
+                            return;
+                        }
+                        this.refreshTOTPCode();
+                    }, 1000);
+                },
+
+                async refreshTOTPCode() {
+                    if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) {
+                        this.totpCode = '------';
+                        this.totpTimer = 30;
+                        return;
+                    }
+                    try {
+                        const res = await generateTOTP(this.assignedWarranty.secret2fa);
+                        this.totpCode = res.code || '------';
+                        this.totpTimer = res.secondsRemaining || 30;
+                    } catch (e) {
+                        this.totpTimer = 30;
+                    }
+                },
+
+                copyFullCustomerWarrantyText(w) {
+                    if (!w) return;
+                    let lines = [];
+                    lines.push(`Mail: ${w.email}`);
+                    lines.push(`Pass: ${w.pass}`);
+                    if (w.mkp && w.mkp.trim() && w.mkp.trim() !== '---') {
+                        lines.push(`Mail khôi phục: ${w.mkp.trim()}`);
+                    }
+                    lines.push(`2FA: ${w.secret2fa}`);
+                    lines.push(`Note: Hướng dẫn lấy mã 2FA`);
+                    lines.push(`Truy cập https://2fa.live/`);
+                    lines.push(`Nhập chuỗi mã ở trên, bấm Submit -> ra code 6 số`);
+                    lines.push(`⚠️ LƯU Ý: Đây là tài khoản cấp tạm, TUYỆT ĐỐI KHÔNG ĐỔI PASS hay bất kỳ thông tin nào của tài khoản!`);
+
+                    const fullText = lines.join('\n');
+                    this.copyText(fullText);
+                },
+
+                copyText(text) {
+                    if (!text) return;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            alert('Đã sao chép: ' + text);
+                        }).catch(err => {
+                            this.fallbackCopyText(text);
+                        });
+                    } else {
+                        this.fallbackCopyText(text);
+                    }
+                },
+
+                fallbackCopyText(text) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        alert('Đã sao chép: ' + text);
+                    } catch (e) {}
+                    document.body.removeChild(textarea);
+                },
+
+                async submitDirectReport() {
+                    if (!this.directEmail || !this.directEmail.trim()) return;
+
+                    this.submittingDirectReport = true;
+                    try {
+                        const payload = {
+                            email: this.directEmail.trim().toLowerCase(),
+                            message: this.directMessage.trim(),
+                            zalo_phone: this.directZalo ? this.directZalo.trim() : '',
+                            zaloPhone: this.directZalo ? this.directZalo.trim() : '',
+                            submitted_by: 'Khách lẻ (Trực tiếp)'
+                        };
+
+                        const res = await this.callApi('submitReport', payload);
+
+                        if (res.success) {
+                            alert('🎉 ' + (res.message || 'Đã gửi báo lỗi & đăng ký nhận tin Zalo thành công! Kỹ thuật viên sẽ kiểm tra khắc phục ngay.'));
+                            this.statusEmail = this.directEmail.trim().toLowerCase();
+                            this.directZalo = '';
+                            this.directMessage = '';
+                            this.checkStatus();
+                        } else {
+                            alert('❌ ' + (res.message || 'Không thể gửi báo lỗi.'));
+                        }
+                    } catch (err) {
+                        alert('❌ Lỗi kết nối: ' + err.message);
+                    } finally {
+                        this.submittingDirectReport = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                init() {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const emailParam = urlParams.get('email');
+                    if (emailParam) {
+                        this.statusEmail = emailParam.trim();
+                        this.checkStatus();
+                    }
+                    setTimeout(() => lucide.createIcons(), 50);
+                },
+
+                formatDateOnly(rawStr) {
+                    if (!rawStr) return '';
+                    const str = String(rawStr).trim();
+                    if (!str) return '';
+
+                    if (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(str)) {
+                        return str;
+                    }
+
+                    try {
+                        const d = new Date(str);
+                        if (isNaN(d.getTime())) return str;
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const year = d.getFullYear();
+                        return `${day}/${month}/${year}`;
+                    } catch (e) {
+                        return str;
+                    }
+                },
+
+                formatDate(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
+                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                    } catch (e) { return isoStr; }
+                },
+
+                formatRelativeTime(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        const now = Date.now();
+                        const diffMs = now - d.getTime();
+                        if (diffMs < 0) return 'Vừa xong';
+                        const diffMins = Math.floor(diffMs / 60000);
+                        if (diffMins < 1) return 'Vừa xong';
+                        if (diffMins < 60) return `${diffMins} phút trước`;
+                        const diffHours = Math.floor(diffMins / 60);
+                        if (diffHours < 24) return `${diffHours} giờ trước`;
+                        const diffDays = Math.floor(diffHours / 24);
+                        return `${diffDays} ngày trước`;
+                    } catch (e) { return isoStr; }
+                },
+
+                calcDuration(startIso, endIso) {
+                    if (!startIso || !endIso) return '';
+                    try {
+                        const s = new Date(startIso).getTime();
+                        const e = new Date(endIso).getTime();
+                        if (isNaN(s) || isNaN(e) || e <= s) return '';
+                        const diffMins = Math.round((e - s) / 60000);
+                        if (diffMins < 60) return ` (sau ${diffMins} phút)`;
+                        const hrs = Math.floor(diffMins / 60);
+                        const mins = diffMins % 60;
+                        return ` (sau ${hrs}h ${mins}m)`;
+                    } catch (err) { return ''; }
+                },
+
+                getStatusBadgeClass(status) {
+                    switch (status) {
+                        case 'Mới': return 'bg-amber-100 text-amber-800 border-amber-300';
+                        case 'Đang xử lý': return 'bg-blue-100 text-blue-800 border-blue-300';
+                        case 'Đã xử lý': return 'bg-green-100 text-green-800 border-green-300';
+                        default: return 'bg-gray-100 text-gray-700 border-gray-300';
+                    }
+                },
+
+                getStatusDotClass(status) {
+                    switch (status) {
+                        case 'Mới': return 'bg-amber-500';
+                        case 'Đang xử lý': return 'bg-blue-600 animate-pulse';
+                        case 'Đã xử lý': return 'bg-green-600';
+                        default: return 'bg-gray-400';
+                    }
+                },
+
+                async checkStatus() {
+                    if (!this.statusEmail || !this.statusEmail.trim()) {
+                        this.errorMessage = 'Vui lòng nhập email đăng ký để tra cứu.';
+                        return;
+                    }
+
+                    this.loading = true;
+                    this.errorMessage = '';
+                    this.statusResult = null;
+                    this.showReportForm = false;
+
+                    try {
+                        const payload = { email: this.statusEmail.trim().toLowerCase() };
+                        const res = await this.callApi('checkStatus', payload);
+
+                        if (res.success) {
+                            this.statusResult = res;
+                        } else {
+                            this.errorMessage = res.message || 'Không tìm thấy dữ liệu nhóm Fam cho email này.';
+                        }
+                    } catch (err) {
+                        this.errorMessage = 'Lỗi kết nối máy chủ: ' + err.message;
+                    } finally {
+                        this.loading = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async submitFixRequest() {
+                    if (!this.statusEmail || !this.statusEmail.trim()) return;
+
+                    this.submittingReport = true;
+                    try {
+                        const payload = {
+                            email: this.statusEmail.trim().toLowerCase(),
+                            message: this.reportMessage.trim(),
+                            zalo_phone: this.zaloPhone ? this.zaloPhone.trim() : '',
+                            zaloPhone: this.zaloPhone ? this.zaloPhone.trim() : '',
+                            submitted_by: 'Khách lẻ'
+                        };
+
+                        const res = await this.callApi('submitReport', payload);
+
+                        if (res.success) {
+                            alert('🎉 ' + (res.message || 'Đã gửi yêu cầu fix lỗi thành công! Kỹ thuật viên sẽ kiểm tra khắc phục ngay.'));
+                            this.showReportForm = false;
+                            this.reportMessage = '';
+                            this.zaloPhone = '';
+                            this.checkStatus();
+                        } else {
+                            alert('❌ ' + (res.message || 'Không thể gửi yêu cầu fix lỗi.'));
+                        }
+                    } catch (err) {
+                        alert('❌ Lỗi kết nối: ' + err.message);
+                    } finally {
+                        this.submittingReport = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async callApi(action, payload, timeoutMs = 15000) {
+                    const url = new URL(this.webAppUrl);
+                    url.searchParams.append('action', action);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        const text = await response.text();
+                        try {
+                            return JSON.parse(text);
+                        } catch (jsonErr) {
+                            throw new Error('Máy chủ Apps Script chưa được triển khai bản mới (Deploy New Version). Vui lòng cập nhật WebApp.');
+                        }
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        if (err.name === 'AbortError' || (err.message && err.message.toLowerCase().includes('aborted'))) {
+                            throw new Error('Hệ thống phản hồi chậm, vui lòng thử lại.');
+                        }
+                        throw err;
+                    }
+                }
+            };
+        }
+    </script>
+    <!-- Alpine.js CDN (Placed AFTER component logic for 100% reliable initialization) -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
-<body x-data="customerStatusApp()" x-init="init()" class="antialiased min-h-screen flex flex-col justify-between relative">
+<body x-data="customerStatusApp()" class="antialiased min-h-screen flex flex-col justify-between relative">
 
     <!-- Top Accent Line -->
     <div class="h-1.5 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600"></div>
@@ -191,33 +661,148 @@
                                         </p>
                                         
                                         <!-- Hướng dẫn thao tác cho khách -->
-                                        <div class="p-3.5 sm:p-4 bg-white rounded-xl border border-emerald-200 text-xs text-emerald-950 space-y-2.5 font-medium shadow-2xs">
-                                            <strong class="text-emerald-800 font-bold block text-xs sm:text-sm flex items-center gap-1.5 border-b border-emerald-100 pb-1.5">
+                                        <div class="p-3.5 sm:p-4 bg-white rounded-xl border border-emerald-200 text-xs text-emerald-950 space-y-3 font-medium shadow-2xs">
+                                            <strong class="text-emerald-800 font-bold block text-xs sm:text-sm flex items-center gap-1.5 border-b border-emerald-100 pb-2">
                                                 <i data-lucide="compass" class="w-4 h-4 text-emerald-600"></i>
-                                                <span>👉 HƯỚNG DẪN KIỂM TRA CHO KHÁCH HÀNG:</span>
+                                                <span>👉 HƯỚNG DẪN KIỂM TRA & THAM GIA LẠI NHÓM:</span>
                                             </strong>
 
-                                            <div class="p-2.5 bg-amber-50 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 font-semibold leading-relaxed">
-                                                ⚠️ <strong>QUAN TRỌNG:</strong> Gia đình không hoạt động mới được phép rời. Nếu đang còn <strong>Chủ gia đình</strong> (tức nhóm đang hoạt động), nhất định <strong>KHÔNG ĐƯỢC RỜI</strong>.
-                                            </div>
-
-                                            <div class="space-y-2 text-xs text-gray-800 leading-relaxed pt-0.5">
-                                                <p>
-                                                    📌 <strong>Bước 1:</strong> Truy cập đường dẫn kiểm tra nhóm gia đình Google:
+                                            <div class="space-y-3 text-xs text-gray-800 leading-relaxed pt-0.5">
+                                                <!-- Bước 1: Kiểm tra -->
+                                                <div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
+                                                    <p class="font-bold text-blue-950">
+                                                        📌 <strong>Bước 1:</strong> Truy cập đường dẫn kiểm tra nhóm gia đình Google của bạn:
+                                                    </p>
                                                     <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener"
                                                        class="text-blue-600 font-bold underline font-mono hover:text-blue-800 break-all inline-flex items-center gap-1">
                                                         <span>https://myaccount.google.com/family/details</span>
                                                         <i data-lucide="external-link" class="w-3 h-3"></i>
                                                     </a>
-                                                </p>
+                                                </div>
 
-                                                <p>
-                                                    📌 <strong>Bước 2:</strong> (Nếu thấy gia đình không hoạt động) ➔ Tiến hành <strong>Rời nhóm gia đình cũ</strong>.
-                                                </p>
+                                                <!-- BƯỚC XÁC NHẬN BẮT BUỘC TRƯỚC KHI RỜI NHÓM (NHỎ GỌN - TỐI ƯU MOBILE) -->
+                                                <div class="p-2.5 sm:p-3 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2 text-amber-950">
+                                                    <p class="font-bold text-[11px] sm:text-xs text-amber-950 flex items-center gap-1">
+                                                        <i data-lucide="help-circle" class="w-3.5 h-3.5 text-amber-600 shrink-0"></i>
+                                                        <span>❓ Màn hình Google Family của bạn đang giống hình nào dưới đây? (Bấm chọn):</span>
+                                                    </p>
 
-                                                <p>
-                                                    📌 <strong>Bước 3:</strong> Đợi <strong>30 giây</strong> ➔ Vào lại link trên. Bạn sẽ thấy <strong>Lời mời tham gia gia đình mới</strong> xuất hiện để bấm Tham gia.
-                                                </p>
+                                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        <!-- LỰA CHỌN A: NHÓM ĐANG HOẠT ĐỘNG (MINI COMPACT) -->
+                                                        <div @click="familyCheckState = 'active'"
+                                                             :class="familyCheckState === 'active' ? 'border-2 border-rose-500 bg-rose-50/80 ring-1 ring-rose-300' : 'border border-gray-200 bg-white hover:border-rose-300'"
+                                                             class="rounded-lg p-2 cursor-pointer transition-all flex flex-col justify-between space-y-1.5 group">
+                                                            
+                                                            <div class="space-y-1.5">
+                                                                <div class="flex items-center justify-between border-b border-gray-100 pb-1">
+                                                                    <span class="text-[10px] sm:text-[11px] font-extrabold text-emerald-700 flex items-center gap-1">
+                                                                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                                        🟢 ĐANG HOẠT ĐỘNG
+                                                                    </span>
+                                                                    <span class="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">Hình 1</span>
+                                                                </div>
+
+                                                                <!-- HÌNH MINH HỌA NHỎ GỌN 1 -->
+                                                                <div class="bg-slate-50 border border-gray-200 rounded-md p-1.5 space-y-1 font-sans text-[10px]">
+                                                                    <div class="font-bold text-gray-900 text-[10px] truncate">Gia đình của bạn trên Google</div>
+                                                                    <div class="p-1 bg-white rounded border border-gray-200 flex items-center justify-between">
+                                                                        <div class="flex items-center gap-1.5 min-w-0">
+                                                                            <span class="w-4 h-4 rounded-full bg-slate-700 text-white font-bold flex items-center justify-center text-[8px] shrink-0">DNC</span>
+                                                                            <span class="font-bold text-gray-900 truncate">DNC</span>
+                                                                        </div>
+                                                                        <span class="text-[8px] text-emerald-700 font-bold bg-emerald-50 px-1 rounded shrink-0">Người quản lý</span>
+                                                                    </div>
+                                                                    <div class="p-1 bg-white/70 rounded border border-gray-100 flex items-center gap-1.5">
+                                                                        <span class="w-4 h-4 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center text-[8px] shrink-0">T</span>
+                                                                        <span class="text-gray-600 truncate text-[9px]">Tuấn Nguyễn · Thành viên</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <p class="text-[10px] font-semibold text-gray-800 leading-tight">
+                                                                    Thấy tên <strong class="text-emerald-700">Người quản lý gia đình</strong>.
+                                                                </p>
+                                                            </div>
+
+                                                            <button type="button" 
+                                                                    :class="familyCheckState === 'active' ? 'bg-rose-600 text-white' : 'bg-gray-100 text-gray-700 group-hover:bg-rose-600 group-hover:text-white'"
+                                                                    class="w-full py-1 px-2 rounded text-[10px] font-bold transition-all text-center">
+                                                                <span x-text="familyCheckState === 'active' ? '✓ Đã Chọn: Đang Hoạt Động' : '👉 Chọn Tình Trạng Này'"></span>
+                                                            </button>
+                                                        </div>
+
+                                                        <!-- LỰA CHỌN B: NHÓM KHÔNG HOẠT ĐỘNG (MINI COMPACT) -->
+                                                        <div @click="familyCheckState = 'inactive'"
+                                                             :class="familyCheckState === 'inactive' ? 'border-2 border-emerald-500 bg-emerald-50/80 ring-1 ring-emerald-300' : 'border border-gray-200 bg-white hover:border-emerald-300'"
+                                                             class="rounded-lg p-2 cursor-pointer transition-all flex flex-col justify-between space-y-1.5 group">
+                                                            
+                                                            <div class="space-y-1.5">
+                                                                <div class="flex items-center justify-between border-b border-gray-100 pb-1">
+                                                                    <span class="text-[10px] sm:text-[11px] font-extrabold text-rose-600 flex items-center gap-1">
+                                                                        <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                                                                        🔴 KHÔNG HOẠT ĐỘNG
+                                                                    </span>
+                                                                    <span class="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">Hình 2</span>
+                                                                </div>
+
+                                                                <!-- HÌNH MINH HỌA NHỎ GỌN 2 -->
+                                                                <div class="bg-white border border-gray-200 rounded-md p-1.5 space-y-1 font-sans text-[10px]">
+                                                                    <div class="p-1.5 bg-gray-50 rounded border border-gray-200 space-y-0.5">
+                                                                        <div class="font-extrabold text-gray-900 text-[10px] leading-tight">Nhóm gia đình của bạn không hoạt động</div>
+                                                                        <div class="text-[8px] text-gray-500 line-clamp-2">Hiện tại bạn không thể truy cập vào sản phẩm...</div>
+                                                                        <div class="pt-0.5 border-t border-gray-200">
+                                                                            <span class="text-blue-600 font-bold text-[8px] underline">Rời khỏi nhóm gia đình</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                <p class="text-[10px] font-semibold text-gray-800 leading-tight">
+                                                                    Báo <strong class="text-rose-600">"Không hoạt động"</strong> & có nút rời nhóm.
+                                                                </p>
+                                                            </div>
+
+                                                            <button type="button" 
+                                                                    :class="familyCheckState === 'inactive' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 group-hover:bg-emerald-600 group-hover:text-white'"
+                                                                    class="w-full py-1 px-2 rounded text-[10px] font-bold transition-all text-center">
+                                                                <span x-text="familyCheckState === 'inactive' ? '✓ Đã Chọn: Không Hoạt Động' : '👉 Chọn Tình Trạng Này'"></span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- CASE A: Nhóm đang hoạt động -> Chặn không cho rời nhóm -->
+                                                <template x-if="familyCheckState === 'active'">
+                                                    <div class="p-4 bg-rose-50 border-2 border-rose-400 rounded-xl text-rose-950 space-y-2 shadow-xs">
+                                                        <div class="flex items-center gap-2 font-black text-rose-900 text-sm">
+                                                            <span>⛔ KHÔNG ĐƯỢC RỜI NHÓM NÀY!</span>
+                                                        </div>
+                                                        <p class="text-xs leading-relaxed font-semibold text-rose-900">
+                                                            Gia đình của bạn vẫn đang hoạt động bình thường. <strong>Tuyệt đối KHÔNG được tự ý rời nhóm</strong> vì sẽ bị Google khóa tham gia nhóm mới trong 12 tháng.
+                                                        </p>
+                                                        <p class="text-xs text-rose-800 font-medium">
+                                                            Vui lòng báo lại cho đội ngũ hỗ trợ để kỹ thuật viên kiểm tra trực tiếp cho tài khoản của bạn.
+                                                        </p>
+                                                        <div class="pt-1">
+                                                            <button type="button" @click="showReportForm = true" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-xs transition-all flex items-center gap-1.5 cursor-pointer">
+                                                                <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                                                                <span>Báo Cho Đội Ngũ Hỗ Trợ Kiểm Tra Lại</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </template>
+
+                                                <!-- CASE B: Nhóm không hoạt động -> Hiện Bước 2 & Bước 3 -->
+                                                <template x-if="familyCheckState === 'inactive'">
+                                                    <div class="space-y-2.5 pt-1 border-t border-emerald-100">
+                                                        <div class="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-2">
+                                                            <p>
+                                                                📌 <strong>Bước 2:</strong> Vì gia đình cũ không hoạt động ➔ Bạn tiến hành <strong>Rời nhóm gia đình cũ</strong>.
+                                                            </p>
+                                                            <p>
+                                                                📌 <strong>Bước 3:</strong> Đợi <strong>30 giây</strong> ➔ Mở lại link <a href="https://myaccount.google.com/family/details" target="_blank" class="underline font-bold text-blue-600">myaccount.google.com/family/details</a>. Bạn sẽ thấy <strong>Lời mời tham gia gia đình mới</strong> xuất hiện để bấm Tham gia.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </template>
                                             </div>
                                         </div>
 
@@ -689,473 +1274,8 @@
         <p>© 2026 Go DNC — Fam Issue Tracker System. All rights reserved.</p>
     </footer>
 
-    <script>
-        function base32ToBuf(str) {
-            if (!str) return new Uint8Array(0);
-            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-            let clean = str.toUpperCase().replace(/[^A-Z2-7]/g, '');
-            let bits = 0, value = 0, output = [];
-            for (let i = 0; i < clean.length; i++) {
-                value = (value << 5) | alphabet.indexOf(clean[i]);
-                bits += 5;
-                if (bits >= 8) {
-                    output.push((value >>> (bits - 8)) & 255);
-                    bits -= 8;
-                }
-            }
-            return new Uint8Array(output);
-        }
 
-        async function generateTOTP(secretBase32) {
-            try {
-                if (!secretBase32 || !secretBase32.trim()) return { code: '------', secondsRemaining: 30 };
-                const keyBytes = base32ToBuf(secretBase32.trim());
-                if (keyBytes.length === 0) return { code: '------', secondsRemaining: 30 };
-
-                const epoch = Math.floor(Date.now() / 1000);
-                const timeStep = 30;
-                const counter = Math.floor(epoch / timeStep);
-                const secondsRemaining = timeStep - (epoch % timeStep);
-
-                const buffer = new ArrayBuffer(8);
-                const view = new DataView(buffer);
-                view.setUint32(4, counter, false);
-
-                const cryptoKey = await window.crypto.subtle.importKey(
-                    'raw', keyBytes, { name: 'HMAC', hash: { name: 'SHA-1' } }, false, ['sign']
-                );
-                const signature = await window.crypto.subtle.sign('HMAC', cryptoKey, buffer);
-                const sigBytes = new Uint8Array(signature);
-
-                const offset = sigBytes[sigBytes.length - 1] & 0x0f;
-                const binary =
-                    ((sigBytes[offset] & 0x7f) << 24) |
-                    ((sigBytes[offset + 1] & 0xff) << 16) |
-                    ((sigBytes[offset + 2] & 0xff) << 8) |
-                    (sigBytes[offset + 3] & 0xff);
-
-                const otp = (binary % 1000000).toString().padStart(6, '0');
-                return { code: otp, secondsRemaining };
-            } catch (e) {
-                return { code: '------', secondsRemaining: 30 };
-            }
-        }
-
-        function customerStatusApp() {
-            return {
-                webAppUrl: localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec',
-                statusEmail: '',
-                errorMessage: '',
-                statusResult: null,
-                loading: false,
-
-                showReportForm: false,
-                reportMessage: '',
-                zaloPhone: '',
-                submittingReport: false,
-
-                directEmail: '',
-                directZalo: '',
-                directMessage: '',
-                submittingDirectReport: false,
-
-                // STATE CHO CẤP TK BẢO HÀNH TẠM
-                warrantyCustomerEmail: '',
-                isAssigningWarranty: false,
-                warrantyError: '',
-                assignedWarranty: null,
-                totpTab: 'code',
-                totpCode: '------',
-                totpTimer: 30,
-                totpIntervalId: null,
-
-                // STATE CHO ĐỔI SANG MAIL PHỤ
-                mailPhuPrimaryEmail: '',
-                mailPhuSecondaryEmail: '',
-                isSubmittingMailPhu: false,
-                mailPhuError: '',
-                mailPhuSuccessResult: null,
-                existingMailPhuInfo: null,
-                isCheckingExistingMailPhu: false,
-
-                async checkExistingMailPhuRequest() {
-                    const email = String(this.mailPhuPrimaryEmail || '').trim().toLowerCase();
-                    if (!email || !email.includes('@')) {
-                        this.existingMailPhuInfo = null;
-                        return;
-                    }
-                    this.isCheckingExistingMailPhu = true;
-                    try {
-                        const res = await this.callApi('checkMailPhuStatus', { primaryEmail: email });
-                        if (res && res.success && res.has_existing) {
-                            this.existingMailPhuInfo = res;
-                        } else {
-                            this.existingMailPhuInfo = null;
-                        }
-                    } catch (err) {
-                        console.error('Lỗi kiểm tra mail phụ:', err);
-                    } finally {
-                        this.isCheckingExistingMailPhu = false;
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                async submitMailPhuRequest() {
-                    if (!this.mailPhuPrimaryEmail || !this.mailPhuPrimaryEmail.trim() || !this.mailPhuSecondaryEmail || !this.mailPhuSecondaryEmail.trim()) {
-                        this.mailPhuError = 'Vui lòng nhập đầy đủ Email hiện tại và Email phụ.';
-                        return;
-                    }
-
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    if (!emailRegex.test(this.mailPhuSecondaryEmail.trim())) {
-                        this.mailPhuError = 'Email phụ không hợp lệ (cần chứa ký tự @ và tên miền domain).';
-                        return;
-                    }
-
-                    this.isSubmittingMailPhu = true;
-                    this.mailPhuError = '';
-                    this.mailPhuSuccessResult = null;
-
-                    try {
-                        const res = await this.callApi('submitMailPhuRequest', {
-                            primaryEmail: this.mailPhuPrimaryEmail.trim(),
-                            mailPhu: this.mailPhuSecondaryEmail.trim()
-                        });
-
-                        if (res && res.success) {
-                            this.mailPhuSuccessResult = res;
-                            await this.checkExistingMailPhuRequest();
-                        } else {
-                            this.mailPhuError = res ? (res.message || 'Không thể xử lý yêu cầu.') : 'Lỗi kết nối server.';
-                        }
-                    } catch (err) {
-                        this.mailPhuError = 'Lỗi gửi yêu cầu: ' + err.message;
-                    } finally {
-                        this.isSubmittingMailPhu = false;
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                async submitAssignWarranty() {
-                    if (!this.warrantyCustomerEmail || !this.warrantyCustomerEmail.trim()) return;
-
-                    this.isAssigningWarranty = true;
-                    this.warrantyError = '';
-                    this.assignedWarranty = null;
-
-                    try {
-                        const payload = {
-                            customerEmail: this.warrantyCustomerEmail.trim(),
-                            ctvName: 'Khách trực tiếp (godnc.com/renew)'
-                        };
-                        const res = await this.callApi('assignWarrantyAccount', payload);
-
-                        if (res && res.success) {
-                            this.assignedWarranty = res;
-                            this.totpCode = res.totpCode || '------';
-                            this.totpTimer = res.secondsRemaining || 30;
-                            
-                            this.startTOTPTimer();
-                        } else {
-                            this.warrantyError = res.message || 'Không thể cấp tài khoản bảo hành tạm.';
-                        }
-                    } catch (err) {
-                        this.warrantyError = 'Lỗi kết nối máy chủ: ' + (err.message || err);
-                    } finally {
-                        this.isAssigningWarranty = false;
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                startTOTPTimer() {
-                    if (this.totpIntervalId) {
-                        clearInterval(this.totpIntervalId);
-                    }
-                    this.refreshTOTPCode();
-                    this.totpIntervalId = setInterval(() => {
-                        if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) {
-                            clearInterval(this.totpIntervalId);
-                            return;
-                        }
-                        this.refreshTOTPCode();
-                    }, 1000);
-                },
-
-                async refreshTOTPCode() {
-                    if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) {
-                        this.totpCode = '------';
-                        this.totpTimer = 30;
-                        return;
-                    }
-                    try {
-                        const res = await generateTOTP(this.assignedWarranty.secret2fa);
-                        this.totpCode = res.code || '------';
-                        this.totpTimer = res.secondsRemaining || 30;
-                    } catch (e) {
-                        this.totpTimer = 30;
-                    }
-                },
-
-                copyFullCustomerWarrantyText(w) {
-                    if (!w) return;
-                    let lines = [];
-                    lines.push(`Mail: ${w.email}`);
-                    lines.push(`Pass: ${w.pass}`);
-                    if (w.mkp && w.mkp.trim() && w.mkp.trim() !== '---') {
-                        lines.push(`Mail khôi phục: ${w.mkp.trim()}`);
-                    }
-                    lines.push(`2FA: ${w.secret2fa}`);
-                    lines.push(`Note: Hướng dẫn lấy mã 2FA`);
-                    lines.push(`Truy cập https://2fa.live/`);
-                    lines.push(`Nhập chuỗi mã ở trên, bấm Submit -> ra code 6 số`);
-                    lines.push(`⚠️ LƯU Ý: Đây là tài khoản cấp tạm, TUYỆT ĐỐI KHÔNG ĐỔI PASS hay bất kỳ thông tin nào của tài khoản!`);
-
-                    const fullText = lines.join('\n');
-                    this.copyText(fullText);
-                },
-
-                copyText(text) {
-                    if (!text) return;
-                    if (navigator.clipboard && window.isSecureContext) {
-                        navigator.clipboard.writeText(text).then(() => {
-                            alert('Đã sao chép: ' + text);
-                        }).catch(err => {
-                            this.fallbackCopyText(text);
-                        });
-                    } else {
-                        this.fallbackCopyText(text);
-                    }
-                },
-
-                fallbackCopyText(text) {
-                    const textarea = document.createElement('textarea');
-                    textarea.value = text;
-                    textarea.style.position = 'fixed';
-                    textarea.style.opacity = '0';
-                    document.body.appendChild(textarea);
-                    textarea.select();
-                    try {
-                        document.execCommand('copy');
-                        alert('Đã sao chép: ' + text);
-                    } catch (e) {}
-                    document.body.removeChild(textarea);
-                },
-
-                async submitDirectReport() {
-                    if (!this.directEmail || !this.directEmail.trim()) return;
-
-                    this.submittingDirectReport = true;
-                    try {
-                        const payload = {
-                            email: this.directEmail.trim().toLowerCase(),
-                            message: this.directMessage.trim(),
-                            zalo_phone: this.directZalo ? this.directZalo.trim() : '',
-                            zaloPhone: this.directZalo ? this.directZalo.trim() : '',
-                            submitted_by: 'Khách lẻ (Trực tiếp)'
-                        };
-
-                        const res = await this.callApi('submitReport', payload);
-
-                        if (res.success) {
-                            alert('🎉 ' + (res.message || 'Đã gửi báo lỗi & đăng ký nhận tin Zalo thành công! Kỹ thuật viên sẽ kiểm tra khắc phục ngay.'));
-                            this.statusEmail = this.directEmail.trim().toLowerCase();
-                            this.directZalo = '';
-                            this.directMessage = '';
-                            this.checkStatus();
-                        } else {
-                            alert('❌ ' + (res.message || 'Không thể gửi báo lỗi.'));
-                        }
-                    } catch (err) {
-                        alert('❌ Lỗi kết nối: ' + err.message);
-                    } finally {
-                        this.submittingDirectReport = false;
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                init() {
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const emailParam = urlParams.get('email');
-                    if (emailParam) {
-                        this.statusEmail = emailParam.trim();
-                        this.checkStatus();
-                    }
-                    setTimeout(() => lucide.createIcons(), 50);
-                },
-
-                formatDateOnly(rawStr) {
-                    if (!rawStr) return '';
-                    const str = String(rawStr).trim();
-                    if (!str) return '';
-
-                    if (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(str)) {
-                        return str;
-                    }
-
-                    try {
-                        const d = new Date(str);
-                        if (isNaN(d.getTime())) return str;
-                        const day = String(d.getDate()).padStart(2, '0');
-                        const month = String(d.getMonth() + 1).padStart(2, '0');
-                        const year = d.getFullYear();
-                        return `${day}/${month}/${year}`;
-                    } catch (e) {
-                        return str;
-                    }
-                },
-
-                formatDate(isoStr) {
-                    if (!isoStr) return '---';
-                    try {
-                        const d = new Date(isoStr);
-                        if (isNaN(d.getTime())) return isoStr;
-                        return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
-                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
-                    } catch (e) { return isoStr; }
-                },
-
-                formatRelativeTime(isoStr) {
-                    if (!isoStr) return '---';
-                    try {
-                        const d = new Date(isoStr);
-                        if (isNaN(d.getTime())) return isoStr;
-                        const now = Date.now();
-                        const diffMs = now - d.getTime();
-                        if (diffMs < 0) return 'Vừa xong';
-                        const diffMins = Math.floor(diffMs / 60000);
-                        if (diffMins < 1) return 'Vừa xong';
-                        if (diffMins < 60) return `${diffMins} phút trước`;
-                        const diffHours = Math.floor(diffMins / 60);
-                        if (diffHours < 24) return `${diffHours} giờ trước`;
-                        const diffDays = Math.floor(diffHours / 24);
-                        return `${diffDays} ngày trước`;
-                    } catch (e) { return isoStr; }
-                },
-
-                calcDuration(startIso, endIso) {
-                    if (!startIso || !endIso) return '';
-                    try {
-                        const s = new Date(startIso).getTime();
-                        const e = new Date(endIso).getTime();
-                        if (isNaN(s) || isNaN(e) || e <= s) return '';
-                        const diffMins = Math.round((e - s) / 60000);
-                        if (diffMins < 60) return ` (sau ${diffMins} phút)`;
-                        const hrs = Math.floor(diffMins / 60);
-                        const mins = diffMins % 60;
-                        return ` (sau ${hrs}h ${mins}m)`;
-                    } catch (err) { return ''; }
-                },
-
-                getStatusBadgeClass(status) {
-                    switch (status) {
-                        case 'Mới': return 'bg-amber-100 text-amber-800 border-amber-300';
-                        case 'Đang xử lý': return 'bg-blue-100 text-blue-800 border-blue-300';
-                        case 'Đã xử lý': return 'bg-green-100 text-green-800 border-green-300';
-                        default: return 'bg-gray-100 text-gray-700 border-gray-300';
-                    }
-                },
-
-                getStatusDotClass(status) {
-                    switch (status) {
-                        case 'Mới': return 'bg-amber-500';
-                        case 'Đang xử lý': return 'bg-blue-600 animate-pulse';
-                        case 'Đã xử lý': return 'bg-green-600';
-                        default: return 'bg-gray-400';
-                    }
-                },
-
-                async checkStatus() {
-                    if (!this.statusEmail || !this.statusEmail.trim()) {
-                        this.errorMessage = 'Vui lòng nhập email đăng ký để tra cứu.';
-                        return;
-                    }
-
-                    this.loading = true;
-                    this.errorMessage = '';
-                    this.statusResult = null;
-                    this.showReportForm = false;
-
-                    try {
-                        const payload = { email: this.statusEmail.trim().toLowerCase() };
-                        const res = await this.callApi('checkStatus', payload);
-
-                        if (res.success) {
-                            this.statusResult = res;
-                        } else {
-                            this.errorMessage = res.message || 'Không tìm thấy dữ liệu nhóm Fam cho email này.';
-                        }
-                    } catch (err) {
-                        this.errorMessage = 'Lỗi kết nối máy chủ: ' + err.message;
-                    } finally {
-                        this.loading = false;
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                async submitFixRequest() {
-                    if (!this.statusEmail || !this.statusEmail.trim()) return;
-
-                    this.submittingReport = true;
-                    try {
-                        const payload = {
-                            email: this.statusEmail.trim().toLowerCase(),
-                            message: this.reportMessage.trim(),
-                            zalo_phone: this.zaloPhone ? this.zaloPhone.trim() : '',
-                            zaloPhone: this.zaloPhone ? this.zaloPhone.trim() : '',
-                            submitted_by: 'Khách lẻ'
-                        };
-
-                        const res = await this.callApi('submitReport', payload);
-
-                        if (res.success) {
-                            alert('🎉 ' + (res.message || 'Đã gửi yêu cầu fix lỗi thành công! Kỹ thuật viên sẽ kiểm tra khắc phục ngay.'));
-                            this.showReportForm = false;
-                            this.reportMessage = '';
-                            this.zaloPhone = '';
-                            this.checkStatus();
-                        } else {
-                            alert('❌ ' + (res.message || 'Không thể gửi yêu cầu fix lỗi.'));
-                        }
-                    } catch (err) {
-                        alert('❌ Lỗi kết nối: ' + err.message);
-                    } finally {
-                        this.submittingReport = false;
-                        this.$nextTick(() => lucide.createIcons());
-                    }
-                },
-
-                async callApi(action, payload, timeoutMs = 15000) {
-                    const url = new URL(this.webAppUrl);
-                    url.searchParams.append('action', action);
-
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-                    try {
-                        const response = await fetch(url.toString(), {
-                            method: 'POST',
-                            mode: 'cors',
-                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            body: JSON.stringify(payload),
-                            signal: controller.signal
-                        });
-                        clearTimeout(timeoutId);
-                        const text = await response.text();
-                        try {
-                            return JSON.parse(text);
-                        } catch (jsonErr) {
-                            throw new Error('Máy chủ Apps Script chưa được triển khai bản mới (Deploy New Version). Vui lòng cập nhật WebApp.');
-                        }
-                    } catch (err) {
-                        clearTimeout(timeoutId);
-                        if (err.name === 'AbortError' || (err.message && err.message.toLowerCase().includes('aborted'))) {
-                            throw new Error('Hệ thống phản hồi chậm, vui lòng thử lại.');
-                        }
-                        throw err;
-                    }
-                }
-            };
-        }
-    </script>
+</body>
+</html>
 </body>
 </html>
