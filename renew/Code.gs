@@ -164,7 +164,7 @@ function handleRequest(e) {
         result = submitReport(params.email, params.message, params.submitted_by, zaloPhoneParam);
         break;
       case 'submitBulkReport':
-        result = submitBulkReport(params.rawText, params.ctvName);
+        result = submitBulkReport(params.emailList || params.emails || params.rawText, params.ctvName);
         break;
       case 'checkBulkStatus':
         result = checkBulkStatus(params.emailList || params.rawText);
@@ -1017,13 +1017,18 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
  * API CTV: submitBulkReport(rawText, ctvName)
  * Tách tối đa 50 email bằng Regex, báo lỗi hàng loạt & trả chi tiết từng dòng
  */
-function submitBulkReport(rawText, ctvName) {
-  if (!rawText) {
+function submitBulkReport(rawTextOrList, ctvName) {
+  if (!rawTextOrList) {
     return { success: false, message: 'Vui lòng dán danh sách email hoặc nội dung tin nhắn.' };
   }
 
-  const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-  const matches = String(rawText).match(emailRegex);
+  let matches = [];
+  if (Array.isArray(rawTextOrList)) {
+    matches = rawTextOrList;
+  } else if (typeof rawTextOrList === 'string') {
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    matches = String(rawTextOrList).match(emailRegex) || [];
+  }
 
   if (!matches || matches.length === 0) {
     return { success: false, message: 'Không tìm thấy địa chỉ email hợp lệ nào trong đoạn văn bản đã dán.' };
@@ -1031,8 +1036,8 @@ function submitBulkReport(rawText, ctvName) {
 
   const uniqueEmails = [];
   for (let i = 0; i < matches.length; i++) {
-    const clean = matches[i].trim().toLowerCase();
-    if (uniqueEmails.indexOf(clean) === -1) {
+    const clean = String(matches[i] || '').trim().toLowerCase();
+    if (clean && uniqueEmails.indexOf(clean) === -1) {
       uniqueEmails.push(clean);
     }
   }
