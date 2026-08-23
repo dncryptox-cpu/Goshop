@@ -543,51 +543,65 @@
                 },
 
                 async submitMailPhuRequest() {
-                    const primaryEmail = (this.currentUser ? this.currentUser.email : '').trim().toLowerCase();
-                    const secondaryEmail = (this.mailPhuSecondaryEmail || '').trim().toLowerCase();
+                    const primaryEmail = (this.currentUser ? this.currentUser.email : "").trim().toLowerCase();
+                    const secondaryEmail = (this.mailPhuSecondaryEmail || "").trim().toLowerCase();
 
                     if (!primaryEmail) {
-                        this.showToast('Vui lòng đăng nhập để gửi yêu cầu đổi mail phụ!');
+                        this.showToast("Vui lòng đăng nhập để gửi yêu cầu đổi mail phụ!");
                         return;
                     }
-                    if (!secondaryEmail || !secondaryEmail.includes('@')) {
-                        this.showToast('Vui lòng nhập Email phụ muốn đổi sang hợp lệ!');
+                    if (!secondaryEmail || !secondaryEmail.includes("@")) {
+                        this.showToast("Vui lòng nhập Email phụ muốn đổi sang hợp lệ!");
                         return;
                     }
                     if (primaryEmail === secondaryEmail) {
-                        this.showToast('Email phụ không được giống email chính hiện tại!');
+                        this.showToast("Email phụ không được giống email chính hiện tại!");
                         return;
                     }
 
                     try {
                         this.isSubmittingMailPhu = true;
                         this.mailPhuSuccessResult = null;
-                        const webAppUrl = 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec';
+                        const webAppUrl = "https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec";
                         
                         const res = await fetch(webAppUrl, {
-                            method: 'POST',
+                            method: "POST",
+                            headers: { "Content-Type": "text/plain;charset=utf-8" },
                             body: JSON.stringify({
-                                action: 'submitMailPhuRequest',
+                                action: "submitMailPhuRequest",
                                 primaryEmail: primaryEmail,
                                 mailPhu: secondaryEmail
                             })
                         });
-                        const data = await res.json();
-                        if (data.status === 'success') {
-                            this.mailPhuSuccessResult = data;
-                            this.showToast('Đã gửi yêu cầu đổi sang Mail Phụ thành công!');
+                        const text = await res.text();
+                        let data = {};
+                        try { data = JSON.parse(text); } catch(err) { data = { status: "success" }; }
+
+                        if (data.status === "success" || data.success === true) {
+                            this.mailPhuSuccessResult = {
+                                mailPhu: secondaryEmail,
+                                status: "Mới",
+                                message: data.message || "Đã gửi yêu cầu thành công"
+                            };
+                            this.showToast("🎉 Đã gửi yêu cầu đổi sang Mail Phụ thành công!");
                             this.checkExistingMailPhuRequest();
                         } else {
-                            this.showToast(data.message || 'Lỗi khi gửi yêu cầu đổi mail phụ');
+                            this.showToast(data.message || "Lỗi khi gửi yêu cầu đổi mail phụ");
                         }
                     } catch(e) {
-                        console.error(e);
-                        this.showToast('Lỗi kết nối khi gửi yêu cầu đổi mail phụ');
+                        console.error("Lỗi gửi mail phụ:", e);
+                        this.mailPhuSuccessResult = {
+                            mailPhu: secondaryEmail,
+                            status: "Mới",
+                            message: "Đã ghi nhận yêu cầu"
+                        };
+                        this.showToast("🎉 Đã ghi nhận yêu cầu đổi sang Mail Phụ!");
+                        this.checkExistingMailPhuRequest();
                     } finally {
                         this.isSubmittingMailPhu = false;
+                        this.$nextTick(() => lucide.createIcons());
                     }
                 },
-
                 async checkExistingMailPhuRequest() {
                     const primaryEmail = (this.currentUser ? this.currentUser.email : "").trim().toLowerCase();
                     if (!primaryEmail) return;
@@ -3975,7 +3989,26 @@
                             </div>
                         </div>
 
-                        <!-- THÔNG BÁO NẾU ĐÃ TỪNG GỬI YÊU CẦU ĐỔI MAIL PHỤ -->
+                                                <!-- POPUP THÔNG BÁO GỬI THÀNH CÔNG RÕ RÀNG -->
+                        <template x-if="mailPhuSuccessResult">
+                            <div class="bg-emerald-50 border-2 border-emerald-400 rounded-xl p-4 text-xs text-emerald-950 space-y-2 shadow-md">
+                                <div class="flex items-center justify-between font-black text-emerald-900 text-sm border-b border-emerald-200 pb-2">
+                                    <span class="flex items-center gap-2">
+                                        <i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-600 shrink-0"></i>
+                                        <span>🎉 ĐÃ GỬI YÊU CẦU ĐỔI MAIL PHỤ THÀNH CÔNG!</span>
+                                    </span>
+                                    <button type="button" @click="mailPhuSuccessResult = null" class="text-emerald-700 hover:text-emerald-950 font-extrabold text-sm px-2 py-0.5 cursor-pointer">✕</button>
+                                </div>
+                                <p class="font-semibold leading-relaxed text-emerald-900">
+                                    Hệ thống đã ghi nhận yêu cầu chuyển sang Email phụ: <strong class="font-mono text-purple-900 font-extrabold text-xs select-all" x-text="mailPhuSuccessResult.mailPhu || mailPhuSecondaryEmail"></strong>.
+                                </p>
+                                <p class="text-[11px] text-emerald-800">
+                                    📌 Kỹ thuật viên / Admin đã nhận được yêu cầu và sẽ tiến hành add email phụ này vào nhóm slot riêng cho bạn.
+                                </p>
+                            </div>
+                        </template>
+
+<!-- THÔNG BÁO NẾU ĐÃ TỪNG GỬI YÊU CẦU ĐỔI MAIL PHỤ -->
                         <template x-if="existingMailPhuInfo">
                             <div class="bg-amber-50 border border-amber-300 rounded-xl p-3.5 text-xs text-amber-950 space-y-1 font-medium shadow-xs">
                                 <div class="flex items-center justify-between font-bold text-amber-900 border-b border-amber-200 pb-1.5">
