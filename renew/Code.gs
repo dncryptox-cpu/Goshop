@@ -1679,9 +1679,12 @@ function updateTicketStatus(ticketId, newStatus, resolvedBy, note, resolutionTyp
           }
         }
 
-        ticketsSheet.getRange(targetRowIndex, 11).setValue(nowIso);
+        rowValues[10] = nowIso; // notified_at
       }
     }
+
+    // Ghi gộp toàn bộ 12 cột của dòng ticket được cập nhật xuống Google Sheet
+    updateRowRangeFast('TICKETS', targetRowIndex, 1, rowValues);
 
     return { 
       success: true, 
