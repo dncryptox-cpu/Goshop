@@ -1228,65 +1228,64 @@ function checkBulkStatus(rawTextOrList) {
 /**
  * Helper: Tra cứu trực tiếp từ Kho TK nếu cache chưa có hoặc thiếu thông tin
  */
+/**
+ * Helper: Tra cứu trực tiếp từ Kho TK với cấu trúc cột thực tế (Col K Email, Col G Renew, Col N HSD, Col P CTV)
+ */
 function lookupKhoTKDirect(emailClean) {
+  if (!emailClean) return null;
+  const targetEmail = String(emailClean).trim().toLowerCase();
+
   try {
     const khoData = getKhoTKDataCached();
     if (!khoData || khoData.length <= 1) return null;
 
+    let currentSttGroup = '';
+
+    // Scan headers in first 10 rows
     let emailColIdx = -1;
-    let sttColIdx = 0;
-    let ctvColIdx = -1;
-    let dateColIdx = -1;
     let renewColIdx = -1;
+    let hsdColIdx = -1;
+    let ctvColIdx = -1;
     let ownerColIdx = -1;
 
-    const maxScanRows = Math.min(10, khoData.length);
-    let headerRowIdx = -1;
-
-    for (let r = 0; r < maxScanRows; r++) {
+    for (let r = 0; r < Math.min(10, khoData.length); r++) {
       const row = khoData[r];
       for (let c = 0; c < row.length; c++) {
         const cellStr = String(row[c] || '').trim().toLowerCase();
-        if (cellStr === 'email khách' || cellStr === 'email') {
-          headerRowIdx = r;
-          emailColIdx = c;
-        }
-        if (cellStr === 'ctv') {
-          ctvColIdx = c;
-        }
-        if (cellStr.includes('renew')) {
-          renewColIdx = c;
-        }
-        if (cellStr === 'date' || cellStr.includes('hạn') || cellStr.includes('hsd')) {
-          dateColIdx = c;
-        }
-        if (cellStr.includes('chủ fam') || cellStr.includes('tài khoản mẹ') || cellStr.includes('owner') || cellStr.includes('master')) {
-          ownerColIdx = c;
-        }
+        if (cellStr === 'email khách' || cellStr === 'email khach') emailColIdx = c;
+        if (cellStr.includes('date renew') || cellStr === 'ngày renew') renewColIdx = c;
+        if (cellStr === 'hsd' || cellStr === 'date' || cellStr.includes('hạn')) hsdColIdx = c;
+        if (cellStr === 'contact' || cellStr === 'ctv') ctvColIdx = c;
+        if (cellStr.includes('chủ fam') || cellStr.includes('tài khoản mẹ') || cellStr.includes('owner') || cellStr.includes('master')) ownerColIdx = c;
       }
-      if (emailColIdx !== -1) break;
     }
 
-    if (emailColIdx === -1) emailColIdx = 2; // Column C
-    if (ctvColIdx === -1) ctvColIdx = 7;     // Column H
-    if (renewColIdx === -1) renewColIdx = 8; // Column I (NGÀY RENEW)
-    if (dateColIdx === -1) dateColIdx = 13;   // Column N (HSD / DATE)
+    if (emailColIdx === -1) emailColIdx = 10; // Column K (Index 10: Email khách)
+    if (renewColIdx === -1) renewColIdx = 6;  // Column G (Index 6: Date Renew)
+    if (hsdColIdx === -1) hsdColIdx = 13;      // Column N (Index 13: HSD / Date)
+    if (ctvColIdx === -1) ctvColIdx = 15;     // Column P (Index 15: Contact / CTV)
 
-    let currentSttGroup = '';
-    const targetEmail = String(emailClean).trim().toLowerCase();
-
-    for (let r = (headerRowIdx !== -1 ? headerRowIdx + 1 : 1); r < khoData.length; r++) {
-      const sttRaw = khoData[r][sttColIdx];
+    for (let r = 1; r < khoData.length; r++) {
+      const row = khoData[r];
+      const sttRaw = row[0];
       if (sttRaw && String(sttRaw).trim()) {
         currentSttGroup = String(sttRaw).trim();
       }
 
-      const rowEmailPrimary = String(khoData[r][emailColIdx] || '').trim().toLowerCase();
-      if (rowEmailPrimary === targetEmail) {
+      // Check all cells in row r for matching targetEmail
+      let isMatch = false;
+      for (let c = 0; c < row.length; c++) {
+        const cellVal = String(row[c] || '').trim().toLowerCase();
+        if (cellVal === targetEmail) {
+          isMatch = true;
+          break;
+        }
+      }
+
+      if (isMatch) {
         let ngayRenewClean = '';
-        const targetCol = (renewColIdx !== -1 && khoData[r][renewColIdx]) ? renewColIdx : ((dateColIdx !== -1 && khoData[r][dateColIdx]) ? dateColIdx : -1);
-        if (targetCol !== -1 && khoData[r][targetCol]) {
-          const rawDate = khoData[r][targetCol];
+        if (renewColIdx !== -1 && row[renewColIdx]) {
+          const rawDate = row[renewColIdx];
           if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
             ngayRenewClean = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
           } else {
@@ -1294,8 +1293,21 @@ function lookupKhoTKDirect(emailClean) {
           }
         }
 
-        let ctvClean = (ctvColIdx !== -1 && khoData[r][ctvColIdx]) ? String(khoData[r][ctvColIdx]).trim() : '';
-        let ownerClean = (ownerColIdx !== -1 && khoData[r][ownerColIdx]) ? String(khoData[r][ownerColIdx]).trim() : '';
+        let ngayHetHanClean = '';
+        if (hsdColIdx !== -1 && row[hsdColIdx]) {
+          const rawDate = row[hsdColIdx];
+          if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+            ngayHetHanClean = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
+          } else {
+            ngayHetHanClean = String(rawDate).trim();
+          }
+        }
+
+        if (!ngayRenewClean) ngayRenewClean = ngayHetHanClean;
+        if (!ngayHetHanClean) ngayHetHanClean = ngayRenewClean;
+
+        let ctvClean = (ctvColIdx !== -1 && row[ctvColIdx]) ? String(row[ctvColIdx]).trim() : '';
+        let ownerClean = (ownerColIdx !== -1 && row[ownerColIdx]) ? String(row[ownerColIdx]).trim() : '';
 
         if (!ownerClean && currentSttGroup) {
           ownerClean = getSttOwnerEmail(currentSttGroup);
@@ -1306,8 +1318,8 @@ function lookupKhoTKDirect(emailClean) {
           email: targetEmail,
           ctv: ctvClean,
           ngay_renew: ngayRenewClean,
-          ngay_het_han: ngayRenewClean,
-          hsd: ngayRenewClean,
+          ngay_het_han: ngayHetHanClean,
+          hsd: ngayHetHanClean,
           owner_email: ownerClean
         };
       }
