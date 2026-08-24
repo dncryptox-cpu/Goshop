@@ -394,7 +394,7 @@
                                                 <span class="font-mono font-black text-amber-300 text-base" x-text="t.stt_group"></span>
                                                 <span class="px-2 py-0.5 rounded text-[10px] font-black"
                                                       :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-blue-500/30 text-blue-300 border border-blue-400/40')"
-                                                      x-text="t.is_recurring ? 'Tái phát x' + t.recur_count : (isOverdue(t) ? 'Quá hạn (>2h)' : 'Mới')"></span>
+                                                      x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count + (getTicketAgeText(t) ? ' · ' + getTicketAgeText(t) : '')) : (getTicketAgeText(t) || 'Mới')"></span>
                                             </div>
 
                                             <button @click="quickFixTicket(t)"
@@ -447,7 +447,7 @@
                                                 <span class="font-mono font-black text-amber-300 text-base" x-text="t.stt_group"></span>
                                                 <span class="px-2 py-0.5 rounded text-[10px] font-black"
                                                       :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-purple-500/30 text-purple-300 border border-purple-400/40')"
-                                                      x-text="t.is_recurring ? 'Tái phát x' + t.recur_count : (isOverdue(t) ? 'Quá hạn (>2h)' : 'Mới')"></span>
+                                                      x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count + (getTicketAgeText(t) ? ' · ' + getTicketAgeText(t) : '')) : (getTicketAgeText(t) || 'Mới')"></span>
                                             </div>
 
                                             <button @click="quickFixTicket(t)"
@@ -950,7 +950,7 @@
                                  :class="t.recur_count >= 2 ? 'bg-rose-600' : 'bg-red-600'">
                                 <div class="flex items-center gap-2">
                                     <i :data-lucide="t.recur_count >= 2 ? 'alert-octagon' : 'clock'" class="w-3.5 h-3.5"></i>
-                                    <span x-text="t.recur_count >= 2 ? '‼️ TÁI PHÁT NHIỀU LẦN (x' + t.recur_count + ') — CẦN ĐỔI ACC HOẶC FIX DỨT ĐIỂM' : '⏰ QUÁ HẠN XỬ LÝ (> 2 GIỜ) — ƯU TIÊN TRƯỚC'"></span>
+                                    <span x-text="t.recur_count >= 2 ? '‼️ TÁI PHÁT NHIỀU LẦN (x' + t.recur_count + ') — CẦN ĐỔI ACC HOẶC FIX DỨT ĐIỂM' : ('⏰ QUÁ HẠN XỬ LÝ (' + (getTicketAgeText(t) ? getTicketAgeText(t).toUpperCase() : '> 2 GIỜ') + ') — ƯU TIÊN TRƯỚC')"></span>
                                 </div>
                                 <span class="bg-black/20 px-2 py-0.2 rounded text-[9px]">Ưu tiên cao</span>
                             </div>
@@ -1011,8 +1011,8 @@
                                         <!-- BADGE QUÁ HẠN -->
                                         <template x-if="isOverdue(t)">
                                             <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-red-100 text-red-800 border border-red-200 flex items-center gap-1">
-                                                <i data-lucide="alert-circle" class="w-3 h-3 text-red-600"></i>
-                                                <span>⏰ Quá hạn >2h</span>
+                                                <i data-lucide="alert-circle" class="w-3.5 h-3.5 text-red-600"></i>
+                                                <span x-text="'⏰ ' + (getTicketAgeText(t) ? ('Quá hạn (' + getTicketAgeText(t).replace('Báo ', '') + ')') : 'Quá hạn')"></span>
                                             </span>
                                         </template>
                                     </div>
@@ -1815,6 +1815,36 @@
                         };
                     }
                     return null;
+                },
+
+                getTicketAgeText(t) {
+                    if (!t) return '';
+                    const dateStr = t.created_at || t.timestamp || t.date;
+                    if (!dateStr) return '';
+                    
+                    try {
+                        const createdDate = new Date(dateStr);
+                        if (isNaN(createdDate.getTime())) return '';
+                        const now = new Date();
+                        const diffMs = now - createdDate;
+                        if (diffMs <= 0) return 'Vừa báo';
+                        
+                        const diffMins = Math.floor(diffMs / (1000 * 60));
+                        const diffHours = Math.floor(diffMins / 60);
+                        const remMins = diffMins % 60;
+                        const diffDays = Math.floor(diffHours / 24);
+
+                        if (diffDays > 0) {
+                            const remHours = diffHours % 24;
+                            return `Báo ${diffDays}d ${remHours}h trước`;
+                        }
+                        if (diffHours > 0) {
+                            return `Báo ${diffHours}h ${remMins}p trước`;
+                        }
+                        return `Báo ${diffMins}p trước`;
+                    } catch(e) {
+                        return '';
+                    }
                 },
 
                 get filteredTickets() {
