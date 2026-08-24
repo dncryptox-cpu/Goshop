@@ -86,6 +86,7 @@
                 topupRequests: [],
                 allOrders: [],
                 pendingOrders: [],
+                appDataRows: [],
 
                 // TOP-UP MODAL & DRAFT STATE
                 showTopupModal: false,
@@ -335,6 +336,52 @@
                     if (!this.currentUser) return [];
                     const email = this.currentUser.email.toLowerCase().trim();
                     return this.pendingOrders.filter(p => p.email.toLowerCase().trim() === email && p.status !== 'approved').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                },
+
+                get myAccountOverview() {
+                    if (!this.currentUser || !this.currentUser.email) {
+                        return { hsd: '---', daysLeft: null, orderCount: 0, openTickets: 0 };
+                    }
+                    const email = String(this.currentUser.email).trim().toLowerCase();
+                    
+                    let hsd = '---';
+                    let daysLeft = null;
+                    if (this.appDataRows && this.appDataRows.length > 0) {
+                        const row = this.appDataRows.find(r => {
+                            const e1 = String(r['email khách'] || r['email'] || r['emailkhach'] || '').trim().toLowerCase();
+                            const e2 = String(r['mail phụ'] || r['mailphu'] || '').trim().toLowerCase();
+                            return e1 === email || (e2 && e2 === email);
+                        });
+                        if (row) {
+                            hsd = String(row['ngày renew'] || row['date'] || row['ngayrenew'] || '---').trim();
+                        }
+                    }
+
+                    if (hsd && hsd !== '---') {
+                        try {
+                            const parts = hsd.split('/');
+                            let d;
+                            if (parts.length === 3) {
+                                d = new Date(parts[2], parts[1] - 1, parts[0]);
+                            } else {
+                                d = new Date(hsd);
+                            }
+                            if (!isNaN(d.getTime())) {
+                                const now = new Date();
+                                daysLeft = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
+                            }
+                        } catch(e) {}
+                    }
+
+                    const orderCount = this.myOrders ? this.myOrders.length : 0;
+                    const openTickets = this.famIssuesCount || 0;
+
+                    return {
+                        hsd: hsd || '---',
+                        daysLeft: daysLeft,
+                        orderCount: orderCount,
+                        openTickets: openTickets
+                    };
                 },
 
                 get pendingTopupsOnly() {
@@ -1507,7 +1554,7 @@
                 async fetchData() {
                     this.isLoading = true;
                     try {
-                        const [prodRes, invRes, walletRes, topupRes, orderRes, pendingRes, reportRes, withdrawRes, usersRes, resetRes] = await Promise.all([
+                        const [prodRes, invRes, walletRes, topupRes, orderRes, pendingRes, reportRes, withdrawRes, usersRes, resetRes, appDataRes] = await Promise.all([
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_PRODUCTS&t=${Date.now()}`).catch(() => null),
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_INVENTORY&t=${Date.now()}`).catch(() => null),
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_WALLET_LOG&t=${Date.now()}`).catch(() => null),
@@ -1517,7 +1564,8 @@
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_REPORTS&t=${Date.now()}`).catch(() => null),
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_WITHDRAW_REQ&t=${Date.now()}`).catch(() => null),
                             fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_USERS&t=${Date.now()}`).catch(() => null),
-                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_RESET_REQ&t=${Date.now()}`).catch(() => null)
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=MB_RESET_REQ&t=${Date.now()}`).catch(() => null),
+                            fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?sheet=APP_DATA&t=${Date.now()}`).catch(() => null)
                         ]);
 
                         if (prodRes && prodRes.ok) {
@@ -1693,6 +1741,11 @@
                                 status: String(row['status'] || 'active').trim().toLowerCase(),
                                 note: String(row['note'] || '').trim()
                             })).filter(u => u.email);
+                        }
+
+                        if (appDataRes && appDataRes.ok) {
+                            const raw = await appDataRes.text();
+                            this.appDataRows = this.parseGvizTable(raw);
                         }
 
                     } catch (err) {
@@ -3895,6 +3948,26 @@
 
                 <!-- Customer Tab: Orders -->
                 <div x-show="currentTab === 'cust_orders'">
+                    <!-- KHỐI TỔNG QUAN TÀI KHOẢN FOR CUSTOMER -->
+                    <div class="mb-6 p-5 rounded-2xl bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-slate-900 text-white shadow-xl border border-indigo-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
+                                <i data-lucide="shield-check" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xs font-bold uppercase tracking-wider text-indigo-300">Tổng Quan Tài Khoản</h3>
+                                <p class="text-sm md:text-base font-semibold text-slate-100 mt-1 leading-relaxed">
+                                    Tài khoản của bạn còn hạn đến <span class="text-amber-300 font-bold font-mono" x-text="myAccountOverview.hsd"></span>
+                                    <template x-if="myAccountOverview.daysLeft !== null">
+                                        <span> (còn <span class="text-emerald-400 font-bold" x-text="myAccountOverview.daysLeft"></span> ngày)</span>
+                                    </template>.
+                                    Bạn đã mua <span class="text-indigo-300 font-bold" x-text="myAccountOverview.orderCount"></span> sản phẩm.
+                                    Hiện có <span class="text-rose-300 font-bold" x-text="myAccountOverview.openTickets"></span> yêu cầu hỗ trợ đang xử lý.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="glass-card rounded-2xl overflow-hidden">
                         <div class="p-5 border-b border-gray-100 bg-white">
                             <h2 class="text-lg font-bold text-gray-900">Lịch Sử Mua Hàng Của Tôi</h2>
