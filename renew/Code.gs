@@ -694,15 +694,12 @@ function setupAutoSyncTrigger() {
 /**
  * Helper: Tra cứu STT group từ Email CHỈ TRONG CACHE local.
  */
+/**
+ * Helper: Tra cứu STT group từ Email 100% TRỰC TIẾP từ Kho TK Google Sheet
+ */
 function getSttGroupByEmail(emailClean) {
-  const cache = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
-  const target = String(emailClean || '').trim().toLowerCase();
-  for (let i = 0; i < cache.length; i++) {
-    if (String(cache[i]['email'] || '').trim().toLowerCase() === target) {
-      return String(cache[i]['stt_group'] || '').trim();
-    }
-  }
-  return null;
+  const info = lookupKhoTKDirect(emailClean);
+  return info ? info.stt_group : null;
 }
 
 /**
@@ -732,17 +729,56 @@ function parseDateHelper(val) {
 }
 
 /**
- * Helper: Tra cứu Email Chủ Fam từ STT Group trong cache
+ * Helper: Tra cứu Email Chủ Fam từ STT Group 100% TRỰC TIẾP từ Kho TK Google Sheet
  */
 function getSttOwnerEmail(sttGroup) {
+  if (!sttGroup) return '';
+  const targetGroup = String(sttGroup || '').trim().toUpperCase();
   try {
-    const cache = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
-    const targetGroup = String(sttGroup || '').trim().toUpperCase();
-    for (let i = 0; i < cache.length; i++) {
-      const g = String(cache[i]['stt_group'] || '').trim().toUpperCase();
-      const owner = cache[i]['owner_email'];
-      if (g === targetGroup && owner) {
-        return String(owner).trim();
+    const khoData = getKhoTKDataCached();
+    if (khoData && khoData.length > 1) {
+      let emailColIdx = -1;
+      let ownerColIdx = -1;
+      const maxScanRows = Math.min(10, khoData.length);
+      let headerRowIdx = -1;
+
+      for (let r = 0; r < maxScanRows; r++) {
+        const row = khoData[r];
+        for (let c = 0; c < row.length; c++) {
+          const cellStr = String(row[c] || '').trim().toLowerCase();
+          if (cellStr.includes('chủ fam') || cellStr.includes('tài khoản mẹ') || cellStr.includes('owner') || cellStr.includes('master')) {
+            ownerColIdx = c;
+            headerRowIdx = r;
+          }
+        }
+      }
+
+      if (ownerColIdx !== -1) {
+        let currentStt = '';
+        for (let r = (headerRowIdx !== -1 ? headerRowIdx + 1 : 1); r < khoData.length; r++) {
+          const sttRaw = khoData[r][0];
+          if (sttRaw && String(sttRaw).trim()) {
+            currentStt = String(sttRaw).trim().toUpperCase();
+          }
+          if (currentStt === targetGroup && khoData[r][ownerColIdx]) {
+            const owner = String(khoData[r][ownerColIdx]).trim();
+            if (owner && owner.includes('@')) return owner;
+          }
+        }
+      }
+    }
+
+    // Try tab STOCK
+    const khoSpreadsheet = SpreadsheetApp.openById(KHO_TK_ID);
+    const stockSheet = khoSpreadsheet.getSheetByName('STOCK') || khoSpreadsheet.getSheetByName('Stock');
+    if (stockSheet && stockSheet.getLastRow() > 1) {
+      const stockData = stockSheet.getDataRange().getValues();
+      for (let r = 1; r < stockData.length; r++) {
+        const sttVal = String(stockData[r][0] || '').trim().toUpperCase();
+        const ownerVal = String(stockData[r][1] || '').trim();
+        if (sttVal === targetGroup && ownerVal && ownerVal.includes('@')) {
+          return ownerVal;
+        }
       }
     }
   } catch (e) {}
@@ -1377,7 +1413,7 @@ function listCtvReports(ctvName) {
 }
 
 /**
- * API 2: checkStatus(email)
+ * API 2: checkStatus(email) — ĐỌC 100% TRỰC TIẾP TỪ KHO TK GOOGLE SHEET
  */
 function checkStatus(emailRaw) {
   if (!emailRaw) {
@@ -1389,39 +1425,23 @@ function checkStatus(emailRaw) {
   }
 
   const emailClean = String(emailRaw).trim().toLowerCase();
-  const cache = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
-  let cacheRow = null;
-  for (let i = 0; i < cache.length; i++) {
-    if (String(cache[i]['email'] || '').trim().toLowerCase() === emailClean) {
-      cacheRow = cache[i];
-      break;
-    }
-  }
+  
+  // Đọc 100% trực tiếp từ Sheet Kho TK (ID: 1Agq-0ITsQgzhwnWvQTUthAjS2e8zJfgNd8dGGkCDniA)
+  const khoInfo = lookupKhoTKDirect(emailClean);
 
-  let sttGroup = cacheRow ? String(cacheRow['stt_group'] || '').trim() : '';
-  let ownerEmail = cacheRow ? cacheRow['owner_email'] || '' : '';
-  let ctvName = cacheRow ? cacheRow['ctv'] || '' : '';
-  let ngayRenew = cacheRow ? cacheRow['ngay_het_han'] || '' : '';
-
-  // Direct Kho TK Fallback if cache row missing or fields missing
-  if (!sttGroup || !ngayRenew || !ctvName) {
-    const directInfo = lookupKhoTKDirect(emailClean);
-    if (directInfo) {
-      if (!sttGroup) sttGroup = directInfo.stt_group;
-      if (!ownerEmail) ownerEmail = directInfo.owner_email;
-      if (!ctvName) ctvName = directInfo.ctv;
-      if (!ngayRenew) ngayRenew = directInfo.ngay_renew;
-    }
-  }
-
-  if (!sttGroup) {
+  if (!khoInfo || !khoInfo.stt_group) {
     return {
       success: false,
       error: "email_not_found",
       email: emailClean,
-      message: "Không tìm thấy tài khoản với email này trong Kho TK. Vui lòng kiểm tra lại địa chỉ email."
+      message: "Không tìm thấy tài khoản với email này trong Kho TK chính. Vui lòng kiểm tra lại địa chỉ email."
     };
   }
+
+  const sttGroup = khoInfo.stt_group;
+  const ownerEmail = khoInfo.owner_email || '';
+  const ctvName = khoInfo.ctv || '';
+  const ngayRenew = khoInfo.ngay_renew || khoInfo.ngay_het_han || '';
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ticketsSheet = ss.getSheetByName('TICKETS');
