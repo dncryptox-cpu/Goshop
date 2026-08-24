@@ -1226,10 +1226,14 @@ function checkBulkStatus(rawTextOrList) {
 }
 
 /**
- * Helper: Tra cứu trực tiếp từ Kho TK nếu cache chưa có hoặc thiếu thông tin
- */
-/**
- * Helper: Tra cứu trực tiếp từ Kho TK với cấu trúc cột thực tế (Col K Email, Col G Renew, Col N HSD, Col P CTV)
+ * Helper: Tra cứu 100% TRỰC TIẾP từ Sheet Kho TK (tab DATA) chuẩn theo tiêu đề Hàng 1:
+ * Cột A (0): STT Group (RN366)
+ * Cột D (3): Chủ fam (Email chủ gia đình / master)
+ * Cột I (8): ngày renew (Ngày Renew)
+ * Cột K (10): Email khách (Email chính)
+ * Cột N (13): Date (HSD / Ngày hết hạn)
+ * Cột O (14): Mail phụ (Secondary email)
+ * Cột P (15): CTV (Tên CTV quản lý)
  */
 function lookupKhoTKDirect(emailClean) {
   if (!emailClean) return null;
@@ -1240,66 +1244,69 @@ function lookupKhoTKDirect(emailClean) {
     if (!khoData || khoData.length <= 1) return null;
 
     let currentSttGroup = '';
+    let currentOwnerEmail = '';
 
-    // Scan headers in first 10 rows
-    let emailColIdx = -1;
-    let renewColIdx = -1;
-    let hsdColIdx = -1;
-    let ctvColIdx = -1;
-    let ownerColIdx = -1;
+    // Standard column indices matching Row 1 of Kho TK tab DATA
+    let colStt = 0;      // Cột A: STT Group (RN366)
+    let colOwner = 3;    // Cột D: Chủ fam
+    let colRenew = 8;    // Cột I: ngày renew
+    let colEmail = 10;   // Cột K: Email khách
+    let colHsd = 13;     // Cột N: Date (HSD)
+    let colMailPhu = 14; // Cột O: Mail phụ
+    let colCtv = 15;     // Cột P: CTV
 
-    for (let r = 0; r < Math.min(10, khoData.length); r++) {
+    // Scan headers in first 5 rows to confirm/adjust column indices dynamically
+    for (let r = 0; r < Math.min(5, khoData.length); r++) {
       const row = khoData[r];
       for (let c = 0; c < row.length; c++) {
         const cellStr = String(row[c] || '').trim().toLowerCase();
-        if (cellStr === 'email khách' || cellStr === 'email khach') emailColIdx = c;
-        if (cellStr.includes('date renew') || cellStr === 'ngày renew') renewColIdx = c;
-        if (cellStr === 'hsd' || cellStr === 'date' || cellStr.includes('hạn')) hsdColIdx = c;
-        if (cellStr === 'contact' || cellStr === 'ctv') ctvColIdx = c;
-        if (cellStr.includes('chủ fam') || cellStr.includes('tài khoản mẹ') || cellStr.includes('owner') || cellStr.includes('master')) ownerColIdx = c;
+        if (cellStr === 'chủ fam' || cellStr === 'chu fam') colOwner = c;
+        if (cellStr === 'ngày renew' || cellStr === 'ngay renew') colRenew = c;
+        if (cellStr === 'email khách' || cellStr === 'email khach') colEmail = c;
+        if (cellStr === 'date' && c >= 12) colHsd = c;
+        if (cellStr === 'mail phụ' || cellStr === 'mail phu') colMailPhu = c;
+        if (cellStr === 'ctv') colCtv = c;
       }
     }
 
-    if (emailColIdx === -1) emailColIdx = 10; // Column K (Index 10: Email khách)
-    if (renewColIdx === -1) renewColIdx = 6;  // Column G (Index 6: Date Renew)
-    if (hsdColIdx === -1) hsdColIdx = 13;      // Column N (Index 13: HSD / Date)
-    if (ctvColIdx === -1) ctvColIdx = 15;     // Column P (Index 15: Contact / CTV)
-
     for (let r = 1; r < khoData.length; r++) {
       const row = khoData[r];
-      const sttRaw = row[0];
+      
+      // Update STT group from Column A if present
+      const sttRaw = row[colStt];
       if (sttRaw && String(sttRaw).trim()) {
         currentSttGroup = String(sttRaw).trim();
       }
 
-      // Check all cells in row r for matching targetEmail
-      let isMatch = false;
-      for (let c = 0; c < row.length; c++) {
-        const cellVal = String(row[c] || '').trim().toLowerCase();
-        if (cellVal === targetEmail) {
-          isMatch = true;
-          break;
+      // Update Owner Email from Column D if present for current STT block
+      if (colOwner !== -1 && row[colOwner]) {
+        const ownerVal = String(row[colOwner]).trim();
+        if (ownerVal && ownerVal.includes('@')) {
+          currentOwnerEmail = ownerVal;
         }
       }
 
-      if (isMatch) {
+      const emailPrimary = colEmail !== -1 ? String(row[colEmail] || '').trim().toLowerCase() : '';
+      const emailPhu = colMailPhu !== -1 ? String(row[colMailPhu] || '').trim().toLowerCase() : '';
+
+      if (emailPrimary === targetEmail || (emailPhu && emailPhu === targetEmail)) {
         let ngayRenewClean = '';
-        if (renewColIdx !== -1 && row[renewColIdx]) {
-          const rawDate = row[renewColIdx];
+        if (colRenew !== -1 && row[colRenew]) {
+          const rawDate = row[colRenew];
           if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
             ngayRenewClean = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
           } else {
-            ngayRenewClean = String(rawDate).trim();
+            ngayRenewClean = String(row[colRenew]).trim();
           }
         }
 
         let ngayHetHanClean = '';
-        if (hsdColIdx !== -1 && row[hsdColIdx]) {
-          const rawDate = row[hsdColIdx];
+        if (colHsd !== -1 && row[colHsd]) {
+          const rawDate = row[colHsd];
           if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
             ngayHetHanClean = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
           } else {
-            ngayHetHanClean = String(rawDate).trim();
+            ngayHetHanClean = String(row[colHsd]).trim();
           }
         }
 
