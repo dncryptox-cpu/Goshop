@@ -677,6 +677,16 @@
                     if (!dateStr) return '';
                     const str = String(dateStr).trim();
                     if (!str) return '';
+                    
+                    // Handle gviz Date format: Date(YYYY,M,D) where month is 0-indexed
+                    const gvizMatch = str.match(/Date\((\d+),\s*(\d+),\s*(\d+)\)/);
+                    if (gvizMatch) {
+                        const y = gvizMatch[1];
+                        const m = String(parseInt(gvizMatch[2]) + 1).padStart(2, '0');
+                        const d = String(parseInt(gvizMatch[3])).padStart(2, '0');
+                        return `${d}/${m}/${y}`;
+                    }
+
                     try {
                         if (str.includes('/') && !str.includes('T')) return str;
                         const d = new Date(str);
@@ -691,17 +701,36 @@
                 },
 
                 getCustomerSubDetails() {
+                    const userEmail = (this.currentUser ? this.currentUser.email : '').trim().toLowerCase();
+                    
+                    // Search in appDataRows (loaded directly from sheet APP_DATA)
+                    let appDataMatch = null;
+                    if (userEmail && this.appDataRows && Array.isArray(this.appDataRows)) {
+                        appDataMatch = this.appDataRows.find(r => {
+                            if (!r) return false;
+                            const primary = String(r['Email khách'] || r['email_khach'] || r['email'] || r['Primary Email'] || '').trim().toLowerCase();
+                            const sec = String(r['Mail phụ'] || r['mail_phu'] || r['Secondary Email'] || '').trim().toLowerCase();
+                            return (primary === userEmail || (sec && sec === userEmail));
+                        });
+                    }
+
+                    // Extract STT Group
                     const stt = (this.famStatusResult && this.famStatusResult.stt_group)
                              || (this.existingMailPhuInfo && this.existingMailPhuInfo.stt_group)
+                             || (appDataMatch ? (appDataMatch['FAM HIỆN TẠI'] || appDataMatch['stt_group'] || appDataMatch['Mã Nhóm'] || appDataMatch['Phân loại']) : null)
                              || 'Chưa có thông tin';
 
-                    const ngayRenew = (this.famStatusResult && (this.famStatusResult.ngay_renew || this.famStatusResult.date_renew))
-                                   || (this.existingMailPhuInfo && (this.existingMailPhuInfo.ngay_renew || this.existingMailPhuInfo.date_renew))
-                                   || '';
+                    // Extract Ngày Renew (Cột I / Cột ngày renew từ APP_DATA)
+                    let ngayRenew = (appDataMatch ? (appDataMatch['ngày renew'] || appDataMatch['ngay_renew'] || appDataMatch['ngay renew'] || appDataMatch['Renew'] || appDataMatch['Date Renew']) : null)
+                                 || (this.famStatusResult && (this.famStatusResult.ngay_renew || this.famStatusResult.date_renew))
+                                 || (this.existingMailPhuInfo && (this.existingMailPhuInfo.ngay_renew || this.existingMailPhuInfo.date_renew))
+                                 || '';
 
-                    const ngayHetHan = (this.famStatusResult && (this.famStatusResult.ngay_het_han || this.famStatusResult.hsd))
-                                    || (this.existingMailPhuInfo && (this.existingMailPhuInfo.ngay_het_han || this.existingMailPhuInfo.hsd))
-                                    || '';
+                    // Extract HSD
+                    let ngayHetHan = (appDataMatch ? (appDataMatch['Date'] || appDataMatch['hsd'] || appDataMatch['HSD'] || appDataMatch['ngay_het_han']) : null)
+                                  || (this.famStatusResult && (this.famStatusResult.ngay_het_han || this.famStatusResult.hsd))
+                                  || (this.existingMailPhuInfo && (this.existingMailPhuInfo.ngay_het_han || this.existingMailPhuInfo.hsd))
+                                  || '';
 
                     return {
                         sttGroup: stt,
