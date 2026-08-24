@@ -1280,9 +1280,16 @@ function checkStatus(emailRaw) {
   }
 
   const emailClean = String(emailRaw).trim().toLowerCase();
-  const sttGroup = getSttGroupByEmail(emailClean);
+  const cache = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
+  let cacheRow = null;
+  for (let i = 0; i < cache.length; i++) {
+    if (String(cache[i]['email'] || '').trim().toLowerCase() === emailClean) {
+      cacheRow = cache[i];
+      break;
+    }
+  }
 
-  if (!sttGroup) {
+  if (!cacheRow || !cacheRow['stt_group']) {
     return {
       success: false,
       error: "email_not_found",
@@ -1290,12 +1297,26 @@ function checkStatus(emailRaw) {
     };
   }
 
+  const sttGroup = String(cacheRow['stt_group']).trim();
+  const ownerEmail = cacheRow['owner_email'] || '';
+  const ctvName = cacheRow['ctv'] || '';
+  const ngayRenew = cacheRow['ngay_het_han'] || '';
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ticketsSheet = ss.getSheetByName('TICKETS');
   const reportsSheet = ss.getSheetByName('REPORTS');
 
   if (!ticketsSheet) {
-    return { success: false, message: 'Chưa có dữ liệu sự cố.' };
+    return { 
+      success: true, 
+      has_ticket: false, 
+      email: emailClean,
+      stt_group: sttGroup,
+      owner_email: ownerEmail,
+      ctv: ctvName,
+      ngay_renew: ngayRenew,
+      message: 'Chưa có dữ liệu sự cố.' 
+    };
   }
 
   const ticketsData = ticketsSheet.getDataRange().getValues();
@@ -1327,7 +1348,11 @@ function checkStatus(emailRaw) {
     return {
       success: true,
       has_ticket: false,
+      email: emailClean,
       stt_group: sttGroup,
+      owner_email: ownerEmail,
+      ctv: ctvName,
+      ngay_renew: ngayRenew,
       message: 'Chưa có báo cáo sự cố nào cho fam (' + sttGroup + ') của bạn.'
     };
   }
@@ -1366,7 +1391,11 @@ function checkStatus(emailRaw) {
   return {
     success: true,
     has_ticket: true,
+    email: emailClean,
     stt_group: sttGroup,
+    owner_email: ownerEmail,
+    ctv: ctvName,
+    ngay_renew: ngayRenew,
     status: latestTicket.status,
     ticket_id: latestTicket.ticket_id,
     created_at: latestTicket.created_at,
