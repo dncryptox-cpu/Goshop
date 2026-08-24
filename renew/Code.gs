@@ -555,32 +555,21 @@ function syncEmailLookupCache() {
     }
 
     let dateColIdx = -1;
-    // Tìm chính xác cột 'Date' (cột N - Expiration Date/HSD), 'Ngày hết hạn' hoặc 'HSD'
+    let renewColIdx = -1;
+
     for (let c = 0; c < headerRow.length; c++) {
       const cellRaw = String(headerRow[c] || '').trim();
       const cellLower = cellRaw.toLowerCase();
+      if (cellLower.includes('renew')) {
+        renewColIdx = c;
+      }
       if (cellRaw === 'Date' || cellLower === 'ngày hết hạn' || cellLower === 'hạn gia hạn' || cellLower === 'hsd') {
         dateColIdx = c;
-        break;
       }
     }
 
-    // Nếu không khớp chính xác, tìm tiêu đề chứa 'date' hoặc 'hsd' nhưng BỎ QUA 'mua' và 'renew'
-    if (dateColIdx === -1) {
-      for (let c = 0; c < headerRow.length; c++) {
-        const cellLower = String(headerRow[c] || '').trim().toLowerCase();
-        if (cellLower.includes('mua') || cellLower.includes('renew')) continue;
-        if (cellLower.includes('date') || cellLower.includes('hạn') || cellLower.includes('hsd')) {
-          dateColIdx = c;
-          break;
-        }
-      }
-    }
-
-    // Mặc định fallback Kho TK tab DATA là cột N (index 13)
-    if (dateColIdx === -1) {
-      dateColIdx = 13;
-    }
+    if (renewColIdx === -1) renewColIdx = 8; // Default Column I (index 8 - Ngày Renew)
+    if (dateColIdx === -1) dateColIdx = 13;   // Default Column N (index 13 - Date/HSD)
 
     const ngayHetHanMap = {};
     let currentSttGroup = '';
@@ -602,7 +591,6 @@ function syncEmailLookupCache() {
 
       if (!currentSttGroup) continue;
 
-      // Extract email & CTV STRICTLY from current row r (no carry-forward!)
       const emailRaw = data[r][emailColIdx];
       const emailClean = emailRaw ? String(emailRaw).trim().toLowerCase() : '';
 
@@ -617,8 +605,10 @@ function syncEmailLookupCache() {
       }
 
       let ngayHetHanClean = '';
-      if (dateColIdx !== -1 && data[r][dateColIdx]) {
-        const rawDate = data[r][dateColIdx];
+      // Read Date Col (N) or Renew Col (I)
+      const targetCol = (dateColIdx !== -1 && data[r][dateColIdx]) ? dateColIdx : renewColIdx;
+      if (targetCol !== -1 && data[r][targetCol]) {
+        const rawDate = data[r][targetCol];
         if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
           ngayHetHanClean = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
         } else {
@@ -1211,6 +1201,7 @@ function lookupKhoTKDirect(emailClean) {
     let sttColIdx = 0;
     let ctvColIdx = -1;
     let dateColIdx = -1;
+    let renewColIdx = -1;
     let ownerColIdx = -1;
 
     const maxScanRows = Math.min(10, khoData.length);
@@ -1227,19 +1218,23 @@ function lookupKhoTKDirect(emailClean) {
         if (cellStr === 'ctv') {
           ctvColIdx = c;
         }
+        if (cellStr.includes('renew')) {
+          renewColIdx = c;
+        }
         if (cellStr === 'date' || cellStr.includes('hạn') || cellStr.includes('hsd')) {
           dateColIdx = c;
         }
-        if (cellStr.includes('chủ fam') || cellStr.includes('tài khoản mẹ') || cellStr.includes('owner')) {
+        if (cellStr.includes('chủ fam') || cellStr.includes('tài khoản mẹ') || cellStr.includes('owner') || cellStr.includes('master')) {
           ownerColIdx = c;
         }
       }
       if (emailColIdx !== -1) break;
     }
 
-    if (emailColIdx === -1) emailColIdx = 1;
-    if (ctvColIdx === -1) ctvColIdx = 7;
-    if (dateColIdx === -1) dateColIdx = 13;
+    if (emailColIdx === -1) emailColIdx = 2; // Column C
+    if (ctvColIdx === -1) ctvColIdx = 7;     // Column H
+    if (renewColIdx === -1) renewColIdx = 8; // Column I (NGÀY RENEW)
+    if (dateColIdx === -1) dateColIdx = 13;   // Column N (HSD / DATE)
 
     let currentSttGroup = '';
     const targetEmail = String(emailClean).trim().toLowerCase();
@@ -1250,11 +1245,12 @@ function lookupKhoTKDirect(emailClean) {
         currentSttGroup = String(sttRaw).trim();
       }
 
-      const rowEmail = String(khoData[r][emailColIdx] || '').trim().toLowerCase();
-      if (rowEmail === targetEmail) {
+      const rowEmailPrimary = String(khoData[r][emailColIdx] || '').trim().toLowerCase();
+      if (rowEmailPrimary === targetEmail) {
         let ngayRenewClean = '';
-        if (dateColIdx !== -1 && khoData[r][dateColIdx]) {
-          const rawDate = khoData[r][dateColIdx];
+        const targetCol = (renewColIdx !== -1 && khoData[r][renewColIdx]) ? renewColIdx : ((dateColIdx !== -1 && khoData[r][dateColIdx]) ? dateColIdx : -1);
+        if (targetCol !== -1 && khoData[r][targetCol]) {
+          const rawDate = khoData[r][targetCol];
           if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
             ngayRenewClean = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
           } else {
@@ -1262,14 +1258,11 @@ function lookupKhoTKDirect(emailClean) {
           }
         }
 
-        let ctvClean = '';
-        if (ctvColIdx !== -1 && khoData[r][ctvColIdx]) {
-          ctvClean = String(khoData[r][ctvColIdx]).trim();
-        }
+        let ctvClean = (ctvColIdx !== -1 && khoData[r][ctvColIdx]) ? String(khoData[r][ctvColIdx]).trim() : '';
+        let ownerClean = (ownerColIdx !== -1 && khoData[r][ownerColIdx]) ? String(khoData[r][ownerColIdx]).trim() : '';
 
-        let ownerClean = '';
-        if (ownerColIdx !== -1 && khoData[r][ownerColIdx]) {
-          ownerClean = String(khoData[r][ownerColIdx]).trim();
+        if (!ownerClean && currentSttGroup) {
+          ownerClean = getSttOwnerEmail(currentSttGroup);
         }
 
         return {
@@ -1277,6 +1270,8 @@ function lookupKhoTKDirect(emailClean) {
           email: targetEmail,
           ctv: ctvClean,
           ngay_renew: ngayRenewClean,
+          ngay_het_han: ngayRenewClean,
+          hsd: ngayRenewClean,
           owner_email: ownerClean
         };
       }
