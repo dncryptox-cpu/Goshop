@@ -1200,6 +1200,94 @@ function checkBulkStatus(rawTextOrList) {
 }
 
 /**
+ * Helper: Tra cứu trực tiếp từ Kho TK nếu cache chưa có hoặc thiếu thông tin
+ */
+function lookupKhoTKDirect(emailClean) {
+  try {
+    const khoData = getKhoTKDataCached();
+    if (!khoData || khoData.length <= 1) return null;
+
+    let emailColIdx = -1;
+    let sttColIdx = 0;
+    let ctvColIdx = -1;
+    let dateColIdx = -1;
+    let ownerColIdx = -1;
+
+    const maxScanRows = Math.min(10, khoData.length);
+    let headerRowIdx = -1;
+
+    for (let r = 0; r < maxScanRows; r++) {
+      const row = khoData[r];
+      for (let c = 0; c < row.length; c++) {
+        const cellStr = String(row[c] || '').trim().toLowerCase();
+        if (cellStr === 'email khách' || cellStr === 'email') {
+          headerRowIdx = r;
+          emailColIdx = c;
+        }
+        if (cellStr === 'ctv') {
+          ctvColIdx = c;
+        }
+        if (cellStr === 'date' || cellStr.includes('hạn') || cellStr.includes('hsd')) {
+          dateColIdx = c;
+        }
+        if (cellStr.includes('chủ fam') || cellStr.includes('tài khoản mẹ') || cellStr.includes('owner')) {
+          ownerColIdx = c;
+        }
+      }
+      if (emailColIdx !== -1) break;
+    }
+
+    if (emailColIdx === -1) emailColIdx = 1;
+    if (ctvColIdx === -1) ctvColIdx = 7;
+    if (dateColIdx === -1) dateColIdx = 13;
+
+    let currentSttGroup = '';
+    const targetEmail = String(emailClean).trim().toLowerCase();
+
+    for (let r = (headerRowIdx !== -1 ? headerRowIdx + 1 : 1); r < khoData.length; r++) {
+      const sttRaw = khoData[r][sttColIdx];
+      if (sttRaw && String(sttRaw).trim()) {
+        currentSttGroup = String(sttRaw).trim();
+      }
+
+      const rowEmail = String(khoData[r][emailColIdx] || '').trim().toLowerCase();
+      if (rowEmail === targetEmail) {
+        let ngayRenewClean = '';
+        if (dateColIdx !== -1 && khoData[r][dateColIdx]) {
+          const rawDate = khoData[r][dateColIdx];
+          if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+            ngayRenewClean = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
+          } else {
+            ngayRenewClean = String(rawDate).trim();
+          }
+        }
+
+        let ctvClean = '';
+        if (ctvColIdx !== -1 && khoData[r][ctvColIdx]) {
+          ctvClean = String(khoData[r][ctvColIdx]).trim();
+        }
+
+        let ownerClean = '';
+        if (ownerColIdx !== -1 && khoData[r][ownerColIdx]) {
+          ownerClean = String(khoData[r][ownerColIdx]).trim();
+        }
+
+        return {
+          stt_group: currentSttGroup,
+          email: targetEmail,
+          ctv: ctvClean,
+          ngay_renew: ngayRenewClean,
+          owner_email: ownerClean
+        };
+      }
+    }
+  } catch (err) {
+    Logger.log('Lỗi lookupKhoTKDirect: ' + err.toString());
+  }
+  return null;
+}
+
+/**
  * API CTV: listCtvReports(ctvName)
  */
 function listCtvReports(ctvName) {
@@ -1211,58 +1299,84 @@ function listCtvReports(ctvName) {
   const reportsSheet = ss.getSheetByName('REPORTS');
   const ticketsSheet = ss.getSheetByName('TICKETS');
 
-  if (!reportsSheet || reportsSheet.getLastRow() <= 1) {
-    return { success: true, reports: [] };
-  }
-
   const ticketMap = {};
   if (ticketsSheet && ticketsSheet.getLastRow() > 1) {
     const tData = ticketsSheet.getDataRange().getValues();
     for (let i = 1; i < tData.length; i++) {
       const row = tData[i];
-      ticketMap[String(row[0]).trim()] = {
-        stt_group: row[1],
-        status: row[2],
-        created_at: row[3],
-        updated_at: row[4],
-        resolved_at: row[5],
-        resolved_by: row[6],
-        is_recurring: Boolean(row[7]),
-        recur_count: Number(row[8] || 0)
-      };
+      const stt = String(row[1]).trim();
+      const status = String(row[2]).trim();
+      if (!ticketMap[stt] || status !== 'Đã xử lý') {
+        ticketMap[stt] = {
+          ticket_id: row[0],
+          stt_group: stt,
+          status: status,
+          created_at: row[3],
+          resolved_at: row[5]
+        };
+      }
     }
   }
 
-  const rData = reportsSheet.getDataRange().getValues();
   const ctvReports = [];
+  const seenEmails = new Set();
   const targetCtvClean = String(ctvName).trim().toLowerCase();
+  const isAllAdmin = targetCtvClean === 'all' || targetCtvClean === 'admin' || targetCtvClean === 'dnc';
 
-  for (let i = 1; i < rData.length; i++) {
-    const row = rData[i];
-    const submittedByRow = String(row[5] || '').trim().toLowerCase();
+  // 1. Scan REPORTS for reports submitted by this CTV
+  if (reportsSheet && reportsSheet.getLastRow() > 1) {
+    const rData = reportsSheet.getDataRange().getValues();
+    for (let i = 1; i < rData.length; i++) {
+      const row = rData[i];
+      const submittedByRow = String(row[5] || '').trim().toLowerCase();
+      const custEmail = String(row[2] || '').trim().toLowerCase();
 
-    if (submittedByRow === targetCtvClean) {
-      const ticketId = String(row[1]).trim();
-      const ticketInfo = ticketMap[ticketId] || { stt_group: '---', status: 'Mới' };
+      if ((isAllAdmin || submittedByRow === targetCtvClean) && custEmail) {
+        seenEmails.add(custEmail);
+        const ticketId = String(row[1]).trim();
+        const ticketInfo = ticketMap[ticketId] || { stt_group: '---', status: 'Đang hoạt động' };
 
-      ctvReports.push({
-        report_id: row[0],
-        ticket_id: ticketId,
-        customer_email: row[2],
-        reported_at: row[3],
-        message: row[4],
-        submitted_by: row[5],
-        stt_group: ticketInfo.stt_group,
-        status: ticketInfo.status,
-        created_at: ticketInfo.created_at,
-        resolved_at: ticketInfo.resolved_at,
-        is_recurring: ticketInfo.is_recurring,
-        recur_count: ticketInfo.recur_count
-      });
+        ctvReports.push({
+          report_id: row[0],
+          ticket_id: ticketId,
+          customer_email: custEmail,
+          reported_at: row[3],
+          message: row[4],
+          submitted_by: row[5],
+          stt_group: ticketInfo.stt_group,
+          status: ticketInfo.status
+        });
+      }
     }
   }
 
-  ctvReports.sort((a, b) => new Date(b.reported_at).getTime() - new Date(a.reported_at).getTime());
+  // 2. Scan EMAIL_LOOKUP_CACHE for ALL customers belonging to this CTV
+  try {
+    const cache = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
+    for (let i = 0; i < cache.length; i++) {
+      const custEmail = String(cache[i]['email'] || '').trim().toLowerCase();
+      const ctvRow = String(cache[i]['ctv'] || '').trim().toLowerCase();
+
+      if (custEmail && !seenEmails.has(custEmail)) {
+        if (isAllAdmin || (ctvRow && ctvRow === targetCtvClean) || (targetCtvClean === 'tuan' && (!ctvRow || ctvRow === 'tuan'))) {
+          seenEmails.add(custEmail);
+          const stt = String(cache[i]['stt_group'] || '').trim();
+          const ticketInfo = ticketMap[stt] || { status: 'Đang hoạt động' };
+
+          ctvReports.push({
+            report_id: 'CACHE-' + (i + 1),
+            ticket_id: ticketInfo.ticket_id || '',
+            customer_email: custEmail,
+            reported_at: cache[i]['synced_at'] || '',
+            message: 'Dữ liệu từ Kho TK',
+            submitted_by: cache[i]['ctv'] || ctvName,
+            stt_group: stt,
+            status: ticketInfo.status
+          });
+        }
+      }
+    }
+  } catch (e) {}
 
   return { success: true, ctv_name: ctvName, reports: ctvReports };
 }
@@ -1289,18 +1403,30 @@ function checkStatus(emailRaw) {
     }
   }
 
-  if (!cacheRow || !cacheRow['stt_group']) {
+  let sttGroup = cacheRow ? String(cacheRow['stt_group'] || '').trim() : '';
+  let ownerEmail = cacheRow ? cacheRow['owner_email'] || '' : '';
+  let ctvName = cacheRow ? cacheRow['ctv'] || '' : '';
+  let ngayRenew = cacheRow ? cacheRow['ngay_het_han'] || '' : '';
+
+  // Direct Kho TK Fallback if cache row missing or fields missing
+  if (!sttGroup || !ngayRenew || !ctvName) {
+    const directInfo = lookupKhoTKDirect(emailClean);
+    if (directInfo) {
+      if (!sttGroup) sttGroup = directInfo.stt_group;
+      if (!ownerEmail) ownerEmail = directInfo.owner_email;
+      if (!ctvName) ctvName = directInfo.ctv;
+      if (!ngayRenew) ngayRenew = directInfo.ngay_renew;
+    }
+  }
+
+  if (!sttGroup) {
     return {
       success: false,
       error: "email_not_found",
-      message: "Không tìm thấy tài khoản với email này. Có thể dữ liệu chưa được đồng bộ, vui lòng thử lại sau ít phút hoặc liên hệ CTV."
+      email: emailClean,
+      message: "Không tìm thấy tài khoản với email này trong Kho TK. Vui lòng kiểm tra lại địa chỉ email."
     };
   }
-
-  const sttGroup = String(cacheRow['stt_group']).trim();
-  const ownerEmail = cacheRow['owner_email'] || '';
-  const ctvName = cacheRow['ctv'] || '';
-  const ngayRenew = cacheRow['ngay_het_han'] || '';
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ticketsSheet = ss.getSheetByName('TICKETS');
