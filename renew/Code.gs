@@ -1235,6 +1235,16 @@ function checkBulkStatus(rawTextOrList) {
  * Cột O (14): Mail phụ (Secondary email)
  * Cột P (15): CTV (Tên CTV quản lý)
  */
+/**
+ * Helper: Tra cứu 100% TRỰC TIẾP từ Sheet Kho TK (tab DATA) chuẩn theo tiêu đề Hàng 1:
+ * Cột A (0): STT Group (RN366)
+ * Cột D (3): Chủ fam (Email chủ gia đình / master)
+ * Cột I (8): ngày renew (Ngày Renew)
+ * Cột K (10): Email khách (Email chính)
+ * Cột N (13): Date (HSD / Ngày hết hạn)
+ * Cột O (14): Mail phụ (Secondary email)
+ * Cột P (15): CTV (Tên CTV quản lý)
+ */
 function lookupKhoTKDirect(emailClean) {
   if (!emailClean) return null;
   const targetEmail = String(emailClean).trim().toLowerCase();
@@ -1289,7 +1299,17 @@ function lookupKhoTKDirect(emailClean) {
       const emailPrimary = colEmail !== -1 ? String(row[colEmail] || '').trim().toLowerCase() : '';
       const emailPhu = colMailPhu !== -1 ? String(row[colMailPhu] || '').trim().toLowerCase() : '';
 
-      if (emailPrimary === targetEmail || (emailPhu && emailPhu === targetEmail)) {
+      let isMatch = (emailPrimary === targetEmail || (emailPhu && emailPhu === targetEmail));
+      if (!isMatch) {
+        for (let c = 0; c < row.length; c++) {
+          if (String(row[c] || '').trim().toLowerCase() === targetEmail) {
+            isMatch = true;
+            break;
+          }
+        }
+      }
+
+      if (isMatch) {
         let ngayRenewClean = '';
         if (colRenew !== -1 && row[colRenew]) {
           const rawDate = row[colRenew];
@@ -1313,8 +1333,8 @@ function lookupKhoTKDirect(emailClean) {
         if (!ngayRenewClean) ngayRenewClean = ngayHetHanClean;
         if (!ngayHetHanClean) ngayHetHanClean = ngayRenewClean;
 
-        let ctvClean = (ctvColIdx !== -1 && row[ctvColIdx]) ? String(row[ctvColIdx]).trim() : '';
-        let ownerClean = (ownerColIdx !== -1 && row[ownerColIdx]) ? String(row[ownerColIdx]).trim() : '';
+        let ctvClean = (colCtv !== -1 && row[colCtv]) ? String(row[colCtv]).trim() : '';
+        let ownerClean = currentOwnerEmail || ((colOwner !== -1 && row[colOwner]) ? String(row[colOwner]).trim() : '');
 
         if (!ownerClean && currentSttGroup) {
           ownerClean = getSttOwnerEmail(currentSttGroup);
