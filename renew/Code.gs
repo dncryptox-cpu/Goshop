@@ -112,7 +112,9 @@ function getKhoTKDataCached() {
       const khoSpreadsheet = SpreadsheetApp.openById(KHO_TK_ID);
       const dataSheet = khoSpreadsheet.getSheetByName(KHO_TK_TAB_NAME);
       if (dataSheet && dataSheet.getLastRow() > 1) {
-        _REQUEST_CACHE.khoTkValues = dataSheet.getDataRange().getValues();
+        const lastRow = dataSheet.getLastRow();
+        const maxCols = Math.min(18, Math.max(16, dataSheet.getLastColumn()));
+        _REQUEST_CACHE.khoTkValues = dataSheet.getRange(1, 1, lastRow, maxCols).getValues();
       } else {
         _REQUEST_CACHE.khoTkValues = [];
       }
