@@ -195,6 +195,11 @@ function handleRequest(e) {
         const rNote = params.note;
         result = updateTicketStatus(rTicketId, 'Đã xử lý', rResolvedBy, rNote, rResType);
         break;
+      case 'updateActivityStatus':
+        const actTicketId = params.ticket_id || params.ticketId;
+        const actStatus = params.activity_status || params.activityStatus;
+        result = updateActivityStatus(actTicketId, actStatus);
+        break;
       case 'syncCache':
       case 'syncEmailLookupCache':
         result = syncEmailLookupCache();
@@ -958,6 +963,70 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
     recur_count: recurCount,
     is_existing_open: false
   };
+}
+
+/**
+ * API Admin: updateActivityStatus(ticketId, activityStatus)
+ * Cập nhật trạng thái hoạt động ("Đang hoạt động" / "Không hoạt động") trong tab TICKETS
+ */
+function updateActivityStatus(ticketId, activityStatus) {
+  if (!ticketId) {
+    return { success: false, message: 'Thiếu ticket_id.' };
+  }
+
+  const ss = getSpreadsheetCached();
+  const ticketsSheet = ss.getSheetByName('TICKETS');
+  if (!ticketsSheet || ticketsSheet.getLastRow() <= 1) {
+    return { success: false, message: 'Không tìm thấy tab TICKETS.' };
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: 'Hệ thống đang bận, vui lòng thử lại sau 3 giây.' };
+  }
+
+  try {
+    const data = ticketsSheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h || '').trim());
+    
+    let actColIdx = headers.indexOf('activity_status');
+    if (actColIdx === -1) {
+      actColIdx = 12; // Cột 13 (Index 12)
+      ticketsSheet.getRange(1, 13).setValue('activity_status');
+    }
+
+    let targetRowIndex = -1;
+    for (let r = 1; r < data.length; r++) {
+      if (String(data[r][0]).trim() === String(ticketId).trim()) {
+        targetRowIndex = r + 1; // 1-indexed row
+        break;
+      }
+    }
+
+    if (targetRowIndex === -1) {
+      return { success: false, message: 'Không tìm thấy vé báo lỗi với ID: ' + ticketId };
+    }
+
+    const nowIso = new Date().toISOString();
+    // Ghi activity_status vào cột 13
+    ticketsSheet.getRange(targetRowIndex, 13).setValue(activityStatus || '');
+    // Ghi updated_at vào cột 5
+    ticketsSheet.getRange(targetRowIndex, 5).setValue(nowIso);
+
+    delete _REQUEST_CACHE.sheetValues['TICKETS'];
+    delete _REQUEST_CACHE.sheetObjects['TICKETS'];
+
+    return {
+      success: true,
+      ticket_id: ticketId,
+      activity_status: activityStatus,
+      message: 'Đã cập nhật nhãn hoạt động: "' + (activityStatus || 'Trống') + '" cho ticket ' + ticketId
+    };
+  } catch (err) {
+    return { success: false, message: 'Lỗi cập nhật activity_status: ' + err.toString() };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**

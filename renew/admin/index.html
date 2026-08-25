@@ -156,6 +156,16 @@
                               class="px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-bold"
                               x-text="mailPhuRequests.filter(r => r.status === 'Mới').length"></span>
                     </a>
+
+                    <a href="/renew/admin/#phanloai" @click.prevent="setAdminTab('phanloai')"
+                       :class="activeAdminTab === 'phanloai' ? 'bg-emerald-600 text-white font-black shadow-md' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold'"
+                       class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="tag" class="w-4 h-4 text-emerald-300"></i>
+                        <span>🏷️ Phân Loại Nhanh</span>
+                        <span x-show="getUnclassifiedTicketsCount() > 0"
+                              class="px-2 py-0.5 rounded-full text-[10px] bg-amber-400 text-gray-950 font-black"
+                              x-text="getUnclassifiedTicketsCount()"></span>
+                    </a>
                 </div>
 
                 <!-- Cache Stale Warning Banner -->
@@ -799,6 +809,160 @@
                     </div>
                 </div>
 
+                <!-- TAB 4: PHÂN LOẠI NHANH ACTIVITY STATUS -->
+                <div x-show="activeAdminTab === 'phanloai'" x-transition x-cloak class="space-y-5">
+                    <!-- HEADER & STATS COUNTER BAR -->
+                    <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border border-emerald-500/30 rounded-3xl p-5 text-white card-shadow space-y-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                            <div>
+                                <h2 class="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                                    <i data-lucide="tag" class="w-5 h-5 text-emerald-400"></i>
+                                    <span>Workspace Phân Loại Nhanh Nhóm Fam</span>
+                                </h2>
+                                <p class="text-xs text-emerald-200 mt-1">Gắn nhãn sớm "Đang hoạt động / Không hoạt động" để khách tự tra cứu thấy ngay hướng dẫn chuẩn mà không cần chờ Fix xong.</p>
+                            </div>
+
+                            <button @click="fetchTickets()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer">
+                                <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': loading.tickets}"></i>
+                                <span>Tải Lại Danh Sách</span>
+                            </button>
+                        </div>
+
+                        <!-- 3 STAT BOXES (COUNTERS) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            <!-- Box 1: Chưa Phân Loại -->
+                            <div @click="phanLoaiFilter = 'unclassified'"
+                                 class="bg-white/10 hover:bg-white/15 border rounded-2xl p-3.5 space-y-1 cursor-pointer transition-all"
+                                 :class="phanLoaiFilter === 'unclassified' ? 'border-amber-400 ring-2 ring-amber-400/40 bg-amber-500/20' : 'border-white/10'">
+                                <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1">
+                                    <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                    <span>Chưa phân loại (Cần làm ngay)</span>
+                                </span>
+                                <div class="text-2xl font-black font-mono text-amber-400" x-text="getPhanLoaiTickets('unclassified').length"></div>
+                            </div>
+
+                            <!-- Box 2: Đang hoạt động -->
+                            <div @click="phanLoaiFilter = 'active'"
+                                 class="bg-white/10 hover:bg-white/15 border rounded-2xl p-3.5 space-y-1 cursor-pointer transition-all"
+                                 :class="phanLoaiFilter === 'active' ? 'border-emerald-400 ring-2 ring-emerald-400/40 bg-emerald-500/20' : 'border-white/10'">
+                                <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 flex items-center gap-1">
+                                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                                    <span>🟢 Đã phân loại — Đang hoạt động</span>
+                                </span>
+                                <div class="text-2xl font-black font-mono text-emerald-400" x-text="getPhanLoaiTickets('active').length"></div>
+                            </div>
+
+                            <!-- Box 3: Không hoạt động -->
+                            <div @click="phanLoaiFilter = 'inactive'"
+                                 class="bg-white/10 hover:bg-white/15 border rounded-2xl p-3.5 space-y-1 cursor-pointer transition-all"
+                                 :class="phanLoaiFilter === 'inactive' ? 'border-rose-400 ring-2 ring-rose-400/40 bg-rose-500/20' : 'border-white/10'">
+                                <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose-300 flex items-center gap-1">
+                                    <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+                                    <span>🔴 Đã phân loại — Không hoạt động</span>
+                                </span>
+                                <div class="text-2xl font-black font-mono text-rose-400" x-text="getPhanLoaiTickets('inactive').length"></div>
+                            </div>
+                        </div>
+
+                        <!-- FILTER TOGGLE BAR -->
+                        <div class="flex items-center gap-2 pt-1 border-t border-white/10 text-xs font-bold flex-wrap">
+                            <span class="text-slate-400">Hiển thị:</span>
+                            <button @click="phanLoaiFilter = 'unclassified'"
+                                    :class="phanLoaiFilter === 'unclassified' ? 'bg-amber-500 text-gray-950 font-black' : 'bg-white/10 text-white hover:bg-white/20'"
+                                    class="px-3 py-1.5 rounded-xl transition-all">
+                                Chưa phân loại (<span x-text="getPhanLoaiTickets('unclassified').length"></span>)
+                            </button>
+                            <button @click="phanLoaiFilter = 'active'"
+                                    :class="phanLoaiFilter === 'active' ? 'bg-emerald-500 text-white font-black' : 'bg-white/10 text-white hover:bg-white/20'"
+                                    class="px-3 py-1.5 rounded-xl transition-all">
+                                🟢 Đang hoạt động (<span x-text="getPhanLoaiTickets('active').length"></span>)
+                            </button>
+                            <button @click="phanLoaiFilter = 'inactive'"
+                                    :class="phanLoaiFilter === 'inactive' ? 'bg-rose-500 text-white font-black' : 'bg-white/10 text-white hover:bg-white/20'"
+                                    class="px-3 py-1.5 rounded-xl transition-all">
+                                🔴 Không hoạt động (<span x-text="getPhanLoaiTickets('inactive').length"></span>)
+                            </button>
+                            <button @click="phanLoaiFilter = 'all'"
+                                    :class="phanLoaiFilter === 'all' ? 'bg-blue-600 text-white font-black' : 'bg-white/10 text-white hover:bg-white/20'"
+                                    class="px-3 py-1.5 rounded-xl transition-all">
+                                Tất cả ticket mở (<span x-text="getPhanLoaiTickets('all').length"></span>)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- TICKET CARDS FOR FAST CLASSIFICATION -->
+                    <div class="space-y-3">
+                        <template x-if="getPhanLoaiTickets(phanLoaiFilter).length === 0">
+                            <div class="bg-white rounded-3xl border border-gray-200 p-8 text-center text-gray-400 space-y-2 card-shadow">
+                                <i data-lucide="check-check" class="w-10 h-10 text-emerald-500 mx-auto"></i>
+                                <p class="text-sm font-bold text-gray-700">Tuyệt vời! Không có vé báo lỗi nào cần phân loại ở mục này.</p>
+                            </div>
+                        </template>
+
+                        <template x-for="t in getPhanLoaiTickets(phanLoaiFilter)" :key="t.ticket_id">
+                            <div class="bg-white rounded-3xl border border-gray-200 p-5 card-shadow space-y-4 transition-all hover:border-emerald-300">
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                                    <div class="flex items-center gap-3">
+                                        <span class="px-3 py-1 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-black text-sm" x-text="t.stt_group"></span>
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-bold text-gray-500">Chủ Fam:</span>
+                                                <strong class="font-mono text-xs text-gray-900 select-all" x-text="t.owner_email || 'Chưa có thông tin'"></strong>
+                                            </div>
+                                            <p class="text-[11px] text-gray-400">Tạo lúc: <span x-text="formatDate(t.created_at)"></span></p>
+                                        </div>
+                                    </div>
+
+                                    <!-- CURRENT TAG BADGE -->
+                                    <div>
+                                        <span x-show="!t.activity_status" class="px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800 border border-amber-300">
+                                            ⚠️ Chưa phân loại
+                                        </span>
+                                        <span x-show="t.activity_status === 'Đang hoạt động'" class="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                            🟢 Đang hoạt động
+                                        </span>
+                                        <span x-show="t.activity_status === 'Không hoạt động'" class="px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
+                                            🔴 Không hoạt động
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <!-- CUSTOMER EMAILS REPORTED -->
+                                <div class="bg-gray-50 rounded-2xl p-3.5 border border-gray-100 space-y-1.5 text-xs">
+                                    <span class="text-[11px] font-extrabold uppercase text-gray-500 tracking-wider flex items-center gap-1">
+                                        <i data-lucide="users" class="w-3.5 h-3.5 text-blue-600"></i>
+                                        <span>Danh sách khách báo lỗi (<span x-text="(t.reported_emails || []).length"></span> email):</span>
+                                    </span>
+                                    <div class="flex flex-wrap gap-1.5 pt-1">
+                                        <template x-for="em in (t.reported_emails || [])" :key="em">
+                                            <span class="font-mono text-xs font-bold bg-white px-2.5 py-1 rounded-xl border border-gray-200 text-gray-800 shadow-xs" x-text="em"></span>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- 2 LARGE PROMINENT BUTTONS FOR FAST TAGGING -->
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                    <button @click="tagTicketActivity(t.ticket_id, 'Đang hoạt động')"
+                                            :disabled="loading.activityTicketId === t.ticket_id"
+                                            :class="t.activity_status === 'Đang hoạt động' ? 'bg-emerald-600 ring-4 ring-emerald-500/30' : 'bg-emerald-600 hover:bg-emerald-700'"
+                                            class="py-3.5 px-4 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-emerald-400">
+                                        <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                                        <span>🟢 Đang hoạt động (Không rời nhóm)</span>
+                                    </button>
+
+                                    <button @click="tagTicketActivity(t.ticket_id, 'Không hoạt động')"
+                                            :disabled="loading.activityTicketId === t.ticket_id"
+                                            :class="t.activity_status === 'Không hoạt động' ? 'bg-rose-600 ring-4 ring-rose-500/30' : 'bg-rose-600 hover:bg-rose-700'"
+                                            class="py-3.5 px-4 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-rose-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer border border-rose-400">
+                                        <i data-lucide="x-circle" class="w-5 h-5"></i>
+                                        <span>🔴 Không hoạt động (Chờ mời nhóm mới)</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
                 <!-- STICKY SEARCH & CHIP FILTER BAR -->
                 <div class="sticky top-16 z-40 bg-white/95 backdrop-blur-md border border-gray-200 rounded-2xl p-3 card-shadow space-y-2.5">
                     <div class="relative">
@@ -1213,10 +1377,52 @@
                     }
                 },
 
+                // STATE CHO PHÂN LOẠI NHANH
+                phanLoaiFilter: 'unclassified',
+
+                getUnclassifiedTicketsCount() {
+                    return (this.tickets || []).filter(t => t.status !== 'Đã xử lý' && !t.activity_status).length;
+                },
+
+                getPhanLoaiTickets(filterType) {
+                    const openTickets = (this.tickets || []).filter(t => t.status !== 'Đã xử lý');
+                    if (filterType === 'unclassified') {
+                        return openTickets.filter(t => !t.activity_status);
+                    } else if (filterType === 'active') {
+                        return openTickets.filter(t => t.activity_status === 'Đang hoạt động');
+                    } else if (filterType === 'inactive') {
+                        return openTickets.filter(t => t.activity_status === 'Không hoạt động');
+                    }
+                    return openTickets;
+                },
+
+                async tagTicketActivity(ticketId, activityStatus) {
+                    if (!ticketId) return;
+                    if (!this.loading) this.loading = {};
+                    this.loading.activityTicketId = ticketId;
+                    try {
+                        const res = await this.callApi('updateActivityStatus', { ticket_id: ticketId, activity_status: activityStatus });
+                        if (res && res.success) {
+                            const ticket = (this.tickets || []).find(t => t.ticket_id === ticketId);
+                            if (ticket) {
+                                ticket.activity_status = activityStatus;
+                            }
+                            this.showToast(`🎉 Đã gắn nhãn "${activityStatus}" cho ${ticketId}`, 'success', 'tag');
+                        } else {
+                            alert('Lỗi cập nhật: ' + (res ? res.message : 'Kết nối thất bại'));
+                        }
+                    } catch (err) {
+                        alert('Lỗi cập nhật: ' + err.message);
+                    } finally {
+                        this.loading.activityTicketId = null;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
                 setAdminTab(tabName) {
                     this.activeAdminTab = tabName;
                     if (window.history && window.history.replaceState) {
-                        const newUrl = tabName === 'plus' ? '#plus' : (tabName === 'mailphu' ? '#mailphu' : '#all');
+                        const newUrl = tabName === 'plus' ? '#plus' : (tabName === 'mailphu' ? '#mailphu' : (tabName === 'phanloai' ? '#phanloai' : '#all'));
                         window.history.replaceState(null, '', newUrl);
                     }
                     this.$nextTick(() => lucide.createIcons());
@@ -1227,7 +1433,9 @@
                     const path = (window.location.pathname || '').toLowerCase();
                     const searchTab = new URLSearchParams(window.location.search).get('tab');
 
-                    if (hash === '#plus' || path.includes('/plus') || searchTab === 'plus') {
+                    if (hash === '#phanloai' || path.includes('/phanloai') || searchTab === 'phanloai') {
+                        this.activeAdminTab = 'phanloai';
+                    } else if (hash === '#plus' || path.includes('/plus') || searchTab === 'plus') {
                         this.activeAdminTab = 'plus';
                     } else if (hash === '#mailphu' || path.includes('/mailphu') || searchTab === 'mailphu') {
                         this.activeAdminTab = 'mailphu';
