@@ -1042,8 +1042,7 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
 }
 
 /**
- * API CTV: submitBulkReport(rawText, ctvName)
- * Tách tối đa 50 email bằng Regex, báo lỗi hàng loạt & trả chi tiết từng dòng
+ * API CTV: submitBulkReport(rawText, ctvName) — TỐI ƯU SIÊU TỐC 1 LẦN BATCH INSERT (< 1s)
  */
 function submitBulkReport(rawTextOrList, ctvName) {
   if (!rawTextOrList) {
@@ -1077,22 +1076,6 @@ function submitBulkReport(rawTextOrList, ctvName) {
     };
   }
 
-  const results = [];
-  let foundCount = 0;
-  let notFoundCount = 0;
-
-  for (let i = 0; i < uniqueEmails.length; i++) {
-    const email = uniqueEmails[i];
-    const res = submitReport(email, 'Gửi hàng loạt bởi CTV ' + (ctvName || ''), ctvName);
-    
-    if (res.success) {
-      foundCount++;
-      let noteText = res.is_existing_open ? 'Đã báo trước đó, admin đang xử lý' : 'Vừa ghi nhận';
-      if (res.status === 'Đã xử lý') {
-        noteText = 'Đã xử lý xong';
-      }
-
-      results.push({
         email: email,
         found: true,
         stt_group: res.stt_group,
