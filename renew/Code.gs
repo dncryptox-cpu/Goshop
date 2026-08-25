@@ -1652,7 +1652,9 @@ function checkStatus(emailRaw) {
         resolved_by: row[6],
         is_recurring: Boolean(row[7]),
         recur_count: Number(row[8] || 0),
-        note: row[9]
+        note: row[9],
+        resolution_type: row[11] ? String(row[11]).trim() : '',
+        activity_status: row[12] ? String(row[12]).trim() : ''
       };
       
       if (!latestTicket || new Date(ticketObj.created_at) > new Date(latestTicket.created_at)) {
@@ -1698,7 +1700,9 @@ function checkStatus(emailRaw) {
         resolved_by: row[6] || '',
         is_recurring: Boolean(row[7]),
         recur_count: Number(row[8] || 0),
-        note: row[9] || ''
+        note: row[9] || '',
+        resolution_type: row[11] ? String(row[11]).trim() : '',
+        activity_status: row[12] ? String(row[12]).trim() : ''
       });
     }
   }
@@ -1722,6 +1726,8 @@ function checkStatus(emailRaw) {
     is_recurring: latestTicket.is_recurring,
     recur_count: latestTicket.recur_count,
     note: latestTicket.note || '',
+    resolution_type: latestTicket.resolution_type || '',
+    activity_status: latestTicket.activity_status || '',
     report_count: reportCount,
     history_tickets: historyTickets
   };
@@ -1900,6 +1906,7 @@ function listTickets(filterStatus) {
       note: row[9] || '',
       notified_at: row[10] || '',
       resolution_type: row[11] ? String(row[11]).trim() : '',
+      activity_status: row[12] ? String(row[12]).trim() : '',
       report_count: reportInfo.count,
       reported_emails: reportInfo.emails,
       reports: reportInfo.reports || [],
@@ -2246,6 +2253,8 @@ function getTicketsFeed(ctvNameRaw, feedType) {
         is_recurring: isRecurring,
         recur_count: recurCount,
         note: note,
+        resolution_type: row[11] ? String(row[11]).trim() : '',
+        activity_status: row[12] ? String(row[12]).trim() : '',
         affected_count: customerDetails.length,
         customer_emails: filteredEmailList,
         customer_details: customerDetails,
