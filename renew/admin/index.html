@@ -828,6 +828,35 @@
                             </button>
                         </div>
 
+                        <!-- KHUNG GẮN NHÃN TỰ DO CHỦ ĐỘNG THEO MÃ FAM (KHÔNG CẦN CHỜ KHÁCH BÁO LỖI) -->
+                        <div class="bg-white/10 border border-emerald-400/40 rounded-2xl p-4 space-y-2.5">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <span class="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                                    <i data-lucide="zap" class="w-4 h-4 text-amber-300"></i>
+                                    <span>Gắn nhãn chủ động theo Mã Fam (vd: PL389 - Dành cho Fam chưa có khách báo lỗi):</span>
+                                </span>
+                            </div>
+                            
+                            <div class="flex flex-col sm:flex-row gap-2.5">
+                                <input type="text" x-model="quickTagGroupInput" @keyup.enter="tagGroupDirectly('Đang hoạt động')"
+                                       placeholder="Nhập Mã Fam (vd: PL389 hoặc 389)..."
+                                       class="bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-white font-mono font-bold text-xs focus:border-emerald-400 focus:outline-none flex-grow placeholder-slate-400">
+                                
+                                <div class="flex gap-2">
+                                    <button @click="tagGroupDirectly('Đang hoạt động')" :disabled="!quickTagGroupInput.trim() || (loading && loading.quickTag)"
+                                            class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap">
+                                        <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                                        <span>🟢 Gán Đang hoạt động</span>
+                                    </button>
+                                    <button @click="tagGroupDirectly('Không hoạt động')" :disabled="!quickTagGroupInput.trim() || (loading && loading.quickTag)"
+                                            class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap">
+                                        <i data-lucide="x-circle" class="w-4 h-4"></i>
+                                        <span>🔴 Gán Không hoạt động</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 3 STAT BOXES (COUNTERS) -->
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                             <!-- Box 1: Chưa Phân Loại -->
@@ -1410,6 +1439,29 @@
                 // STATE CHO PHÂN LOẠI NHANH
                 phanLoaiFilter: 'unclassified',
                 phanLoaiSearchQuery: '',
+                quickTagGroupInput: '',
+
+                async tagGroupDirectly(activityStatus) {
+                    const input = (this.quickTagGroupInput || '').trim();
+                    if (!input) return;
+                    if (!this.loading) this.loading = {};
+                    this.loading.quickTag = true;
+                    try {
+                        const res = await this.callApi('updateActivityStatus', { ticket_id: input, activity_status: activityStatus });
+                        if (res && res.success) {
+                            this.showToast(res.message || `🎉 Đã gắn nhãn "${activityStatus}" cho nhóm ${input}!`, 'success', 'tag');
+                            this.quickTagGroupInput = '';
+                            await this.loadTickets(true);
+                        } else {
+                            alert('Lỗi: ' + (res ? res.message : 'Không thể cập nhật'));
+                        }
+                    } catch (err) {
+                        alert('Lỗi: ' + err.message);
+                    } finally {
+                        this.loading.quickTag = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
 
                 getUnclassifiedTicketsCount() {
                     return (this.tickets || []).filter(t => t.status !== 'Đã xử lý' && !t.activity_status).length;

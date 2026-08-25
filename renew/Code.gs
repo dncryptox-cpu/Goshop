@@ -966,12 +966,12 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
 }
 
 /**
- * API Admin: updateActivityStatus(ticketId, activityStatus)
- * Cập nhật trạng thái hoạt động ("Đang hoạt động" / "Không hoạt động") trong tab TICKETS
+ * API Admin: updateActivityStatus(ticketIdOrGroup, activityStatus)
+ * Cập nhật/Tạo trạng thái hoạt động ("Đang hoạt động" / "Không hoạt động") theo ticket_id HOẶC stt_group (vd: PL389)
  */
-function updateActivityStatus(ticketId, activityStatus) {
-  if (!ticketId) {
-    return { success: false, message: 'Thiếu ticket_id.' };
+function updateActivityStatus(ticketIdOrGroup, activityStatus) {
+  if (!ticketIdOrGroup) {
+    return { success: false, message: 'Thiếu ticket_id hoặc mã nhóm Fam (stt_group).' };
   }
 
   const ss = getSpreadsheetCached();
@@ -981,7 +981,7 @@ function updateActivityStatus(ticketId, activityStatus) {
   }
 
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
+  if (!lock.tryLock(15000)) {
     return { success: false, message: 'Hệ thống đang bận, vui lòng thử lại sau 3 giây.' };
   }
 
@@ -995,32 +995,70 @@ function updateActivityStatus(ticketId, activityStatus) {
       ticketsSheet.getRange(1, 13).setValue('activity_status');
     }
 
+    const cleanInput = String(ticketIdOrGroup).trim();
     let targetRowIndex = -1;
+    let targetTicketId = '';
+
+    // 1. Tìm theo ticket_id trước
     for (let r = 1; r < data.length; r++) {
-      if (String(data[r][0]).trim() === String(ticketId).trim()) {
-        targetRowIndex = r + 1; // 1-indexed row
+      if (String(data[r][0]).trim().toLowerCase() === cleanInput.toLowerCase()) {
+        targetRowIndex = r + 1;
+        targetTicketId = data[r][0];
         break;
       }
     }
 
+    // 2. Nếu không thấy theo ticket_id, tìm theo stt_group (vd: PL389)
     if (targetRowIndex === -1) {
-      return { success: false, message: 'Không tìm thấy vé báo lỗi với ID: ' + ticketId };
+      for (let r = 1; r < data.length; r++) {
+        const rowStt = String(data[r][1] || '').trim().toLowerCase();
+        const rowStatus = String(data[r][2] || '').trim();
+        if (rowStt === cleanInput.toLowerCase() && rowStatus !== 'Đã xử lý') {
+          targetRowIndex = r + 1;
+          targetTicketId = data[r][0];
+          break;
+        }
+      }
     }
 
-    const nowIso = new Date().toISOString();
-    // Ghi activity_status vào cột 13
-    ticketsSheet.getRange(targetRowIndex, 13).setValue(activityStatus || '');
-    // Ghi updated_at vào cột 5
-    ticketsSheet.getRange(targetRowIndex, 5).setValue(nowIso);
+    // 3. Nếu khách chưa từng gửi ticket báo lỗi cho stt_group này -> TỰ ĐỘNG TẠO TICKET MỚI CHO NHÓM!
+    if (targetRowIndex === -1) {
+      let sttGroup = cleanInput.toUpperCase();
+      if (/^\d+$/.test(sttGroup)) {
+        sttGroup = 'PL' + sttGroup;
+      }
+
+      const now = new Date();
+      const ticketInfo = findOrCreateTicketForGroup(sttGroup, now, 'Admin Direct Tag');
+      targetTicketId = ticketInfo.ticket_id;
+
+      // Đọc lại data để lấy targetRowIndex vừa tạo
+      const updatedData = ticketsSheet.getDataRange().getValues();
+      for (let r = 1; r < updatedData.length; r++) {
+        if (String(updatedData[r][0]).trim() === targetTicketId) {
+          targetRowIndex = r + 1;
+          break;
+        }
+      }
+    }
+
+    if (targetRowIndex !== -1) {
+      const nowIso = new Date().toISOString();
+      // Ghi activity_status vào cột 13
+      ticketsSheet.getRange(targetRowIndex, 13).setValue(activityStatus || '');
+      // Ghi updated_at vào cột 5
+      ticketsSheet.getRange(targetRowIndex, 5).setValue(nowIso);
+    }
 
     delete _REQUEST_CACHE.sheetValues['TICKETS'];
     delete _REQUEST_CACHE.sheetObjects['TICKETS'];
 
     return {
       success: true,
-      ticket_id: ticketId,
+      ticket_id: targetTicketId,
+      stt_group: cleanInput,
       activity_status: activityStatus,
-      message: 'Đã cập nhật nhãn hoạt động: "' + (activityStatus || 'Trống') + '" cho ticket ' + ticketId
+      message: 'Đã gắn nhãn "' + (activityStatus || 'Trống') + '" thành công cho Fam ' + cleanInput
     };
   } catch (err) {
     return { success: false, message: 'Lỗi cập nhật activity_status: ' + err.toString() };
