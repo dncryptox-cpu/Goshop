@@ -1042,7 +1042,7 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
 }
 
 /**
- * API CTV: submitBulkReport(rawText, ctvName) — TỐI ƯU SIÊU TỐC 1 LẦN BATCH INSERT (< 1s)
+ * API CTV: submitBulkReport(rawTextOrList, ctvName) — TỐI ƯU SIÊU TỐC 1 LẦN BATCH INSERT (< 1s)
  */
 function submitBulkReport(rawTextOrList, ctvName) {
   if (!rawTextOrList) {
@@ -1076,41 +1076,124 @@ function submitBulkReport(rawTextOrList, ctvName) {
     };
   }
 
-        email: email,
-        found: true,
-        stt_group: res.stt_group,
-        ticket_status: res.status,
-        created_at: res.created_at,
-        resolved_at: res.resolved_at,
-        is_recurring: res.is_recurring,
-        recur_count: res.recur_count,
-        note: noteText
-      });
-    } else {
-      notFoundCount++;
-      results.push({
-        email: email,
-        found: false,
-        stt_group: '---',
-        ticket_status: 'Không tìm thấy',
-        created_at: '',
-        resolved_at: '',
-        is_recurring: false,
-        recur_count: 0,
-        note: 'Kiểm tra lại email'
-      });
-    }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    return { success: false, message: 'Hệ thống đang bận, vui lòng thử lại sau 3 giây.' };
   }
 
-  return {
-    success: true,
-    ctv_name: ctvName,
-    total: uniqueEmails.length,
-    found_count: foundCount,
-    not_found_count: notFoundCount,
-    results: results,
-    message: 'Đã xử lý xong ' + uniqueEmails.length + ' email (' + foundCount + ' thành công, ' + notFoundCount + ' không tìm thấy).'
-  };
+  try {
+    const now = new Date();
+    const nowIso = now.toISOString();
+
+    const ss = getSpreadsheetCached();
+    const ticketsSheet = ss.getSheetByName('TICKETS');
+    const reportsSheet = ss.getSheetByName('REPORTS');
+
+    // Map các ticket đang mở theo STT Group
+    const openTicketsMap = {};
+    if (ticketsSheet && ticketsSheet.getLastRow() > 1) {
+      const tData = ticketsSheet.getDataRange().getValues();
+      for (let r = 1; r < tData.length; r++) {
+        const stt = String(tData[r][1] || '').trim();
+        const status = String(tData[r][2] || '').trim();
+        if (stt && status !== 'Đã xử lý') {
+          openTicketsMap[stt] = {
+            ticket_id: tData[r][0],
+            stt_group: stt,
+            status: status,
+            created_at: tData[r][3],
+            resolved_at: tData[r][5]
+          };
+        }
+      }
+    }
+
+    const newTicketsRows = [];
+    const newReportsRows = [];
+    const results = [];
+    let foundCount = 0;
+    let notFoundCount = 0;
+
+    for (let i = 0; i < uniqueEmails.length; i++) {
+      const email = uniqueEmails[i];
+      const khoInfo = lookupKhoTKDirect(email);
+
+      if (khoInfo && khoInfo.stt_group) {
+        foundCount++;
+        const sttGroup = khoInfo.stt_group;
+        let ticketId = '';
+        let ticketStatus = 'Mới';
+        let isExistingOpen = false;
+
+        if (openTicketsMap[sttGroup]) {
+          ticketId = openTicketsMap[sttGroup].ticket_id;
+          ticketStatus = openTicketsMap[sttGroup].status;
+          isExistingOpen = true;
+        } else {
+          ticketId = 'TK-' + Date.now() + '-' + (i + 1) + '-' + Math.floor(Math.random() * 100);
+          ticketStatus = 'Mới';
+          newTicketsRows.push([
+            ticketId, sttGroup, ticketStatus, nowIso, nowIso, '', '', false, 0, 'Báo lỗi hàng loạt bởi ' + (ctvName || 'CTV'), '', 'Fix thường'
+          ]);
+          openTicketsMap[sttGroup] = { ticket_id: ticketId, stt_group: sttGroup, status: ticketStatus };
+        }
+
+        const reportId = 'RP-' + Date.now() + '-' + (i + 1);
+        newReportsRows.push([
+          reportId, ticketId, email, nowIso, 'Gửi hàng loạt bởi CTV ' + (ctvName || ''), ctvName || ''
+        ]);
+
+        results.push({
+          email: email,
+          found: true,
+          stt_group: sttGroup,
+          ticket_status: ticketStatus,
+          created_at: nowIso,
+          resolved_at: '',
+          is_recurring: false,
+          recur_count: 0,
+          note: isExistingOpen ? 'Đã báo trước đó, kỹ thuật đang xử lý' : 'Vừa ghi nhận thành công'
+        });
+      } else {
+        notFoundCount++;
+        results.push({
+          email: email,
+          found: false,
+          stt_group: '---',
+          ticket_status: 'Không tìm thấy',
+          created_at: '',
+          resolved_at: '',
+          is_recurring: false,
+          recur_count: 0,
+          note: 'Không có trong Kho TK'
+        });
+      }
+    }
+
+    // Ghi 1 lần Batch Insert vào TICKETS
+    if (newTicketsRows.length > 0 && ticketsSheet) {
+      ticketsSheet.getRange(ticketsSheet.getLastRow() + 1, 1, newTicketsRows.length, 12).setValues(newTicketsRows);
+    }
+
+    // Ghi 1 lần Batch Insert vào REPORTS
+    if (newReportsRows.length > 0 && reportsSheet) {
+      reportsSheet.getRange(reportsSheet.getLastRow() + 1, 1, newReportsRows.length, 6).setValues(newReportsRows);
+    }
+
+    return {
+      success: true,
+      total: uniqueEmails.length,
+      found_count: foundCount,
+      not_found_count: notFoundCount,
+      results: results,
+      message: 'Đã ghi nhận báo lỗi thành công cho ' + foundCount + ' email (' + notFoundCount + ' email không thấy trong Kho TK).'
+    };
+  } catch (err) {
+    Logger.log('Lỗi submitBulkReport: ' + err.toString());
+    return { success: false, message: 'Lỗi ghi nhận báo lỗi hàng loạt: ' + err.toString() };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
