@@ -705,7 +705,7 @@ function setupAutoSyncTrigger() {
  * Helper: Tra cứu STT group từ Email 100% TRỰC TIẾP từ Kho TK Google Sheet
  */
 function getSttGroupByEmail(emailClean) {
-  const info = lookupKhoTKDirect(emailClean);
+  const info = lookupKhoTKFast(emailClean);
   return info ? info.stt_group : null;
 }
 
@@ -1247,7 +1247,7 @@ function submitBulkReport(rawTextOrList, ctvName) {
 
     for (let i = 0; i < uniqueEmails.length; i++) {
       const email = uniqueEmails[i];
-      const khoInfo = lookupKhoTKDirect(email);
+      const khoInfo = lookupKhoTKFast(email);
 
       if (khoInfo && khoInfo.stt_group) {
         foundCount++;
@@ -1444,15 +1444,79 @@ function checkBulkStatus(rawTextOrList) {
  * Cột O (14): Mail phụ (Secondary email)
  * Cột P (15): CTV (Tên CTV quản lý)
  */
+/**
+ * Helper: Tra cứu thông tin Kho TK SIÊU TỐC dùng tab EMAIL_LOOKUP_CACHE (0.01s),
+ * fallback sang lookupKhoTKDirect nếu chưa có trong cache.
+ */
+function lookupKhoTKFast(emailClean) {
+  if (!emailClean) return null;
+  const targetEmail = String(emailClean).trim().toLowerCase();
+  if (!targetEmail || !targetEmail.includes('@')) return null;
+
+  // 1. Tra cứu siêu tốc trong tab EMAIL_LOOKUP_CACHE (0.01s)
+  try {
+    const cacheObjects = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
+    if (cacheObjects && cacheObjects.length > 0) {
+      for (let i = 0; i < cacheObjects.length; i++) {
+        const item = cacheObjects[i];
+        const em = String(item.email || item['Email'] || item['email_khach'] || (item._rowValues ? item._rowValues[0] : '') || '').trim().toLowerCase();
+        if (em === targetEmail) {
+          const sttGroup = String(item.stt_group || item.stt || (item._rowValues ? item._rowValues[1] : '') || '').trim();
+          const ownerEmail = String(item.owner_email || (item._rowValues ? item._rowValues[3] : '') || '').trim();
+          const ctv = String(item.ctv || (item._rowValues ? item._rowValues[4] : '') || '').trim();
+          const ngayHetHan = String(item.ngay_het_han || (item._rowValues ? item._rowValues[5] : '') || '').trim();
+
+          if (sttGroup) {
+            return {
+              stt_group: sttGroup,
+              email: targetEmail,
+              ctv: ctv,
+              ngay_renew: ngayHetHan,
+              ngay_het_han: ngayHetHan,
+              hsd: ngayHetHan,
+              owner_email: ownerEmail
+            };
+          }
+        }
+      }
+    }
+  } catch (errCache) {
+    Logger.log('Lỗi đọc EMAIL_LOOKUP_CACHE trong lookupKhoTKFast: ' + errCache.toString());
+  }
+
+  // 2. Fallback quét trực tiếp từ Kho TK nếu chưa có trong Cache (với giới hạn 5 dòng chống carry-forward)
+  const directInfo = lookupKhoTKDirect(targetEmail);
+  if (directInfo && directInfo.stt_group) {
+    // Tự động bổ sung vào EMAIL_LOOKUP_CACHE để các lần tra cứu sau 0ms
+    try {
+      const ss = getSpreadsheetCached();
+      const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+      if (cacheSheet) {
+        cacheSheet.appendRow([
+          targetEmail, 
+          directInfo.stt_group, 
+          new Date().toISOString(), 
+          directInfo.owner_email || '', 
+          directInfo.ctv || '', 
+          directInfo.ngay_het_han || ''
+        ]);
+      }
+    } catch (eApp) {}
+  }
+  return directInfo;
+}
+
 function lookupKhoTKDirect(emailClean) {
   if (!emailClean) return null;
   const targetEmail = String(emailClean).trim().toLowerCase();
+  if (!targetEmail || !targetEmail.includes('@')) return null;
 
   try {
     const khoData = getKhoTKDataCached();
     if (!khoData || khoData.length <= 1) return null;
 
     let currentSttGroup = '';
+    let groupRowCount = 0;
     let currentOwnerEmail = '';
 
     // Standard column indices matching Row 1 of Kho TK tab DATA
@@ -1481,11 +1545,23 @@ function lookupKhoTKDirect(emailClean) {
     for (let r = 1; r < khoData.length; r++) {
       const row = khoData[r];
       
-      // Update STT group from Column A if present
+      // Update STT group from Column A if present, with 5-row block limit (chống carry-forward tràn nhóm)
       const sttRaw = row[colStt];
-      if (sttRaw && String(sttRaw).trim()) {
-        currentSttGroup = String(sttRaw).trim();
+      const sttStr = sttRaw ? String(sttRaw).trim() : '';
+
+      if (sttStr) {
+        currentSttGroup = sttStr;
+        groupRowCount = 1;
+        currentOwnerEmail = '';
+      } else {
+        groupRowCount++;
+        if (groupRowCount > 5) {
+          currentSttGroup = '';
+          currentOwnerEmail = '';
+        }
       }
+
+      if (!currentSttGroup) continue;
 
       // Update Owner Email from Column D if present for current STT block
       if (colOwner !== -1 && row[colOwner]) {
@@ -1499,14 +1575,6 @@ function lookupKhoTKDirect(emailClean) {
       const emailPhu = colMailPhu !== -1 ? String(row[colMailPhu] || '').trim().toLowerCase() : '';
 
       let isMatch = (emailPrimary === targetEmail || (emailPhu && emailPhu === targetEmail));
-      if (!isMatch) {
-        for (let c = 0; c < row.length; c++) {
-          if (String(row[c] || '').trim().toLowerCase() === targetEmail) {
-            isMatch = true;
-            break;
-          }
-        }
-      }
 
       if (isMatch) {
         let ngayRenewClean = '';
@@ -1665,7 +1733,7 @@ function checkStatus(emailRaw) {
   const emailClean = String(emailRaw).trim().toLowerCase();
   
   // Đọc 100% trực tiếp từ Sheet Kho TK (ID: 1Agq-0ITsQgzhwnWvQTUthAjS2e8zJfgNd8dGGkCDniA)
-  const khoInfo = lookupKhoTKDirect(emailClean);
+  const khoInfo = lookupKhoTKFast(emailClean);
 
   if (!khoInfo || !khoInfo.stt_group) {
     return {
