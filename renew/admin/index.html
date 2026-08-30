@@ -2097,26 +2097,48 @@
 
                 getTicketCategoryInfo(t) {
                     if (!t) return null;
+
+                    // Ưu tiên 1: field report_type từ tab Báo Lỗi mới
+                    const reportType = String(t.report_type || '').toLowerCase();
+                    if (reportType === 'nhom_khong_hoat_dong') {
+                        return { type: 'B', label: '🔴 Nhóm không hoạt động', class: 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold' };
+                    }
+                    if (reportType === 'mat_premium_nhom_hoat_dong') {
+                        return { type: 'A', label: '🟡 Mất Premium', class: 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold' };
+                    }
+
+                    // Ưu tiên 2: text matching từ message (check B trước để tránh false positive)
                     let text = String(t.message || t.note || t.reason || t.issue_type || '').toLowerCase();
                     if (t.reports && Array.isArray(t.reports)) {
                         t.reports.forEach(r => {
                             if (r.message) text += ' ' + String(r.message).toLowerCase();
+                            if (r.report_type) text += ' ' + String(r.report_type).toLowerCase();
                         });
                     }
-                    if (text.includes('[mất premium') || text.includes('mất premium') || text.includes('mat premium')) {
-                        return {
-                            type: 'A',
-                            label: '🟡 Mất Premium',
-                            class: 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold'
-                        };
+
+                    // Check B TRƯỚC (nhóm không hoạt động) — tránh false positive khi message có cả 2 từ
+                    if (
+                        text.includes('[nhóm không hoạt động') ||
+                        text.includes('nhom_khong_hoat_dong') ||
+                        (text.includes('nhóm không hoạt động') && !text.includes('[mất premium - nhóm vẫn'))
+                    ) {
+                        return { type: 'B', label: '🔴 Nhóm không hoạt động', class: 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold' };
                     }
-                    if (text.includes('[nhóm không hoạt động') || text.includes('nhóm không hoạt động') || text.includes('nhóm lỗi') || text.includes('nhom loi')) {
-                        return {
-                            type: 'B',
-                            label: '🔴 Nhóm lỗi',
-                            class: 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold'
-                        };
+
+                    // Check A (mất premium, nhóm vẫn hoạt động)
+                    if (
+                        text.includes('[mất premium') ||
+                        text.includes('mat_premium_nhom_hoat_dong') ||
+                        (text.includes('mất premium') || text.includes('mat premium'))
+                    ) {
+                        return { type: 'A', label: '🟡 Mất Premium', class: 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold' };
                     }
+
+                    // Fallback cũ
+                    if (text.includes('nhóm lỗi') || text.includes('nhom loi')) {
+                        return { type: 'B', label: '🔴 Nhóm lỗi', class: 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold' };
+                    }
+
                     return null;
                 },
 
