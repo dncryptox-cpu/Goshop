@@ -163,10 +163,13 @@ function handleRequest(e) {
     switch (action) {
       case 'submitReport':
         const zaloPhoneParam = params.zalo_phone || params.zaloPhone;
-        result = submitReport(params.email, params.message, params.submitted_by, zaloPhoneParam);
+        const reportTypeParam = params.report_type || params.reportType;
+        const activityStatusParam = params.activity_status || params.activityStatus;
+        result = submitReport(params.email, params.message, params.submitted_by, zaloPhoneParam, reportTypeParam, activityStatusParam);
         break;
       case 'submitBulkReport':
-        result = submitBulkReport(params.emailList || params.emails || params.rawText, params.ctvName);
+        const bulkActivityStatus = params.activity_status || params.activityStatus || params.report_type;
+        result = submitBulkReport(params.emailList || params.emails || params.rawText, params.ctvName, bulkActivityStatus);
         break;
       case 'checkBulkStatus':
         result = checkBulkStatus(params.emailList || params.rawText);
@@ -837,7 +840,7 @@ function sendTelegramNotification(message) {
  * 2. Kiểm tra ticket đóng gần nhất trong 24h -> Tạo ticket mới đánh dấu is_recurring = true, recur_count += 1. (GỬI Telegram tái phát)
  * 3. Nếu không có -> Tạo ticket mới bình thường. (GỬI Telegram sự cố mới)
  */
-function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
+function findOrCreateTicketForGroup(sttGroup, now, customerEmail, activityStatus) {
   const tickets = readSheetAsObjects('TICKETS');
   const nowIso = now.toISOString();
 
@@ -862,7 +865,8 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
           updated_at: obj['updated_at'],
           resolved_at: obj['resolved_at'],
           is_recurring: obj['is_recurring'],
-          recur_count: Number(obj['recur_count'] || 0)
+          recur_count: Number(obj['recur_count'] || 0),
+          activity_status: obj['activity_status'] ? String(obj['activity_status']).trim() : ''
         };
         break; // Ưu tiên ticket mở đang có
       } else {
@@ -884,12 +888,20 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
   }
 
   if (openTicketData) {
-    // Đã có ticket mở -> Cập nhật updated_at (1-call updateFast, KHÔNG GỬI TELEGRAM TRÁNH SPAM)
+    // Đã có ticket mở -> Cập nhật updated_at
     updateRowRangeFast('TICKETS', openTicketRowIndex, 5, [nowIso]);
+    // Nếu ticket chưa có activity_status mà lần này có thông tin -> tự động cập nhật
+    if (activityStatus && (!openTicketData.activity_status || openTicketData.activity_status === '')) {
+      try {
+        updateActivityStatus(openTicketData.ticket_id, activityStatus);
+        openTicketData.activity_status = activityStatus;
+      } catch (eAct) {}
+    }
     return {
       ticket_id: openTicketData.ticket_id,
       stt_group: sttGroup,
       status: openTicketData.status,
+      activity_status: openTicketData.activity_status,
       created_at: openTicketData.created_at,
       resolved_at: openTicketData.resolved_at,
       is_recurring: Boolean(openTicketData.is_recurring),
@@ -912,6 +924,7 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
 
   const targetTicketId = 'TK-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
   const ticketStatus = 'Mới';
+  const actStatusClean = (activityStatus === 'Đang hoạt động' || activityStatus === 'Không hoạt động') ? activityStatus : '';
 
   appendRowFast('TICKETS', [
     targetTicketId,
@@ -924,7 +937,9 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail) {
     isRecurring,
     recurCount,
     '',
-    ''
+    '',
+    'Fix thường',
+    actStatusClean
   ]);
 
   // GỬI THÔNG BÁO TELEGRAM KHI TẠO TICKET MỚI (TẠO MỚI HOẶC TÁI PHÁT)
@@ -1094,7 +1109,7 @@ function updateActivityStatus(ticketIdOrGroupInput, activityStatus) {
 /**
  * API 1: submitReport(email, message, submittedBy, zaloPhoneRaw)
  */
-function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
+function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRaw, activityStatusRaw) {
   if (!emailRaw) {
     return { 
       success: false, 
@@ -1114,6 +1129,17 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
     };
   }
 
+  let actStatus = activityStatusRaw || '';
+  if (!actStatus) {
+    const rType = String(reportTypeRaw || '').toLowerCase();
+    const msg = String(message || '').toLowerCase();
+    if (rType === 'mat_premium_nhom_hoat_dong' || rType === 'a' || msg.includes('mất premium') || msg.includes('mat_premium')) {
+      actStatus = 'Đang hoạt động';
+    } else if (rType === 'nhom_khong_hoat_dong' || rType === 'b' || msg.includes('nhóm không hoạt động') || msg.includes('nhom_khong_hoat_dong')) {
+      actStatus = 'Không hoạt động';
+    }
+  }
+
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) {
     return { success: false, message: 'Hệ thống đang xử lý lượt gửi khác, vui lòng thử lại sau 3 giây.' };
@@ -1122,7 +1148,7 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
   try {
     const now = new Date();
     const nowIso = now.toISOString();
-    const ticketInfo = findOrCreateTicketForGroup(sttGroup, now, emailClean);
+    const ticketInfo = findOrCreateTicketForGroup(sttGroup, now, emailClean, actStatus);
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const reportsSheet = ss.getSheetByName('REPORTS');
@@ -1153,6 +1179,7 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
       stt_group: sttGroup,
       ticket_id: ticketInfo.ticket_id,
       status: ticketInfo.status,
+      activity_status: ticketInfo.activity_status || actStatus,
       is_recurring: ticketInfo.is_recurring,
       recur_count: ticketInfo.recur_count,
       created_at: ticketInfo.created_at,
@@ -1175,9 +1202,17 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw) {
 /**
  * API CTV: submitBulkReport(rawTextOrList, ctvName) — TỐI ƯU SIÊU TỐC 1 LẦN BATCH INSERT (< 1s)
  */
-function submitBulkReport(rawTextOrList, ctvName) {
+function submitBulkReport(rawTextOrList, ctvName, activityStatus) {
   if (!rawTextOrList) {
     return { success: false, message: 'Vui lòng dán danh sách email hoặc nội dung tin nhắn.' };
+  }
+
+  let actStatusClean = '';
+  const actInput = String(activityStatus || '').trim();
+  if (actInput === 'Đang hoạt động' || actInput === 'mat_premium_nhom_hoat_dong' || actInput === 'A') {
+    actStatusClean = 'Đang hoạt động';
+  } else if (actInput === 'Không hoạt động' || actInput === 'nhom_khong_hoat_dong' || actInput === 'B') {
+    actStatusClean = 'Không hoạt động';
   }
 
   let matches = [];
@@ -1227,11 +1262,13 @@ function submitBulkReport(rawTextOrList, ctvName) {
       for (let r = 1; r < tData.length; r++) {
         const stt = String(tData[r][1] || '').trim();
         const status = String(tData[r][2] || '').trim();
+        const actSt = tData[r][12] ? String(tData[r][12]).trim() : '';
         if (stt && status !== 'Đã xử lý') {
           openTicketsMap[stt] = {
             ticket_id: tData[r][0],
             stt_group: stt,
             status: status,
+            activity_status: actSt,
             created_at: tData[r][3],
             resolved_at: tData[r][5]
           };
@@ -1260,13 +1297,19 @@ function submitBulkReport(rawTextOrList, ctvName) {
           ticketId = openTicketsMap[sttGroup].ticket_id;
           ticketStatus = openTicketsMap[sttGroup].status;
           isExistingOpen = true;
+          if (actStatusClean && (!openTicketsMap[sttGroup].activity_status || openTicketsMap[sttGroup].activity_status === '')) {
+            try {
+              updateActivityStatus(ticketId, actStatusClean);
+              openTicketsMap[sttGroup].activity_status = actStatusClean;
+            } catch (eAct) {}
+          }
         } else {
           ticketId = 'TK-' + Date.now() + '-' + (i + 1) + '-' + Math.floor(Math.random() * 100);
           ticketStatus = 'Mới';
           newTicketsRows.push([
-            ticketId, sttGroup, ticketStatus, nowIso, nowIso, '', '', false, 0, 'Báo lỗi hàng loạt bởi ' + (ctvName || 'CTV'), '', 'Fix thường'
+            ticketId, sttGroup, ticketStatus, nowIso, nowIso, '', '', false, 0, 'Báo lỗi hàng loạt bởi ' + (ctvName || 'CTV'), '', 'Fix thường', actStatusClean
           ]);
-          openTicketsMap[sttGroup] = { ticket_id: ticketId, stt_group: sttGroup, status: ticketStatus };
+          openTicketsMap[sttGroup] = { ticket_id: ticketId, stt_group: sttGroup, status: ticketStatus, activity_status: actStatusClean };
         }
 
         const reportId = 'RP-' + Date.now() + '-' + (i + 1);
@@ -1279,6 +1322,7 @@ function submitBulkReport(rawTextOrList, ctvName) {
           found: true,
           stt_group: sttGroup,
           ticket_status: ticketStatus,
+          activity_status: actStatusClean || (openTicketsMap[sttGroup] ? openTicketsMap[sttGroup].activity_status : ''),
           created_at: nowIso,
           resolved_at: '',
           is_recurring: false,
@@ -1303,7 +1347,7 @@ function submitBulkReport(rawTextOrList, ctvName) {
 
     // Ghi 1 lần Batch Insert vào TICKETS
     if (newTicketsRows.length > 0 && ticketsSheet) {
-      ticketsSheet.getRange(ticketsSheet.getLastRow() + 1, 1, newTicketsRows.length, 12).setValues(newTicketsRows);
+      ticketsSheet.getRange(ticketsSheet.getLastRow() + 1, 1, newTicketsRows.length, 13).setValues(newTicketsRows);
     }
 
     // Ghi 1 lần Batch Insert vào REPORTS
