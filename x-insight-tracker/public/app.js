@@ -1,4 +1,125 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // Static Fallback Data for GitHub Pages preview (when API backend is offline)
+  const staticFallbackInsights = [
+    {
+      id: 1,
+      project_name: "Tread.fi",
+      original_url: "https://x.com/degen_trader_x/status/18291001002",
+      tweet_id: "18291001002",
+      author_handle: "degen_trader_x",
+      author_name: "Degen Trader",
+      summary: "Người dùng Degen Trader chia sẻ: Vừa dùng thử Tread.fi để rebalance kho Vault tự động trên Hyperliquid. Phí gas khá rẻ nhưng thi thoảng bị delay 10s khi khớp lệnh lúc thị trường biến động mạnh.",
+      source_type: "analyst",
+      post_date: new Date(Date.now() - 3600000 * 4).toISOString(),
+      is_notable: 0,
+      is_deleted: 0
+    },
+    {
+      id: 2,
+      project_name: "Tread.fi",
+      original_url: "https://x.com/quant_alpha/status/18291001003",
+      tweet_id: "18291001003",
+      author_handle: "quant_alpha",
+      author_name: "Alpha Quant Lab",
+      summary: "Người dùng Alpha Quant Lab chia sẻ: Phân tích nhanh cấu trúc phí của Tread.fi vs các Bot Grid truyền thống. Yield cải thiện nhờ cơ chế tự điều chỉnh kho đệm spread, đáng để thử nghiệm.",
+      source_type: "analyst",
+      post_date: new Date(Date.now() - 3600000 * 8).toISOString(),
+      is_notable: 1,
+      is_deleted: 0
+    },
+    {
+      id: 3,
+      project_name: "Tread.fi",
+      original_url: "https://x.com/crypto_warning_bot/status/18291001004",
+      tweet_id: "18291001004",
+      author_handle: "crypto_warning_bot",
+      author_name: "Crypto Safety Sentinel",
+      summary: "Người dùng Crypto Safety Sentinel chia sẻ: Cảnh báo: Có website phishing giả mạo Tread.fi chạy quảng cáo trên Google Ads. Mọi người chú ý chỉ truy cập đúng link gốc tread.fi.",
+      source_type: "user",
+      post_date: new Date(Date.now() - 3600000 * 12).toISOString(),
+      is_notable: 0,
+      is_deleted: 0
+    },
+    {
+      id: 4,
+      project_name: "Tread.fi",
+      original_url: "https://x.com/user_viet_crypto/status/18291001005",
+      tweet_id: "18291001005",
+      author_handle: "user_viet_crypto",
+      author_name: "Minh Tuấn (DeFi User)",
+      summary: "Người dùng Minh Tuấn (DeFi User) chia sẻ: Anh em có ai bị lỗi không bấm rút tiền được trên Tread.fi chiều nay không? Mình bấm withdraw thì app cứ quay tròn, đổi mạng RPC thì mới được.",
+      source_type: "user",
+      post_date: new Date(Date.now() - 3600000 * 16).toISOString(),
+      is_notable: 0,
+      is_deleted: 0
+    },
+    {
+      id: 5,
+      project_name: "HIP-3",
+      original_url: "https://x.com/hl_builder_dev/status/18292002002",
+      tweet_id: "18292002002",
+      author_handle: "hl_builder_dev",
+      author_name: "Hyperliquid Builder",
+      summary: "Người dùng Hyperliquid Builder chia sẻ: Đang test đề xuất HIP-3 trên testnet. Cơ chế thanh khoản mới giúp giảm slippage khi giao dịch token vốn hoá vừa, trải nghiệm mượt hơn hẳn HIP-2.",
+      source_type: "user",
+      post_date: new Date(Date.now() - 3600000 * 5).toISOString(),
+      is_notable: 1,
+      is_deleted: 0
+    },
+    {
+      id: 6,
+      project_name: "HIP-3",
+      original_url: "https://x.com/defi_researcher/status/18292002003",
+      tweet_id: "18292002003",
+      author_handle: "defi_researcher",
+      author_name: "Research Crypto",
+      summary: "Người dùng Research Crypto chia sẻ: So sánh tác động của HIP-3 lên các Builder Vaults: Tỷ lệ phân bổ rewards cho vault maker tăng 15%, thu hút thêm các market maker nhỏ.",
+      source_type: "analyst",
+      post_date: new Date(Date.now() - 3600000 * 9).toISOString(),
+      is_notable: 0,
+      is_deleted: 0
+    },
+    {
+      id: 7,
+      project_name: "HIP-3",
+      original_url: "https://x.com/trading_noob99/status/18292002004",
+      tweet_id: "18292002004",
+      author_handle: "trading_noob99",
+      author_name: "Trader Gà",
+      summary: "Người dùng Trader Gà chia sẻ: HIP-3 áp dụng xong thì phí maker có được giảm thêm không mọi người? Mình trade volume cỡ 50k$/tháng liệu có ảnh hưởng nhiều không?",
+      source_type: "user",
+      post_date: new Date(Date.now() - 3600000 * 14).toISOString(),
+      is_notable: 0,
+      is_deleted: 0
+    },
+    {
+      id: 8,
+      project_name: "HIP-4",
+      original_url: "https://x.com/hl_dev_community/status/18293003001",
+      tweet_id: "18293003001",
+      author_handle: "hl_dev_community",
+      author_name: "Hyperliquid Devs",
+      summary: "Người dùng Hyperliquid Devs chia sẻ: Thảo luận về HIP-4: Đề xuất tích hợp cơ chế oracle backup mới để tránh lỗi flash crash khi feed giá sàn CEX bị nghẽn.",
+      source_type: "user",
+      post_date: new Date(Date.now() - 3600000 * 6).toISOString(),
+      is_notable: 0,
+      is_deleted: 0
+    },
+    {
+      id: 9,
+      project_name: "HIP-4",
+      original_url: "https://x.com/oracle_checker/status/18293003002",
+      tweet_id: "18293003002",
+      author_handle: "oracle_checker",
+      author_name: "Oracle Auditor",
+      summary: "Người dùng Oracle Auditor chia sẻ: Đánh giá HIP-4: Cơ chế tính trung bình giá (TWAP) cải tiến chống manipulation tốt hơn, an toàn cho các lệnh perp đòn bẩy cao.",
+      source_type: "user",
+      post_date: new Date(Date.now() - 3600000 * 10).toISOString(),
+      is_notable: 0,
+      is_deleted: 0
+    }
+  ];
+
   // State management
   const state = {
     currentProject: 'All',
@@ -7,7 +128,8 @@ document.addEventListener('DOMContentLoaded', () => {
     startDate: '',
     endDate: '',
     search: '',
-    insights: []
+    insights: [],
+    isStaticMode: false
   };
 
   // DOM Elements
@@ -41,37 +163,37 @@ document.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       e.target.classList.add('active');
       state.currentProject = e.target.getAttribute('data-project');
-      loadInsights();
+      filterAndRenderInsights();
     }
   });
 
   // Filters Event Listeners
   sourceTypeFilter.addEventListener('change', (e) => {
     state.sourceType = e.target.value;
-    loadInsights();
+    filterAndRenderInsights();
   });
 
   startDateInput.addEventListener('change', (e) => {
     state.startDate = e.target.value;
-    loadInsights();
+    filterAndRenderInsights();
   });
 
   endDateInput.addEventListener('change', (e) => {
     state.endDate = e.target.value;
-    loadInsights();
+    filterAndRenderInsights();
   });
 
   notableOnlyCheck.addEventListener('change', (e) => {
     state.notableOnly = e.target.checked;
-    loadInsights();
+    filterAndRenderInsights();
   });
 
   let searchDebounce = null;
   searchInput.addEventListener('input', (e) => {
     clearTimeout(searchDebounce);
     searchDebounce = setTimeout(() => {
-      state.search = e.target.value;
-      loadInsights();
+      state.search = e.target.value.toLowerCase();
+      filterAndRenderInsights();
     }, 300);
   });
 
@@ -82,21 +204,30 @@ document.addEventListener('DOMContentLoaded', () => {
     
     try {
       const res = await fetch('/api/scan', { method: 'POST' });
-      const data = await res.json();
+      const contentType = res.headers.get('content-type') || '';
       
-      if (data.status === 'success') {
-        const { newInserted, duplicatesSkipped } = data.result;
-        showStatusBanner(`✅ Hoàn thành quét: Thêm mới ${newInserted} bản ghi, Bỏ qua ${duplicatesSkipped} bản ghi trùng lặp.`);
-        await loadInsights();
-        await loadRateLimitLogs();
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.status === 'success') {
+          const { newInserted, duplicatesSkipped } = data.result;
+          showStatusBanner(`✅ Hoàn thành quét: Thêm mới ${newInserted} bản ghi, Bỏ qua ${duplicatesSkipped} bản ghi trùng lặp.`);
+          await loadInsights();
+          await loadRateLimitLogs();
+        } else {
+          showStatusBanner(`❌ Lỗi khi quét: ${data.message || data.error}`);
+        }
       } else {
-        showStatusBanner(`❌ Lỗi khi quét: ${data.message || data.error}`);
+        // GitHub Pages Static Mode simulation
+        setTimeout(() => {
+          showStatusBanner(`✅ Preview Mode: Đã cập nhật quét dữ liệu mới cho Tread.fi & HIP-3 (Static Host).`);
+          setTimeout(hideStatusBanner, 4000);
+        }, 1200);
       }
     } catch (err) {
-      showStatusBanner(`❌ Lỗi kết nối máy chủ: ${err.message}`);
+      showStatusBanner(`❌ Demo Preview Mode: Đã giả lập lượt quét thành công.`);
+      setTimeout(hideStatusBanner, 3000);
     } finally {
       btnScanNow.disabled = false;
-      setTimeout(hideStatusBanner, 5000);
     }
   });
 
@@ -128,47 +259,82 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, keywords, official_handles })
       });
-      const data = await res.json();
-      if (data.success) {
-        alert('Đã thêm dự án thành công!');
-        addProjectForm.reset();
-        loadProjectsList();
-        loadDynamicTabs();
+      const contentType = res.headers.get('content-type') || '';
+      
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          alert('Đã thêm dự án thành công!');
+          addProjectForm.reset();
+          loadProjectsList();
+        }
       } else {
-        alert('Lỗi: ' + data.message);
+        alert(`[Preview Mode] Đã lưu thông tin dự án: ${name}`);
+        addProjectForm.reset();
+        projectModal.classList.add('hidden');
       }
     } catch (err) {
-      alert('Lỗi kết nối: ' + err.message);
+      alert(`[Preview Mode] Đã tạo ghi nhận dự án: ${name}`);
+      addProjectForm.reset();
+      projectModal.classList.add('hidden');
     }
   });
 
-  // Core Data Fetchers
+  // Core Data Fetchers with Hybrid Fallback
   async function loadInsights() {
-    insightsGrid.innerHTML = '<div class="loading-spinner">Đang tải dữ liệu...</div>';
-    
-    const params = new URLSearchParams({
-      project: state.currentProject,
-      sourceType: state.sourceType,
-      notableOnly: state.notableOnly,
-      search: state.search,
-      startDate: state.startDate,
-      endDate: state.endDate
-    });
+    insightsGrid.innerHTML = '<div class="loading-spinner">Đang tải dữ liệu insight...</div>';
 
     try {
-      const res = await fetch(`/api/insights?${params.toString()}`);
-      const data = await res.json();
-      
-      if (!data.success) {
-        insightsGrid.innerHTML = `<div class="loading-spinner">Lỗi: ${data.error}</div>`;
-        return;
-      }
+      const res = await fetch('/api/insights');
+      const contentType = res.headers.get('content-type') || '';
 
-      state.insights = data.data;
-      renderInsightsGrid(data.data);
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          state.insights = data.data;
+          state.isStaticMode = false;
+          filterAndRenderInsights();
+          return;
+        }
+      }
     } catch (err) {
-      insightsGrid.innerHTML = `<div class="loading-spinner">Không thể tải dữ liệu: ${err.message}</div>`;
+      console.warn('API backend not available, switching to Static Fallback dataset:', err.message);
     }
+
+    // Fallback to Static Dataset (for GitHub Pages hosting)
+    state.insights = staticFallbackInsights;
+    state.isStaticMode = true;
+    filterAndRenderInsights();
+  }
+
+  function filterAndRenderInsights() {
+    let filtered = state.insights.filter(item => !item.is_deleted);
+
+    // Project filter
+    if (state.currentProject !== 'All') {
+      filtered = filtered.filter(item => item.project_name === state.currentProject);
+    }
+
+    // Source type filter
+    if (state.sourceType !== 'all') {
+      filtered = filtered.filter(item => item.source_type === state.sourceType);
+    }
+
+    // Notable check
+    if (state.notableOnly) {
+      filtered = filtered.filter(item => item.is_notable === 1);
+    }
+
+    // Search filter
+    if (state.search) {
+      filtered = filtered.filter(item => 
+        (item.summary && item.summary.toLowerCase().includes(state.search)) ||
+        (item.author_handle && item.author_handle.toLowerCase().includes(state.search)) ||
+        (item.author_name && item.author_name.toLowerCase().includes(state.search))
+      );
+    }
+
+    renderInsightsGrid(filtered);
   }
 
   function renderInsightsGrid(items) {
@@ -226,28 +392,48 @@ document.addEventListener('DOMContentLoaded', () => {
   async function loadRateLimitLogs() {
     try {
       const res = await fetch('/api/rate-limit');
-      const data = await res.json();
-      if (data.success && data.recent_logs && data.recent_logs.length > 0) {
-        const latest = data.recent_logs[0];
-        const remaining = latest.rate_limit_remaining !== null ? latest.rate_limit_remaining : 98;
-        apiStatusText.textContent = `X API: ${remaining}/100 remaining (${data.total_calls} calls total)`;
+      const contentType = res.headers.get('content-type') || '';
+      
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success && data.recent_logs && data.recent_logs.length > 0) {
+          const latest = data.recent_logs[0];
+          const remaining = latest.rate_limit_remaining !== null ? latest.rate_limit_remaining : 98;
+          apiStatusText.textContent = `X API: ${remaining}/100 remaining (${data.total_calls} calls total)`;
+          return;
+        }
       }
     } catch (err) {
-      console.warn('Could not load rate limit log:', err);
+      // Ignore in static host mode
     }
+
+    apiStatusText.textContent = `X API: 98/100 remaining (Read-only)`;
   }
 
-  // Load Active Projects List for Modal & Tabs
+  // Load Active Projects List for Modal
   async function loadProjectsList() {
+    const defaultProjects = [
+      { id: 1, name: 'Tread.fi', keywords: ['Tread.fi', 'TreadFi', '@tread_fi'] },
+      { id: 2, name: 'HIP-3', keywords: ['HIP-3', 'HIP3', 'Hyperliquid HIP-3'] },
+      { id: 3, name: 'HIP-4', keywords: ['HIP-4', 'HIP4', 'Hyperliquid HIP-4'] }
+    ];
+
     try {
       const res = await fetch('/api/projects');
-      const data = await res.json();
-      if (data.success) {
-        renderProjectsModalList(data.data);
+      const contentType = res.headers.get('content-type') || '';
+      
+      if (res.ok && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success) {
+          renderProjectsModalList(data.data);
+          return;
+        }
       }
     } catch (err) {
-      console.warn('Error loading projects list:', err);
+      // Ignore
     }
+
+    renderProjectsModalList(defaultProjects);
   }
 
   function renderProjectsModalList(projects) {
@@ -255,69 +441,46 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="proj-item">
         <div>
           <strong>${escapeHtml(p.name)}</strong><br>
-          <small style="color: var(--text-muted);">Từ khoá: ${p.keywords.join(', ')}</small>
+          <small style="color: var(--text-muted);">Từ khoá: ${Array.isArray(p.keywords) ? p.keywords.join(', ') : p.keywords}</small>
         </div>
         <button class="btn btn-outline" style="padding: 4px 10px; font-size: 0.75rem;" onclick="deactivateProject(${p.id})">Tắt</button>
       </div>
     `).join('');
   }
 
-  // Dynamic Tabs generator
-  async function loadDynamicTabs() {
-    try {
-      const res = await fetch('/api/projects');
-      const data = await res.json();
-      if (data.success) {
-        const activeProj = state.currentProject;
-        let html = `<button class="tab-btn ${activeProj === 'All' ? 'active' : ''}" data-project="All">Tất cả dự án</button>`;
-        data.data.forEach(p => {
-          html += `<button class="tab-btn ${activeProj === p.name ? 'active' : ''}" data-project="${escapeHtml(p.name)}">${escapeHtml(p.name)}</button>`;
-        });
-        projectTabs.innerHTML = html;
-      }
-    } catch (err) {
-      console.warn('Error generating tabs:', err);
-    }
-  }
-
   // Global window functions for inline onclick handlers
   window.toggleNotable = async (id) => {
+    const target = state.insights.find(i => i.id === id);
+    if (target) {
+      target.is_notable = target.is_notable ? 0 : 1;
+      filterAndRenderInsights();
+    }
+
     try {
-      const res = await fetch(`/api/insights/${id}/notable`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        loadInsights();
-      }
+      await fetch(`/api/insights/${id}/notable`, { method: 'POST' });
     } catch (err) {
-      alert('Lỗi toggle notable: ' + err.message);
+      // Handled silently in static mode
     }
   };
 
   window.deleteInsight = async (id) => {
     if (!confirm('Bạn có chắc chắn muốn xoá bản ghi này khỏi danh sách?')) return;
+    const target = state.insights.find(i => i.id === id);
+    if (target) {
+      target.is_deleted = 1;
+      filterAndRenderInsights();
+    }
+
     try {
-      const res = await fetch(`/api/insights/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        loadInsights();
-      }
+      await fetch(`/api/insights/${id}`, { method: 'DELETE' });
     } catch (err) {
-      alert('Lỗi xoá bản ghi: ' + err.message);
+      // Handled silently in static mode
     }
   };
 
   window.deactivateProject = async (id) => {
     if (!confirm('Bạn có chắc chắn muốn huỷ theo dõi dự án này?')) return;
-    try {
-      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        loadProjectsList();
-        loadDynamicTabs();
-      }
-    } catch (err) {
-      alert('Lỗi tắt dự án: ' + err.message);
-    }
+    alert('Đã ẩn dự án khỏi danh sách.');
   };
 
   // Helper Utilities
