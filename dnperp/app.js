@@ -1,5 +1,5 @@
 /**
- * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 7 Engine
+ * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 8 Engine
  * Host: godnc.com/dnperp
  */
 
@@ -22,7 +22,7 @@ const i18n = {
     updateIn: "Cập nhật sau:",
     btnRefresh: "Làm mới",
     btnManagePairs: "Quản Lý Cặp",
-    btnSettings: "Cấu hình",
+    btnSettings: "Cấu hình ⚙️",
     tabMonitor: "📊 Live Monitor & Margin",
     tabKnowledge: "📚 Kiến Thức / Playbook",
     
@@ -54,7 +54,7 @@ const i18n = {
     placeholderWallet: "Nhập địa chỉ ví Hyperliquid (0x...)",
     btnQuery: "Query",
     btnClearWallet: "🗑️ Xoá ví",
-    noticeWalletSaved: "Ví sẽ tự động được lưu và tải lại mỗi lần mở trang.",
+    noticeWalletSaved: "Ví sẽ tự động được lưu vào localStorage và tải lại mỗi lần mở trang.",
     labelMarginUsedPct: "Tỷ lệ Margin đã dùng:",
     labelAccountValue: "Tổng Tài Sản (Account Value)",
     labelMarginUsedVal: "Margin Đã Sử Dụng",
@@ -62,11 +62,17 @@ const i18n = {
     labelLtTotalMargin: "Tổng Margin / Equity ($):",
     labelLtFreeMargin: "Margin Khả Dụng (Free)",
     labelLtWarnAt: "Cảnh Báo Thanh Lý At",
+    btnChangeWallet: "⚙️ Đổi ví / Cấu hình",
+    btnEditLtMargin: "⚙️ Sửa Margin Lighter",
 
     sectionChartTitle: "📈 Lịch Sử Basis 24 Giờ & Biểu Đồ Dao Động",
     btnClearHistory: "Xoá lịch sử",
 
-    modalPairsTitle: "⚙️ Quản Lý Cặp Theo Dõi Động",
+    modalSettingsTitle: "⚙️ Cấu Hình Hệ Thống (Settings Drawer)",
+    sectionLangTitle: "🌐 Ngôn Ngữ / Language",
+    sectionWalletTitle: "💧 Địa Chỉ Ví Hyperliquid (Entropy)",
+    sectionLtMarginTitle: "⚡ Số Dư Margin Lighter (Robinhood Chain)",
+    modalPairsTitle: "📋 Quản Lý Cặp Theo Dõi Động",
     modalAddPairHeader: "➕ Thêm Cặp Mới",
     modalAddPairSub: "Hệ thống sẽ kiểm tra tự động xem ticker có tồn tại trên cả 2 sàn Entropy (dex \"io\") và Lighter hay không trước khi thêm.",
     labelHlTicker: "Ticker Entropy (Hyperliquid):",
@@ -81,7 +87,6 @@ const i18n = {
     btnDelete: "🗑️ Xoá",
     btnClose: "Đóng",
 
-    modalSettingsTitle: "⚙️ Cấu Hình Ngưỡng Cảnh Báo & Telegram",
     settingsThresholdsHeader: "🎯 Ngưỡng Cảnh Báo (Thresholds)",
     labelBasisThresh: "Ngưỡng Basis (%) kích hoạt tín hiệu Arbitrage:",
     helpBasisThresh: "Mặc định 0.30%. Khi |Basis| > ngưỡng này, hệ thống hiện tín hiệu Long/Short và bắn Cảnh báo Telegram.",
@@ -106,7 +111,7 @@ const i18n = {
     updateIn: "Updating in:",
     btnRefresh: "Refresh",
     btnManagePairs: "Manage Pairs",
-    btnSettings: "Settings",
+    btnSettings: "Settings ⚙️",
     tabMonitor: "📊 Live Monitor & Margin",
     tabKnowledge: "📚 Knowledge / Playbook",
 
@@ -138,7 +143,7 @@ const i18n = {
     placeholderWallet: "Enter Hyperliquid public address (0x...)",
     btnQuery: "Query",
     btnClearWallet: "🗑️ Clear Wallet",
-    noticeWalletSaved: "Wallet will auto-save and reload on every page visit.",
+    noticeWalletSaved: "Wallet will auto-save to localStorage and reload on every page visit.",
     labelMarginUsedPct: "Margin Used Ratio:",
     labelAccountValue: "Total Assets (Account Value)",
     labelMarginUsedVal: "Margin Used Amount",
@@ -146,11 +151,17 @@ const i18n = {
     labelLtTotalMargin: "Total Margin / Equity ($):",
     labelLtFreeMargin: "Free Available Margin",
     labelLtWarnAt: "Liquidation Warning At",
+    btnChangeWallet: "⚙️ Change Wallet / Config",
+    btnEditLtMargin: "⚙️ Edit Lighter Margin",
 
     sectionChartTitle: "📈 24-Hour Basis History & Volatility Chart",
     btnClearHistory: "Clear history",
 
-    modalPairsTitle: "⚙️ Dynamic Pair Management",
+    modalSettingsTitle: "⚙️ System Settings (Settings Drawer)",
+    sectionLangTitle: "🌐 Ngôn Ngữ / Language",
+    sectionWalletTitle: "💧 Hyperliquid Wallet Address (Entropy)",
+    sectionLtMarginTitle: "⚡ Lighter Margin Balance (Robinhood Chain)",
+    modalPairsTitle: "📋 Dynamic Pair Management",
     modalAddPairHeader: "➕ Add New Pair",
     modalAddPairSub: "System will automatically check if tickers exist on both Entropy (dex \"io\") and Lighter before adding.",
     labelHlTicker: "Entropy Ticker (Hyperliquid):",
@@ -165,7 +176,6 @@ const i18n = {
     btnDelete: "🗑️ Remove",
     btnClose: "Close",
 
-    modalSettingsTitle: "⚙️ Alert Thresholds & Telegram Settings",
     settingsThresholdsHeader: "🎯 Alert Thresholds",
     labelBasisThresh: "Basis Threshold (%) for Arbitrage Signals:",
     helpBasisThresh: "Default 0.30%. When |Basis| > threshold, system triggers Long/Short signal and Telegram alert.",
@@ -185,13 +195,11 @@ const i18n = {
 
 // Global Application State
 const state = {
-  // Active Language
   lang: localStorage.getItem('dnperp_lang') || 'VI',
 
-  // Configuration Settings (saved in localStorage)
   config: {
-    basisThreshold: 0.30, // %
-    marginThreshold: 75.0, // %
+    basisThreshold: 0.30,
+    marginThreshold: 75.0,
     tgToken: localStorage.getItem('dnperp_tg_token') || '',
     tgChatId: localStorage.getItem('dnperp_tg_chat_id') || '',
     hlWallet: localStorage.getItem('dnperp_wallet_address') || localStorage.getItem('dnperp_hl_wallet') || '',
@@ -199,22 +207,16 @@ const state = {
     ltTotalMargin: parseFloat(localStorage.getItem('dnperp_lt_total')) || 1000
   },
 
-  // Dynamic Tracked Pairs List
   trackedPairs: JSON.parse(localStorage.getItem('dnperp_tracked_pairs') || 'null') || DEFAULT_PAIRS,
-
-  // Live Market Data per pair ID
   market: {},
 
-  // Margin Data
   margin: {
     hl: { accountValue: 0, totalMarginUsed: 0, pct: 0 },
     lt: { used: 0, total: 1000, pct: 0 }
   },
 
-  // Historical Basis Samples (up to 24h)
   history: JSON.parse(localStorage.getItem('dnperp_history') || '[]'),
   
-  // App Controls
   countdown: 10,
   timerId: null,
   chart: null,
@@ -228,16 +230,13 @@ document.addEventListener('DOMContentLoaded', () => {
   loadStoredConfig();
   setLanguage(state.lang);
   renderSpreadCards();
+  renderPairsTable();
   initChart();
   seedHistoryIfEmpty();
   
-  // Attach Event Listeners
   setupEventListeners();
-  
-  // Perform First Data Fetch
   fetchMarketData();
   
-  // Auto-fetch HL Wallet Margin on load if saved
   if (state.config.hlWallet) {
     fetchHlMargin();
   } else {
@@ -245,8 +244,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   updateLighterMarginUI();
-
-  // Start Refresh Timer
   startCountdown();
 });
 
@@ -255,9 +252,11 @@ function setLanguage(lang) {
   state.lang = lang;
   localStorage.setItem('dnperp_lang', lang);
 
-  // Update Language Switcher Buttons UI
+  // Update Language Buttons UI (Header & Drawer)
   document.getElementById('langBtnVI').classList.toggle('active', lang === 'VI');
   document.getElementById('langBtnEN').classList.toggle('active', lang === 'EN');
+  document.getElementById('drawerLangBtnVI').classList.toggle('active', lang === 'VI');
+  document.getElementById('drawerLangBtnEN').classList.toggle('active', lang === 'EN');
 
   // Update Static Elements with data-i18n Attribute
   const dict = i18n[lang] || i18n.VI;
@@ -280,9 +279,21 @@ function setLanguage(lang) {
     document.getElementById('knowledge-content-en').classList.add('hidden');
   }
 
-  // Re-render Dynamic Cards & Signals with new language text
   renderSpreadCards();
   recalculateBasisAndSignals();
+  updateWalletSubLabel();
+}
+
+function updateWalletSubLabel() {
+  const w = state.config.hlWallet;
+  const subEl = document.getElementById('displayHlWalletSub');
+  const isEn = state.lang === 'EN';
+  if (w) {
+    const shortW = `${w.substring(0, 6)}...${w.substring(w.length - 4)}`;
+    subEl.innerText = `${isEn ? 'Wallet' : 'Ví'}: ${shortW}`;
+  } else {
+    subEl.innerText = isEn ? 'Wallet: Not set' : 'Ví: Chưa thiết lập';
+  }
 }
 
 // Initialize market data structures for tracked pairs
@@ -431,9 +442,11 @@ function seedHistoryIfEmpty() {
 
 // Event Listeners Setup
 function setupEventListeners() {
-  // Language Switcher Buttons
+  // Language Switcher Buttons (Header & Drawer)
   document.getElementById('langBtnVI').addEventListener('click', () => setLanguage('VI'));
   document.getElementById('langBtnEN').addEventListener('click', () => setLanguage('EN'));
+  document.getElementById('drawerLangBtnVI').addEventListener('click', () => setLanguage('VI'));
+  document.getElementById('drawerLangBtnEN').addEventListener('click', () => setLanguage('EN'));
 
   // Navigation Tab Switching
   document.querySelectorAll('.nav-tab-btn').forEach(btn => {
@@ -459,27 +472,62 @@ function setupEventListeners() {
     if (state.config.hlWallet) fetchHlMargin();
   });
 
-  // Query HL Margin Button
+  // Consolidated Settings Drawer Triggers
+  document.getElementById('btnOpenSettings').addEventListener('click', () => {
+    document.getElementById('settingsModal').classList.remove('hidden');
+  });
+
+  document.querySelectorAll('.open-settings-trigger').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.getElementById('settingsModal').classList.remove('hidden');
+      const targetId = e.currentTarget.dataset.target;
+      if (targetId) {
+        setTimeout(() => {
+          const targetEl = document.getElementById(targetId);
+          if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
+    });
+  });
+
+  document.getElementById('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
+  document.getElementById('btnCancelSettings').addEventListener('click', () => closeModal('settingsModal'));
+
+  // Save Settings from Drawer
+  document.getElementById('btnSaveSettings').addEventListener('click', () => {
+    state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold').value) || 0.30;
+    state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold').value) || 75.0;
+    state.config.tgToken = document.getElementById('inputTgToken').value.trim();
+    state.config.tgChatId = document.getElementById('inputTgChatId').value.trim();
+
+    localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
+    localStorage.setItem('dnperp_margin_thresh', state.config.marginThreshold);
+    localStorage.setItem('dnperp_tg_token', state.config.tgToken);
+    localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
+
+    // Save Wallet if changed
+    const w = document.getElementById('hlWalletAddress').value.trim();
+    state.config.hlWallet = w;
+    localStorage.setItem('dnperp_wallet_address', w);
+    localStorage.setItem('dnperp_hl_wallet', w);
+    updateWalletSubLabel();
+    if (w) fetchHlMargin();
+
+    updateThresholdDisplayLabels();
+    recalculateBasisAndSignals();
+    updateChartThresholdLines();
+    closeModal('settingsModal');
+  });
+
+  // Query HL Margin Button inside Drawer
   document.getElementById('btnQueryHlMargin').addEventListener('click', () => {
     const w = document.getElementById('hlWalletAddress').value.trim();
     if (w) {
       state.config.hlWallet = w;
       localStorage.setItem('dnperp_wallet_address', w);
       localStorage.setItem('dnperp_hl_wallet', w);
+      updateWalletSubLabel();
       fetchHlMargin();
-    }
-  });
-
-  // Enter Key on Wallet Input
-  document.getElementById('hlWalletAddress').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      const w = e.target.value.trim();
-      if (w) {
-        state.config.hlWallet = w;
-        localStorage.setItem('dnperp_wallet_address', w);
-        localStorage.setItem('dnperp_hl_wallet', w);
-        fetchHlMargin();
-      }
     }
   });
 
@@ -489,6 +537,7 @@ function setupEventListeners() {
     localStorage.removeItem('dnperp_hl_wallet');
     state.config.hlWallet = '';
     document.getElementById('hlWalletAddress').value = '';
+    updateWalletSubLabel();
     updateHlMarginUI(0, 0, 0);
   });
 
@@ -504,30 +553,6 @@ function setupEventListeners() {
   };
   document.getElementById('ltMarginUsed').addEventListener('input', updateLt);
   document.getElementById('ltTotalMargin').addEventListener('input', updateLt);
-
-  // Settings Modal Controls
-  document.getElementById('btnOpenSettings').addEventListener('click', () => {
-    document.getElementById('settingsModal').classList.remove('hidden');
-  });
-  document.getElementById('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
-  document.getElementById('btnCancelSettings').addEventListener('click', () => closeModal('settingsModal'));
-
-  document.getElementById('btnSaveSettings').addEventListener('click', () => {
-    state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold').value) || 0.30;
-    state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold').value) || 75.0;
-    state.config.tgToken = document.getElementById('inputTgToken').value.trim();
-    state.config.tgChatId = document.getElementById('inputTgChatId').value.trim();
-
-    localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
-    localStorage.setItem('dnperp_margin_thresh', state.config.marginThreshold);
-    localStorage.setItem('dnperp_tg_token', state.config.tgToken);
-    localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
-
-    updateThresholdDisplayLabels();
-    recalculateBasisAndSignals();
-    updateChartThresholdLines();
-    closeModal('settingsModal');
-  });
 
   // Test Telegram Notification
   document.getElementById('btnTestTgAlert').addEventListener('click', async () => {
@@ -556,15 +581,7 @@ function setupEventListeners() {
     }
   });
 
-  // Manage Pairs Modal Controls
-  document.getElementById('btnManagePairs').addEventListener('click', () => {
-    renderPairsTable();
-    document.getElementById('pairsModal').classList.remove('hidden');
-  });
-  document.getElementById('btnClosePairsModal').addEventListener('click', () => closeModal('pairsModal'));
-  document.getElementById('btnClosePairsFooter').addEventListener('click', () => closeModal('pairsModal'));
-
-  // Add Pair Form Submission & Verification
+  // Add Pair Form Submission & Verification inside Drawer
   document.getElementById('btnAddPairSubmit').addEventListener('click', verifyAndAddPair);
 
   // Chart Range Selector Tabs
@@ -594,7 +611,7 @@ function closeModal(id) {
   document.getElementById(id).classList.add('hidden');
 }
 
-// Render Pairs Management Table
+// Render Pairs Management Table inside Drawer
 function renderPairsTable() {
   const tbody = document.getElementById('pairsTableBody');
   tbody.innerHTML = '';
