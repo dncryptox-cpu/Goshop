@@ -1,5 +1,5 @@
 /**
- * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 6 Engine
+ * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 7 Engine
  * Host: godnc.com/dnperp
  */
 
@@ -12,8 +12,182 @@ const DEFAULT_PAIRS = [
   { id: 'ANTH', name: 'Anthropic Pre-IPO', hlSymbol: 'ANTH', ltSymbol: 'ANTHROPIC' }
 ];
 
+// Multilingual i18n Dictionary
+const i18n = {
+  VI: {
+    appTitle: "Spread & Margin Monitor",
+    appSubtitle: "Read-only Live Dashboard • Quản Lý Cặp Động & Playbook Kiến Thức",
+    statusLive: "KẾT NỐI SỐNG",
+    statusOffline: "LỖI KẾT NỐI",
+    updateIn: "Cập nhật sau:",
+    btnRefresh: "Làm mới",
+    btnManagePairs: "Quản Lý Cặp",
+    btnSettings: "Cấu hình",
+    tabMonitor: "📊 Live Monitor & Margin",
+    tabKnowledge: "📚 Kiến Thức / Playbook",
+    
+    sectionSpreadTitle: "📊 Basis & Tín Hiệu Delta-Neutral",
+    sectionSpreadSub: "Đang theo dõi",
+    pairsCountUnit: "cặp",
+    warnThreshold: "Ngưỡng cảnh báo:",
+    basisLabel: "CHÊNH LỆCH BASIS (Entropy - Lighter)",
+    fundingYear: "Funding (Năm):",
+    fundingProxy: "Funding Proxy:",
+    vol24h: "Volume 24h:",
+    signalNeutral: "TRUNG LẬP",
+    signalLongLt: "LONG Lighter | SHORT Entropy",
+    signalLongHl: "LONG Entropy | SHORT Lighter",
+    stratNeutral: "💡 Khuyên dùng: <strong>Chưa có chênh lệch đáng kể (Basis trong ngưỡng safe ±{thresh}%)</strong>",
+    stratLongLt: "💡 Khuyên dùng: <strong>LONG Lighter (${ltPrice}) & SHORT Entropy (${hlPrice})</strong> để ăn chênh lệch +{basis}%!",
+    stratLongHl: "💡 Khuyên dùng: <strong>LONG Entropy (${hlPrice}) & SHORT Lighter (${ltPrice})</strong> để ăn chênh lệch {basis}%!",
+
+    sectionMarginTitle: "🛡️ Giám Sát Margin & Nguy Cơ Thanh Lý",
+    marginWarnThreshold: "Ngưỡng cảnh báo Margin:",
+    hlMarginTitle: "Hyperliquid Margin (Entropy)",
+    hlMarginSub: "Truy vấn tự động công khai qua clearinghouseState",
+    ltMarginTitle: "Lighter Margin (Robinhood Chain)",
+    ltMarginSub: "Nhập tay số dư margin cá nhân",
+    badgeSafe: "AN TOÀN",
+    badgeWarning: "CẢNH BÁO",
+    badgeDanger: "NGUY HIỂM",
+    labelWallet: "Địa chỉ ví Public (0x...):",
+    placeholderWallet: "Nhập địa chỉ ví Hyperliquid (0x...)",
+    btnQuery: "Query",
+    btnClearWallet: "🗑️ Xoá ví",
+    noticeWalletSaved: "Ví sẽ tự động được lưu và tải lại mỗi lần mở trang.",
+    labelMarginUsedPct: "Tỷ lệ Margin đã dùng:",
+    labelAccountValue: "Tổng Tài Sản (Account Value)",
+    labelMarginUsedVal: "Margin Đã Sử Dụng",
+    labelLtMarginUsed: "Margin đã dùng ($):",
+    labelLtTotalMargin: "Tổng Margin / Equity ($):",
+    labelLtFreeMargin: "Margin Khả Dụng (Free)",
+    labelLtWarnAt: "Cảnh Báo Thanh Lý At",
+
+    sectionChartTitle: "📈 Lịch Sử Basis 24 Giờ & Biểu Đồ Dao Động",
+    btnClearHistory: "Xoá lịch sử",
+
+    modalPairsTitle: "⚙️ Quản Lý Cặp Theo Dõi Động",
+    modalAddPairHeader: "➕ Thêm Cặp Mới",
+    modalAddPairSub: "Hệ thống sẽ kiểm tra tự động xem ticker có tồn tại trên cả 2 sàn Entropy (dex \"io\") và Lighter hay không trước khi thêm.",
+    labelHlTicker: "Ticker Entropy (Hyperliquid):",
+    labelLtTicker: "Ticker Lighter (Robinhood):",
+    labelPairName: "Tên Hiển Thị (Mô tả):",
+    btnAddPairSubmit: "🔍 Xác Minh & Thêm Cặp",
+    modalActivePairsHeader: "📋 Danh Sách Cặp Đang Theo Dõi",
+    colPairName: "Tên Cặp",
+    colHlTicker: "Ticker Entropy (io)",
+    colLtTicker: "Ticker Lighter",
+    colActions: "Hành Động",
+    btnDelete: "🗑️ Xoá",
+    btnClose: "Đóng",
+
+    modalSettingsTitle: "⚙️ Cấu Hình Ngưỡng Cảnh Báo & Telegram",
+    settingsThresholdsHeader: "🎯 Ngưỡng Cảnh Báo (Thresholds)",
+    labelBasisThresh: "Ngưỡng Basis (%) kích hoạt tín hiệu Arbitrage:",
+    helpBasisThresh: "Mặc định 0.30%. Khi |Basis| > ngưỡng này, hệ thống hiện tín hiệu Long/Short và bắn Cảnh báo Telegram.",
+    labelMarginThresh: "Ngưỡng Cảnh Báo Margin Usage (%):",
+    helpMarginThresh: "Mặc định 75.0%. Khi tỷ lệ margin đã dùng vượt quá mức này sẽ hiện màu đỏ nguy hiểm.",
+    settingsTgHeader: "✈️ Bot Telegram Cảnh Báo (Tùy chọn)",
+    settingsTgDesc: "Tái sử dụng Bot Telegram Hyperliquid sẵn có để nhận thông báo realtime.",
+    labelTgToken: "Telegram Bot Token:",
+    labelTgChatId: "Telegram Chat ID / Group ID:",
+    btnTestTgAlert: "🧪 Gửi Thử Cảnh Báo Telegram",
+    btnCancel: "Hủy",
+    btnSaveSettings: "Lưu Cấu Hình",
+
+    disclaimerText: "⚠️ Bản build thuần đọc dữ liệu công khai (Read-only). Không kết nối ví, không ký giao dịch."
+  },
+
+  EN: {
+    appTitle: "Spread & Margin Monitor",
+    appSubtitle: "Read-only Live Dashboard • Dynamic Pair Management & Knowledge Playbook",
+    statusLive: "LIVE CONNECTED",
+    statusOffline: "CONNECTION ERROR",
+    updateIn: "Updating in:",
+    btnRefresh: "Refresh",
+    btnManagePairs: "Manage Pairs",
+    btnSettings: "Settings",
+    tabMonitor: "📊 Live Monitor & Margin",
+    tabKnowledge: "📚 Knowledge / Playbook",
+
+    sectionSpreadTitle: "📊 Basis & Delta-Neutral Signals",
+    sectionSpreadSub: "Tracking",
+    pairsCountUnit: "pairs",
+    warnThreshold: "Warning threshold:",
+    basisLabel: "BASIS SPREAD (Entropy - Lighter)",
+    fundingYear: "Funding (Annual):",
+    fundingProxy: "Funding Proxy:",
+    vol24h: "24h Volume:",
+    signalNeutral: "NEUTRAL",
+    signalLongLt: "LONG Lighter | SHORT Entropy",
+    signalLongHl: "LONG Entropy | SHORT Lighter",
+    stratNeutral: "💡 Recommendation: <strong>No significant spread (Basis within safe range ±{thresh}%)</strong>",
+    stratLongLt: "💡 Recommendation: <strong>LONG Lighter (${ltPrice}) & SHORT Entropy (${hlPrice})</strong> to capture +{basis}% spread!",
+    stratLongHl: "💡 Recommendation: <strong>LONG Entropy (${hlPrice}) & SHORT Lighter (${ltPrice})</strong> to capture {basis}% spread!",
+
+    sectionMarginTitle: "🛡️ Margin Monitoring & Liquidation Risk",
+    marginWarnThreshold: "Margin alert threshold:",
+    hlMarginTitle: "Hyperliquid Margin (Entropy)",
+    hlMarginSub: "Auto public query via clearinghouseState",
+    ltMarginTitle: "Lighter Margin (Robinhood Chain)",
+    ltMarginSub: "Manual personal margin entry",
+    badgeSafe: "SAFE",
+    badgeWarning: "WARNING",
+    badgeDanger: "DANGER",
+    labelWallet: "Public Wallet Address (0x...):",
+    placeholderWallet: "Enter Hyperliquid public address (0x...)",
+    btnQuery: "Query",
+    btnClearWallet: "🗑️ Clear Wallet",
+    noticeWalletSaved: "Wallet will auto-save and reload on every page visit.",
+    labelMarginUsedPct: "Margin Used Ratio:",
+    labelAccountValue: "Total Assets (Account Value)",
+    labelMarginUsedVal: "Margin Used Amount",
+    labelLtMarginUsed: "Margin Used ($):",
+    labelLtTotalMargin: "Total Margin / Equity ($):",
+    labelLtFreeMargin: "Free Available Margin",
+    labelLtWarnAt: "Liquidation Warning At",
+
+    sectionChartTitle: "📈 24-Hour Basis History & Volatility Chart",
+    btnClearHistory: "Clear history",
+
+    modalPairsTitle: "⚙️ Dynamic Pair Management",
+    modalAddPairHeader: "➕ Add New Pair",
+    modalAddPairSub: "System will automatically check if tickers exist on both Entropy (dex \"io\") and Lighter before adding.",
+    labelHlTicker: "Entropy Ticker (Hyperliquid):",
+    labelLtTicker: "Lighter Ticker (Robinhood):",
+    labelPairName: "Display Name (Description):",
+    btnAddPairSubmit: "🔍 Verify & Add Pair",
+    modalActivePairsHeader: "📋 Active Tracked Pairs",
+    colPairName: "Pair Name",
+    colHlTicker: "Entropy Ticker (io)",
+    colLtTicker: "Lighter Ticker",
+    colActions: "Actions",
+    btnDelete: "🗑️ Remove",
+    btnClose: "Close",
+
+    modalSettingsTitle: "⚙️ Alert Thresholds & Telegram Settings",
+    settingsThresholdsHeader: "🎯 Alert Thresholds",
+    labelBasisThresh: "Basis Threshold (%) for Arbitrage Signals:",
+    helpBasisThresh: "Default 0.30%. When |Basis| > threshold, system triggers Long/Short signal and Telegram alert.",
+    labelMarginThresh: "Margin Usage Alert Threshold (%):",
+    helpMarginThresh: "Default 75.0%. Highlighted red when margin usage exceeds this level.",
+    settingsTgHeader: "✈️ Telegram Alert Bot (Optional)",
+    settingsTgDesc: "Reuse existing Hyperliquid Telegram Bot for real-time alerts.",
+    labelTgToken: "Telegram Bot Token:",
+    labelTgChatId: "Telegram Chat ID / Group ID:",
+    btnTestTgAlert: "🧪 Test Telegram Alert",
+    btnCancel: "Cancel",
+    btnSaveSettings: "Save Settings",
+
+    disclaimerText: "⚠️ 100% Read-only public data dashboard. No wallet connection, no transaction signing required."
+  }
+};
+
 // Global Application State
 const state = {
+  // Active Language
+  lang: localStorage.getItem('dnperp_lang') || 'VI',
+
   // Configuration Settings (saved in localStorage)
   config: {
     basisThreshold: 0.30, // %
@@ -52,6 +226,7 @@ const state = {
 document.addEventListener('DOMContentLoaded', () => {
   initMarketState();
   loadStoredConfig();
+  setLanguage(state.lang);
   renderSpreadCards();
   initChart();
   seedHistoryIfEmpty();
@@ -74,6 +249,41 @@ document.addEventListener('DOMContentLoaded', () => {
   // Start Refresh Timer
   startCountdown();
 });
+
+// Switch Language Engine
+function setLanguage(lang) {
+  state.lang = lang;
+  localStorage.setItem('dnperp_lang', lang);
+
+  // Update Language Switcher Buttons UI
+  document.getElementById('langBtnVI').classList.toggle('active', lang === 'VI');
+  document.getElementById('langBtnEN').classList.toggle('active', lang === 'EN');
+
+  // Update Static Elements with data-i18n Attribute
+  const dict = i18n[lang] || i18n.VI;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (dict[key]) {
+      el.innerHTML = dict[key];
+    }
+  });
+
+  // Update Input Placeholders
+  document.getElementById('hlWalletAddress').placeholder = dict.placeholderWallet;
+
+  // Toggle Knowledge Content Blocks
+  if (lang === 'EN') {
+    document.getElementById('knowledge-content-vi').classList.add('hidden');
+    document.getElementById('knowledge-content-en').classList.remove('hidden');
+  } else {
+    document.getElementById('knowledge-content-vi').classList.remove('hidden');
+    document.getElementById('knowledge-content-en').classList.add('hidden');
+  }
+
+  // Re-render Dynamic Cards & Signals with new language text
+  renderSpreadCards();
+  recalculateBasisAndSignals();
+}
 
 // Initialize market data structures for tracked pairs
 function initMarketState() {
@@ -98,7 +308,6 @@ function loadStoredConfig() {
   document.getElementById('inputTgToken').value = state.config.tgToken;
   document.getElementById('inputTgChatId').value = state.config.tgChatId;
   
-  // Auto-fill wallet input from localStorage
   const savedWallet = localStorage.getItem('dnperp_wallet_address') || localStorage.getItem('dnperp_hl_wallet') || '';
   document.getElementById('hlWalletAddress').value = savedWallet;
 
@@ -122,6 +331,8 @@ function renderSpreadCards() {
   const container = document.getElementById('spreadCardsContainer');
   container.innerHTML = '';
 
+  const dict = i18n[state.lang] || i18n.VI;
+
   state.trackedPairs.forEach(pair => {
     const cardHtml = `
       <div class="spread-card" id="card-${pair.id}">
@@ -132,12 +343,12 @@ function renderSpreadCards() {
           </div>
           <div class="action-badge neutral" id="signal-${pair.id}">
             <span class="badge-icon">⚪</span>
-            <span class="badge-text">TRUNG LẬP</span>
+            <span class="badge-text">${dict.signalNeutral}</span>
           </div>
         </div>
 
         <div class="basis-hero-box">
-          <div class="basis-label">CHÊNH LỆCH BASIS (Entropy - Lighter)</div>
+          <div class="basis-label">${dict.basisLabel}</div>
           <div class="basis-value-group">
             <span class="basis-percent mono-num" id="basis-${pair.id}">0.00%</span>
             <span class="basis-abs mono-num" id="basisAbs-${pair.id}">($0.00)</span>
@@ -153,11 +364,11 @@ function renderSpreadCards() {
             <div class="source-price mono-num" id="hlPrice-${pair.id}">$0.00</div>
             <div class="source-metrics">
               <div class="metric-item">
-                <span class="m-label">Funding (Năm):</span>
+                <span class="m-label">${dict.fundingYear}</span>
                 <span class="m-val mono-num" id="hlFunding-${pair.id}">0.00%</span>
               </div>
               <div class="metric-item">
-                <span class="m-label">Volume 24h:</span>
+                <span class="m-label">${dict.vol24h}</span>
                 <span class="m-val mono-num" id="hlVol-${pair.id}">$0</span>
               </div>
             </div>
@@ -173,11 +384,11 @@ function renderSpreadCards() {
             <div class="source-price mono-num" id="ltPrice-${pair.id}">$0.00</div>
             <div class="source-metrics">
               <div class="metric-item">
-                <span class="m-label">Funding Proxy:</span>
+                <span class="m-label">${dict.fundingProxy}</span>
                 <span class="m-val mono-num" id="ltFunding-${pair.id}">0.00%</span>
               </div>
               <div class="metric-item">
-                <span class="m-label">Volume 24h:</span>
+                <span class="m-label">${dict.vol24h}</span>
                 <span class="m-val mono-num" id="ltVol-${pair.id}">$0</span>
               </div>
             </div>
@@ -185,7 +396,7 @@ function renderSpreadCards() {
         </div>
 
         <div class="strategy-recommendation" id="strat-${pair.id}">
-          💡 Khuyên dùng: <strong>Chưa có chênh lệch đáng kể (Basis trong ngưỡng safe)</strong>
+          ${dict.stratNeutral.replace('{thresh}', state.config.basisThreshold.toFixed(2))}
         </div>
       </div>
     `;
@@ -220,7 +431,11 @@ function seedHistoryIfEmpty() {
 
 // Event Listeners Setup
 function setupEventListeners() {
-  // Navigation Tab Switching (Phase 6)
+  // Language Switcher Buttons
+  document.getElementById('langBtnVI').addEventListener('click', () => setLanguage('VI'));
+  document.getElementById('langBtnEN').addEventListener('click', () => setLanguage('EN'));
+
+  // Navigation Tab Switching
   document.querySelectorAll('.nav-tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
@@ -321,22 +536,22 @@ function setupEventListeners() {
     const chatId = document.getElementById('inputTgChatId').value.trim();
 
     if (!token || !chatId) {
-      resEl.innerText = '❌ Vui lòng nhập Bot Token và Chat ID!';
+      resEl.innerText = state.lang === 'EN' ? '❌ Please enter Bot Token & Chat ID!' : '❌ Vui lòng nhập Bot Token và Chat ID!';
       resEl.style.color = 'var(--accent-danger)';
       return;
     }
 
-    resEl.innerText = '⏳ Đang gửi thử...';
+    resEl.innerText = state.lang === 'EN' ? '⏳ Sending test alert...' : '⏳ Đang gửi thử...';
     resEl.style.color = 'var(--text-gold)';
 
-    const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Đã kết nối thành công từ <code>godnc.com/dnperp</code>!\nHệ thống sẵn sàng gửi cảnh báo realtime khi chênh lệch giá hoặc margin vượt ngưỡng.`;
+    const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Connection verified from <code>godnc.com/dnperp</code>!\nRealtime alerts ready when basis or margin threshold is breached.`;
     const success = await sendTelegramMessage(token, chatId, msg);
 
     if (success) {
-      resEl.innerText = '✅ Đã gửi thành công vào Telegram!';
+      resEl.innerText = state.lang === 'EN' ? '✅ Alert sent successfully!' : '✅ Đã gửi thành công vào Telegram!';
       resEl.style.color = 'var(--accent-safe)';
     } else {
-      resEl.innerText = '❌ Gửi thất bại. Kiểm tra lại Token/Chat ID!';
+      resEl.innerText = state.lang === 'EN' ? '❌ Failed to send. Check Token/Chat ID!' : '❌ Gửi thất bại. Kiểm tra lại Token/Chat ID!';
       resEl.style.color = 'var(--accent-danger)';
     }
   });
@@ -364,7 +579,10 @@ function setupEventListeners() {
 
   // Clear History
   document.getElementById('btnClearHistory').addEventListener('click', () => {
-    if (confirm('Bạn có chắc chắn muốn xoá toàn bộ lịch sử 24h đã lưu?')) {
+    const confirmMsg = state.lang === 'EN' 
+      ? 'Are you sure you want to clear 24h historical data?' 
+      : 'Bạn có chắc chắn muốn xoá toàn bộ lịch sử 24h đã lưu?';
+    if (confirm(confirmMsg)) {
       state.history = [];
       saveHistory();
       updateChartData();
@@ -380,16 +598,17 @@ function closeModal(id) {
 function renderPairsTable() {
   const tbody = document.getElementById('pairsTableBody');
   tbody.innerHTML = '';
+  const dict = i18n[state.lang] || i18n.VI;
 
-  state.trackedPairs.forEach((pair, idx) => {
+  state.trackedPairs.forEach((pair) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${pair.name || pair.id}</strong> (${pair.id})</td>
       <td><span class="dex-tag">io:${pair.hlSymbol}</span></td>
       <td><span class="dex-tag">${pair.ltSymbol}</span></td>
       <td style="text-align: right;">
-        <button class="btn btn-danger btn-xs" onclick="removeTrackedPair('${pair.id}')" ${state.trackedPairs.length <= 1 ? 'disabled title="Cần giữ ít nhất 1 cặp"' : ''}>
-          🗑️ Xoá
+        <button class="btn btn-danger btn-xs" onclick="removeTrackedPair('${pair.id}')" ${state.trackedPairs.length <= 1 ? 'disabled title="Minimum 1 pair required"' : ''}>
+          ${dict.btnDelete}
         </button>
       </td>
     `;
@@ -404,22 +623,24 @@ async function verifyAndAddPair() {
   const ltSym = document.getElementById('inputAddLtSymbol').value.trim().toUpperCase();
   let name = document.getElementById('inputAddName').value.trim();
 
+  const isEn = state.lang === 'EN';
+
   if (!hlSym || !ltSym) {
-    statusEl.innerText = '❌ Vui lòng nhập cả Ticker Entropy và Lighter!';
+    statusEl.innerText = isEn ? '❌ Please enter both Entropy and Lighter tickers!' : '❌ Vui lòng nhập cả Ticker Entropy và Lighter!';
     statusEl.style.color = 'var(--accent-danger)';
     return;
   }
 
   const pairId = hlSym;
   if (state.trackedPairs.some(p => p.id === pairId)) {
-    statusEl.innerText = `❌ Cặp ${pairId} đã tồn tại trong danh sách!`;
+    statusEl.innerText = isEn ? `❌ Pair ${pairId} already exists in tracking list!` : `❌ Cặp ${pairId} đã tồn tại trong danh sách!`;
     statusEl.style.color = 'var(--accent-danger)';
     return;
   }
 
   if (!name) name = `${hlSym} Synthetic`;
 
-  statusEl.innerText = '⏳ Đang kiểm tra ticker trên Hyperliquid & Lighter...';
+  statusEl.innerText = isEn ? '⏳ Verifying ticker on Hyperliquid & Lighter...' : '⏳ Đang kiểm tra ticker trên Hyperliquid & Lighter...';
   statusEl.style.color = 'var(--text-gold)';
 
   try {
@@ -433,7 +654,7 @@ async function verifyAndAddPair() {
     const hlFound = hlUniverse.some(u => u.name === hlSym || u.name === `io:${hlSym}` || u.name.endsWith(':' + hlSym));
 
     if (!hlFound) {
-      statusEl.innerText = `❌ Ticker '${hlSym}' không tìm thấy trên Hyperliquid dex "io"!`;
+      statusEl.innerText = isEn ? `❌ Ticker '${hlSym}' not found on Hyperliquid dex "io"!` : `❌ Ticker '${hlSym}' không tìm thấy trên Hyperliquid dex "io"!`;
       statusEl.style.color = 'var(--accent-danger)';
       return;
     }
@@ -444,7 +665,7 @@ async function verifyAndAddPair() {
     const ltFound = books.some(b => b.symbol === ltSym);
 
     if (!ltFound) {
-      statusEl.innerText = `❌ Ticker '${ltSym}' không tìm thấy trên Lighter Robinhood Chain!`;
+      statusEl.innerText = isEn ? `❌ Ticker '${ltSym}' not found on Lighter Robinhood Chain!` : `❌ Ticker '${ltSym}' không tìm thấy trên Lighter Robinhood Chain!`;
       statusEl.style.color = 'var(--accent-danger)';
       return;
     }
@@ -464,24 +685,26 @@ async function verifyAndAddPair() {
     document.getElementById('inputAddLtSymbol').value = '';
     document.getElementById('inputAddName').value = '';
 
-    statusEl.innerText = `✅ Đã thêm cặp ${pairId} thành công!`;
+    statusEl.innerText = isEn ? `✅ Pair ${pairId} added successfully!` : `✅ Đã thêm cặp ${pairId} thành công!`;
     statusEl.style.color = 'var(--accent-safe)';
 
   } catch (err) {
     console.error('Verification error:', err);
-    statusEl.innerText = '❌ Lỗi kết nối API khi xác minh ticker!';
+    statusEl.innerText = isEn ? '❌ API error during ticker verification!' : '❌ Lỗi kết nối API khi xác minh ticker!';
     statusEl.style.color = 'var(--accent-danger)';
   }
 }
 
 // Remove Tracked Pair
 window.removeTrackedPair = function(pairId) {
+  const isEn = state.lang === 'EN';
   if (state.trackedPairs.length <= 1) {
-    alert('Cần giữ ít nhất 1 cặp để theo dõi!');
+    alert(isEn ? 'At least 1 tracked pair required!' : 'Cần giữ ít nhất 1 cặp để theo dõi!');
     return;
   }
 
-  if (confirm(`Bạn có chắc muốn xoá cặp ${pairId} khỏi danh sách theo dõi?`)) {
+  const msg = isEn ? `Are you sure you want to remove pair ${pairId}?` : `Bạn có chắc muốn xoá cặp ${pairId} khỏi danh sách theo dõi?`;
+  if (confirm(msg)) {
     state.trackedPairs = state.trackedPairs.filter(p => p.id !== pairId);
     localStorage.setItem('dnperp_tracked_pairs', JSON.stringify(state.trackedPairs));
 
@@ -513,6 +736,7 @@ function startCountdown() {
 async function fetchMarketData() {
   const statusLabel = document.getElementById('statusLabel');
   const connectionStatus = document.getElementById('connectionStatus');
+  const dict = i18n[state.lang] || i18n.VI;
 
   try {
     const [hlRes, ltRes] = await Promise.all([
@@ -574,7 +798,7 @@ async function fetchMarketData() {
     });
 
     connectionStatus.className = 'status-indicator live';
-    statusLabel.innerText = 'KẾT NỐI SỐNG';
+    statusLabel.innerText = dict.statusLive;
 
     recalculateBasisAndSignals();
 
@@ -587,7 +811,7 @@ async function fetchMarketData() {
   } catch (err) {
     console.error('Data fetch error:', err);
     connectionStatus.className = 'status-indicator offline';
-    statusLabel.innerText = 'LỖI KẾT NỐI';
+    statusLabel.innerText = dict.statusOffline;
   }
 }
 
@@ -629,6 +853,8 @@ async function fetchHlMargin() {
 // Recalculate Signals & Update UI Cards
 function recalculateBasisAndSignals() {
   const thresh = state.config.basisThreshold;
+  const dict = i18n[state.lang] || i18n.VI;
+  const isEn = state.lang === 'EN';
   let activeBannerMsg = null;
 
   state.trackedPairs.forEach(pair => {
@@ -643,8 +869,10 @@ function recalculateBasisAndSignals() {
     const ltFundingEl = document.getElementById(`ltFunding-${pair.id}`);
     const ltVolEl = document.getElementById(`ltVol-${pair.id}`);
 
+    const yearSuffix = isEn ? '/yr' : '/năm';
+
     if (hlPriceEl) hlPriceEl.innerText = `$${m.hlPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    if (hlFundingEl) hlFundingEl.innerText = `${m.hlFunding > 0 ? '+' : ''}${m.hlFunding.toFixed(2)}%/năm`;
+    if (hlFundingEl) hlFundingEl.innerText = `${m.hlFunding > 0 ? '+' : ''}${m.hlFunding.toFixed(2)}%${yearSuffix}`;
     if (hlVolEl) hlVolEl.innerText = `$${Math.round(m.hlVol).toLocaleString()}`;
 
     if (ltPriceEl) ltPriceEl.innerText = `$${m.ltPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -670,36 +898,46 @@ function recalculateBasisAndSignals() {
     if (m.basis > thresh) {
       if (signalBadge) {
         signalBadge.className = 'action-badge long-lt';
-        signalBadge.innerHTML = `<span class="badge-icon">🟢</span><span class="badge-text">LONG Lighter | SHORT Entropy</span>`;
+        signalBadge.innerHTML = `<span class="badge-icon">🟢</span><span class="badge-text">${dict.signalLongLt}</span>`;
       }
       if (stratBox) {
-        stratBox.innerHTML = `💡 Khuyên dùng: <strong>LONG Lighter ($${m.ltPrice.toFixed(2)}) & SHORT Entropy ($${m.hlPrice.toFixed(2)})</strong> để ăn chênh lệch +${m.basis.toFixed(2)}%!`;
+        stratBox.innerHTML = dict.stratLongLt
+          .replace('{ltPrice}', m.ltPrice.toFixed(2))
+          .replace('{hlPrice}', m.hlPrice.toFixed(2))
+          .replace('{basis}', m.basis.toFixed(2));
       }
 
-      activeBannerMsg = `Cảnh báo: Basis ${pair.id} đang vượt ngưỡng +${m.basis.toFixed(2)}% (Mở Long Lighter / Short Entropy)`;
+      activeBannerMsg = isEn 
+        ? `Warning: ${pair.id} Basis exceeds +${m.basis.toFixed(2)}% (Open Long Lighter / Short Entropy)`
+        : `Cảnh báo: Basis ${pair.id} đang vượt ngưỡng +${m.basis.toFixed(2)}% (Mở Long Lighter / Short Entropy)`;
 
-      triggerTelegramAlert(pair.id, `🚨 <b>NỔ KÈO ARBITRAGE ${pair.id}!</b>\n\nChênh lệch Basis: <b>+${m.basis.toFixed(2)}%</b> (Vượt ngưỡng ${thresh}%)\n• Entropy: $${m.hlPrice.toFixed(2)}\n• Lighter: $${m.ltPrice.toFixed(2)}\n👉 <b>Khuyên dùng:</b> LONG Lighter | SHORT Entropy`);
+      triggerTelegramAlert(pair.id, `🚨 <b>ARBITRAGE SIGNAL: ${pair.id}!</b>\n\nBasis Spread: <b>+${m.basis.toFixed(2)}%</b> (Exceeds ${thresh}%)\n• Entropy: $${m.hlPrice.toFixed(2)}\n• Lighter: $${m.ltPrice.toFixed(2)}\n👉 <b>Action:</b> LONG Lighter | SHORT Entropy`);
 
     } else if (m.basis < -thresh) {
       if (signalBadge) {
         signalBadge.className = 'action-badge long-hl';
-        signalBadge.innerHTML = `<span class="badge-icon">🔵</span><span class="badge-text">LONG Entropy | SHORT Lighter</span>`;
+        signalBadge.innerHTML = `<span class="badge-icon">🔵</span><span class="badge-text">${dict.signalLongHl}</span>`;
       }
       if (stratBox) {
-        stratBox.innerHTML = `💡 Khuyên dùng: <strong>LONG Entropy ($${m.hlPrice.toFixed(2)}) & SHORT Lighter ($${m.ltPrice.toFixed(2)})</strong> để ăn chênh lệch ${m.basis.toFixed(2)}%!`;
+        stratBox.innerHTML = dict.stratLongHl
+          .replace('{hlPrice}', m.hlPrice.toFixed(2))
+          .replace('{ltPrice}', m.ltPrice.toFixed(2))
+          .replace('{basis}', m.basis.toFixed(2));
       }
 
-      activeBannerMsg = `Cảnh báo: Basis ${pair.id} đang giảm âm ${m.basis.toFixed(2)}% (Mở Long Entropy / Short Lighter)`;
+      activeBannerMsg = isEn 
+        ? `Warning: ${pair.id} Basis drops below ${m.basis.toFixed(2)}% (Open Long Entropy / Short Lighter)`
+        : `Cảnh báo: Basis ${pair.id} đang giảm âm ${m.basis.toFixed(2)}% (Mở Long Entropy / Short Lighter)`;
 
-      triggerTelegramAlert(pair.id, `🚨 <b>NỔ KÈO ARBITRAGE ${pair.id}!</b>\n\nChênh lệch Basis: <b>${m.basis.toFixed(2)}%</b> (Vượt ngưỡng -${thresh}%)\n• Entropy: $${m.hlPrice.toFixed(2)}\n• Lighter: $${m.ltPrice.toFixed(2)}\n👉 <b>Khuyên dùng:</b> LONG Entropy | SHORT Lighter`);
+      triggerTelegramAlert(pair.id, `🚨 <b>ARBITRAGE SIGNAL: ${pair.id}!</b>\n\nBasis Spread: <b>${m.basis.toFixed(2)}%</b> (Exceeds -${thresh}%)\n• Entropy: $${m.hlPrice.toFixed(2)}\n• Lighter: $${m.ltPrice.toFixed(2)}\n👉 <b>Action:</b> LONG Entropy | SHORT Lighter`);
 
     } else {
       if (signalBadge) {
         signalBadge.className = 'action-badge neutral';
-        signalBadge.innerHTML = `<span class="badge-icon">⚪</span><span class="badge-text">TRUNG LẬP</span>`;
+        signalBadge.innerHTML = `<span class="badge-icon">⚪</span><span class="badge-text">${dict.signalNeutral}</span>`;
       }
       if (stratBox) {
-        stratBox.innerHTML = `💡 Khuyên dùng: <strong>Chưa có chênh lệch đáng kể (Basis trong ngưỡng safe ±${thresh.toFixed(2)}%)</strong>`;
+        stratBox.innerHTML = dict.stratNeutral.replace('{thresh}', thresh.toFixed(2));
       }
     }
   });
@@ -714,6 +952,7 @@ function recalculateBasisAndSignals() {
 
 // Update Hyperliquid Margin UI
 function updateHlMarginUI(accountVal, marginUsed, pct) {
+  const dict = i18n[state.lang] || i18n.VI;
   document.getElementById('hlAccountValue').innerText = `$${accountVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   document.getElementById('hlTotalMarginUsed').innerText = `$${marginUsed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   document.getElementById('hlMarginPct').innerText = `${pct.toFixed(1)}%`;
@@ -727,20 +966,21 @@ function updateHlMarginUI(accountVal, marginUsed, pct) {
   if (pct >= warnThresh) {
     fill.className = 'meter-fill danger';
     badge.className = 'margin-status-badge danger';
-    badge.innerText = 'NGUY HIỂM';
+    badge.innerText = dict.badgeDanger;
   } else if (pct >= 50) {
     fill.className = 'meter-fill warning';
     badge.className = 'margin-status-badge warning';
-    badge.innerText = 'CẢNH BÁO';
+    badge.innerText = dict.badgeWarning;
   } else {
     fill.className = 'meter-fill safe';
     badge.className = 'margin-status-badge safe';
-    badge.innerText = 'AN TOÀN';
+    badge.innerText = dict.badgeSafe;
   }
 }
 
 // Update Lighter Margin UI
 function updateLighterMarginUI() {
+  const dict = i18n[state.lang] || i18n.VI;
   const used = state.config.ltMarginUsed;
   const total = state.config.ltTotalMargin;
   const free = Math.max(0, total - used);
@@ -758,18 +998,18 @@ function updateLighterMarginUI() {
   if (pct >= warnThresh) {
     fill.className = 'meter-fill danger';
     badge.className = 'margin-status-badge danger';
-    badge.innerText = 'NGUY HIỂM';
+    badge.innerText = dict.badgeDanger;
 
     triggerTelegramAlert('LT_MARGIN', `⚠️ <b>Lighter Margin Warning!</b>\n\nMargin Usage: <b>${pct.toFixed(1)}%</b> (Vượt ngưỡng ${warnThresh}%)\nTotal Equity: $${total.toLocaleString()}\nMargin dùng: $${used.toLocaleString()}`);
 
   } else if (pct >= 50) {
     fill.className = 'meter-fill warning';
     badge.className = 'margin-status-badge warning';
-    badge.innerText = 'CẢNH BÁO';
+    badge.innerText = dict.badgeWarning;
   } else {
     fill.className = 'meter-fill safe';
     badge.className = 'margin-status-badge safe';
-    badge.innerText = 'AN TOÀN';
+    badge.innerText = dict.badgeSafe;
   }
 }
 
@@ -932,9 +1172,12 @@ function updateChartData() {
     fill: false
   });
 
+  const upperLabel = state.lang === 'EN' ? 'Upper Threshold' : 'Ngưỡng Upper';
+  const lowerLabel = state.lang === 'EN' ? 'Lower Threshold' : 'Ngưỡng Lower';
+
   legendHtml.push(`
-    <div class="legend-item"><span class="legend-color line-upper"></span> Ngưỡng Upper (+<span class="displayThresholdVal">${thresh.toFixed(2)}%</span>)</div>
-    <div class="legend-item"><span class="legend-color line-lower"></span> Ngưỡng Lower (-<span class="displayThresholdVal">${thresh.toFixed(2)}%</span>)</div>
+    <div class="legend-item"><span class="legend-color line-upper"></span> ${upperLabel} (+<span class="displayThresholdVal">${thresh.toFixed(2)}%</span>)</div>
+    <div class="legend-item"><span class="legend-color line-lower"></span> ${lowerLabel} (-<span class="displayThresholdVal">${thresh.toFixed(2)}%</span>)</div>
   `);
 
   state.chart.data.labels = labels;
