@@ -1,5 +1,5 @@
 /**
- * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 5 Engine
+ * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 6 Engine
  * Host: godnc.com/dnperp
  */
 
@@ -220,6 +220,23 @@ function seedHistoryIfEmpty() {
 
 // Event Listeners Setup
 function setupEventListeners() {
+  // Navigation Tab Switching (Phase 6)
+  document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
+      e.target.classList.add('active');
+
+      const targetTab = e.target.dataset.tab;
+      if (targetTab === 'tab-monitor') {
+        document.getElementById('tab-monitor-view').classList.remove('hidden');
+        document.getElementById('tab-knowledge-view').classList.add('hidden');
+      } else if (targetTab === 'tab-knowledge') {
+        document.getElementById('tab-monitor-view').classList.add('hidden');
+        document.getElementById('tab-knowledge-view').classList.remove('hidden');
+      }
+    });
+  });
+
   // Manual Refresh
   document.getElementById('btnManualRefresh').addEventListener('click', () => {
     state.countdown = 10;
@@ -393,7 +410,7 @@ async function verifyAndAddPair() {
     return;
   }
 
-  const pairId = hlSym; // Use Entropy ticker as primary ID
+  const pairId = hlSym;
   if (state.trackedPairs.some(p => p.id === pairId)) {
     statusEl.innerText = `❌ Cặp ${pairId} đã tồn tại trong danh sách!`;
     statusEl.style.color = 'var(--accent-danger)';
@@ -406,7 +423,6 @@ async function verifyAndAddPair() {
   statusEl.style.color = 'var(--text-gold)';
 
   try {
-    // 1. Verify Hyperliquid
     const hlRes = await fetch('https://api.hyperliquid.xyz/info', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -422,7 +438,6 @@ async function verifyAndAddPair() {
       return;
     }
 
-    // 2. Verify Lighter
     const ltRes = await fetch('https://api.rh.lighter.xyz/api/v1/orderBookDetails');
     const ltData = await ltRes.json();
     const books = ltData.order_book_details || [];
@@ -434,7 +449,6 @@ async function verifyAndAddPair() {
       return;
     }
 
-    // 3. Add to Tracked Pairs List
     const newPair = { id: pairId, name: name, hlSymbol: hlSym, ltSymbol: ltSym };
     state.trackedPairs.push(newPair);
     localStorage.setItem('dnperp_tracked_pairs', JSON.stringify(state.trackedPairs));
@@ -444,10 +458,8 @@ async function verifyAndAddPair() {
     renderPairsTable();
     updateChartData();
 
-    // Trigger Immediate Fetch for New Pair
     fetchMarketData();
 
-    // Reset Form
     document.getElementById('inputAddHlSymbol').value = '';
     document.getElementById('inputAddLtSymbol').value = '';
     document.getElementById('inputAddName').value = '';
@@ -521,11 +533,9 @@ async function fetchMarketData() {
     const hlAssetCtxs = hlData[1] || [];
     const books = ltData.order_book_details || [];
 
-    // Process each active tracked pair
     const currentPoint = { time: Date.now(), pairs: {} };
 
     state.trackedPairs.forEach(pair => {
-      // Hyperliquid Lookup
       const hlIdx = hlUniverse.findIndex(u => u.name === pair.hlSymbol || u.name === `io:${pair.hlSymbol}` || u.name.endsWith(':' + pair.hlSymbol));
       if (hlIdx !== -1 && hlAssetCtxs[hlIdx]) {
         const ctx = hlAssetCtxs[hlIdx];
@@ -539,7 +549,6 @@ async function fetchMarketData() {
         state.market[pair.id].hlVol = vol24h;
       }
 
-      // Lighter Lookup
       const ltBook = books.find(b => b.symbol === pair.ltSymbol);
       if (ltBook) {
         const markPx = parseFloat(ltBook.mark_price) || 0;
@@ -552,7 +561,6 @@ async function fetchMarketData() {
         state.market[pair.id].ltVol = vol24h;
       }
 
-      // Basis Calculation
       const m = state.market[pair.id];
       if (m.ltPrice > 0 && m.hlPrice > 0) {
         m.basis = ((m.hlPrice - m.ltPrice) / m.ltPrice) * 100;
@@ -570,7 +578,6 @@ async function fetchMarketData() {
 
     recalculateBasisAndSignals();
 
-    // Log History Point
     state.history.push(currentPoint);
     const cutoff = Date.now() - (24 * 60 * 60 * 1000);
     state.history = state.history.filter(h => h.time >= cutoff);
@@ -879,7 +886,6 @@ function updateChartData() {
   state.trackedPairs.forEach((pair, idx) => {
     const color = PALETTE[idx % PALETTE.length];
     
-    // Extract series for this pair (backwards compatible with old history structure)
     const series = filtered.map(h => {
       if (h.pairs && h.pairs[pair.id] !== undefined) return h.pairs[pair.id];
       if (pair.id === 'SNDK' && h.sndk !== undefined) return h.sndk;
@@ -905,7 +911,6 @@ function updateChartData() {
     `);
   });
 
-  // Reference lines for Upper & Lower thresholds
   const thresh = state.config.basisThreshold;
   datasets.push({
     label: 'Upper Threshold',
