@@ -1,8 +1,32 @@
 /**
- * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 10 Refactored Engine
- * Multi-Exchange Connector Framework + Adaptive Volatility Bands + Trading Journal & Analytics
+ * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 11 Complete Build
+ * Multi-Exchange Connector Framework + Adaptive Bands + Trading Journal + Passcode Gatekeeper
  * Host: godnc.com/dnperp
  */
+
+// ==========================================================================
+// PHASE 11: PASSCODE GATEKEEPER SHA-256 HASH & SESSION VERIFICATION
+// Default passcode: 'dnperp2026'
+// SHA-256 Hash of 'dnperp2026': '51db8a5a31ead3201b59be198832dcc375f14a10d2af1946abbd80f03ab7aa98'
+//
+// HOW TO CHANGE YOUR PASSCODE:
+// 1. Open Browser Console (F12) -> type:
+//    await crypto.subtle.digest('SHA-256', new TextEncoder().encode('YOUR_NEW_PASSWORD'))
+//    .then(b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join(''))
+// 2. Copy the resulting 64-character hash string and paste it into TARGET_PASSCODE_HASH below,
+//    or set it via localStorage: localStorage.setItem('dnperp_custom_passcode_hash', 'YOUR_HASH')
+// ==========================================================================
+const TARGET_PASSCODE_HASH = localStorage.getItem('dnperp_custom_passcode_hash') 
+  || '51db8a5a31ead3201b59be198832dcc375f14a10d2af1946abbd80f03ab7aa98';
+
+// Compute SHA-256 hash using native Web Crypto API
+async function hashPasscode(str) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 // Palette for chart lines per pair
 const PALETTE = ['#4bacf5', '#e59866', '#26a69a', '#e91e63', '#ab47bc', '#fbc02d', '#00bcd4', '#ff7043'];
@@ -312,6 +336,7 @@ const i18n = {
 // Global Application State
 const rawStoredPairs = JSON.parse(localStorage.getItem('dnperp_tracked_pairs') || 'null');
 const state = {
+  isDashboardInitialized: false,
   lang: localStorage.getItem('dnperp_lang') || 'VI',
 
   config: {
@@ -335,11 +360,7 @@ const state = {
   },
 
   history: JSON.parse(localStorage.getItem('dnperp_history') || '[]'),
-  
-  // Phase 9b Signal Duration Tracker
   signalTracker: JSON.parse(localStorage.getItem('dnperp_signal_tracker') || '{}'),
-
-  // Phase 10 Trading Journal Entries
   journal: JSON.parse(localStorage.getItem('dnperp_journal_trades') || '[]'),
 
   countdown: 10,
@@ -350,34 +371,95 @@ const state = {
   activeChartRange: '24h'
 };
 
-// Initialize App on DOM Load
-document.addEventListener('DOMContentLoaded', () => {
-  initMarketState();
-  loadStoredConfig();
-  populateExchangeDropdowns();
-  populateTradeModalPairsDropdown();
-  setLanguage(state.lang);
-  seed30DaysHistoryIfEmpty();
-  renderSpreadCards();
-  renderPairsTable();
-  initChart();
-  
-  // Phase 10 Journal Init
-  renderJournalTable();
-  updateJournalAnalytics();
-  initJournalCharts();
+// Phase 11 Passcode Verification Logic
+async function verifyAndUnlockPasscode() {
+  const inputEl = document.getElementById('passcodeInput');
+  const rawInput = inputEl ? inputEl.value.trim() : '';
 
-  setupEventListeners();
-  fetchMarketData();
-  
-  if (state.config.hlWallet) {
-    fetchHlMargin();
-  } else {
-    updateHlMarginUI(0, 0, 0);
+  if (!rawInput) {
+    showPasscodeError(state.lang === 'EN' ? '❌ Please enter passcode!' : '❌ Vui lòng nhập mật khẩu!');
+    return;
   }
 
-  updateLighterMarginUI();
-  startCountdown();
+  const inputHash = await hashPasscode(rawInput);
+  if (inputHash === TARGET_PASSCODE_HASH) {
+    sessionStorage.setItem('dnperp_unlocked_session', 'true');
+    unlockDashboardUI();
+  } else {
+    showPasscodeError(state.lang === 'EN' ? '❌ Incorrect passcode. Please try again!' : '❌ Mật khẩu không đúng. Vui lòng thử lại!');
+    if (inputEl) inputEl.value = '';
+  }
+}
+
+function showPasscodeError(msg) {
+  const errorEl = document.getElementById('passcodeError');
+  if (errorEl) {
+    errorEl.innerText = msg;
+    errorEl.classList.remove('hidden');
+  }
+}
+
+function unlockDashboardUI() {
+  const gateEl = document.getElementById('passcodeGate');
+  const appWrapper = document.getElementById('appWrapper');
+
+  if (gateEl) gateEl.classList.add('hidden');
+  if (appWrapper) appWrapper.classList.remove('hidden');
+
+  if (!state.isDashboardInitialized) {
+    state.isDashboardInitialized = true;
+    initMarketState();
+    loadStoredConfig();
+    populateExchangeDropdowns();
+    populateTradeModalPairsDropdown();
+    setLanguage(state.lang);
+    seed30DaysHistoryIfEmpty();
+    renderSpreadCards();
+    renderPairsTable();
+    initChart();
+    
+    renderJournalTable();
+    updateJournalAnalytics();
+    initJournalCharts();
+
+    setupEventListeners();
+    fetchMarketData();
+    
+    if (state.config.hlWallet) {
+      fetchHlMargin();
+    } else {
+      updateHlMarginUI(0, 0, 0);
+    }
+
+    updateLighterMarginUI();
+    startCountdown();
+  }
+}
+
+// Initialize App on DOM Load
+document.addEventListener('DOMContentLoaded', () => {
+  const isUnlockedSession = sessionStorage.getItem('dnperp_unlocked_session') === 'true';
+
+  if (isUnlockedSession) {
+    unlockDashboardUI();
+  } else {
+    // Show Passcode Gate, attach unlock listener
+    const btnUnlock = document.getElementById('btnUnlockPasscode');
+    const inputPasscode = document.getElementById('passcodeInput');
+
+    if (btnUnlock) {
+      btnUnlock.addEventListener('click', verifyAndUnlockPasscode);
+    }
+
+    if (inputPasscode) {
+      inputPasscode.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          verifyAndUnlockPasscode();
+        }
+      });
+      setTimeout(() => inputPasscode.focus(), 100);
+    }
+  }
 });
 
 // Populate Connector Dropdowns inside Drawer
@@ -725,6 +807,15 @@ function setupEventListeners() {
     document.getElementById('settingsModal').classList.remove('hidden');
   });
 
+  // Lock Session Listener
+  const lockBtn = document.getElementById('btnLockSession');
+  if (lockBtn) {
+    lockBtn.addEventListener('click', () => {
+      sessionStorage.removeItem('dnperp_unlocked_session');
+      window.location.reload();
+    });
+  }
+
   document.querySelectorAll('.open-settings-trigger').forEach(btn => {
     btn.addEventListener('click', (e) => {
       document.getElementById('settingsModal').classList.remove('hidden');
@@ -781,7 +872,6 @@ function setupEventListeners() {
 
   document.getElementById('btnSaveTradeSubmit').addEventListener('click', saveTradeEntry);
 
-  // Auto-calculate Basis at Entry / Exit on price input
   const calcBasisEntry = () => {
     const pL = parseFloat(document.getElementById('tradePriceLong').value) || 0;
     const pS = parseFloat(document.getElementById('tradePriceShort').value) || 0;
@@ -850,7 +940,7 @@ function setupEventListeners() {
     resEl.innerText = state.lang === 'EN' ? '⏳ Sending test alert...' : '⏳ Đang gửi thử...';
     resEl.style.color = 'var(--text-gold)';
 
-    const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Connection verified from <code>godnc.com/dnperp</code>!\nRealtime alerts ready (Adaptive 30-Day Bands + Trading Journal).`;
+    const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Connection verified from <code>godnc.com/dnperp</code>!\nRealtime alerts ready (Adaptive 30-Day Bands + Passcode Protection).`;
     const success = await sendTelegramMessage(token, chatId, msg);
 
     if (success) {
@@ -1051,7 +1141,6 @@ function resetTradeForm() {
 }
 
 function saveTradeEntry() {
-  const isEn = state.lang === 'EN';
   const editId = document.getElementById('tradeEditId').value;
   const dateOpen = document.getElementById('tradeDateOpen').value;
   const pairId = document.getElementById('tradePairId').value;
@@ -1080,7 +1169,6 @@ function saveTradeEntry() {
   const fundingAccrued = parseFloat(document.getElementById('tradeFundingAccrued').value) || 0;
   const notes = document.getElementById('tradeNotes').value.trim();
 
-  // PnL Calculation
   let pnlBasis = 0;
   if (status === 'CLOSED' && priceLong > 0 && priceShort > 0 && priceLongExit > 0 && priceShortExit > 0) {
     const pnlLong = notionalLong * ((priceLongExit - priceLong) / priceLong);
@@ -1217,7 +1305,6 @@ function updateJournalAnalytics() {
   const isEn = state.lang === 'EN';
   const trades = state.journal;
 
-  // 1. Current Active Positions & Capital
   const openTrades = trades.filter(t => t.status === 'OPEN');
   const closedTrades = trades.filter(t => t.status === 'CLOSED');
 
@@ -1227,19 +1314,16 @@ function updateJournalAnalytics() {
   document.getElementById('jValPosition').innerText = `$${Math.round(activeNotional).toLocaleString()} / $${Math.round(activeCapital).toLocaleString()}`;
   document.getElementById('jSubPosition').innerText = `${openTrades.length} ${isEn ? 'active open positions' : 'vị thế đang mở'}`;
 
-  // 2. Total Funding Accrued
   const totalFunding = trades.reduce((sum, t) => sum + (t.fundingAccrued || 0), 0);
   const fundEl = document.getElementById('jValFunding');
   fundEl.innerText = `$${totalFunding >= 0 ? '+' : ''}${totalFunding.toFixed(2)}`;
   fundEl.className = 'm-stat-value mono-num ' + (totalFunding >= 0 ? 'positive' : 'negative');
 
-  // 3. Win Rate
   const winningClosed = closedTrades.filter(t => t.totalPnl > 0);
   const winRate = closedTrades.length > 0 ? (winningClosed.length / closedTrades.length) * 100 : 0;
   document.getElementById('jValWinRate').innerText = `${winRate.toFixed(1)}%`;
   document.getElementById('jSubWinRate').innerText = `${winningClosed.length} / ${closedTrades.length} ${isEn ? 'closed trades profitable' : 'lệnh đóng có lời'}`;
 
-  // 4. Average Basis Captured (basisEntry - basisExit)
   let sumBasisCaptured = 0;
   let closedWithBasisCount = 0;
   closedTrades.forEach(t => {
@@ -1251,7 +1335,6 @@ function updateJournalAnalytics() {
   const avgBasisCaptured = closedWithBasisCount > 0 ? sumBasisCaptured / closedWithBasisCount : 0;
   document.getElementById('jValAvgBasis').innerText = `${avgBasisCaptured >= 0 ? '+' : ''}${avgBasisCaptured.toFixed(2)}%`;
 
-  // 5. Average Hold Duration
   let totalHoldHours = 0;
   let holdCount = 0;
   closedTrades.forEach(t => {
@@ -1269,7 +1352,6 @@ function updateJournalAnalytics() {
     ? `${(avgHoldHours / 24).toFixed(1)} ${isEn ? 'days' : 'ngày'}`
     : `${avgHoldHours.toFixed(1)} ${isEn ? 'hours' : 'giờ'}`;
 
-  // 6. Total APR (Annualized Return)
   const totalPnlAll = trades.reduce((sum, t) => sum + (t.totalPnl || 0), 0);
   const totalAllocatedCapital = trades.reduce((sum, t) => sum + (t.capital || 1000), 0) || 1000;
   
@@ -1288,11 +1370,10 @@ function updateJournalAnalytics() {
   aprEl.className = 'm-stat-value mono-num ' + (totalApr >= 0 ? 'positive' : 'negative');
   document.getElementById('jSubApr').innerText = `$${totalPnlAll >= 0 ? '+' : ''}${totalPnlAll.toFixed(2)} PnL (${spanDays}d)`;
 
-  // 7. Phase 10 Requirement 4: Automated Personal Insights & Pattern Analysis Engine
   generatePersonalInsights(closedTrades);
 }
 
-// Generate Human-Readable Personal Insights (Pattern Analysis)
+// Generate Human-Readable Personal Insights
 function generatePersonalInsights(closedTrades) {
   const container = document.getElementById('insightsContainer');
   if (!container) return;
@@ -1310,7 +1391,6 @@ function generatePersonalInsights(closedTrades) {
 
   const insights = [];
 
-  // Insight 1: Upper Band vs Lower Band Win Rate Comparison
   const upperTrades = closedTrades.filter(t => t.basisEntry > 0);
   const lowerTrades = closedTrades.filter(t => t.basisEntry < 0);
 
@@ -1338,7 +1418,6 @@ function generatePersonalInsights(closedTrades) {
     }
   }
 
-  // Insight 2: Best Asset Pair Result
   const pairPnlMap = {};
   closedTrades.forEach(t => {
     pairPnlMap[t.pairId] = (pairPnlMap[t.pairId] || 0) + t.totalPnl;
@@ -1355,7 +1434,6 @@ function generatePersonalInsights(closedTrades) {
     });
   }
 
-  // Insight 3: Best Entry Hour Window
   const hourPnlMap = {};
   closedTrades.forEach(t => {
     if (t.dateOpen) {
@@ -1374,7 +1452,6 @@ function generatePersonalInsights(closedTrades) {
     });
   }
 
-  // Insight 4: Funding Erosion Warning (Negative Funding Exceeding Basis PnL)
   const fundingErosionTrades = closedTrades.filter(t => t.fundingAccrued < 0 && Math.abs(t.fundingAccrued) > t.pnlBasis);
   if (fundingErosionTrades.length > 0) {
     const badTrade = fundingErosionTrades[0];
@@ -1443,7 +1520,6 @@ function updateJournalCharts() {
 
   const closedTrades = state.journal.filter(t => t.status === 'CLOSED').reverse();
 
-  // 1. Cumulative PnL Chart
   let cum = 0;
   const labels = [];
   const pnlData = [];
@@ -1468,7 +1544,6 @@ function updateJournalCharts() {
   }];
   state.journalPnlChart.update();
 
-  // 2. Trades Distribution by Pair Chart
   const pairCounts = {};
   state.journal.forEach(t => {
     pairCounts[t.pairId] = (pairCounts[t.pairId] || 0) + 1;
@@ -1490,7 +1565,8 @@ function startCountdown() {
   if (state.timerId) clearInterval(state.timerId);
   state.timerId = setInterval(() => {
     state.countdown--;
-    document.getElementById('countdownTimer').innerText = state.countdown + 's';
+    const timerEl = document.getElementById('countdownTimer');
+    if (timerEl) timerEl.innerText = state.countdown + 's';
     
     if (state.countdown <= 0) {
       state.countdown = 10;
@@ -1539,8 +1615,8 @@ async function fetchMarketData() {
       }
     }));
 
-    connectionStatus.className = 'status-indicator live';
-    statusLabel.innerText = dict.statusLive;
+    if (connectionStatus) connectionStatus.className = 'status-indicator live';
+    if (statusLabel) statusLabel.innerText = dict.statusLive;
 
     recalculateBasisAndSignals();
 
@@ -1552,8 +1628,8 @@ async function fetchMarketData() {
 
   } catch (err) {
     console.error('Data fetch error:', err);
-    connectionStatus.className = 'status-indicator offline';
-    statusLabel.innerText = dict.statusOffline;
+    if (connectionStatus) connectionStatus.className = 'status-indicator offline';
+    if (statusLabel) statusLabel.innerText = dict.statusOffline;
   }
 }
 
@@ -1785,21 +1861,28 @@ function recalculateBasisAndSignals() {
 
   const bannerContainer = document.getElementById('alertBannerContainer');
   const bannerText = document.getElementById('alertBannerText');
-  if (activeBannerMsg) {
-    bannerText.innerText = activeBannerMsg;
-    bannerContainer.classList.remove('hidden');
+  if (bannerContainer && bannerText) {
+    if (activeBannerMsg) {
+      bannerText.innerText = activeBannerMsg;
+      bannerContainer.classList.remove('hidden');
+    }
   }
 }
 
 // Update Hyperliquid Margin UI
 function updateHlMarginUI(accountVal, marginUsed, pct) {
   const dict = i18n[state.lang] || i18n.VI;
-  document.getElementById('hlAccountValue').innerText = `$${accountVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  document.getElementById('hlTotalMarginUsed').innerText = `$${marginUsed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  document.getElementById('hlMarginPct').innerText = `${pct.toFixed(1)}%`;
+  const accEl = document.getElementById('hlAccountValue');
+  const usedEl = document.getElementById('hlTotalMarginUsed');
+  const pctEl = document.getElementById('hlMarginPct');
+  if (accEl) accEl.innerText = `$${accountVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (usedEl) usedEl.innerText = `$${marginUsed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (pctEl) pctEl.innerText = `${pct.toFixed(1)}%`;
 
   const fill = document.getElementById('hlMarginFill');
   const badge = document.getElementById('hlMarginBadge');
+  if (!fill || !badge) return;
+
   const clampedPct = Math.min(100, Math.max(0, pct));
   fill.style.width = clampedPct + '%';
 
@@ -1827,11 +1910,15 @@ function updateLighterMarginUI() {
   const free = Math.max(0, total - used);
   const pct = total > 0 ? (used / total) * 100 : 0;
 
-  document.getElementById('ltFreeMargin').innerText = `$${free.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  document.getElementById('ltMarginPct').innerText = `${pct.toFixed(1)}%`;
+  const freeEl = document.getElementById('ltFreeMargin');
+  const pctEl = document.getElementById('ltMarginPct');
+  if (freeEl) freeEl.innerText = `$${free.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (pctEl) pctEl.innerText = `${pct.toFixed(1)}%`;
 
   const fill = document.getElementById('ltMarginFill');
   const badge = document.getElementById('ltMarginBadge');
+  if (!fill || !badge) return;
+
   const clampedPct = Math.min(100, Math.max(0, pct));
   fill.style.width = clampedPct + '%';
 
@@ -1898,7 +1985,9 @@ function triggerTelegramAlert(alertKey, message) {
 
 // Initialize Chart.js with Dynamic Datasets for Tracked Pairs
 function initChart() {
-  const ctx = document.getElementById('basisChart').getContext('2d');
+  const chartEl = document.getElementById('basisChart');
+  if (!chartEl) return;
+  const ctx = chartEl.getContext('2d');
 
   state.chart = new Chart(ctx, {
     type: 'line',
