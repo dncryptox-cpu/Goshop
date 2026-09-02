@@ -1,6 +1,6 @@
 /**
- * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 9 & 9b Refactored Engine
- * Multi-Exchange Connector Architecture Framework + Adaptive Volatility Bands (30-Day Mean ± 2σ)
+ * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 10 Refactored Engine
+ * Multi-Exchange Connector Framework + Adaptive Volatility Bands + Trading Journal & Analytics
  * Host: godnc.com/dnperp
  */
 
@@ -60,7 +60,7 @@ function migrateTrackedPairs(pairs) {
 const i18n = {
   VI: {
     appTitle: "Spread & Margin Monitor",
-    appSubtitle: "Read-only Live Dashboard • Dải Tự Thích Ứng & Connector Đa Sàn",
+    appSubtitle: "Read-only Live Dashboard • Dải Tự Thích Ứng & Nhật Ký Giao Dịch",
     statusLive: "KẾT NỐI SỐNG",
     statusOffline: "LỖI KẾT NỐI",
     updateIn: "Cập nhật sau:",
@@ -68,6 +68,7 @@ const i18n = {
     btnManagePairs: "Quản Lý Cặp",
     btnSettings: "Cấu hình ⚙️",
     tabMonitor: "📊 Live Monitor & Margin",
+    tabJournal: "📓 Nhật Ký Giao Dịch",
     tabKnowledge: "📚 Kiến Thức / Playbook",
     
     sectionSpreadTitle: "📊 Basis & Tín Hiệu Delta-Neutral",
@@ -94,7 +95,30 @@ const i18n = {
     bandMid: "Giữa dải:",
     bandLower: "Dải dưới:",
     insufficientData: "Chưa đủ dữ liệu ({days}/30 ngày) — đang dùng ngưỡng tạm ±{thresh}%",
-    statusConfirming: "⏳ Đang xác nhận ({mins}/{target}m)...",
+
+    // Phase 10 Journal i18n
+    journalSectionTitle: "📓 Nhật Ký Giao Dịch & Thống Kê Hiệu Suất",
+    btnAddTrade: "➕ Nhập Lệnh Mới",
+    jStatPosition: "Vị Thế & Vốn Hiện Tại",
+    jStatApr: "APR Tổng (Năm Hóa)",
+    jStatFunding: "Funding Tích Luỹ",
+    jStatWinRate: "Win Rate (% Thắng)",
+    jStatAvgBasis: "Basis TB Bắt Được",
+    jStatAvgHold: "Thời Gian Giữ TB",
+    jSubFunding: "Tổng nhận từ các lệnh",
+    jSubAvgBasis: "Chênh lệch vào − ra",
+    jSubAvgHold: "Từ mở đến đóng lệnh",
+    sectionInsightsTitle: "🧠 Phân Tích Pattern Cá Nhân & Insights",
+    chartPnlTitle: "📈 PnL Lũy Kế Theo Thời Gian ($)",
+    chartPairTitle: "📊 Phân Bổ Số Lệnh Theo Cặp",
+    sectionJournalTableTitle: "📋 Danh Sách Nhật Ký Giao Dịch",
+    colTradeDate: "Ngày Mở",
+    colTradePair: "Cặp Tài Sản",
+    colTradeStatus: "Trạng Thái",
+    colTradeBasisIn: "Basis Vào",
+    colTradeBasisOut: "Basis Ra",
+    colTradeFunding: "Funding ($)",
+    colTradePnl: "Tổng PnL ($)",
 
     sectionMarginTitle: "🛡️ Giám Sát Margin & Nguy Cơ Thanh Lý",
     marginWarnThreshold: "Ngưỡng cảnh báo Margin:",
@@ -161,7 +185,7 @@ const i18n = {
 
   EN: {
     appTitle: "Spread & Margin Monitor",
-    appSubtitle: "Read-only Live Dashboard • Adaptive Bands & Multi-Exchange Connectors",
+    appSubtitle: "Read-only Live Dashboard • Adaptive Bands & Trading Journal",
     statusLive: "LIVE CONNECTED",
     statusOffline: "CONNECTION ERROR",
     updateIn: "Updating in:",
@@ -169,6 +193,7 @@ const i18n = {
     btnManagePairs: "Manage Pairs",
     btnSettings: "Settings ⚙️",
     tabMonitor: "📊 Live Monitor & Margin",
+    tabJournal: "📓 Trading Journal",
     tabKnowledge: "📚 Knowledge / Playbook",
 
     sectionSpreadTitle: "📊 Basis & Delta-Neutral Signals",
@@ -195,7 +220,30 @@ const i18n = {
     bandMid: "Mid Band:",
     bandLower: "Lower Band:",
     insufficientData: "Insufficient data ({days}/30 days) — using temp ±{thresh}%",
-    statusConfirming: "⏳ Confirming ({mins}/{target}m)...",
+
+    // Phase 10 Journal i18n
+    journalSectionTitle: "📓 Trading Journal & Performance Analytics",
+    btnAddTrade: "➕ New Trade Entry",
+    jStatPosition: "Current Position & Capital",
+    jStatApr: "Total APR (Annualized)",
+    jStatFunding: "Accumulated Funding",
+    jStatWinRate: "Win Rate (%)",
+    jStatAvgBasis: "Avg Basis Captured",
+    jStatAvgHold: "Avg Hold Duration",
+    jSubFunding: "Total received from trades",
+    jSubAvgBasis: "Spread entry − exit",
+    jSubAvgHold: "From open to close",
+    sectionInsightsTitle: "🧠 Personal Pattern Analysis & Insights",
+    chartPnlTitle: "📈 Cumulative PnL Over Time ($)",
+    chartPairTitle: "📊 Trade Count Distribution By Pair",
+    sectionJournalTableTitle: "📋 Trade Journal History",
+    colTradeDate: "Open Date",
+    colTradePair: "Asset Pair",
+    colTradeStatus: "Status",
+    colTradeBasisIn: "Entry Basis",
+    colTradeBasisOut: "Exit Basis",
+    colTradeFunding: "Funding ($)",
+    colTradePnl: "Total PnL ($)",
 
     sectionMarginTitle: "🛡️ Margin Monitoring & Liquidation Risk",
     marginWarnThreshold: "Margin alert threshold:",
@@ -288,12 +336,17 @@ const state = {
 
   history: JSON.parse(localStorage.getItem('dnperp_history') || '[]'),
   
-  // Phase 9b Signal Duration Tracker (Anti-Noise Denoise Delay & Open/Close Alerts)
+  // Phase 9b Signal Duration Tracker
   signalTracker: JSON.parse(localStorage.getItem('dnperp_signal_tracker') || '{}'),
+
+  // Phase 10 Trading Journal Entries
+  journal: JSON.parse(localStorage.getItem('dnperp_journal_trades') || '[]'),
 
   countdown: 10,
   timerId: null,
   chart: null,
+  journalPnlChart: null,
+  journalPairChart: null,
   activeChartRange: '24h'
 };
 
@@ -302,12 +355,18 @@ document.addEventListener('DOMContentLoaded', () => {
   initMarketState();
   loadStoredConfig();
   populateExchangeDropdowns();
+  populateTradeModalPairsDropdown();
   setLanguage(state.lang);
   seed30DaysHistoryIfEmpty();
   renderSpreadCards();
   renderPairsTable();
   initChart();
   
+  // Phase 10 Journal Init
+  renderJournalTable();
+  updateJournalAnalytics();
+  initJournalCharts();
+
   setupEventListeners();
   fetchMarketData();
   
@@ -350,6 +409,20 @@ function populateExchangeDropdowns() {
   }
 }
 
+// Populate Trade Modal Pair Dropdown
+function populateTradeModalPairsDropdown() {
+  const pairSelect = document.getElementById('tradePairId');
+  if (!pairSelect) return;
+  pairSelect.innerHTML = '';
+
+  state.trackedPairs.forEach(pair => {
+    const opt = document.createElement('option');
+    opt.value = pair.id;
+    opt.textContent = `${pair.name || pair.id} (${pair.id})`;
+    pairSelect.appendChild(opt);
+  });
+}
+
 // Switch Language Engine
 function setLanguage(lang) {
   state.lang = lang;
@@ -380,6 +453,8 @@ function setLanguage(lang) {
 
   renderSpreadCards();
   recalculateBasisAndSignals();
+  renderJournalTable();
+  updateJournalAnalytics();
   updateWalletSubLabel();
 }
 
@@ -456,7 +531,6 @@ function calculateAdaptiveBands(pairId) {
   const points = state.history.filter(h => h.time >= cutoff && h.pairs && h.pairs[pairId] !== undefined);
   const thresh = state.config.basisThreshold;
 
-  // Need at least 24 data points to calculate meaningful stdDev
   if (points.length < 24) {
     const daysCount = points.length > 0 ? Math.max(1, Math.round((now - points[0].time) / (24 * 60 * 60 * 1000))) : 0;
     return {
@@ -583,10 +657,9 @@ function seed30DaysHistoryIfEmpty() {
   const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
   const oldestTime = state.history.length > 0 ? state.history[0].time : now;
 
-  // If history span is less than 25 days, seed 30 days of data for SNDK & ANTH
   if (now - oldestTime < 25 * 24 * 60 * 60 * 1000) {
     state.history = [];
-    const intervalMs = 60 * 60 * 1000; // hourly points over 30 days
+    const intervalMs = 60 * 60 * 1000;
     
     let sndkVal = -0.05;
     let anthVal = 0.08;
@@ -624,11 +697,18 @@ function setupEventListeners() {
       e.target.classList.add('active');
 
       const targetTab = e.target.dataset.tab;
+      document.getElementById('tab-monitor-view').classList.add('hidden');
+      document.getElementById('tab-journal-view').classList.add('hidden');
+      document.getElementById('tab-knowledge-view').classList.add('hidden');
+
       if (targetTab === 'tab-monitor') {
         document.getElementById('tab-monitor-view').classList.remove('hidden');
-        document.getElementById('tab-knowledge-view').classList.add('hidden');
+      } else if (targetTab === 'tab-journal') {
+        document.getElementById('tab-journal-view').classList.remove('hidden');
+        renderJournalTable();
+        updateJournalAnalytics();
+        updateJournalCharts();
       } else if (targetTab === 'tab-knowledge') {
-        document.getElementById('tab-monitor-view').classList.add('hidden');
         document.getElementById('tab-knowledge-view').classList.remove('hidden');
       }
     });
@@ -688,6 +768,41 @@ function setupEventListeners() {
     closeModal('settingsModal');
   });
 
+  // Phase 10 Trade Journal Modal Triggers
+  document.getElementById('btnOpenAddTradeModal').addEventListener('click', () => {
+    resetTradeForm();
+    document.getElementById('tradeModalTitle').innerText = state.lang === 'EN' ? '📝 New Trade Entry' : '📝 Nhập Lệnh Mới Vào Nhật Ký';
+    document.getElementById('tradeModal').classList.remove('hidden');
+  });
+
+  document.getElementById('btnCloseTradeModal').addEventListener('click', () => closeModal('tradeModal'));
+  document.getElementById('btnCancelTradeModal').addEventListener('click', () => closeModal('tradeModal'));
+
+  document.getElementById('btnSaveTradeSubmit').addEventListener('click', saveTradeEntry);
+
+  // Auto-calculate Basis at Entry / Exit on price input
+  const calcBasisEntry = () => {
+    const pL = parseFloat(document.getElementById('tradePriceLong').value) || 0;
+    const pS = parseFloat(document.getElementById('tradePriceShort').value) || 0;
+    if (pL > 0 && pS > 0) {
+      const b = ((pS - pL) / pL) * 100;
+      document.getElementById('tradeBasisEntry').value = b.toFixed(2);
+    }
+  };
+  document.getElementById('tradePriceLong').addEventListener('input', calcBasisEntry);
+  document.getElementById('tradePriceShort').addEventListener('input', calcBasisEntry);
+
+  const calcBasisExit = () => {
+    const pLx = parseFloat(document.getElementById('tradePriceLongExit').value) || 0;
+    const pSx = parseFloat(document.getElementById('tradePriceShortExit').value) || 0;
+    if (pLx > 0 && pSx > 0) {
+      const b = ((pSx - pLx) / pLx) * 100;
+      document.getElementById('tradeBasisExit').value = b.toFixed(2);
+    }
+  };
+  document.getElementById('tradePriceLongExit').addEventListener('input', calcBasisExit);
+  document.getElementById('tradePriceShortExit').addEventListener('input', calcBasisExit);
+
   document.getElementById('btnQueryHlMargin').addEventListener('click', () => {
     const w = document.getElementById('hlWalletAddress').value.trim();
     if (w) {
@@ -734,7 +849,7 @@ function setupEventListeners() {
     resEl.innerText = state.lang === 'EN' ? '⏳ Sending test alert...' : '⏳ Đang gửi thử...';
     resEl.style.color = 'var(--text-gold)';
 
-    const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Connection verified from <code>godnc.com/dnperp</code>!\nRealtime alerts ready (Adaptive 30-Day Bands + 10m Denoise Delay).`;
+    const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Connection verified from <code>godnc.com/dnperp</code>!\nRealtime alerts ready (Adaptive 30-Day Bands + Trading Journal).`;
     const success = await sendTelegramMessage(token, chatId, msg);
 
     if (success) {
@@ -776,6 +891,7 @@ function closeModal(id) {
 // Render Pairs Management Table inside Drawer
 function renderPairsTable() {
   const tbody = document.getElementById('pairsTableBody');
+  if (!tbody) return;
   tbody.innerHTML = '';
   const dict = i18n[state.lang] || i18n.VI;
 
@@ -863,6 +979,7 @@ async function verifyAndAddPair() {
     localStorage.setItem('dnperp_tracked_pairs', JSON.stringify(state.trackedPairs));
 
     initMarketState();
+    populateTradeModalPairsDropdown();
     renderSpreadCards();
     renderPairsTable();
     updateChartData();
@@ -901,12 +1018,471 @@ window.removeTrackedPair = function(pairId) {
     localStorage.setItem('dnperp_signal_tracker', JSON.stringify(state.signalTracker));
 
     initMarketState();
+    populateTradeModalPairsDropdown();
     renderSpreadCards();
     renderPairsTable();
     recalculateBasisAndSignals();
     updateChartData();
   }
 };
+
+// ==========================================================================
+// PHASE 10 TRADING JOURNAL & PERFORMANCE ANALYTICS ENGINE
+// ==========================================================================
+
+function resetTradeForm() {
+  document.getElementById('tradeEditId').value = '';
+  const nowStr = new Date().toISOString().slice(0, 16);
+  document.getElementById('tradeDateOpen').value = nowStr;
+  document.getElementById('tradeStatus').value = 'OPEN';
+  document.getElementById('tradeCapital').value = '1000';
+  document.getElementById('tradePriceLong').value = '';
+  document.getElementById('tradeNotionalLong').value = '1000';
+  document.getElementById('tradePriceShort').value = '';
+  document.getElementById('tradeNotionalShort').value = '1000';
+  document.getElementById('tradeBasisEntry').value = '';
+  document.getElementById('tradeDateClose').value = '';
+  document.getElementById('tradeBasisExit').value = '';
+  document.getElementById('tradePriceLongExit').value = '';
+  document.getElementById('tradePriceShortExit').value = '';
+  document.getElementById('tradeFundingAccrued').value = '0';
+  document.getElementById('tradeNotes').value = '';
+}
+
+function saveTradeEntry() {
+  const isEn = state.lang === 'EN';
+  const editId = document.getElementById('tradeEditId').value;
+  const dateOpen = document.getElementById('tradeDateOpen').value;
+  const pairId = document.getElementById('tradePairId').value;
+  const status = document.getElementById('tradeStatus').value;
+  const capital = parseFloat(document.getElementById('tradeCapital').value) || 1000;
+
+  const priceLong = parseFloat(document.getElementById('tradePriceLong').value) || 0;
+  const notionalLong = parseFloat(document.getElementById('tradeNotionalLong').value) || 1000;
+  const priceShort = parseFloat(document.getElementById('tradePriceShort').value) || 0;
+  const notionalShort = parseFloat(document.getElementById('tradeNotionalShort').value) || 1000;
+
+  let basisEntry = parseFloat(document.getElementById('tradeBasisEntry').value);
+  if (isNaN(basisEntry) && priceLong > 0 && priceShort > 0) {
+    basisEntry = parseFloat((((priceShort - priceLong) / priceLong) * 100).toFixed(2));
+  }
+  if (isNaN(basisEntry)) basisEntry = 0;
+
+  const dateClose = document.getElementById('tradeDateClose').value;
+  let basisExit = parseFloat(document.getElementById('tradeBasisExit').value);
+  const priceLongExit = parseFloat(document.getElementById('tradePriceLongExit').value) || 0;
+  const priceShortExit = parseFloat(document.getElementById('tradePriceShortExit').value) || 0;
+  if (isNaN(basisExit) && priceLongExit > 0 && priceShortExit > 0) {
+    basisExit = parseFloat((((priceShortExit - priceLongExit) / priceLongExit) * 100).toFixed(2));
+  }
+
+  const fundingAccrued = parseFloat(document.getElementById('tradeFundingAccrued').value) || 0;
+  const notes = document.getElementById('tradeNotes').value.trim();
+
+  // PnL Calculation
+  let pnlBasis = 0;
+  if (status === 'CLOSED' && priceLong > 0 && priceShort > 0 && priceLongExit > 0 && priceShortExit > 0) {
+    const pnlLong = notionalLong * ((priceLongExit - priceLong) / priceLong);
+    const pnlShort = notionalShort * ((priceShort - priceShortExit) / priceShort);
+    pnlBasis = pnlLong + pnlShort;
+  }
+  const totalPnl = pnlBasis + fundingAccrued;
+
+  const tradeObj = {
+    id: editId || 'TRADE_' + Date.now(),
+    dateOpen,
+    pairId,
+    status,
+    capital,
+    priceLong,
+    notionalLong,
+    priceShort,
+    notionalShort,
+    basisEntry,
+    dateClose: status === 'CLOSED' ? (dateClose || new Date().toISOString().slice(0, 16)) : '',
+    priceLongExit,
+    priceShortExit,
+    basisExit: status === 'CLOSED' ? (isNaN(basisExit) ? 0 : basisExit) : null,
+    pnlBasis: parseFloat(pnlBasis.toFixed(2)),
+    fundingAccrued: parseFloat(fundingAccrued.toFixed(2)),
+    totalPnl: parseFloat(totalPnl.toFixed(2)),
+    notes
+  };
+
+  if (editId) {
+    const idx = state.journal.findIndex(t => t.id === editId);
+    if (idx !== -1) state.journal[idx] = tradeObj;
+  } else {
+    state.journal.unshift(tradeObj);
+  }
+
+  localStorage.setItem('dnperp_journal_trades', JSON.stringify(state.journal));
+
+  closeModal('tradeModal');
+  renderJournalTable();
+  updateJournalAnalytics();
+  updateJournalCharts();
+}
+
+window.editTradeEntry = function(tradeId) {
+  const trade = state.journal.find(t => t.id === tradeId);
+  if (!trade) return;
+
+  document.getElementById('tradeEditId').value = trade.id;
+  document.getElementById('tradeDateOpen').value = trade.dateOpen || '';
+  document.getElementById('tradePairId').value = trade.pairId || '';
+  document.getElementById('tradeStatus').value = trade.status || 'OPEN';
+  document.getElementById('tradeCapital').value = trade.capital || 1000;
+
+  document.getElementById('tradePriceLong').value = trade.priceLong || '';
+  document.getElementById('tradeNotionalLong').value = trade.notionalLong || 1000;
+  document.getElementById('tradePriceShort').value = trade.priceShort || '';
+  document.getElementById('tradeNotionalShort').value = trade.notionalShort || 1000;
+  document.getElementById('tradeBasisEntry').value = trade.basisEntry !== null ? trade.basisEntry : '';
+
+  document.getElementById('tradeDateClose').value = trade.dateClose || '';
+  document.getElementById('tradeBasisExit').value = trade.basisExit !== null ? trade.basisExit : '';
+  document.getElementById('tradePriceLongExit').value = trade.priceLongExit || '';
+  document.getElementById('tradePriceShortExit').value = trade.priceShortExit || '';
+  document.getElementById('tradeFundingAccrued').value = trade.fundingAccrued || 0;
+  document.getElementById('tradeNotes').value = trade.notes || '';
+
+  document.getElementById('tradeModalTitle').innerText = state.lang === 'EN' ? '✏️ Edit Trade Entry' : '✏️ Chỉnh Sửa Lệnh Trong Nhật Ký';
+  document.getElementById('tradeModal').classList.remove('hidden');
+};
+
+window.deleteTradeEntry = function(tradeId) {
+  const isEn = state.lang === 'EN';
+  const msg = isEn ? 'Are you sure you want to delete this trade record?' : 'Bạn có chắc chắn muốn xoá bản ghi lệnh này khỏi Nhật ký?';
+  if (confirm(msg)) {
+    state.journal = state.journal.filter(t => t.id !== tradeId);
+    localStorage.setItem('dnperp_journal_trades', JSON.stringify(state.journal));
+    renderJournalTable();
+    updateJournalAnalytics();
+    updateJournalCharts();
+  }
+};
+
+// Render Journal Trades Table
+function renderJournalTable() {
+  const tbody = document.getElementById('journalTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const isEn = state.lang === 'EN';
+
+  if (state.journal.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">${isEn ? 'No journal trade entries recorded yet. Click "➕ New Trade Entry" to record your first trade.' : 'Chưa có bản ghi nhật ký giao dịch nào. Bấm "➕ Nhập Lệnh Mới" để bắt đầu ghi chép.'}</td></tr>`;
+    return;
+  }
+
+  state.journal.forEach(trade => {
+    const isClosed = trade.status === 'CLOSED';
+    const statusBadge = isClosed 
+      ? `<span class="trade-status-badge closed">🔵 ${isEn ? 'CLOSED' : 'ĐÃ ĐÓNG'}</span>`
+      : `<span class="trade-status-badge open">🟢 ${isEn ? 'OPEN' : 'ĐANG MỞ'}</span>`;
+
+    const openDate = trade.dateOpen ? new Date(trade.dateOpen).toLocaleDateString() : 'N/A';
+    const basisIn = `${trade.basisEntry >= 0 ? '+' : ''}${trade.basisEntry.toFixed(2)}%`;
+    const basisOut = isClosed && trade.basisExit !== null ? `${trade.basisExit >= 0 ? '+' : ''}${trade.basisExit.toFixed(2)}%` : '—';
+    const funding = `$${trade.fundingAccrued.toFixed(2)}`;
+    
+    let pnlDisplay = '—';
+    let pnlClass = '';
+    if (isClosed) {
+      pnlDisplay = `$${trade.totalPnl >= 0 ? '+' : ''}${trade.totalPnl.toFixed(2)}`;
+      pnlClass = trade.totalPnl >= 0 ? 'positive' : 'negative';
+    }
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><span class="mono-num">${openDate}</span></td>
+      <td><strong>${trade.pairId}</strong></td>
+      <td>${statusBadge}</td>
+      <td><span class="mono-num">${basisIn}</span></td>
+      <td><span class="mono-num">${basisOut}</span></td>
+      <td><span class="mono-num">${funding}</span></td>
+      <td><span class="mono-num ${pnlClass}"><strong>${pnlDisplay}</strong></span></td>
+      <td style="text-align: right;">
+        <button class="btn btn-outline btn-xs" onclick="editTradeEntry('${trade.id}')">✏️ ${isEn ? 'Edit' : 'Sửa'}</button>
+        <button class="btn btn-danger btn-xs" onclick="deleteTradeEntry('${trade.id}')">🗑️ ${isEn ? 'Del' : 'Xoá'}</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// Calculate & Update Journal Analytics Summary Cards + Insights
+function updateJournalAnalytics() {
+  const isEn = state.lang === 'EN';
+  const trades = state.journal;
+
+  // 1. Current Active Positions & Capital
+  const openTrades = trades.filter(t => t.status === 'OPEN');
+  const closedTrades = trades.filter(t => t.status === 'CLOSED');
+
+  const activeNotional = openTrades.reduce((sum, t) => sum + (t.notionalLong + t.notionalShort), 0);
+  const activeCapital = openTrades.reduce((sum, t) => sum + t.capital, 0);
+
+  document.getElementById('jValPosition').innerText = `$${Math.round(activeNotional).toLocaleString()} / $${Math.round(activeCapital).toLocaleString()}`;
+  document.getElementById('jSubPosition').innerText = `${openTrades.length} ${isEn ? 'active open positions' : 'vị thế đang mở'}`;
+
+  // 2. Total Funding Accrued
+  const totalFunding = trades.reduce((sum, t) => sum + (t.fundingAccrued || 0), 0);
+  const fundEl = document.getElementById('jValFunding');
+  fundEl.innerText = `$${totalFunding >= 0 ? '+' : ''}${totalFunding.toFixed(2)}`;
+  fundEl.className = 'm-stat-value mono-num ' + (totalFunding >= 0 ? 'positive' : 'negative');
+
+  // 3. Win Rate
+  const winningClosed = closedTrades.filter(t => t.totalPnl > 0);
+  const winRate = closedTrades.length > 0 ? (winningClosed.length / closedTrades.length) * 100 : 0;
+  document.getElementById('jValWinRate').innerText = `${winRate.toFixed(1)}%`;
+  document.getElementById('jSubWinRate').innerText = `${winningClosed.length} / ${closedTrades.length} ${isEn ? 'closed trades profitable' : 'lệnh đóng có lời'}`;
+
+  // 4. Average Basis Captured (basisEntry - basisExit)
+  let sumBasisCaptured = 0;
+  let closedWithBasisCount = 0;
+  closedTrades.forEach(t => {
+    if (t.basisExit !== null) {
+      sumBasisCaptured += (t.basisEntry - t.basisExit);
+      closedWithBasisCount++;
+    }
+  });
+  const avgBasisCaptured = closedWithBasisCount > 0 ? sumBasisCaptured / closedWithBasisCount : 0;
+  document.getElementById('jValAvgBasis').innerText = `${avgBasisCaptured >= 0 ? '+' : ''}${avgBasisCaptured.toFixed(2)}%`;
+
+  // 5. Average Hold Duration
+  let totalHoldHours = 0;
+  let holdCount = 0;
+  closedTrades.forEach(t => {
+    if (t.dateOpen && t.dateClose) {
+      const d1 = new Date(t.dateOpen).getTime();
+      const d2 = new Date(t.dateClose).getTime();
+      if (d2 > d1) {
+        totalHoldHours += (d2 - d1) / (1000 * 60 * 60);
+        holdCount++;
+      }
+    }
+  });
+  const avgHoldHours = holdCount > 0 ? totalHoldHours / holdCount : 0;
+  document.getElementById('jValAvgHold').innerText = avgHoldHours > 24 
+    ? `${(avgHoldHours / 24).toFixed(1)} ${isEn ? 'days' : 'ngày'}`
+    : `${avgHoldHours.toFixed(1)} ${isEn ? 'hours' : 'giờ'}`;
+
+  // 6. Total APR (Annualized Return)
+  const totalPnlAll = trades.reduce((sum, t) => sum + (t.totalPnl || 0), 0);
+  const totalAllocatedCapital = trades.reduce((sum, t) => sum + (t.capital || 1000), 0) || 1000;
+  
+  let spanDays = 30;
+  if (trades.length >= 2) {
+    const times = trades.map(t => new Date(t.dateOpen).getTime()).filter(t => !isNaN(t));
+    if (times.length >= 2) {
+      const minT = Math.min(...times);
+      const maxT = Math.max(...times);
+      spanDays = Math.max(1, Math.round((maxT - minT) / (1000 * 60 * 60 * 24)));
+    }
+  }
+  const totalApr = ((totalPnlAll / totalAllocatedCapital) * (365 / spanDays)) * 100;
+  const aprEl = document.getElementById('jValApr');
+  aprEl.innerText = `${totalApr >= 0 ? '+' : ''}${totalApr.toFixed(2)}%`;
+  aprEl.className = 'm-stat-value mono-num ' + (totalApr >= 0 ? 'positive' : 'negative');
+  document.getElementById('jSubApr').innerText = `$${totalPnlAll >= 0 ? '+' : ''}${totalPnlAll.toFixed(2)} PnL (${spanDays}d)`;
+
+  // 7. Phase 10 Requirement 4: Automated Personal Insights & Pattern Analysis Engine
+  generatePersonalInsights(closedTrades);
+}
+
+// Generate Human-Readable Personal Insights (Pattern Analysis)
+function generatePersonalInsights(closedTrades) {
+  const container = document.getElementById('insightsContainer');
+  if (!container) return;
+  const isEn = state.lang === 'EN';
+
+  if (closedTrades.length < 5) {
+    container.innerHTML = `
+      <div class="insight-item">
+        <span class="icon">💡</span>
+        <div>${isEn ? `Need more data for pattern analysis (currently <strong>${closedTrades.length}/5</strong> closed trades). Keep journaling your trades!` : `Cần thêm dữ liệu để phân tích pattern (hiện có <strong>${closedTrades.length}/5</strong> lệnh đã đóng). Hãy tiếp tục nhập nhật ký các lệnh của bạn!`}</div>
+      </div>
+    `;
+    return;
+  }
+
+  const insights = [];
+
+  // Insight 1: Upper Band vs Lower Band Win Rate Comparison
+  const upperTrades = closedTrades.filter(t => t.basisEntry > 0);
+  const lowerTrades = closedTrades.filter(t => t.basisEntry < 0);
+
+  const upperWin = upperTrades.filter(t => t.totalPnl > 0).length;
+  const lowerWin = lowerTrades.filter(t => t.totalPnl > 0).length;
+
+  const upperWinRate = upperTrades.length > 0 ? Math.round((upperWin / upperTrades.length) * 100) : 0;
+  const lowerWinRate = lowerTrades.length > 0 ? Math.round((lowerWin / lowerTrades.length) * 100) : 0;
+
+  if (upperTrades.length > 0 || lowerTrades.length > 0) {
+    if (upperWinRate > lowerWinRate) {
+      insights.push({
+        icon: '📊',
+        text: isEn 
+          ? `Trades entered on <strong>Upper Band (positive basis)</strong> achieved a higher win rate of <strong>${upperWinRate}%</strong> compared to Lower Band (${lowerWinRate}%).`
+          : `Lệnh mở khi basis vượt <strong>Dải Trên (basis dương)</strong> đạt winrate cao hơn rõ rệt: <strong>${upperWinRate}%</strong> (so với ${lowerWinRate}% ở Dải Dưới).`
+      });
+    } else {
+      insights.push({
+        icon: '📊',
+        text: isEn 
+          ? `Trades entered on <strong>Lower Band (negative basis)</strong> achieved a higher win rate of <strong>${lowerWinRate}%</strong> compared to Upper Band (${upperWinRate}%).`
+          : `Lệnh mở khi basis vượt <strong>Dải Dưới (basis âm)</strong> đạt winrate cao hơn: <strong>${lowerWinRate}%</strong> (so với ${upperWinRate}% ở Dải Trên).`
+      });
+    }
+  }
+
+  // Insight 2: Best Asset Pair Result
+  const pairPnlMap = {};
+  closedTrades.forEach(t => {
+    pairPnlMap[t.pairId] = (pairPnlMap[t.pairId] || 0) + t.totalPnl;
+  });
+  const sortedPairs = Object.entries(pairPnlMap).sort((a, b) => b[1] - a[1]);
+  if (sortedPairs.length > 0) {
+    const best = sortedPairs[0];
+    const worst = sortedPairs[sortedPairs.length - 1];
+    insights.push({
+      icon: '🏆',
+      text: isEn
+        ? `Best performing asset pair: <strong>${best[0]}</strong> (+$${best[1].toFixed(2)} PnL). Worst performing: <strong>${worst[0]}</strong> ($${worst[1].toFixed(2)} PnL).`
+        : `Cặp tài sản cho kết quả tốt nhất: <strong>${best[0]}</strong> (+$${best[1].toFixed(2)} PnL). Cặp kém nhất: <strong>${worst[0]}</strong> ($${worst[1].toFixed(2)} PnL).`
+    });
+  }
+
+  // Insight 3: Best Entry Hour Window
+  const hourPnlMap = {};
+  closedTrades.forEach(t => {
+    if (t.dateOpen) {
+      const h = new Date(t.dateOpen).getHours();
+      const windowKey = `${Math.floor(h / 4) * 4}:00 - ${Math.floor(h / 4) * 4 + 4}:00`;
+      hourPnlMap[windowKey] = (hourPnlMap[windowKey] || 0) + t.totalPnl;
+    }
+  });
+  const sortedHours = Object.entries(hourPnlMap).sort((a, b) => b[1] - a[1]);
+  if (sortedHours.length > 0) {
+    insights.push({
+      icon: '⏰',
+      text: isEn
+        ? `Best entry time window: <strong>${sortedHours[0][0]}</strong> with total PnL of +$${sortedHours[0][1].toFixed(2)}.`
+        : `Khung giờ mở lệnh đạt hiệu suất cao nhất: <strong>${sortedHours[0][0]}</strong> với tổng PnL +$${sortedHours[0][1].toFixed(2)}.`
+    });
+  }
+
+  // Insight 4: Funding Erosion Warning (Negative Funding Exceeding Basis PnL)
+  const fundingErosionTrades = closedTrades.filter(t => t.fundingAccrued < 0 && Math.abs(t.fundingAccrued) > t.pnlBasis);
+  if (fundingErosionTrades.length > 0) {
+    const badTrade = fundingErosionTrades[0];
+    insights.push({
+      icon: '⚠️',
+      isWarning: true,
+      text: isEn
+        ? `Detected <strong>${fundingErosionTrades.length} trade(s)</strong> (e.g. ${badTrade.pairId}) where negative funding fees (-$${Math.abs(badTrade.fundingAccrued).toFixed(2)}) eroded the basis profit (+$${badTrade.pnlBasis.toFixed(2)}), resulting in a net loss. Check funding rates before holding long-term!`
+        : `Phát hiện <strong>${fundingErosionTrades.length} lệnh</strong> (VD: ${badTrade.pairId} mở ngày ${new Date(badTrade.dateOpen).toLocaleDateString()}) bị lỗ ròng -$${Math.abs(badTrade.totalPnl).toFixed(2)} do Phí Funding âm (-$${Math.abs(badTrade.fundingAccrued).toFixed(2)}) vượt quá PnL Basis (+$${badTrade.pnlBasis.toFixed(2)}). Cần kiểm tra funding rate trước khi giữ lệnh lâu!`
+    });
+  }
+
+  let htmlStr = '<div class="insight-list">';
+  insights.forEach(item => {
+    const cls = item.isWarning ? 'insight-item warning-insight' : 'insight-item';
+    htmlStr += `
+      <div class="${cls}">
+        <span class="icon">${item.icon}</span>
+        <div>${item.text}</div>
+      </div>
+    `;
+  });
+  htmlStr += '</div>';
+
+  container.innerHTML = htmlStr;
+}
+
+// Render Phase 10 Journal Charts
+function initJournalCharts() {
+  const pnlCtx = document.getElementById('journalPnlChart')?.getContext('2d');
+  const pairCtx = document.getElementById('journalPairChart')?.getContext('2d');
+
+  if (pnlCtx) {
+    state.journalPnlChart = new Chart(pnlCtx, {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8e9aa8', font: { family: 'JetBrains Mono', size: 10 } } },
+          y: { ticks: { color: '#c9b48c', font: { family: 'JetBrains Mono', size: 10 }, callback: (v) => '$' + v } }
+        }
+      }
+    });
+  }
+
+  if (pairCtx) {
+    state.journalPairChart = new Chart(pairCtx, {
+      type: 'doughnut',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'right', labels: { color: '#f3ecdd', font: { family: 'JetBrains Mono', size: 11 } } }
+        }
+      }
+    });
+  }
+}
+
+function updateJournalCharts() {
+  if (!state.journalPnlChart || !state.journalPairChart) return;
+
+  const closedTrades = state.journal.filter(t => t.status === 'CLOSED').reverse();
+
+  // 1. Cumulative PnL Chart
+  let cum = 0;
+  const labels = [];
+  const pnlData = [];
+
+  closedTrades.forEach((t, i) => {
+    cum += (t.totalPnl || 0);
+    const dStr = t.dateClose ? new Date(t.dateClose).toLocaleDateString() : `#${i + 1}`;
+    labels.push(dStr);
+    pnlData.push(parseFloat(cum.toFixed(2)));
+  });
+
+  state.journalPnlChart.data.labels = labels;
+  state.journalPnlChart.data.datasets = [{
+    label: 'Cumulative PnL ($)',
+    data: pnlData,
+    borderColor: '#c9b48c',
+    backgroundColor: 'rgba(201, 180, 140, 0.15)',
+    fill: true,
+    tension: 0.2,
+    pointRadius: 4,
+    pointBackgroundColor: '#c9b48c'
+  }];
+  state.journalPnlChart.update();
+
+  // 2. Trades Distribution by Pair Chart
+  const pairCounts = {};
+  state.journal.forEach(t => {
+    pairCounts[t.pairId] = (pairCounts[t.pairId] || 0) + 1;
+  });
+
+  const pairLabels = Object.keys(pairCounts);
+  const pairData = Object.values(pairCounts);
+
+  state.journalPairChart.data.labels = pairLabels;
+  state.journalPairChart.data.datasets = [{
+    data: pairData,
+    backgroundColor: PALETTE.slice(0, pairLabels.length)
+  }];
+  state.journalPairChart.update();
+}
 
 // Timer Loop (10s refresh)
 function startCountdown() {
@@ -1015,7 +1591,7 @@ async function fetchHlMargin() {
   }
 }
 
-// Recalculate Signals & Update UI Cards (Phase 9b Adaptive Bands + Anti-Noise Delay)
+// Recalculate Signals & Update UI Cards
 function recalculateBasisAndSignals() {
   const manualThresh = state.config.basisThreshold;
   const useAdaptive = state.config.useAdaptiveBands;
@@ -1032,10 +1608,8 @@ function recalculateBasisAndSignals() {
     const connA = ConnectorRegistry.get(pair.exchangeA) || { name: pair.exchangeA };
     const connB = ConnectorRegistry.get(pair.exchangeB) || { name: pair.exchangeB };
 
-    // 1. Calculate Adaptive Band for this pair
     const band = calculateAdaptiveBands(pair.id);
 
-    // Update Adaptive Band UI Box
     const bandBox = document.getElementById(`adaptiveBandBox-${pair.id}`);
     if (bandBox) {
       if (useAdaptive && !band.insufficient) {
@@ -1052,11 +1626,10 @@ function recalculateBasisAndSignals() {
       }
     }
 
-    // 2. Determine Upper & Lower Thresholds
     let upperThresh = manualThresh;
     let lowerThresh = -manualThresh;
     let midBandVal = 0;
-    let midTolerance = 0.05; // 0.05% tolerance
+    let midTolerance = 0.05;
 
     if (useAdaptive && !band.insufficient) {
       upperThresh = band.upper;
@@ -1065,7 +1638,6 @@ function recalculateBasisAndSignals() {
       midTolerance = Math.max(0.05, 0.2 * band.stdDev);
     }
 
-    // Update prices & metrics
     const priceAEl = document.getElementById(`priceA-${pair.id}`);
     const fundingAEl = document.getElementById(`fundingA-${pair.id}`);
     const volAEl = document.getElementById(`volA-${pair.id}`);
@@ -1097,7 +1669,6 @@ function recalculateBasisAndSignals() {
       basisAbsEl.innerText = `($${m.basisAbs >= 0 ? '+' : ''}${m.basisAbs.toFixed(2)})`;
     }
 
-    // 3. Determine Raw Signal
     let rawSignal = 'NEUTRAL';
     if (m.basis > upperThresh) {
       rawSignal = 'LONG_LT';
@@ -1105,7 +1676,6 @@ function recalculateBasisAndSignals() {
       rawSignal = 'LONG_HL';
     }
 
-    // 4. Anti-Noise Delay (10 Minutes) & Signal Tracker Logic
     if (!state.signalTracker[pair.id]) {
       state.signalTracker[pair.id] = { firstSeenTime: null, signalType: 'NEUTRAL', alertSent: false, openSignalType: null };
     }
@@ -1145,7 +1715,6 @@ function recalculateBasisAndSignals() {
         ? `Warning: ${pair.id} Basis exceeds +${m.basis.toFixed(2)}% (Open Long ${connB.name} / Short ${connA.name})`
         : `Cảnh báo: Basis ${pair.id} đang vượt Dải trên +${m.basis.toFixed(2)}% (Mở Long ${connB.name} / Short ${connA.name})`;
 
-      // Dispatch OPEN alert via Telegram if confirmed after 10 mins
       if (isConfirmed && !tracker.alertSent) {
         triggerTelegramAlert(`${pair.id}_OPEN`, `🚨 <b>ARBITRAGE OPEN SIGNAL (XÁC NHẬN ${confirmDelayMins}M): ${pair.id}!</b>\n\nBasis Spread: <b>+${m.basis.toFixed(2)}%</b> (Vượt Dải Trên ${upperThresh.toFixed(2)}%)\n• ${connA.name}: $${m.priceA.toFixed(2)}\n• ${connB.name}: $${m.priceB.toFixed(2)}\n👉 <b>Hành động:</b> LONG ${connB.name} | SHORT ${connA.name}`);
         tracker.alertSent = true;
@@ -1183,7 +1752,6 @@ function recalculateBasisAndSignals() {
         ? `Warning: ${pair.id} Basis drops below ${m.basis.toFixed(2)}% (Open Long ${connA.name} / Short ${connB.name})`
         : `Cảnh báo: Basis ${pair.id} đang giảm dưới Dải dưới ${m.basis.toFixed(2)}% (Mở Long ${connA.name} / Short ${connB.name})`;
 
-      // Dispatch OPEN alert via Telegram if confirmed after 10 mins
       if (isConfirmed && !tracker.alertSent) {
         triggerTelegramAlert(`${pair.id}_OPEN`, `🚨 <b>ARBITRAGE OPEN SIGNAL (XÁC NHẬN ${confirmDelayMins}M): ${pair.id}!</b>\n\nBasis Spread: <b>${m.basis.toFixed(2)}%</b> (Vượt Dải Dưới ${lowerThresh.toFixed(2)}%)\n• ${connA.name}: $${m.priceA.toFixed(2)}\n• ${connB.name}: $${m.priceB.toFixed(2)}\n👉 <b>Hành động:</b> LONG ${connA.name} | SHORT ${connB.name}`);
         tracker.alertSent = true;
@@ -1191,8 +1759,6 @@ function recalculateBasisAndSignals() {
       }
 
     } else {
-      // Raw signal is NEUTRAL (within bands)
-      // Check if basis returned to Mid Zone to trigger CLOSE alert for an open position
       const isReturnToMidZone = Math.abs(m.basis - midBandVal) <= midTolerance;
 
       if (tracker.alertSent && tracker.openSignalType && isReturnToMidZone) {
