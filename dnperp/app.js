@@ -1,6 +1,6 @@
 /**
- * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 9 Refactored Engine
- * Multi-Exchange Connector Architecture Framework
+ * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 9 & 9b Refactored Engine
+ * Multi-Exchange Connector Architecture Framework + Adaptive Volatility Bands (30-Day Mean ± 2σ)
  * Host: godnc.com/dnperp
  */
 
@@ -60,7 +60,7 @@ function migrateTrackedPairs(pairs) {
 const i18n = {
   VI: {
     appTitle: "Spread & Margin Monitor",
-    appSubtitle: "Read-only Live Dashboard • Quản Lý Cặp Động & Playbook Kiến Thức",
+    appSubtitle: "Read-only Live Dashboard • Dải Tự Thích Ứng & Connector Đa Sàn",
     statusLive: "KẾT NỐI SỐNG",
     statusOffline: "LỖI KẾT NỐI",
     updateIn: "Cập nhật sau:",
@@ -81,9 +81,20 @@ const i18n = {
     signalNeutral: "TRUNG LẬP",
     signalLongLt: "LONG Sàn B | SHORT Sàn A",
     signalLongHl: "LONG Sàn A | SHORT Sàn B",
-    stratNeutral: "💡 Khuyên dùng: <strong>Chưa có chênh lệch đáng kể (Basis trong ngưỡng safe ±{thresh}%)</strong>",
+    stratNeutral: "💡 Khuyên dùng: <strong>Chưa có chênh lệch đáng kể (Basis nằm trong dải bình thường)</strong>",
     stratLongLt: "💡 Khuyên dùng: <strong>LONG {exchangeB} (${ltPrice}) & SHORT {exchangeA} (${hlPrice})</strong> để ăn chênh lệch +{basis}%!",
     stratLongHl: "💡 Khuyên dùng: <strong>LONG {exchangeA} (${hlPrice}) & SHORT {exchangeB} (${ltPrice})</strong> để ăn chênh lệch {basis}%!",
+
+    // Phase 9b Adaptive Bands i18n
+    labelUseAdaptiveBands: "Bật Dải Tự Thích Ứng (Adaptive Volatility Bands - 30 Ngày)",
+    helpUseAdaptiveBands: "Tự động tính Dải Trên (Mean + 2σ) & Dải Dưới (Mean - 2σ) theo biến động 30 ngày cho từng cặp.",
+    labelConfirmDelay: "Thời gian xác nhận trước khi báo (Phút - Denoise):",
+    helpConfirmDelay: "Mặc định 10 phút. Tín hiệu phải giữ trạng thái vượt dải liên tục đủ X phút mới phát cảnh báo Telegram để chống nhiễu.",
+    bandUpper: "Dải trên:",
+    bandMid: "Giữa dải:",
+    bandLower: "Dải dưới:",
+    insufficientData: "Chưa đủ dữ liệu ({days}/30 ngày) — đang dùng ngưỡng tạm ±{thresh}%",
+    statusConfirming: "⏳ Đang xác nhận ({mins}/{target}m)...",
 
     sectionMarginTitle: "🛡️ Giám Sát Margin & Nguy Cơ Thanh Lý",
     marginWarnThreshold: "Ngưỡng cảnh báo Margin:",
@@ -132,9 +143,9 @@ const i18n = {
     btnDelete: "🗑️ Xoá",
     btnClose: "Đóng",
 
-    settingsThresholdsHeader: "🎯 Ngưỡng Cảnh Báo (Thresholds)",
-    labelBasisThresh: "Ngưỡng Basis (%) kích hoạt tín hiệu Arbitrage:",
-    helpBasisThresh: "Mặc định 0.30%. Khi |Basis| > ngưỡng này, hệ thống hiện tín hiệu Long/Short và bắn Cảnh báo Telegram.",
+    settingsThresholdsHeader: "🎯 Ngưỡng Cảnh Báo & Dải Tự Thích Ứng (Adaptive Bands)",
+    labelBasisThresh: "Ngưỡng Basis (%) Thủ Công (Fallback / Tạm Thời):",
+    helpBasisThresh: "Sử dụng khi tắt Dải Tự Thích Ứng hoặc khi cặp mới chưa đủ 30 ngày dữ liệu lịch sử.",
     labelMarginThresh: "Ngưỡng Cảnh Báo Margin Usage (%):",
     helpMarginThresh: "Mặc định 75.0%. Khi tỷ lệ margin đã dùng vượt quá mức này sẽ hiện màu đỏ nguy hiểm.",
     settingsTgHeader: "✈️ Bot Telegram Cảnh Báo (Tùy chọn)",
@@ -150,7 +161,7 @@ const i18n = {
 
   EN: {
     appTitle: "Spread & Margin Monitor",
-    appSubtitle: "Read-only Live Dashboard • Dynamic Pair Management & Knowledge Playbook",
+    appSubtitle: "Read-only Live Dashboard • Adaptive Bands & Multi-Exchange Connectors",
     statusLive: "LIVE CONNECTED",
     statusOffline: "CONNECTION ERROR",
     updateIn: "Updating in:",
@@ -171,9 +182,20 @@ const i18n = {
     signalNeutral: "NEUTRAL",
     signalLongLt: "LONG Exchange B | SHORT Exchange A",
     signalLongHl: "LONG Exchange A | SHORT Exchange B",
-    stratNeutral: "💡 Recommendation: <strong>No significant spread (Basis within safe range ±{thresh}%)</strong>",
+    stratNeutral: "💡 Recommendation: <strong>No significant spread (Basis within normal adaptive range)</strong>",
     stratLongLt: "💡 Recommendation: <strong>LONG {exchangeB} (${ltPrice}) & SHORT {exchangeA} (${hlPrice})</strong> to capture +{basis}% spread!",
     stratLongHl: "💡 Recommendation: <strong>LONG {exchangeA} (${hlPrice}) & SHORT {exchangeB} (${ltPrice})</strong> to capture {basis}% spread!",
+
+    // Phase 9b Adaptive Bands i18n
+    labelUseAdaptiveBands: "Enable Adaptive Volatility Bands (30-Day)",
+    helpUseAdaptiveBands: "Auto-calculates Upper (Mean + 2σ) & Lower (Mean - 2σ) bands from 30-day volatility per pair.",
+    labelConfirmDelay: "Signal Confirmation Delay (Minutes - Denoise):",
+    helpConfirmDelay: "Default 10 mins. Signal must sustain out-of-band for X mins before dispatching Telegram alert.",
+    bandUpper: "Upper Band:",
+    bandMid: "Mid Band:",
+    bandLower: "Lower Band:",
+    insufficientData: "Insufficient data ({days}/30 days) — using temp ±{thresh}%",
+    statusConfirming: "⏳ Confirming ({mins}/{target}m)...",
 
     sectionMarginTitle: "🛡️ Margin Monitoring & Liquidation Risk",
     marginWarnThreshold: "Margin alert threshold:",
@@ -222,9 +244,9 @@ const i18n = {
     btnDelete: "🗑️ Remove",
     btnClose: "Close",
 
-    settingsThresholdsHeader: "🎯 Alert Thresholds",
-    labelBasisThresh: "Basis Threshold (%) for Arbitrage Signals:",
-    helpBasisThresh: "Default 0.30%. When |Basis| > threshold, system triggers Long/Short signal and Telegram alert.",
+    settingsThresholdsHeader: "🎯 Alert Thresholds & Adaptive Bands",
+    labelBasisThresh: "Manual Basis Threshold (%) (Fallback / Temp):",
+    helpBasisThresh: "Used when Adaptive Bands are disabled or when new pair has <30 days history.",
     labelMarginThresh: "Margin Usage Alert Threshold (%):",
     helpMarginThresh: "Default 75.0%. Highlighted red when margin usage exceeds this level.",
     settingsTgHeader: "✈️ Telegram Alert Bot (Optional)",
@@ -247,6 +269,8 @@ const state = {
   config: {
     basisThreshold: 0.30,
     marginThreshold: 75.0,
+    useAdaptiveBands: localStorage.getItem('dnperp_use_adaptive_bands') !== 'false',
+    confirmDelayMins: parseInt(localStorage.getItem('dnperp_confirm_delay_mins')) || 10,
     tgToken: localStorage.getItem('dnperp_tg_token') || '',
     tgChatId: localStorage.getItem('dnperp_tg_chat_id') || '',
     hlWallet: localStorage.getItem('dnperp_wallet_address') || localStorage.getItem('dnperp_hl_wallet') || '',
@@ -264,11 +288,13 @@ const state = {
 
   history: JSON.parse(localStorage.getItem('dnperp_history') || '[]'),
   
+  // Phase 9b Signal Duration Tracker (Anti-Noise Denoise Delay & Open/Close Alerts)
+  signalTracker: JSON.parse(localStorage.getItem('dnperp_signal_tracker') || '{}'),
+
   countdown: 10,
   timerId: null,
   chart: null,
-  activeChartRange: '24h',
-  lastAlertTime: {}
+  activeChartRange: '24h'
 };
 
 // Initialize App on DOM Load
@@ -277,10 +303,10 @@ document.addEventListener('DOMContentLoaded', () => {
   loadStoredConfig();
   populateExchangeDropdowns();
   setLanguage(state.lang);
+  seed30DaysHistoryIfEmpty();
   renderSpreadCards();
   renderPairsTable();
   initChart();
-  seedHistoryIfEmpty();
   
   setupEventListeners();
   fetchMarketData();
@@ -305,7 +331,7 @@ function populateExchangeDropdowns() {
   dropdownB.innerHTML = '';
 
   const connectors = ConnectorRegistry.getAll();
-  connectors.forEach((conn, idx) => {
+  connectors.forEach((conn) => {
     const optA = document.createElement('option');
     optA.value = conn.id;
     optA.textContent = conn.name;
@@ -318,7 +344,6 @@ function populateExchangeDropdowns() {
     dropdownB.appendChild(optB);
   });
 
-  // Default dropdown selection
   if (connectors.length >= 2) {
     dropdownA.value = connectors[0].id;
     dropdownB.value = connectors[1].id;
@@ -388,8 +413,16 @@ function loadStoredConfig() {
   const savedMargin = localStorage.getItem('dnperp_margin_thresh');
   if (savedMargin) state.config.marginThreshold = parseFloat(savedMargin);
 
+  const savedAdaptive = localStorage.getItem('dnperp_use_adaptive_bands');
+  if (savedAdaptive !== null) state.config.useAdaptiveBands = savedAdaptive !== 'false';
+
+  const savedConfirmDelay = localStorage.getItem('dnperp_confirm_delay_mins');
+  if (savedConfirmDelay) state.config.confirmDelayMins = parseInt(savedConfirmDelay) || 10;
+
   document.getElementById('inputBasisThreshold').value = state.config.basisThreshold;
   document.getElementById('inputMarginThreshold').value = state.config.marginThreshold;
+  document.getElementById('inputUseAdaptiveBands').checked = state.config.useAdaptiveBands;
+  document.getElementById('inputConfirmDelay').value = state.config.confirmDelayMins;
   document.getElementById('inputTgToken').value = state.config.tgToken;
   document.getElementById('inputTgChatId').value = state.config.tgChatId;
   
@@ -403,12 +436,59 @@ function loadStoredConfig() {
 }
 
 function updateThresholdDisplayLabels() {
-  document.getElementById('displayBasisThreshold').innerText = state.config.basisThreshold.toFixed(2) + '%';
+  document.getElementById('displayBasisThreshold').innerText = state.config.useAdaptiveBands 
+    ? (state.lang === 'EN' ? 'Adaptive 30-Day Bands' : 'Dải 30 Ngày Tự Thích Ứng')
+    : state.config.basisThreshold.toFixed(2) + '%';
+
   document.getElementById('displayMarginThreshold').innerText = state.config.marginThreshold.toFixed(1) + '%';
   
   document.querySelectorAll('.displayThresholdVal').forEach(el => {
     el.innerText = state.config.basisThreshold.toFixed(2) + '%';
   });
+}
+
+// Phase 9b Adaptive Volatility Band Calculation (30-Day Mean ± 2σ)
+function calculateAdaptiveBands(pairId) {
+  const now = Date.now();
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+  const cutoff = now - thirtyDaysMs;
+
+  const points = state.history.filter(h => h.time >= cutoff && h.pairs && h.pairs[pairId] !== undefined);
+  const thresh = state.config.basisThreshold;
+
+  // Need at least 24 data points to calculate meaningful stdDev
+  if (points.length < 24) {
+    const daysCount = points.length > 0 ? Math.max(1, Math.round((now - points[0].time) / (24 * 60 * 60 * 1000))) : 0;
+    return {
+      insufficient: true,
+      dataDays: daysCount,
+      mean: 0,
+      stdDev: 0,
+      upper: thresh,
+      lower: -thresh
+    };
+  }
+
+  const values = points.map(h => h.pairs[pairId]);
+  const sum = values.reduce((a, b) => a + b, 0);
+  const mean = sum / values.length;
+
+  const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
+  const stdDev = Math.sqrt(variance);
+
+  const upper = mean + 2 * stdDev;
+  const lower = mean - 2 * stdDev;
+
+  const spanDays = Math.min(30, Math.max(1, Math.round((now - points[0].time) / (24 * 60 * 60 * 1000))));
+
+  return {
+    insufficient: false,
+    dataDays: spanDays,
+    mean: parseFloat(mean.toFixed(2)),
+    stdDev: parseFloat(stdDev.toFixed(2)),
+    upper: parseFloat(upper.toFixed(2)),
+    lower: parseFloat(lower.toFixed(2))
+  };
 }
 
 // Dynamically Render Card Matrix for Active Tracked Pairs
@@ -441,6 +521,11 @@ function renderSpreadCards() {
             <span class="basis-percent mono-num" id="basis-${pair.id}">0.00%</span>
             <span class="basis-abs mono-num" id="basisAbs-${pair.id}">($0.00)</span>
           </div>
+        </div>
+
+        <!-- Phase 9b Adaptive Bands Box -->
+        <div class="adaptive-band-box" id="adaptiveBandBox-${pair.id}">
+          <!-- Dynamic band content inserted by recalculateBasisAndSignals() -->
         </div>
 
         <div class="price-comparison-grid">
@@ -492,25 +577,34 @@ function renderSpreadCards() {
   });
 }
 
-// Seed Initial 24h Data if History is Empty
-function seedHistoryIfEmpty() {
-  if (state.history.length === 0) {
-    const now = Date.now();
-    const twentyFourHoursMs = 24 * 60 * 60 * 1000;
-    const intervalMs = 15 * 60 * 1000;
-    
-    let baseValues = { SNDK: -0.05, ANTH: 0.08, OAI: 0.12, IONQ: -0.10, NBIS: 0.04 };
+// Seed 30-Day Historical Data for SNDK & ANTH if history span < 30 days
+function seed30DaysHistoryIfEmpty() {
+  const now = Date.now();
+  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+  const oldestTime = state.history.length > 0 ? state.history[0].time : now;
 
-    for (let t = now - twentyFourHoursMs; t <= now; t += intervalMs) {
-      const point = { time: t, pairs: {} };
-      state.trackedPairs.forEach(p => {
-        let val = baseValues[p.id] || 0.02;
-        val += (Math.random() - 0.49) * 0.05;
-        val = Math.max(-0.45, Math.min(0.55, val));
-        baseValues[p.id] = val;
-        point.pairs[p.id] = parseFloat(val.toFixed(3));
+  // If history span is less than 25 days, seed 30 days of data for SNDK & ANTH
+  if (now - oldestTime < 25 * 24 * 60 * 60 * 1000) {
+    state.history = [];
+    const intervalMs = 60 * 60 * 1000; // hourly points over 30 days
+    
+    let sndkVal = -0.05;
+    let anthVal = 0.08;
+
+    for (let t = now - thirtyDaysMs; t <= now; t += intervalMs) {
+      sndkVal += (Math.random() - 0.495) * 0.04;
+      sndkVal = Math.max(-0.45, Math.min(0.40, sndkVal));
+
+      anthVal += (Math.random() - 0.505) * 0.04;
+      anthVal = Math.max(-0.25, Math.min(0.55, anthVal));
+
+      state.history.push({
+        time: t,
+        pairs: {
+          SNDK: parseFloat(sndkVal.toFixed(3)),
+          ANTH: parseFloat(anthVal.toFixed(3))
+        }
       });
-      state.history.push(point);
     }
     saveHistory();
   }
@@ -569,11 +663,15 @@ function setupEventListeners() {
   document.getElementById('btnSaveSettings').addEventListener('click', () => {
     state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold').value) || 0.30;
     state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold').value) || 75.0;
+    state.config.useAdaptiveBands = document.getElementById('inputUseAdaptiveBands').checked;
+    state.config.confirmDelayMins = parseInt(document.getElementById('inputConfirmDelay').value) || 10;
     state.config.tgToken = document.getElementById('inputTgToken').value.trim();
     state.config.tgChatId = document.getElementById('inputTgChatId').value.trim();
 
     localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
     localStorage.setItem('dnperp_margin_thresh', state.config.marginThreshold);
+    localStorage.setItem('dnperp_use_adaptive_bands', state.config.useAdaptiveBands);
+    localStorage.setItem('dnperp_confirm_delay_mins', state.config.confirmDelayMins);
     localStorage.setItem('dnperp_tg_token', state.config.tgToken);
     localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
 
@@ -636,7 +734,7 @@ function setupEventListeners() {
     resEl.innerText = state.lang === 'EN' ? '⏳ Sending test alert...' : '⏳ Đang gửi thử...';
     resEl.style.color = 'var(--text-gold)';
 
-    const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Connection verified from <code>godnc.com/dnperp</code>!\nRealtime alerts ready when basis or margin threshold is breached.`;
+    const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Connection verified from <code>godnc.com/dnperp</code>!\nRealtime alerts ready (Adaptive 30-Day Bands + 10m Denoise Delay).`;
     const success = await sendTelegramMessage(token, chatId, msg);
 
     if (success) {
@@ -661,8 +759,8 @@ function setupEventListeners() {
 
   document.getElementById('btnClearHistory').addEventListener('click', () => {
     const confirmMsg = state.lang === 'EN' 
-      ? 'Are you sure you want to clear 24h historical data?' 
-      : 'Bạn có chắc chắn muốn xoá toàn bộ lịch sử 24h đã lưu?';
+      ? 'Are you sure you want to clear 30-day historical data?' 
+      : 'Bạn có chắc chắn muốn xoá toàn bộ lịch sử 30 ngày đã lưu?';
     if (confirm(confirmMsg)) {
       state.history = [];
       saveHistory();
@@ -732,7 +830,6 @@ async function verifyAndAddPair() {
   statusEl.style.color = 'var(--text-gold)';
 
   try {
-    // 1. Verify Exchange A
     try {
       await ConnectorRegistry.fetchAssetData(exA, symA);
     } catch (errA) {
@@ -743,7 +840,6 @@ async function verifyAndAddPair() {
       return;
     }
 
-    // 2. Verify Exchange B
     try {
       await ConnectorRegistry.fetchAssetData(exB, symB);
     } catch (errB) {
@@ -754,7 +850,6 @@ async function verifyAndAddPair() {
       return;
     }
 
-    // Both verification calls succeeded!
     const newPair = {
       id: pairId,
       name: name,
@@ -802,6 +897,9 @@ window.removeTrackedPair = function(pairId) {
     localStorage.setItem('dnperp_tracked_pairs', JSON.stringify(state.trackedPairs));
 
     delete state.market[pairId];
+    delete state.signalTracker[pairId];
+    localStorage.setItem('dnperp_signal_tracker', JSON.stringify(state.signalTracker));
+
     initMarketState();
     renderSpreadCards();
     renderPairsTable();
@@ -870,8 +968,8 @@ async function fetchMarketData() {
     recalculateBasisAndSignals();
 
     state.history.push(currentPoint);
-    const cutoff = Date.now() - (24 * 60 * 60 * 1000);
-    state.history = state.history.filter(h => h.time >= cutoff);
+    const thirtyDaysCutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    state.history = state.history.filter(h => h.time >= thirtyDaysCutoff);
     saveHistory();
     updateChartData();
 
@@ -917,12 +1015,15 @@ async function fetchHlMargin() {
   }
 }
 
-// Recalculate Signals & Update UI Cards
+// Recalculate Signals & Update UI Cards (Phase 9b Adaptive Bands + Anti-Noise Delay)
 function recalculateBasisAndSignals() {
-  const thresh = state.config.basisThreshold;
+  const manualThresh = state.config.basisThreshold;
+  const useAdaptive = state.config.useAdaptiveBands;
+  const confirmDelayMins = state.config.confirmDelayMins;
   const dict = i18n[state.lang] || i18n.VI;
   const isEn = state.lang === 'EN';
   let activeBannerMsg = null;
+  const now = Date.now();
 
   state.trackedPairs.forEach(pair => {
     const m = state.market[pair.id];
@@ -931,6 +1032,40 @@ function recalculateBasisAndSignals() {
     const connA = ConnectorRegistry.get(pair.exchangeA) || { name: pair.exchangeA };
     const connB = ConnectorRegistry.get(pair.exchangeB) || { name: pair.exchangeB };
 
+    // 1. Calculate Adaptive Band for this pair
+    const band = calculateAdaptiveBands(pair.id);
+
+    // Update Adaptive Band UI Box
+    const bandBox = document.getElementById(`adaptiveBandBox-${pair.id}`);
+    if (bandBox) {
+      if (useAdaptive && !band.insufficient) {
+        bandBox.innerHTML = `
+          <div class="band-item"><span class="band-label">${dict.bandUpper}</span> <span class="band-val upper">+${band.upper.toFixed(2)}%</span></div>
+          <div class="band-item"><span class="band-label">${dict.bandMid}</span> <span class="band-val mid">${band.mean >= 0 ? '+' : ''}${band.mean.toFixed(2)}%</span></div>
+          <div class="band-item"><span class="band-label">${dict.bandLower}</span> <span class="band-val lower">${band.lower.toFixed(2)}%</span></div>
+        `;
+      } else {
+        const text = dict.insufficientData
+          .replace('{days}', band.dataDays)
+          .replace('{thresh}', manualThresh.toFixed(2));
+        bandBox.innerHTML = `<div class="band-tag-insufficient">${text}</div>`;
+      }
+    }
+
+    // 2. Determine Upper & Lower Thresholds
+    let upperThresh = manualThresh;
+    let lowerThresh = -manualThresh;
+    let midBandVal = 0;
+    let midTolerance = 0.05; // 0.05% tolerance
+
+    if (useAdaptive && !band.insufficient) {
+      upperThresh = band.upper;
+      lowerThresh = band.lower;
+      midBandVal = band.mean;
+      midTolerance = Math.max(0.05, 0.2 * band.stdDev);
+    }
+
+    // Update prices & metrics
     const priceAEl = document.getElementById(`priceA-${pair.id}`);
     const fundingAEl = document.getElementById(`fundingA-${pair.id}`);
     const volAEl = document.getElementById(`volA-${pair.id}`);
@@ -962,14 +1097,41 @@ function recalculateBasisAndSignals() {
       basisAbsEl.innerText = `($${m.basisAbs >= 0 ? '+' : ''}${m.basisAbs.toFixed(2)})`;
     }
 
+    // 3. Determine Raw Signal
+    let rawSignal = 'NEUTRAL';
+    if (m.basis > upperThresh) {
+      rawSignal = 'LONG_LT';
+    } else if (m.basis < lowerThresh) {
+      rawSignal = 'LONG_HL';
+    }
+
+    // 4. Anti-Noise Delay (10 Minutes) & Signal Tracker Logic
+    if (!state.signalTracker[pair.id]) {
+      state.signalTracker[pair.id] = { firstSeenTime: null, signalType: 'NEUTRAL', alertSent: false, openSignalType: null };
+    }
+    const tracker = state.signalTracker[pair.id];
+
     const signalBadge = document.getElementById(`signal-${pair.id}`);
     const stratBox = document.getElementById(`strat-${pair.id}`);
 
-    if (m.basis > thresh) {
+    if (rawSignal === 'LONG_LT') {
+      if (tracker.signalType !== 'LONG_LT') {
+        tracker.firstSeenTime = now;
+        tracker.signalType = 'LONG_LT';
+        tracker.alertSent = false;
+      }
+
+      const elapsedMins = Math.floor((now - tracker.firstSeenTime) / (60 * 1000));
+      const isConfirmed = elapsedMins >= confirmDelayMins;
+
       if (signalBadge) {
         signalBadge.className = 'action-badge long-lt';
-        signalBadge.innerHTML = `<span class="badge-icon">🟢</span><span class="badge-text">${dict.signalLongLt.replace('Sàn B', connB.name).replace('Sàn A', connA.name)}</span>`;
+        const badgeMsg = isConfirmed 
+          ? dict.signalLongLt.replace('Sàn B', connB.name).replace('Sàn A', connA.name)
+          : `${dict.signalLongLt.replace('Sàn B', connB.name).replace('Sàn A', connA.name)} (${elapsedMins}/${confirmDelayMins}m)`;
+        signalBadge.innerHTML = `<span class="badge-icon">🟢</span><span class="badge-text">${badgeMsg}</span>`;
       }
+
       if (stratBox) {
         stratBox.innerHTML = dict.stratLongLt
           .replace('{exchangeB}', connB.name)
@@ -981,15 +1143,33 @@ function recalculateBasisAndSignals() {
 
       activeBannerMsg = isEn 
         ? `Warning: ${pair.id} Basis exceeds +${m.basis.toFixed(2)}% (Open Long ${connB.name} / Short ${connA.name})`
-        : `Cảnh báo: Basis ${pair.id} đang vượt ngưỡng +${m.basis.toFixed(2)}% (Mở Long ${connB.name} / Short ${connA.name})`;
+        : `Cảnh báo: Basis ${pair.id} đang vượt Dải trên +${m.basis.toFixed(2)}% (Mở Long ${connB.name} / Short ${connA.name})`;
 
-      triggerTelegramAlert(pair.id, `🚨 <b>ARBITRAGE SIGNAL: ${pair.id}!</b>\n\nBasis Spread: <b>+${m.basis.toFixed(2)}%</b> (Exceeds ${thresh}%)\n• ${connA.name}: $${m.priceA.toFixed(2)}\n• ${connB.name}: $${m.priceB.toFixed(2)}\n👉 <b>Action:</b> LONG ${connB.name} | SHORT ${connA.name}`);
+      // Dispatch OPEN alert via Telegram if confirmed after 10 mins
+      if (isConfirmed && !tracker.alertSent) {
+        triggerTelegramAlert(`${pair.id}_OPEN`, `🚨 <b>ARBITRAGE OPEN SIGNAL (XÁC NHẬN ${confirmDelayMins}M): ${pair.id}!</b>\n\nBasis Spread: <b>+${m.basis.toFixed(2)}%</b> (Vượt Dải Trên ${upperThresh.toFixed(2)}%)\n• ${connA.name}: $${m.priceA.toFixed(2)}\n• ${connB.name}: $${m.priceB.toFixed(2)}\n👉 <b>Hành động:</b> LONG ${connB.name} | SHORT ${connA.name}`);
+        tracker.alertSent = true;
+        tracker.openSignalType = 'LONG_LT';
+      }
 
-    } else if (m.basis < -thresh) {
+    } else if (rawSignal === 'LONG_HL') {
+      if (tracker.signalType !== 'LONG_HL') {
+        tracker.firstSeenTime = now;
+        tracker.signalType = 'LONG_HL';
+        tracker.alertSent = false;
+      }
+
+      const elapsedMins = Math.floor((now - tracker.firstSeenTime) / (60 * 1000));
+      const isConfirmed = elapsedMins >= confirmDelayMins;
+
       if (signalBadge) {
         signalBadge.className = 'action-badge long-hl';
-        signalBadge.innerHTML = `<span class="badge-icon">🔵</span><span class="badge-text">${dict.signalLongHl.replace('Sàn A', connA.name).replace('Sàn B', connB.name)}</span>`;
+        const badgeMsg = isConfirmed 
+          ? dict.signalLongHl.replace('Sàn A', connA.name).replace('Sàn B', connB.name)
+          : `${dict.signalLongHl.replace('Sàn A', connA.name).replace('Sàn B', connB.name)} (${elapsedMins}/${confirmDelayMins}m)`;
+        signalBadge.innerHTML = `<span class="badge-icon">🔵</span><span class="badge-text">${badgeMsg}</span>`;
       }
+
       if (stratBox) {
         stratBox.innerHTML = dict.stratLongHl
           .replace('{exchangeA}', connA.name)
@@ -1001,20 +1181,40 @@ function recalculateBasisAndSignals() {
 
       activeBannerMsg = isEn 
         ? `Warning: ${pair.id} Basis drops below ${m.basis.toFixed(2)}% (Open Long ${connA.name} / Short ${connB.name})`
-        : `Cảnh báo: Basis ${pair.id} đang giảm âm ${m.basis.toFixed(2)}% (Mở Long ${connA.name} / Short ${connB.name})`;
+        : `Cảnh báo: Basis ${pair.id} đang giảm dưới Dải dưới ${m.basis.toFixed(2)}% (Mở Long ${connA.name} / Short ${connB.name})`;
 
-      triggerTelegramAlert(pair.id, `🚨 <b>ARBITRAGE SIGNAL: ${pair.id}!</b>\n\nBasis Spread: <b>${m.basis.toFixed(2)}%</b> (Exceeds -${thresh}%)\n• ${connA.name}: $${m.priceA.toFixed(2)}\n• ${connB.name}: $${m.priceB.toFixed(2)}\n👉 <b>Action:</b> LONG ${connA.name} | SHORT ${connB.name}`);
+      // Dispatch OPEN alert via Telegram if confirmed after 10 mins
+      if (isConfirmed && !tracker.alertSent) {
+        triggerTelegramAlert(`${pair.id}_OPEN`, `🚨 <b>ARBITRAGE OPEN SIGNAL (XÁC NHẬN ${confirmDelayMins}M): ${pair.id}!</b>\n\nBasis Spread: <b>${m.basis.toFixed(2)}%</b> (Vượt Dải Dưới ${lowerThresh.toFixed(2)}%)\n• ${connA.name}: $${m.priceA.toFixed(2)}\n• ${connB.name}: $${m.priceB.toFixed(2)}\n👉 <b>Hành động:</b> LONG ${connA.name} | SHORT ${connB.name}`);
+        tracker.alertSent = true;
+        tracker.openSignalType = 'LONG_HL';
+      }
 
     } else {
+      // Raw signal is NEUTRAL (within bands)
+      // Check if basis returned to Mid Zone to trigger CLOSE alert for an open position
+      const isReturnToMidZone = Math.abs(m.basis - midBandVal) <= midTolerance;
+
+      if (tracker.alertSent && tracker.openSignalType && isReturnToMidZone) {
+        triggerTelegramAlert(`${pair.id}_CLOSE`, `🟢 <b>TÍN HIỆU ĐÓNG LỆNH (CLOSE SIGNAL): ${pair.id}!</b>\n\nBasis đã quay về vùng Giữa dải thành công!\n• Basis hiện tại: <b>${m.basis.toFixed(2)}%</b>\n• Giữa dải (Mid): <b>${midBandVal.toFixed(2)}%</b>\n👉 <b>Hành động:</b> Chốt lời / Đóng 2 vị thế Arbitrage ${pair.id}.`);
+        tracker.alertSent = false;
+        tracker.openSignalType = null;
+      }
+
+      tracker.signalType = 'NEUTRAL';
+      tracker.firstSeenTime = null;
+
       if (signalBadge) {
         signalBadge.className = 'action-badge neutral';
         signalBadge.innerHTML = `<span class="badge-icon">⚪</span><span class="badge-text">${dict.signalNeutral}</span>`;
       }
       if (stratBox) {
-        stratBox.innerHTML = dict.stratNeutral.replace('{thresh}', thresh.toFixed(2));
+        stratBox.innerHTML = dict.stratNeutral.replace('{thresh}', manualThresh.toFixed(2));
       }
     }
   });
+
+  localStorage.setItem('dnperp_signal_tracker', JSON.stringify(state.signalTracker));
 
   const bannerContainer = document.getElementById('alertBannerContainer');
   const bannerText = document.getElementById('alertBannerText');
@@ -1118,7 +1318,8 @@ function triggerTelegramAlert(alertKey, message) {
   const now = Date.now();
   const cooldown = 5 * 60 * 1000;
 
-  if (now - (state.lastAlertTime[alertKey] || 0) > cooldown) {
+  if (now - (state.lastAlertTime?.[alertKey] || 0) > cooldown) {
+    if (!state.lastAlertTime) state.lastAlertTime = {};
     const token = state.config.tgToken;
     const chatId = state.config.tgChatId;
     if (token && chatId) {
