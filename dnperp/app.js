@@ -60,6 +60,7 @@ const ConnectorRegistry = {
 // Register Built-in Connectors
 if (window.HyperliquidConnector) ConnectorRegistry.register(window.HyperliquidConnector);
 if (window.LighterConnector) ConnectorRegistry.register(window.LighterConnector);
+if (window.ExtendedConnector) ConnectorRegistry.register(window.ExtendedConnector);
 
 // Default Tracked Pairs using Connector Framework schema
 const DEFAULT_PAIRS = [
@@ -489,6 +490,22 @@ function populateExchangeDropdowns() {
     dropdownA.value = connectors[0].id;
     dropdownB.value = connectors[1].id;
   }
+
+  const updatePlaceholders = () => {
+    const symAInput = document.getElementById('inputAddSymbolA');
+    const symBInput = document.getElementById('inputAddSymbolB');
+
+    if (symAInput) {
+      symAInput.placeholder = dropdownA.value === 'extended' ? 'VD: BTC-USD, ETH-USD' : 'VD: SNDK, OAI, IONQ';
+    }
+    if (symBInput) {
+      symBInput.placeholder = dropdownB.value === 'extended' ? 'VD: BTC-USD, ETH-USD' : 'VD: SNDK, OPENAI, IONQ';
+    }
+  };
+
+  dropdownA.addEventListener('change', updatePlaceholders);
+  dropdownB.addEventListener('change', updatePlaceholders);
+  updatePlaceholders();
 }
 
 // Populate Trade Modal Pair Dropdown
