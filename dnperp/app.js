@@ -1,16 +1,60 @@
 /**
- * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 8 Engine
+ * Entropy ↔ Lighter Spread Monitor (dnperp) — Phase 9 Refactored Engine
+ * Multi-Exchange Connector Architecture Framework
  * Host: godnc.com/dnperp
  */
 
 // Palette for chart lines per pair
 const PALETTE = ['#4bacf5', '#e59866', '#26a69a', '#e91e63', '#ab47bc', '#fbc02d', '#00bcd4', '#ff7043'];
 
-// Default Tracked Pairs if none in localStorage
+// Central Connector Registry
+const ConnectorRegistry = {
+  connectors: {},
+
+  register(connector) {
+    if (!connector || !connector.id) return;
+    this.connectors[connector.id] = connector;
+  },
+
+  get(id) {
+    return this.connectors[id] || null;
+  },
+
+  getAll() {
+    return Object.values(this.connectors);
+  },
+
+  async fetchAssetData(exchangeId, symbol, options = {}) {
+    const conn = this.get(exchangeId);
+    if (!conn) {
+      throw new Error(`Exchange Connector '${exchangeId}' is not registered`);
+    }
+    return await conn.fetchAssetData(symbol, options);
+  }
+};
+
+// Register Built-in Connectors
+if (window.HyperliquidConnector) ConnectorRegistry.register(window.HyperliquidConnector);
+if (window.LighterConnector) ConnectorRegistry.register(window.LighterConnector);
+
+// Default Tracked Pairs using Connector Framework schema
 const DEFAULT_PAIRS = [
-  { id: 'SNDK', name: 'SanDisk Synthetic', hlSymbol: 'SNDK', ltSymbol: 'SNDK' },
-  { id: 'ANTH', name: 'Anthropic Pre-IPO', hlSymbol: 'ANTH', ltSymbol: 'ANTHROPIC' }
+  { id: 'SNDK', name: 'SanDisk Synthetic', exchangeA: 'hyperliquid', symbolA: 'SNDK', exchangeB: 'lighter', symbolB: 'SNDK' },
+  { id: 'ANTH', name: 'Anthropic Pre-IPO', exchangeA: 'hyperliquid', symbolA: 'ANTH', exchangeB: 'lighter', symbolB: 'ANTHROPIC' }
 ];
+
+// Migrate legacy stored pairs to new schema
+function migrateTrackedPairs(pairs) {
+  if (!Array.isArray(pairs) || pairs.length === 0) return DEFAULT_PAIRS;
+  return pairs.map(p => ({
+    id: p.id || p.symbolA || p.hlSymbol || 'PAIR',
+    name: p.name || `${p.id} Pair`,
+    exchangeA: p.exchangeA || 'hyperliquid',
+    symbolA: p.symbolA || p.hlSymbol || p.id,
+    exchangeB: p.exchangeB || 'lighter',
+    symbolB: p.symbolB || p.ltSymbol || p.id
+  }));
+}
 
 // Multilingual i18n Dictionary
 const i18n = {
@@ -30,16 +74,16 @@ const i18n = {
     sectionSpreadSub: "Đang theo dõi",
     pairsCountUnit: "cặp",
     warnThreshold: "Ngưỡng cảnh báo:",
-    basisLabel: "CHÊNH LỆCH BASIS (Entropy - Lighter)",
+    basisLabel: "CHÊNH LỆCH BASIS (Sàn A - Sàn B)",
     fundingYear: "Funding (Năm):",
     fundingProxy: "Funding Proxy:",
     vol24h: "Volume 24h:",
     signalNeutral: "TRUNG LẬP",
-    signalLongLt: "LONG Lighter | SHORT Entropy",
-    signalLongHl: "LONG Entropy | SHORT Lighter",
+    signalLongLt: "LONG Sàn B | SHORT Sàn A",
+    signalLongHl: "LONG Sàn A | SHORT Sàn B",
     stratNeutral: "💡 Khuyên dùng: <strong>Chưa có chênh lệch đáng kể (Basis trong ngưỡng safe ±{thresh}%)</strong>",
-    stratLongLt: "💡 Khuyên dùng: <strong>LONG Lighter (${ltPrice}) & SHORT Entropy (${hlPrice})</strong> để ăn chênh lệch +{basis}%!",
-    stratLongHl: "💡 Khuyên dùng: <strong>LONG Entropy (${hlPrice}) & SHORT Lighter (${ltPrice})</strong> để ăn chênh lệch {basis}%!",
+    stratLongLt: "💡 Khuyên dùng: <strong>LONG {exchangeB} (${ltPrice}) & SHORT {exchangeA} (${hlPrice})</strong> để ăn chênh lệch +{basis}%!",
+    stratLongHl: "💡 Khuyên dùng: <strong>LONG {exchangeA} (${hlPrice}) & SHORT {exchangeB} (${ltPrice})</strong> để ăn chênh lệch {basis}%!",
 
     sectionMarginTitle: "🛡️ Giám Sát Margin & Nguy Cơ Thanh Lý",
     marginWarnThreshold: "Ngưỡng cảnh báo Margin:",
@@ -72,17 +116,18 @@ const i18n = {
     sectionLangTitle: "🌐 Ngôn Ngữ / Language",
     sectionWalletTitle: "💧 Địa Chỉ Ví Hyperliquid (Entropy)",
     sectionLtMarginTitle: "⚡ Số Dư Margin Lighter (Robinhood Chain)",
-    modalPairsTitle: "📋 Quản Lý Cặp Theo Dõi Động",
-    modalAddPairHeader: "➕ Thêm Cặp Mới",
-    modalAddPairSub: "Hệ thống sẽ kiểm tra tự động xem ticker có tồn tại trên cả 2 sàn Entropy (dex \"io\") và Lighter hay không trước khi thêm.",
-    labelHlTicker: "Ticker Entropy (Hyperliquid):",
-    labelLtTicker: "Ticker Lighter (Robinhood):",
+    modalPairsTitle: "📋 Quản Lý Cặp Theo Dõi Động (Connectors)",
+    modalAddPairSubMulti: "Chọn Sàn A & Sàn B từ danh sách Connector đã đăng ký trong hệ thống để tự động ghép cặp theo dõi.",
+    labelExchangeA: "Sàn A (Exchange A):",
+    labelSymbolA: "Ticker trên Sàn A:",
+    labelExchangeB: "Sàn B (Exchange B):",
+    labelSymbolB: "Ticker trên Sàn B:",
     labelPairName: "Tên Hiển Thị (Mô tả):",
     btnAddPairSubmit: "🔍 Xác Minh & Thêm Cặp",
     modalActivePairsHeader: "📋 Danh Sách Cặp Đang Theo Dõi",
     colPairName: "Tên Cặp",
-    colHlTicker: "Ticker Entropy (io)",
-    colLtTicker: "Ticker Lighter",
+    colExchangeA: "Sàn A (Ticker)",
+    colExchangeB: "Sàn B (Ticker)",
     colActions: "Hành Động",
     btnDelete: "🗑️ Xoá",
     btnClose: "Đóng",
@@ -119,16 +164,16 @@ const i18n = {
     sectionSpreadSub: "Tracking",
     pairsCountUnit: "pairs",
     warnThreshold: "Warning threshold:",
-    basisLabel: "BASIS SPREAD (Entropy - Lighter)",
+    basisLabel: "BASIS SPREAD (Exchange A - Exchange B)",
     fundingYear: "Funding (Annual):",
     fundingProxy: "Funding Proxy:",
     vol24h: "24h Volume:",
     signalNeutral: "NEUTRAL",
-    signalLongLt: "LONG Lighter | SHORT Entropy",
-    signalLongHl: "LONG Entropy | SHORT Lighter",
+    signalLongLt: "LONG Exchange B | SHORT Exchange A",
+    signalLongHl: "LONG Exchange A | SHORT Exchange B",
     stratNeutral: "💡 Recommendation: <strong>No significant spread (Basis within safe range ±{thresh}%)</strong>",
-    stratLongLt: "💡 Recommendation: <strong>LONG Lighter (${ltPrice}) & SHORT Entropy (${hlPrice})</strong> to capture +{basis}% spread!",
-    stratLongHl: "💡 Recommendation: <strong>LONG Entropy (${hlPrice}) & SHORT Lighter (${ltPrice})</strong> to capture {basis}% spread!",
+    stratLongLt: "💡 Recommendation: <strong>LONG {exchangeB} (${ltPrice}) & SHORT {exchangeA} (${hlPrice})</strong> to capture +{basis}% spread!",
+    stratLongHl: "💡 Recommendation: <strong>LONG {exchangeA} (${hlPrice}) & SHORT {exchangeB} (${ltPrice})</strong> to capture {basis}% spread!",
 
     sectionMarginTitle: "🛡️ Margin Monitoring & Liquidation Risk",
     marginWarnThreshold: "Margin alert threshold:",
@@ -161,17 +206,18 @@ const i18n = {
     sectionLangTitle: "🌐 Ngôn Ngữ / Language",
     sectionWalletTitle: "💧 Hyperliquid Wallet Address (Entropy)",
     sectionLtMarginTitle: "⚡ Lighter Margin Balance (Robinhood Chain)",
-    modalPairsTitle: "📋 Dynamic Pair Management",
-    modalAddPairHeader: "➕ Add New Pair",
-    modalAddPairSub: "System will automatically check if tickers exist on both Entropy (dex \"io\") and Lighter before adding.",
-    labelHlTicker: "Entropy Ticker (Hyperliquid):",
-    labelLtTicker: "Lighter Ticker (Robinhood):",
+    modalPairsTitle: "📋 Dynamic Pair Management (Connectors)",
+    modalAddPairSubMulti: "Select Exchange A & Exchange B from registered System Connectors to pair and track automatically.",
+    labelExchangeA: "Exchange A:",
+    labelSymbolA: "Ticker on Exchange A:",
+    labelExchangeB: "Exchange B:",
+    labelSymbolB: "Ticker on Exchange B:",
     labelPairName: "Display Name (Description):",
     btnAddPairSubmit: "🔍 Verify & Add Pair",
     modalActivePairsHeader: "📋 Active Tracked Pairs",
     colPairName: "Pair Name",
-    colHlTicker: "Entropy Ticker (io)",
-    colLtTicker: "Lighter Ticker",
+    colExchangeA: "Exchange A (Ticker)",
+    colExchangeB: "Exchange B (Ticker)",
     colActions: "Actions",
     btnDelete: "🗑️ Remove",
     btnClose: "Close",
@@ -194,6 +240,7 @@ const i18n = {
 };
 
 // Global Application State
+const rawStoredPairs = JSON.parse(localStorage.getItem('dnperp_tracked_pairs') || 'null');
 const state = {
   lang: localStorage.getItem('dnperp_lang') || 'VI',
 
@@ -207,7 +254,7 @@ const state = {
     ltTotalMargin: parseFloat(localStorage.getItem('dnperp_lt_total')) || 1000
   },
 
-  trackedPairs: JSON.parse(localStorage.getItem('dnperp_tracked_pairs') || 'null') || DEFAULT_PAIRS,
+  trackedPairs: migrateTrackedPairs(rawStoredPairs),
   market: {},
 
   margin: {
@@ -228,6 +275,7 @@ const state = {
 document.addEventListener('DOMContentLoaded', () => {
   initMarketState();
   loadStoredConfig();
+  populateExchangeDropdowns();
   setLanguage(state.lang);
   renderSpreadCards();
   renderPairsTable();
@@ -247,18 +295,46 @@ document.addEventListener('DOMContentLoaded', () => {
   startCountdown();
 });
 
+// Populate Connector Dropdowns inside Drawer
+function populateExchangeDropdowns() {
+  const dropdownA = document.getElementById('inputAddExchangeA');
+  const dropdownB = document.getElementById('inputAddExchangeB');
+  if (!dropdownA || !dropdownB) return;
+
+  dropdownA.innerHTML = '';
+  dropdownB.innerHTML = '';
+
+  const connectors = ConnectorRegistry.getAll();
+  connectors.forEach((conn, idx) => {
+    const optA = document.createElement('option');
+    optA.value = conn.id;
+    optA.textContent = conn.name;
+
+    const optB = document.createElement('option');
+    optB.value = conn.id;
+    optB.textContent = conn.name;
+
+    dropdownA.appendChild(optA);
+    dropdownB.appendChild(optB);
+  });
+
+  // Default dropdown selection
+  if (connectors.length >= 2) {
+    dropdownA.value = connectors[0].id;
+    dropdownB.value = connectors[1].id;
+  }
+}
+
 // Switch Language Engine
 function setLanguage(lang) {
   state.lang = lang;
   localStorage.setItem('dnperp_lang', lang);
 
-  // Update Language Buttons UI (Header & Drawer)
   document.getElementById('langBtnVI').classList.toggle('active', lang === 'VI');
   document.getElementById('langBtnEN').classList.toggle('active', lang === 'EN');
   document.getElementById('drawerLangBtnVI').classList.toggle('active', lang === 'VI');
   document.getElementById('drawerLangBtnEN').classList.toggle('active', lang === 'EN');
 
-  // Update Static Elements with data-i18n Attribute
   const dict = i18n[lang] || i18n.VI;
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
@@ -267,10 +343,8 @@ function setLanguage(lang) {
     }
   });
 
-  // Update Input Placeholders
   document.getElementById('hlWalletAddress').placeholder = dict.placeholderWallet;
 
-  // Toggle Knowledge Content Blocks
   if (lang === 'EN') {
     document.getElementById('knowledge-content-vi').classList.add('hidden');
     document.getElementById('knowledge-content-en').classList.remove('hidden');
@@ -300,7 +374,7 @@ function updateWalletSubLabel() {
 function initMarketState() {
   state.trackedPairs.forEach(p => {
     if (!state.market[p.id]) {
-      state.market[p.id] = { hlPrice: 0, hlFunding: 0, hlVol: 0, ltPrice: 0, ltFunding: 0, ltVol: 0, basis: 0, basisAbs: 0 };
+      state.market[p.id] = { priceA: 0, fundingA: 0, volA: 0, priceB: 0, fundingB: 0, volB: 0, basis: 0, basisAbs: 0 };
     }
   });
   document.getElementById('trackedPairsCount').innerText = state.trackedPairs.length;
@@ -345,6 +419,9 @@ function renderSpreadCards() {
   const dict = i18n[state.lang] || i18n.VI;
 
   state.trackedPairs.forEach(pair => {
+    const connA = ConnectorRegistry.get(pair.exchangeA) || { name: pair.exchangeA };
+    const connB = ConnectorRegistry.get(pair.exchangeB) || { name: pair.exchangeB };
+
     const cardHtml = `
       <div class="spread-card" id="card-${pair.id}">
         <div class="card-top">
@@ -359,7 +436,7 @@ function renderSpreadCards() {
         </div>
 
         <div class="basis-hero-box">
-          <div class="basis-label">${dict.basisLabel}</div>
+          <div class="basis-label">${dict.basisLabel.replace('Sàn A', connA.name).replace('Sàn B', connB.name)}</div>
           <div class="basis-value-group">
             <span class="basis-percent mono-num" id="basis-${pair.id}">0.00%</span>
             <span class="basis-abs mono-num" id="basisAbs-${pair.id}">($0.00)</span>
@@ -369,18 +446,18 @@ function renderSpreadCards() {
         <div class="price-comparison-grid">
           <div class="source-col entropy">
             <div class="source-header">
-              <span class="source-tag">Entropy (Hyperliquid)</span>
-              <span class="dex-tag">io:${pair.hlSymbol}</span>
+              <span class="source-tag">${connA.name}</span>
+              <span class="dex-tag">${pair.symbolA}</span>
             </div>
-            <div class="source-price mono-num" id="hlPrice-${pair.id}">$0.00</div>
+            <div class="source-price mono-num" id="priceA-${pair.id}">$0.00</div>
             <div class="source-metrics">
               <div class="metric-item">
                 <span class="m-label">${dict.fundingYear}</span>
-                <span class="m-val mono-num" id="hlFunding-${pair.id}">0.00%</span>
+                <span class="m-val mono-num" id="fundingA-${pair.id}">0.00%</span>
               </div>
               <div class="metric-item">
                 <span class="m-label">${dict.vol24h}</span>
-                <span class="m-val mono-num" id="hlVol-${pair.id}">$0</span>
+                <span class="m-val mono-num" id="volA-${pair.id}">$0</span>
               </div>
             </div>
           </div>
@@ -389,18 +466,18 @@ function renderSpreadCards() {
 
           <div class="source-col lighter">
             <div class="source-header">
-              <span class="source-tag">Lighter</span>
-              <span class="dex-tag">${pair.ltSymbol}</span>
+              <span class="source-tag">${connB.name}</span>
+              <span class="dex-tag">${pair.symbolB}</span>
             </div>
-            <div class="source-price mono-num" id="ltPrice-${pair.id}">$0.00</div>
+            <div class="source-price mono-num" id="priceB-${pair.id}">$0.00</div>
             <div class="source-metrics">
               <div class="metric-item">
                 <span class="m-label">${dict.fundingProxy}</span>
-                <span class="m-val mono-num" id="ltFunding-${pair.id}">0.00%</span>
+                <span class="m-val mono-num" id="fundingB-${pair.id}">0.00%</span>
               </div>
               <div class="metric-item">
                 <span class="m-label">${dict.vol24h}</span>
-                <span class="m-val mono-num" id="ltVol-${pair.id}">$0</span>
+                <span class="m-val mono-num" id="volB-${pair.id}">$0</span>
               </div>
             </div>
           </div>
@@ -442,13 +519,11 @@ function seedHistoryIfEmpty() {
 
 // Event Listeners Setup
 function setupEventListeners() {
-  // Language Switcher Buttons (Header & Drawer)
   document.getElementById('langBtnVI').addEventListener('click', () => setLanguage('VI'));
   document.getElementById('langBtnEN').addEventListener('click', () => setLanguage('EN'));
   document.getElementById('drawerLangBtnVI').addEventListener('click', () => setLanguage('VI'));
   document.getElementById('drawerLangBtnEN').addEventListener('click', () => setLanguage('EN'));
 
-  // Navigation Tab Switching
   document.querySelectorAll('.nav-tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
@@ -465,14 +540,12 @@ function setupEventListeners() {
     });
   });
 
-  // Manual Refresh
   document.getElementById('btnManualRefresh').addEventListener('click', () => {
     state.countdown = 10;
     fetchMarketData();
     if (state.config.hlWallet) fetchHlMargin();
   });
 
-  // Consolidated Settings Drawer Triggers
   document.getElementById('btnOpenSettings').addEventListener('click', () => {
     document.getElementById('settingsModal').classList.remove('hidden');
   });
@@ -493,7 +566,6 @@ function setupEventListeners() {
   document.getElementById('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
   document.getElementById('btnCancelSettings').addEventListener('click', () => closeModal('settingsModal'));
 
-  // Save Settings from Drawer
   document.getElementById('btnSaveSettings').addEventListener('click', () => {
     state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold').value) || 0.30;
     state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold').value) || 75.0;
@@ -505,7 +577,6 @@ function setupEventListeners() {
     localStorage.setItem('dnperp_tg_token', state.config.tgToken);
     localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
 
-    // Save Wallet if changed
     const w = document.getElementById('hlWalletAddress').value.trim();
     state.config.hlWallet = w;
     localStorage.setItem('dnperp_wallet_address', w);
@@ -519,7 +590,6 @@ function setupEventListeners() {
     closeModal('settingsModal');
   });
 
-  // Query HL Margin Button inside Drawer
   document.getElementById('btnQueryHlMargin').addEventListener('click', () => {
     const w = document.getElementById('hlWalletAddress').value.trim();
     if (w) {
@@ -531,7 +601,6 @@ function setupEventListeners() {
     }
   });
 
-  // Clear Saved Wallet Address
   document.getElementById('btnClearWallet').addEventListener('click', () => {
     localStorage.removeItem('dnperp_wallet_address');
     localStorage.removeItem('dnperp_hl_wallet');
@@ -541,7 +610,6 @@ function setupEventListeners() {
     updateHlMarginUI(0, 0, 0);
   });
 
-  // Manual Lighter Margin Inputs
   const updateLt = () => {
     const u = parseFloat(document.getElementById('ltMarginUsed').value) || 0;
     const t = parseFloat(document.getElementById('ltTotalMargin').value) || 1;
@@ -554,7 +622,6 @@ function setupEventListeners() {
   document.getElementById('ltMarginUsed').addEventListener('input', updateLt);
   document.getElementById('ltTotalMargin').addEventListener('input', updateLt);
 
-  // Test Telegram Notification
   document.getElementById('btnTestTgAlert').addEventListener('click', async () => {
     const resEl = document.getElementById('tgTestResult');
     const token = document.getElementById('inputTgToken').value.trim();
@@ -581,10 +648,8 @@ function setupEventListeners() {
     }
   });
 
-  // Add Pair Form Submission & Verification inside Drawer
   document.getElementById('btnAddPairSubmit').addEventListener('click', verifyAndAddPair);
 
-  // Chart Range Selector Tabs
   document.querySelectorAll('.chart-tab').forEach(tab => {
     tab.addEventListener('click', (e) => {
       document.querySelectorAll('.chart-tab').forEach(t => t.classList.remove('active'));
@@ -594,7 +659,6 @@ function setupEventListeners() {
     });
   });
 
-  // Clear History
   document.getElementById('btnClearHistory').addEventListener('click', () => {
     const confirmMsg = state.lang === 'EN' 
       ? 'Are you sure you want to clear 24h historical data?' 
@@ -618,11 +682,16 @@ function renderPairsTable() {
   const dict = i18n[state.lang] || i18n.VI;
 
   state.trackedPairs.forEach((pair) => {
+    const connA = ConnectorRegistry.get(pair.exchangeA);
+    const connB = ConnectorRegistry.get(pair.exchangeB);
+    const nameA = connA ? connA.name : pair.exchangeA;
+    const nameB = connB ? connB.name : pair.exchangeB;
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${pair.name || pair.id}</strong> (${pair.id})</td>
-      <td><span class="dex-tag">io:${pair.hlSymbol}</span></td>
-      <td><span class="dex-tag">${pair.ltSymbol}</span></td>
+      <td><span class="dex-tag">${nameA}: ${pair.symbolA}</span></td>
+      <td><span class="dex-tag">${nameB}: ${pair.symbolB}</span></td>
       <td style="text-align: right;">
         <button class="btn btn-danger btn-xs" onclick="removeTrackedPair('${pair.id}')" ${state.trackedPairs.length <= 1 ? 'disabled title="Minimum 1 pair required"' : ''}>
           ${dict.btnDelete}
@@ -633,61 +702,68 @@ function renderPairsTable() {
   });
 }
 
-// Verify Pair on APIs and Add to Active List
+// Verify Pair via Connector Interface and Add to Active List
 async function verifyAndAddPair() {
   const statusEl = document.getElementById('addPairStatus');
-  const hlSym = document.getElementById('inputAddHlSymbol').value.trim().toUpperCase();
-  const ltSym = document.getElementById('inputAddLtSymbol').value.trim().toUpperCase();
+  const exA = document.getElementById('inputAddExchangeA').value;
+  const symA = document.getElementById('inputAddSymbolA').value.trim().toUpperCase();
+  const exB = document.getElementById('inputAddExchangeB').value;
+  const symB = document.getElementById('inputAddSymbolB').value.trim().toUpperCase();
   let name = document.getElementById('inputAddName').value.trim();
 
   const isEn = state.lang === 'EN';
 
-  if (!hlSym || !ltSym) {
-    statusEl.innerText = isEn ? '❌ Please enter both Entropy and Lighter tickers!' : '❌ Vui lòng nhập cả Ticker Entropy và Lighter!';
+  if (!symA || !symB) {
+    statusEl.innerText = isEn ? '❌ Please enter symbols for both Exchange A and Exchange B!' : '❌ Vui lòng nhập Ticker cho cả Sàn A và Sàn B!';
     statusEl.style.color = 'var(--accent-danger)';
     return;
   }
 
-  const pairId = hlSym;
+  const pairId = symA;
   if (state.trackedPairs.some(p => p.id === pairId)) {
-    statusEl.innerText = isEn ? `❌ Pair ${pairId} already exists in tracking list!` : `❌ Cặp ${pairId} đã tồn tại trong danh sách!`;
+    statusEl.innerText = isEn ? `❌ Pair ${pairId} already exists in tracking list!` : `❌ Cặp ${pairId} đã tồn tại trong danh sách theo dõi!`;
     statusEl.style.color = 'var(--accent-danger)';
     return;
   }
 
-  if (!name) name = `${hlSym} Synthetic`;
+  if (!name) name = `${symA} Synthetic`;
 
-  statusEl.innerText = isEn ? '⏳ Verifying ticker on Hyperliquid & Lighter...' : '⏳ Đang kiểm tra ticker trên Hyperliquid & Lighter...';
+  statusEl.innerText = isEn ? '⏳ Verifying symbol via exchange connectors...' : '⏳ Đang xác minh Ticker qua Connector Sàn A & Sàn B...';
   statusEl.style.color = 'var(--text-gold)';
 
   try {
-    const hlRes = await fetch('https://api.hyperliquid.xyz/info', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'metaAndAssetCtxs', dex: 'io' })
-    });
-    const hlData = await hlRes.json();
-    const hlUniverse = hlData[0]?.universe || [];
-    const hlFound = hlUniverse.some(u => u.name === hlSym || u.name === `io:${hlSym}` || u.name.endsWith(':' + hlSym));
-
-    if (!hlFound) {
-      statusEl.innerText = isEn ? `❌ Ticker '${hlSym}' not found on Hyperliquid dex "io"!` : `❌ Ticker '${hlSym}' không tìm thấy trên Hyperliquid dex "io"!`;
+    // 1. Verify Exchange A
+    try {
+      await ConnectorRegistry.fetchAssetData(exA, symA);
+    } catch (errA) {
+      statusEl.innerText = isEn 
+        ? `❌ Exchange A (${exA}) error: ${errA.message}` 
+        : `❌ Lỗi trên Sàn A (${exA}): ${errA.message}`;
       statusEl.style.color = 'var(--accent-danger)';
       return;
     }
 
-    const ltRes = await fetch('https://api.rh.lighter.xyz/api/v1/orderBookDetails');
-    const ltData = await ltRes.json();
-    const books = ltData.order_book_details || [];
-    const ltFound = books.some(b => b.symbol === ltSym);
-
-    if (!ltFound) {
-      statusEl.innerText = isEn ? `❌ Ticker '${ltSym}' not found on Lighter Robinhood Chain!` : `❌ Ticker '${ltSym}' không tìm thấy trên Lighter Robinhood Chain!`;
+    // 2. Verify Exchange B
+    try {
+      await ConnectorRegistry.fetchAssetData(exB, symB);
+    } catch (errB) {
+      statusEl.innerText = isEn 
+        ? `❌ Exchange B (${exB}) error: ${errB.message}` 
+        : `❌ Lỗi trên Sàn B (${exB}): ${errB.message}`;
       statusEl.style.color = 'var(--accent-danger)';
       return;
     }
 
-    const newPair = { id: pairId, name: name, hlSymbol: hlSym, ltSymbol: ltSym };
+    // Both verification calls succeeded!
+    const newPair = {
+      id: pairId,
+      name: name,
+      exchangeA: exA,
+      symbolA: symA,
+      exchangeB: exB,
+      symbolB: symB
+    };
+
     state.trackedPairs.push(newPair);
     localStorage.setItem('dnperp_tracked_pairs', JSON.stringify(state.trackedPairs));
 
@@ -698,16 +774,16 @@ async function verifyAndAddPair() {
 
     fetchMarketData();
 
-    document.getElementById('inputAddHlSymbol').value = '';
-    document.getElementById('inputAddLtSymbol').value = '';
+    document.getElementById('inputAddSymbolA').value = '';
+    document.getElementById('inputAddSymbolB').value = '';
     document.getElementById('inputAddName').value = '';
 
-    statusEl.innerText = isEn ? `✅ Pair ${pairId} added successfully!` : `✅ Đã thêm cặp ${pairId} thành công!`;
+    statusEl.innerText = isEn ? `✅ Pair ${pairId} verified and added successfully!` : `✅ Đã xác minh & thêm cặp ${pairId} thành công!`;
     statusEl.style.color = 'var(--accent-safe)';
 
   } catch (err) {
     console.error('Verification error:', err);
-    statusEl.innerText = isEn ? '❌ API error during ticker verification!' : '❌ Lỗi kết nối API khi xác minh ticker!';
+    statusEl.innerText = isEn ? '❌ Connector verification error!' : '❌ Lỗi kết nối Connector!';
     statusEl.style.color = 'var(--accent-danger)';
   }
 }
@@ -749,70 +825,44 @@ function startCountdown() {
   }, 1000);
 }
 
-// Main Fetcher for Hyperliquid (Entropy) & Lighter Markets
+// Main Fetcher refactored to query via ConnectorRegistry
 async function fetchMarketData() {
   const statusLabel = document.getElementById('statusLabel');
   const connectionStatus = document.getElementById('connectionStatus');
   const dict = i18n[state.lang] || i18n.VI;
 
   try {
-    const [hlRes, ltRes] = await Promise.all([
-      fetch('https://api.hyperliquid.xyz/info', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'metaAndAssetCtxs', dex: 'io' })
-      }),
-      fetch('https://api.rh.lighter.xyz/api/v1/orderBookDetails')
-    ]);
-
-    if (!hlRes.ok || !ltRes.ok) throw new Error('API fetch failed');
-
-    const hlData = await hlRes.json();
-    const ltData = await ltRes.json();
-
-    const hlUniverse = hlData[0]?.universe || [];
-    const hlAssetCtxs = hlData[1] || [];
-    const books = ltData.order_book_details || [];
-
     const currentPoint = { time: Date.now(), pairs: {} };
 
-    state.trackedPairs.forEach(pair => {
-      const hlIdx = hlUniverse.findIndex(u => u.name === pair.hlSymbol || u.name === `io:${pair.hlSymbol}` || u.name.endsWith(':' + pair.hlSymbol));
-      if (hlIdx !== -1 && hlAssetCtxs[hlIdx]) {
-        const ctx = hlAssetCtxs[hlIdx];
-        const markPx = parseFloat(ctx.markPx) || 0;
-        const fundingHourly = parseFloat(ctx.funding) || 0;
-        const fundingAnnual = fundingHourly * 24 * 365 * 100;
-        const vol24h = parseFloat(ctx.dayNtlVlm) || 0;
-        
-        state.market[pair.id].hlPrice = markPx;
-        state.market[pair.id].hlFunding = fundingAnnual;
-        state.market[pair.id].hlVol = vol24h;
+    await Promise.all(state.trackedPairs.map(async (pair) => {
+      try {
+        const [dataA, dataB] = await Promise.all([
+          ConnectorRegistry.fetchAssetData(pair.exchangeA, pair.symbolA),
+          ConnectorRegistry.fetchAssetData(pair.exchangeB, pair.symbolB)
+        ]);
+
+        state.market[pair.id].priceA = dataA.price;
+        state.market[pair.id].fundingA = dataA.funding || 0;
+        state.market[pair.id].volA = dataA.volume24h || 0;
+
+        state.market[pair.id].priceB = dataB.price;
+        state.market[pair.id].fundingB = dataB.funding || 0;
+        state.market[pair.id].volB = dataB.volume24h || 0;
+
+        const m = state.market[pair.id];
+        if (m.priceB > 0 && m.priceA > 0) {
+          m.basis = ((m.priceA - m.priceB) / m.priceB) * 100;
+          m.basisAbs = m.priceA - m.priceB;
+        } else {
+          m.basis = 0;
+          m.basisAbs = 0;
+        }
+
+        currentPoint.pairs[pair.id] = parseFloat(m.basis.toFixed(3));
+      } catch (errPair) {
+        console.error(`Error fetching data for pair ${pair.id}:`, errPair);
       }
-
-      const ltBook = books.find(b => b.symbol === pair.ltSymbol);
-      if (ltBook) {
-        const markPx = parseFloat(ltBook.mark_price) || 0;
-        const indexPx = parseFloat(ltBook.index_price) || markPx || 1;
-        const fundingProxy = ((markPx - indexPx) / indexPx) * 100;
-        const vol24h = parseFloat(ltBook.daily_quote_token_volume) || 0;
-
-        state.market[pair.id].ltPrice = markPx;
-        state.market[pair.id].ltFunding = fundingProxy;
-        state.market[pair.id].ltVol = vol24h;
-      }
-
-      const m = state.market[pair.id];
-      if (m.ltPrice > 0 && m.hlPrice > 0) {
-        m.basis = ((m.hlPrice - m.ltPrice) / m.ltPrice) * 100;
-        m.basisAbs = m.hlPrice - m.ltPrice;
-      } else {
-        m.basis = 0;
-        m.basisAbs = 0;
-      }
-
-      currentPoint.pairs[pair.id] = parseFloat(m.basis.toFixed(3));
-    });
+    }));
 
     connectionStatus.className = 'status-indicator live';
     statusLabel.innerText = dict.statusLive;
@@ -878,23 +928,26 @@ function recalculateBasisAndSignals() {
     const m = state.market[pair.id];
     if (!m) return;
 
-    const hlPriceEl = document.getElementById(`hlPrice-${pair.id}`);
-    const hlFundingEl = document.getElementById(`hlFunding-${pair.id}`);
-    const hlVolEl = document.getElementById(`hlVol-${pair.id}`);
+    const connA = ConnectorRegistry.get(pair.exchangeA) || { name: pair.exchangeA };
+    const connB = ConnectorRegistry.get(pair.exchangeB) || { name: pair.exchangeB };
 
-    const ltPriceEl = document.getElementById(`ltPrice-${pair.id}`);
-    const ltFundingEl = document.getElementById(`ltFunding-${pair.id}`);
-    const ltVolEl = document.getElementById(`ltVol-${pair.id}`);
+    const priceAEl = document.getElementById(`priceA-${pair.id}`);
+    const fundingAEl = document.getElementById(`fundingA-${pair.id}`);
+    const volAEl = document.getElementById(`volA-${pair.id}`);
+
+    const priceBEl = document.getElementById(`priceB-${pair.id}`);
+    const fundingBEl = document.getElementById(`fundingB-${pair.id}`);
+    const volBEl = document.getElementById(`volB-${pair.id}`);
 
     const yearSuffix = isEn ? '/yr' : '/năm';
 
-    if (hlPriceEl) hlPriceEl.innerText = `$${m.hlPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    if (hlFundingEl) hlFundingEl.innerText = `${m.hlFunding > 0 ? '+' : ''}${m.hlFunding.toFixed(2)}%${yearSuffix}`;
-    if (hlVolEl) hlVolEl.innerText = `$${Math.round(m.hlVol).toLocaleString()}`;
+    if (priceAEl) priceAEl.innerText = `$${m.priceA.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (fundingAEl) fundingAEl.innerText = `${m.fundingA > 0 ? '+' : ''}${m.fundingA.toFixed(2)}%${yearSuffix}`;
+    if (volAEl) volAEl.innerText = `$${Math.round(m.volA).toLocaleString()}`;
 
-    if (ltPriceEl) ltPriceEl.innerText = `$${m.ltPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    if (ltFundingEl) ltFundingEl.innerText = `${m.ltFunding > 0 ? '+' : ''}${m.ltFunding.toFixed(2)}%`;
-    if (ltVolEl) ltVolEl.innerText = `$${Math.round(m.ltVol).toLocaleString()}`;
+    if (priceBEl) priceBEl.innerText = `$${m.priceB.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (fundingBEl) fundingBEl.innerText = `${m.fundingB > 0 ? '+' : ''}${m.fundingB.toFixed(2)}%`;
+    if (volBEl) volBEl.innerText = `$${Math.round(m.volB).toLocaleString()}`;
 
     const basisEl = document.getElementById(`basis-${pair.id}`);
     const basisAbsEl = document.getElementById(`basisAbs-${pair.id}`);
@@ -915,38 +968,42 @@ function recalculateBasisAndSignals() {
     if (m.basis > thresh) {
       if (signalBadge) {
         signalBadge.className = 'action-badge long-lt';
-        signalBadge.innerHTML = `<span class="badge-icon">🟢</span><span class="badge-text">${dict.signalLongLt}</span>`;
+        signalBadge.innerHTML = `<span class="badge-icon">🟢</span><span class="badge-text">${dict.signalLongLt.replace('Sàn B', connB.name).replace('Sàn A', connA.name)}</span>`;
       }
       if (stratBox) {
         stratBox.innerHTML = dict.stratLongLt
-          .replace('{ltPrice}', m.ltPrice.toFixed(2))
-          .replace('{hlPrice}', m.hlPrice.toFixed(2))
+          .replace('{exchangeB}', connB.name)
+          .replace('{ltPrice}', m.priceB.toFixed(2))
+          .replace('{exchangeA}', connA.name)
+          .replace('{hlPrice}', m.priceA.toFixed(2))
           .replace('{basis}', m.basis.toFixed(2));
       }
 
       activeBannerMsg = isEn 
-        ? `Warning: ${pair.id} Basis exceeds +${m.basis.toFixed(2)}% (Open Long Lighter / Short Entropy)`
-        : `Cảnh báo: Basis ${pair.id} đang vượt ngưỡng +${m.basis.toFixed(2)}% (Mở Long Lighter / Short Entropy)`;
+        ? `Warning: ${pair.id} Basis exceeds +${m.basis.toFixed(2)}% (Open Long ${connB.name} / Short ${connA.name})`
+        : `Cảnh báo: Basis ${pair.id} đang vượt ngưỡng +${m.basis.toFixed(2)}% (Mở Long ${connB.name} / Short ${connA.name})`;
 
-      triggerTelegramAlert(pair.id, `🚨 <b>ARBITRAGE SIGNAL: ${pair.id}!</b>\n\nBasis Spread: <b>+${m.basis.toFixed(2)}%</b> (Exceeds ${thresh}%)\n• Entropy: $${m.hlPrice.toFixed(2)}\n• Lighter: $${m.ltPrice.toFixed(2)}\n👉 <b>Action:</b> LONG Lighter | SHORT Entropy`);
+      triggerTelegramAlert(pair.id, `🚨 <b>ARBITRAGE SIGNAL: ${pair.id}!</b>\n\nBasis Spread: <b>+${m.basis.toFixed(2)}%</b> (Exceeds ${thresh}%)\n• ${connA.name}: $${m.priceA.toFixed(2)}\n• ${connB.name}: $${m.priceB.toFixed(2)}\n👉 <b>Action:</b> LONG ${connB.name} | SHORT ${connA.name}`);
 
     } else if (m.basis < -thresh) {
       if (signalBadge) {
         signalBadge.className = 'action-badge long-hl';
-        signalBadge.innerHTML = `<span class="badge-icon">🔵</span><span class="badge-text">${dict.signalLongHl}</span>`;
+        signalBadge.innerHTML = `<span class="badge-icon">🔵</span><span class="badge-text">${dict.signalLongHl.replace('Sàn A', connA.name).replace('Sàn B', connB.name)}</span>`;
       }
       if (stratBox) {
         stratBox.innerHTML = dict.stratLongHl
-          .replace('{hlPrice}', m.hlPrice.toFixed(2))
-          .replace('{ltPrice}', m.ltPrice.toFixed(2))
+          .replace('{exchangeA}', connA.name)
+          .replace('{hlPrice}', m.priceA.toFixed(2))
+          .replace('{exchangeB}', connB.name)
+          .replace('{ltPrice}', m.priceB.toFixed(2))
           .replace('{basis}', m.basis.toFixed(2));
       }
 
       activeBannerMsg = isEn 
-        ? `Warning: ${pair.id} Basis drops below ${m.basis.toFixed(2)}% (Open Long Entropy / Short Lighter)`
-        : `Cảnh báo: Basis ${pair.id} đang giảm âm ${m.basis.toFixed(2)}% (Mở Long Entropy / Short Lighter)`;
+        ? `Warning: ${pair.id} Basis drops below ${m.basis.toFixed(2)}% (Open Long ${connA.name} / Short ${connB.name})`
+        : `Cảnh báo: Basis ${pair.id} đang giảm âm ${m.basis.toFixed(2)}% (Mở Long ${connA.name} / Short ${connB.name})`;
 
-      triggerTelegramAlert(pair.id, `🚨 <b>ARBITRAGE SIGNAL: ${pair.id}!</b>\n\nBasis Spread: <b>${m.basis.toFixed(2)}%</b> (Exceeds -${thresh}%)\n• Entropy: $${m.hlPrice.toFixed(2)}\n• Lighter: $${m.ltPrice.toFixed(2)}\n👉 <b>Action:</b> LONG Entropy | SHORT Lighter`);
+      triggerTelegramAlert(pair.id, `🚨 <b>ARBITRAGE SIGNAL: ${pair.id}!</b>\n\nBasis Spread: <b>${m.basis.toFixed(2)}%</b> (Exceeds -${thresh}%)\n• ${connA.name}: $${m.priceA.toFixed(2)}\n• ${connB.name}: $${m.priceB.toFixed(2)}\n👉 <b>Action:</b> LONG ${connA.name} | SHORT ${connB.name}`);
 
     } else {
       if (signalBadge) {
