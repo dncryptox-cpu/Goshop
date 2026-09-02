@@ -694,9 +694,10 @@ function setupEventListeners() {
   document.querySelectorAll('.nav-tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
-      e.target.classList.add('active');
+      const targetBtn = e.currentTarget;
+      targetBtn.classList.add('active');
 
-      const targetTab = e.target.dataset.tab;
+      const targetTab = targetBtn.dataset.tab;
       document.getElementById('tab-monitor-view').classList.add('hidden');
       document.getElementById('tab-journal-view').classList.add('hidden');
       document.getElementById('tab-knowledge-view').classList.add('hidden');
