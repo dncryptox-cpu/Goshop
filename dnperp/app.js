@@ -1237,7 +1237,7 @@ function setupEventListeners() {
 }
 
 function closeModal(id) {
-  document.getElementById(id).classList.add('hidden');
+  document.getElementById(id)?.classList.add('hidden');
 }
 
 // Render Pairs Management Table inside Drawer
@@ -1271,50 +1271,60 @@ function renderPairsTable() {
 // Verify Pair via Connector Interface and Add to Active List
 async function verifyAndAddPair() {
   const statusEl = document.getElementById('addPairStatus');
-  const exA = document.getElementById('inputAddExchangeA').value;
-  const symA = document.getElementById('inputAddSymbolA').value.trim().toUpperCase();
-  const exB = document.getElementById('inputAddExchangeB').value;
-  const symB = document.getElementById('inputAddSymbolB').value.trim().toUpperCase();
-  let name = document.getElementById('inputAddName').value.trim();
+  const exA = document.getElementById('inputAddExchangeA')?.value || '';
+  const symA = (document.getElementById('inputAddSymbolA')?.value || '').trim().toUpperCase();
+  const exB = document.getElementById('inputAddExchangeB')?.value || '';
+  const symB = (document.getElementById('inputAddSymbolB')?.value || '').trim().toUpperCase();
+  let name = (document.getElementById('inputAddName')?.value || '').trim();
 
   const isEn = state.lang === 'EN';
 
   if (!symA || !symB) {
-    statusEl.innerText = isEn ? '❌ Please enter symbols for both Exchange A and Exchange B!' : '❌ Vui lòng nhập Ticker cho cả Sàn A và Sàn B!';
-    statusEl.style.color = 'var(--accent-danger)';
+    if (statusEl) {
+      statusEl.innerText = isEn ? '❌ Please enter symbols for both Exchange A and Exchange B!' : '❌ Vui lòng nhập Ticker cho cả Sàn A và Sàn B!';
+      statusEl.style.color = 'var(--accent-danger)';
+    }
     return;
   }
 
   const pairId = symA;
   if (state.trackedPairs.some(p => p.id === pairId)) {
-    statusEl.innerText = isEn ? `❌ Pair ${pairId} already exists in tracking list!` : `❌ Cặp ${pairId} đã tồn tại trong danh sách theo dõi!`;
-    statusEl.style.color = 'var(--accent-danger)';
+    if (statusEl) {
+      statusEl.innerText = isEn ? `❌ Pair ${pairId} already exists in tracking list!` : `❌ Cặp ${pairId} đã tồn tại trong danh sách theo dõi!`;
+      statusEl.style.color = 'var(--accent-danger)';
+    }
     return;
   }
 
   if (!name) name = `${symA} Synthetic`;
 
-  statusEl.innerText = isEn ? '⏳ Verifying symbol via exchange connectors...' : '⏳ Đang xác minh Ticker qua Connector Sàn A & Sàn B...';
-  statusEl.style.color = 'var(--text-gold)';
+  if (statusEl) {
+    statusEl.innerText = isEn ? '⏳ Verifying symbol via exchange connectors...' : '⏳ Đang xác minh Ticker qua Connector Sàn A & Sàn B...';
+    statusEl.style.color = 'var(--text-gold)';
+  }
 
   try {
     try {
       await ConnectorRegistry.fetchAssetData(exA, symA);
     } catch (errA) {
-      statusEl.innerText = isEn 
-        ? `❌ Exchange A (${exA}) error: ${errA.message}` 
-        : `❌ Lỗi trên Sàn A (${exA}): ${errA.message}`;
-      statusEl.style.color = 'var(--accent-danger)';
+      if (statusEl) {
+        statusEl.innerText = isEn 
+          ? `❌ Exchange A (${exA}) error: ${errA.message}` 
+          : `❌ Lỗi trên Sàn A (${exA}): ${errA.message}`;
+        statusEl.style.color = 'var(--accent-danger)';
+      }
       return;
     }
 
     try {
       await ConnectorRegistry.fetchAssetData(exB, symB);
     } catch (errB) {
-      statusEl.innerText = isEn 
-        ? `❌ Exchange B (${exB}) error: ${errB.message}` 
-        : `❌ Lỗi trên Sàn B (${exB}): ${errB.message}`;
-      statusEl.style.color = 'var(--accent-danger)';
+      if (statusEl) {
+        statusEl.innerText = isEn 
+          ? `❌ Exchange B (${exB}) error: ${errB.message}` 
+          : `❌ Lỗi trên Sàn B (${exB}): ${errB.message}`;
+        statusEl.style.color = 'var(--accent-danger)';
+      }
       return;
     }
 
@@ -1338,17 +1348,24 @@ async function verifyAndAddPair() {
 
     fetchMarketData();
 
-    document.getElementById('inputAddSymbolA').value = '';
-    document.getElementById('inputAddSymbolB').value = '';
-    document.getElementById('inputAddName').value = '';
+    const elSymA = document.getElementById('inputAddSymbolA');
+    if (elSymA) elSymA.value = '';
+    const elSymB = document.getElementById('inputAddSymbolB');
+    if (elSymB) elSymB.value = '';
+    const elName = document.getElementById('inputAddName');
+    if (elName) elName.value = '';
 
-    statusEl.innerText = isEn ? `✅ Pair ${pairId} verified and added successfully!` : `✅ Đã xác minh & thêm cặp ${pairId} thành công!`;
-    statusEl.style.color = 'var(--accent-safe)';
+    if (statusEl) {
+      statusEl.innerText = isEn ? `✅ Pair ${pairId} verified and added successfully!` : `✅ Đã xác minh & thêm cặp ${pairId} thành công!`;
+      statusEl.style.color = 'var(--accent-safe)';
+    }
 
   } catch (err) {
     console.error('Verification error:', err);
-    statusEl.innerText = isEn ? '❌ Connector verification error!' : '❌ Lỗi kết nối Connector!';
-    statusEl.style.color = 'var(--accent-danger)';
+    if (statusEl) {
+      statusEl.innerText = isEn ? '❌ Connector verification error!' : '❌ Lỗi kết nối Connector!';
+      statusEl.style.color = 'var(--accent-danger)';
+    }
   }
 }
 
@@ -1902,52 +1919,59 @@ function renderLivePositionsUI() {
 // ==========================================================================
 
 function resetTradeForm() {
-  document.getElementById('tradeEditId').value = '';
+  const setVal = (id, val = '') => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
+  setVal('tradeEditId', '');
   const nowStr = new Date().toISOString().slice(0, 16);
-  document.getElementById('tradeDateOpen').value = nowStr;
-  document.getElementById('tradeStatus').value = 'OPEN';
-  document.getElementById('tradeCapital').value = '1000';
-  document.getElementById('tradePriceLong').value = '';
-  document.getElementById('tradeNotionalLong').value = '1000';
-  document.getElementById('tradePriceShort').value = '';
-  document.getElementById('tradeNotionalShort').value = '1000';
-  document.getElementById('tradeBasisEntry').value = '';
-  document.getElementById('tradeDateClose').value = '';
-  document.getElementById('tradeBasisExit').value = '';
-  document.getElementById('tradePriceLongExit').value = '';
-  document.getElementById('tradePriceShortExit').value = '';
-  document.getElementById('tradeFundingAccrued').value = '0';
-  document.getElementById('tradeNotes').value = '';
+  setVal('tradeDateOpen', nowStr);
+  setVal('tradeStatus', 'OPEN');
+  setVal('tradeCapital', '1000');
+  setVal('tradePriceLong', '');
+  setVal('tradeNotionalLong', '1000');
+  setVal('tradePriceShort', '');
+  setVal('tradeNotionalShort', '1000');
+  setVal('tradeBasisEntry', '');
+  setVal('tradeDateClose', '');
+  setVal('tradeBasisExit', '');
+  setVal('tradePriceLongExit', '');
+  setVal('tradePriceShortExit', '');
+  setVal('tradeFundingAccrued', '0');
+  setVal('tradeNotes', '');
 }
 
 function saveTradeEntry() {
-  const editId = document.getElementById('tradeEditId').value;
-  const dateOpen = document.getElementById('tradeDateOpen').value;
-  const pairId = document.getElementById('tradePairId').value;
-  const status = document.getElementById('tradeStatus').value;
-  const capital = parseFloat(document.getElementById('tradeCapital').value) || 1000;
+  const getValStr = (id) => document.getElementById(id)?.value || '';
+  const getValNum = (id, fallback = 0) => parseFloat(document.getElementById(id)?.value) || fallback;
 
-  const priceLong = parseFloat(document.getElementById('tradePriceLong').value) || 0;
-  const notionalLong = parseFloat(document.getElementById('tradeNotionalLong').value) || 1000;
-  const priceShort = parseFloat(document.getElementById('tradePriceShort').value) || 0;
-  const notionalShort = parseFloat(document.getElementById('tradeNotionalShort').value) || 1000;
+  const editId = getValStr('tradeEditId');
+  const dateOpen = getValStr('tradeDateOpen');
+  const pairId = getValStr('tradePairId');
+  const status = getValStr('tradeStatus') || 'OPEN';
+  const capital = getValNum('tradeCapital', 1000);
 
-  let basisEntry = parseFloat(document.getElementById('tradeBasisEntry').value);
+  const priceLong = getValNum('tradePriceLong', 0);
+  const notionalLong = getValNum('tradeNotionalLong', 1000);
+  const priceShort = getValNum('tradePriceShort', 0);
+  const notionalShort = getValNum('tradeNotionalShort', 1000);
+
+  let basisEntry = parseFloat(getValStr('tradeBasisEntry'));
   if (isNaN(basisEntry) && priceLong > 0 && priceShort > 0) {
     basisEntry = parseFloat((((priceShort - priceLong) / priceLong) * 100).toFixed(2));
   }
   if (isNaN(basisEntry)) basisEntry = 0;
 
-  const dateClose = document.getElementById('tradeDateClose').value;
-  let basisExit = parseFloat(document.getElementById('tradeBasisExit').value);
-  const priceLongExit = parseFloat(document.getElementById('tradePriceLongExit').value) || 0;
-  const priceShortExit = parseFloat(document.getElementById('tradePriceShortExit').value) || 0;
+  const dateClose = getValStr('tradeDateClose');
+  let basisExit = parseFloat(getValStr('tradeBasisExit'));
+  const priceLongExit = getValNum('tradePriceLongExit', 0);
+  const priceShortExit = getValNum('tradePriceShortExit', 0);
   if (isNaN(basisExit) && priceLongExit > 0 && priceShortExit > 0) {
     basisExit = parseFloat((((priceShortExit - priceLongExit) / priceLongExit) * 100).toFixed(2));
   }
 
-  const fundingAccrued = parseFloat(document.getElementById('tradeFundingAccrued').value) || 0;
-  const notes = document.getElementById('tradeNotes').value.trim();
+  const fundingAccrued = getValNum('tradeFundingAccrued', 0);
+  const notes = getValStr('tradeNotes').trim();
 
   let pnlBasis = 0;
   if (status === 'CLOSED' && priceLong > 0 && priceShort > 0 && priceLongExit > 0 && priceShortExit > 0) {
@@ -1997,27 +2021,33 @@ window.editTradeEntry = function(tradeId) {
   const trade = state.journal.find(t => t.id === tradeId);
   if (!trade) return;
 
-  document.getElementById('tradeEditId').value = trade.id;
-  document.getElementById('tradeDateOpen').value = trade.dateOpen || '';
-  document.getElementById('tradePairId').value = trade.pairId || '';
-  document.getElementById('tradeStatus').value = trade.status || 'OPEN';
-  document.getElementById('tradeCapital').value = trade.capital || 1000;
+  const setVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
 
-  document.getElementById('tradePriceLong').value = trade.priceLong || '';
-  document.getElementById('tradeNotionalLong').value = trade.notionalLong || 1000;
-  document.getElementById('tradePriceShort').value = trade.priceShort || '';
-  document.getElementById('tradeNotionalShort').value = trade.notionalShort || 1000;
-  document.getElementById('tradeBasisEntry').value = trade.basisEntry !== null ? trade.basisEntry : '';
+  setVal('tradeEditId', trade.id);
+  setVal('tradeDateOpen', trade.dateOpen || '');
+  setVal('tradePairId', trade.pairId || '');
+  setVal('tradeStatus', trade.status || 'OPEN');
+  setVal('tradeCapital', trade.capital || 1000);
 
-  document.getElementById('tradeDateClose').value = trade.dateClose || '';
-  document.getElementById('tradeBasisExit').value = trade.basisExit !== null ? trade.basisExit : '';
-  document.getElementById('tradePriceLongExit').value = trade.priceLongExit || '';
-  document.getElementById('tradePriceShortExit').value = trade.priceShortExit || '';
-  document.getElementById('tradeFundingAccrued').value = trade.fundingAccrued || 0;
-  document.getElementById('tradeNotes').value = trade.notes || '';
+  setVal('tradePriceLong', trade.priceLong || '');
+  setVal('tradeNotionalLong', trade.notionalLong || 1000);
+  setVal('tradePriceShort', trade.priceShort || '');
+  setVal('tradeNotionalShort', trade.notionalShort || 1000);
+  setVal('tradeBasisEntry', trade.basisEntry !== null ? trade.basisEntry : '');
 
-  document.getElementById('tradeModalTitle').innerText = state.lang === 'EN' ? '✏️ Edit Trade Entry' : '✏️ Chỉnh Sửa Lệnh Trong Nhật Ký';
-  document.getElementById('tradeModal').classList.remove('hidden');
+  setVal('tradeDateClose', trade.dateClose || '');
+  setVal('tradeBasisExit', trade.basisExit !== null ? trade.basisExit : '');
+  setVal('tradePriceLongExit', trade.priceLongExit || '');
+  setVal('tradePriceShortExit', trade.priceShortExit || '');
+  setVal('tradeFundingAccrued', trade.fundingAccrued || 0);
+  setVal('tradeNotes', trade.notes || '');
+
+  const modalTitle = document.getElementById('tradeModalTitle');
+  if (modalTitle) modalTitle.innerText = state.lang === 'EN' ? '✏️ Edit Trade Entry' : '✏️ Chỉnh Sửa Lệnh Trong Nhật Ký';
+  document.getElementById('tradeModal')?.classList.remove('hidden');
 };
 
 window.deleteTradeEntry = function(tradeId) {
@@ -2118,18 +2148,24 @@ function updateJournalAnalytics() {
   const activeNotional = openTrades.reduce((sum, t) => sum + (t.notionalLong + t.notionalShort), 0);
   const activeCapital = openTrades.reduce((sum, t) => sum + t.capital, 0);
 
-  document.getElementById('jValPosition').innerText = `$${Math.round(activeNotional).toLocaleString()} / $${Math.round(activeCapital).toLocaleString()}`;
-  document.getElementById('jSubPosition').innerText = `${openTrades.length} ${isEn ? 'active open positions' : 'vị thế đang mở'}`;
+  const elPos = document.getElementById('jValPosition');
+  if (elPos) elPos.innerText = `$${Math.round(activeNotional).toLocaleString()} / $${Math.round(activeCapital).toLocaleString()}`;
+  const elSubPos = document.getElementById('jSubPosition');
+  if (elSubPos) elSubPos.innerText = `${openTrades.length} ${isEn ? 'active open positions' : 'vị thế đang mở'}`;
 
   const totalFunding = trades.reduce((sum, t) => sum + (t.fundingAccrued || 0), 0);
   const fundEl = document.getElementById('jValFunding');
-  fundEl.innerText = `$${totalFunding >= 0 ? '+' : ''}${totalFunding.toFixed(2)}`;
-  fundEl.className = 'm-stat-value mono-num ' + (totalFunding >= 0 ? 'positive' : 'negative');
+  if (fundEl) {
+    fundEl.innerText = `$${totalFunding >= 0 ? '+' : ''}${totalFunding.toFixed(2)}`;
+    fundEl.className = 'm-stat-value mono-num ' + (totalFunding >= 0 ? 'positive' : 'negative');
+  }
 
   const winningClosed = closedTrades.filter(t => t.totalPnl > 0);
   const winRate = closedTrades.length > 0 ? (winningClosed.length / closedTrades.length) * 100 : 0;
-  document.getElementById('jValWinRate').innerText = `${winRate.toFixed(1)}%`;
-  document.getElementById('jSubWinRate').innerText = `${winningClosed.length} / ${closedTrades.length} ${isEn ? 'closed trades profitable' : 'lệnh đóng có lời'}`;
+  const elWin = document.getElementById('jValWinRate');
+  if (elWin) elWin.innerText = `${winRate.toFixed(1)}%`;
+  const elSubWin = document.getElementById('jSubWinRate');
+  if (elSubWin) elSubWin.innerText = `${winningClosed.length} / ${closedTrades.length} ${isEn ? 'closed trades profitable' : 'lệnh đóng có lời'}`;
 
   let sumBasisCaptured = 0;
   let closedWithBasisCount = 0;
@@ -2140,7 +2176,8 @@ function updateJournalAnalytics() {
     }
   });
   const avgBasisCaptured = closedWithBasisCount > 0 ? sumBasisCaptured / closedWithBasisCount : 0;
-  document.getElementById('jValAvgBasis').innerText = `${avgBasisCaptured >= 0 ? '+' : ''}${avgBasisCaptured.toFixed(2)}%`;
+  const elAvgBasis = document.getElementById('jValAvgBasis');
+  if (elAvgBasis) elAvgBasis.innerText = `${avgBasisCaptured >= 0 ? '+' : ''}${avgBasisCaptured.toFixed(2)}%`;
 
   let totalHoldHours = 0;
   let holdCount = 0;
@@ -2155,9 +2192,12 @@ function updateJournalAnalytics() {
     }
   });
   const avgHoldHours = holdCount > 0 ? totalHoldHours / holdCount : 0;
-  document.getElementById('jValAvgHold').innerText = avgHoldHours > 24 
-    ? `${(avgHoldHours / 24).toFixed(1)} ${isEn ? 'days' : 'ngày'}`
-    : `${avgHoldHours.toFixed(1)} ${isEn ? 'hours' : 'giờ'}`;
+  const elAvgHold = document.getElementById('jValAvgHold');
+  if (elAvgHold) {
+    elAvgHold.innerText = avgHoldHours > 24 
+      ? `${(avgHoldHours / 24).toFixed(1)} ${isEn ? 'days' : 'ngày'}`
+      : `${avgHoldHours.toFixed(1)} ${isEn ? 'hours' : 'giờ'}`;
+  }
 
   const totalPnlAll = trades.reduce((sum, t) => sum + (t.totalPnl || 0), 0);
   const totalAllocatedCapital = trades.reduce((sum, t) => sum + (t.capital || 1000), 0) || 1000;
@@ -2173,9 +2213,14 @@ function updateJournalAnalytics() {
   }
   const totalApr = ((totalPnlAll / totalAllocatedCapital) * (365 / spanDays)) * 100;
   const aprEl = document.getElementById('jValApr');
-  aprEl.innerText = `${totalApr >= 0 ? '+' : ''}${totalApr.toFixed(2)}%`;
-  aprEl.className = 'm-stat-value mono-num ' + (totalApr >= 0 ? 'positive' : 'negative');
-  document.getElementById('jSubApr').innerText = `$${totalPnlAll >= 0 ? '+' : ''}${totalPnlAll.toFixed(2)} PnL (${spanDays}d)`;
+  if (aprEl) {
+    aprEl.innerText = `${totalApr >= 0 ? '+' : ''}${totalApr.toFixed(2)}%`;
+    aprEl.className = 'm-stat-value mono-num ' + (totalApr >= 0 ? 'positive' : 'negative');
+  }
+  const elSubApr = document.getElementById('jSubApr');
+  if (elSubApr) {
+    elSubApr.innerText = `$${totalPnlAll >= 0 ? '+' : ''}${totalPnlAll.toFixed(2)} PnL (${spanDays}d)`;
+  }
 
   generatePersonalInsights(closedTrades);
 }
