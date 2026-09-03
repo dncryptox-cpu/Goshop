@@ -1409,8 +1409,151 @@ window.removeTrackedPair = function(pairId) {
 };
 
 // ==========================================================================
-// PHASE 10b: AUTOMATIC LIVE POSITION FETCHER & DELTA-NEUTRAL PAIRING
+// PHASE 14: ENRICHED POSITION CARDS & AUTOMATIC TRADE ARCHIVING ON CLOSURE
 // ==========================================================================
+
+function getPositionFirstSeen(groupKey) {
+  const timestamps = JSON.parse(localStorage.getItem('dnperp_position_first_seen') || '{}');
+  if (!timestamps[groupKey]) {
+    timestamps[groupKey] = Date.now();
+    localStorage.setItem('dnperp_position_first_seen', JSON.stringify(timestamps));
+  }
+  return timestamps[groupKey];
+}
+
+function removePositionFirstSeen(groupKey) {
+  const timestamps = JSON.parse(localStorage.getItem('dnperp_position_first_seen') || '{}');
+  if (timestamps[groupKey]) {
+    delete timestamps[groupKey];
+    localStorage.setItem('dnperp_position_first_seen', JSON.stringify(timestamps));
+  }
+}
+
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return '0m';
+  const totalMins = Math.floor(ms / (1000 * 60));
+  const days = Math.floor(totalMins / (60 * 24));
+  const hours = Math.floor((totalMins % (60 * 24)) / 60);
+  const mins = totalMins % 60;
+
+  if (days > 0) {
+    return `${days}d ${hours}h`;
+  } else if (hours > 0) {
+    return `${hours}h ${mins}m`;
+  } else {
+    return `${mins}m`;
+  }
+}
+
+function checkAndAutoArchiveClosedPositions(currentGroups) {
+  const storedSnapshotStr = localStorage.getItem('dnperp_open_positions_snapshot');
+  if (!storedSnapshotStr) {
+    savePositionsSnapshot(currentGroups);
+    return;
+  }
+
+  const prevGroups = JSON.parse(storedSnapshotStr);
+  const currentGroupIds = new Set(currentGroups.map(g => g.groupId));
+
+  let archivedAny = false;
+
+  prevGroups.forEach(prevGrp => {
+    if (!currentGroupIds.has(prevGrp.groupId)) {
+      console.log(`⚡ Position ${prevGrp.groupId} closed! Auto-archiving to Trade Journal...`);
+
+      const firstSeen = getPositionFirstSeen(prevGrp.groupId);
+      const openDateIso = new Date(firstSeen).toISOString().slice(0, 16);
+      const closeDateIso = new Date().toISOString().slice(0, 16);
+
+      const longLeg = prevGrp.legs ? prevGrp.legs.find(l => l.direction === 'LONG') : null;
+      const shortLeg = prevGrp.legs ? prevGrp.legs.find(l => l.direction === 'SHORT') : null;
+
+      const capitalEst = prevGrp.combinedNotional || 1000;
+      const basisIn = prevGrp.netBasisEntry !== null ? prevGrp.netBasisEntry : 0;
+      const basisOut = prevGrp.lastKnownMarketBasis !== undefined ? prevGrp.lastKnownMarketBasis : basisIn;
+
+      const autoTradeRecord = {
+        id: `AUTO_${prevGrp.groupId}_${Date.now()}`,
+        dateOpen: openDateIso,
+        dateClose: closeDateIso,
+        pairId: prevGrp.groupId,
+        status: 'CLOSED',
+        capital: parseFloat(capitalEst.toFixed(2)),
+        priceLong: longLeg ? longLeg.entryPrice : 0,
+        notionalLong: longLeg ? longLeg.notional : 500,
+        priceShort: shortLeg ? shortLeg.entryPrice : 0,
+        notionalShort: shortLeg ? shortLeg.notional : 500,
+        basisEntry: parseFloat(basisIn.toFixed(2)),
+        basisExit: parseFloat(basisOut.toFixed(2)),
+        priceLongExit: longLeg ? longLeg.entryPrice : 0,
+        priceShortExit: shortLeg ? shortLeg.entryPrice : 0,
+        pnlBasis: parseFloat((prevGrp.combinedPnl || 0).toFixed(2)),
+        fundingAccrued: parseFloat((prevGrp.combinedFunding || 0).toFixed(2)),
+        totalPnl: parseFloat(((prevGrp.combinedPnl || 0) + (prevGrp.combinedFunding || 0)).toFixed(2)),
+        notes: state.lang === 'EN' 
+          ? '⚡ Auto-archived from live wallet position closure (Estimated values)' 
+          : '⚡ Tự động ghi nhận từ ví khi đóng vị thế (Giá ước tính)'
+      };
+
+      state.journal.unshift(autoTradeRecord);
+      archivedAny = true;
+      removePositionFirstSeen(prevGrp.groupId);
+    }
+  });
+
+  if (archivedAny) {
+    localStorage.setItem('dnperp_journal_trades', JSON.stringify(state.journal));
+    renderJournalTable();
+    updateJournalAnalytics();
+    initJournalCharts();
+  }
+
+  savePositionsSnapshot(currentGroups);
+}
+
+function savePositionsSnapshot(groups) {
+  const snapshot = groups.map(grp => ({
+    groupId: grp.groupId,
+    title: grp.title,
+    combinedNotional: grp.combinedNotional,
+    combinedPnl: grp.combinedPnl,
+    combinedFunding: grp.combinedFunding,
+    netBasisEntry: grp.netBasisEntry,
+    lastKnownMarketBasis: grp.lastKnownMarketBasis,
+    legs: grp.legs.map(l => ({
+      exchange: l.exchange,
+      exchangeName: l.exchangeName,
+      symbol: l.symbol,
+      direction: l.direction,
+      size: l.size,
+      entryPrice: l.entryPrice,
+      notional: l.notional,
+      unrealizedPnl: l.unrealizedPnl,
+      cumFunding: l.cumFunding
+    }))
+  }));
+  localStorage.setItem('dnperp_open_positions_snapshot', JSON.stringify(snapshot));
+}
+
+// Window helper for simulation / manual testing
+window.simulatePositionClosure = function(groupId) {
+  const storedSnapshotStr = localStorage.getItem('dnperp_open_positions_snapshot');
+  if (!storedSnapshotStr) return;
+  const snapshot = JSON.parse(storedSnapshotStr);
+  const targetIndex = snapshot.findIndex(g => g.groupId === groupId);
+  if (targetIndex !== -1) {
+    const closedGroup = snapshot[targetIndex];
+    snapshot.splice(targetIndex, 1);
+    localStorage.setItem('dnperp_open_positions_snapshot', JSON.stringify(snapshot));
+    state.liveGroups = state.liveGroups.filter(g => g.groupId !== groupId);
+    state.livePositions = state.livePositions.filter(p => !p.id.includes(groupId));
+    checkAndAutoArchiveClosedPositions(state.liveGroups);
+    renderLivePositionsUI();
+    updateJournalAnalytics();
+    alert(state.lang === 'EN' ? `⚡ Simulated closure for position ${groupId}! Auto-archived to Trade Journal.` : `⚡ Giả lập đóng vị thế ${groupId} thành công! Đã tự động lưu vào Nhật Ký Giao Dịch.`);
+  }
+};
+
 async function fetchAllLiveWalletPositions() {
   const wallet = state.config.hlWallet;
   const liveBadge = document.getElementById('livePositionsBadge');
@@ -1462,6 +1605,13 @@ async function fetchAllLiveWalletPositions() {
         if (szi !== 0) {
           const rawCoin = p.coin || '';
           const cleanSym = rawCoin.replace(/^io:/i, '').toUpperCase();
+          const marginUsed = parseFloat(p.marginUsed) || 0;
+          const unPnl = parseFloat(p.unrealizedPnl) || 0;
+          const roe = p.returnOnEquity !== undefined && p.returnOnEquity !== null 
+            ? parseFloat(p.returnOnEquity) * 100 
+            : (marginUsed > 0 ? (unPnl / marginUsed) * 100 : 0);
+          const lev = p.leverage?.value ? parseInt(p.leverage.value) : 5;
+
           positions.push({
             id: `ENTROPY_${rawCoin}`,
             exchange: 'entropy',
@@ -1472,10 +1622,12 @@ async function fetchAllLiveWalletPositions() {
             direction: szi < 0 ? 'SHORT' : 'LONG',
             entryPrice: parseFloat(p.entryPx) || 0,
             notional: parseFloat(p.positionValue) || 0,
-            unrealizedPnl: parseFloat(p.unrealizedPnl) || 0,
+            unrealizedPnl: unPnl,
             cumFunding: parseFloat(p.cumFunding?.allTime) || 0,
             liquidationPx: parseFloat(p.liquidationPx) || 0,
-            marginUsed: parseFloat(p.marginUsed) || 0
+            marginUsed: marginUsed,
+            roe: parseFloat(roe.toFixed(2)),
+            leverage: lev
           });
         }
       });
@@ -1490,6 +1642,13 @@ async function fetchAllLiveWalletPositions() {
           const rawCoin = p.coin || '';
           const cleanSym = rawCoin.replace(/^io:/i, '').toUpperCase();
           if (!positions.some(pos => pos.id === `ENTROPY_${rawCoin}`)) {
+            const marginUsed = parseFloat(p.marginUsed) || 0;
+            const unPnl = parseFloat(p.unrealizedPnl) || 0;
+            const roe = p.returnOnEquity !== undefined && p.returnOnEquity !== null 
+              ? parseFloat(p.returnOnEquity) * 100 
+              : (marginUsed > 0 ? (unPnl / marginUsed) * 100 : 0);
+            const lev = p.leverage?.value ? parseInt(p.leverage.value) : 5;
+
             positions.push({
               id: `HL_${rawCoin}`,
               exchange: 'hyperliquid',
@@ -1500,10 +1659,12 @@ async function fetchAllLiveWalletPositions() {
               direction: szi < 0 ? 'SHORT' : 'LONG',
               entryPrice: parseFloat(p.entryPx) || 0,
               notional: parseFloat(p.positionValue) || 0,
-              unrealizedPnl: parseFloat(p.unrealizedPnl) || 0,
+              unrealizedPnl: unPnl,
               cumFunding: parseFloat(p.cumFunding?.allTime) || 0,
               liquidationPx: parseFloat(p.liquidationPx) || 0,
-              marginUsed: parseFloat(p.marginUsed) || 0
+              marginUsed: marginUsed,
+              roe: parseFloat(roe.toFixed(2)),
+              leverage: lev
             });
           }
         }
@@ -1520,6 +1681,12 @@ async function fetchAllLiveWalletPositions() {
             const sym = (lp.symbol || '').toUpperCase();
             const sign = parseInt(lp.sign);
             const dir = sign === 1 ? 'LONG' : (sign === -1 ? 'SHORT' : (posQty < 0 ? 'SHORT' : 'LONG'));
+            const notional = parseFloat(lp.position_value) || 0;
+            const unPnl = parseFloat(lp.unrealized_pnl) || 0;
+            const marginAlloc = parseFloat(lp.allocated_margin) || parseFloat(lp.initial_margin) || (notional / 10);
+            const lev = lp.leverage ? parseInt(lp.leverage) : (marginAlloc > 0 ? Math.round(notional / marginAlloc) : 10);
+            const roe = marginAlloc > 0 ? (unPnl / marginAlloc) * 100 : 0;
+
             positions.push({
               id: `LIGHTER_${sym}_${lp.market_id}`,
               exchange: 'lighter',
@@ -1529,11 +1696,13 @@ async function fetchAllLiveWalletPositions() {
               size: Math.abs(posQty),
               direction: dir,
               entryPrice: parseFloat(lp.avg_entry_price) || 0,
-              notional: parseFloat(lp.position_value) || 0,
-              unrealizedPnl: parseFloat(lp.unrealized_pnl) || 0,
+              notional: notional,
+              unrealizedPnl: unPnl,
               cumFunding: parseFloat(lp.total_funding_paid_out) || 0,
               liquidationPx: parseFloat(lp.liquidation_price) || 0,
-              marginUsed: 0
+              marginUsed: marginAlloc,
+              roe: parseFloat(roe.toFixed(2)),
+              leverage: lev
             });
           }
         });
@@ -1542,6 +1711,7 @@ async function fetchAllLiveWalletPositions() {
 
     state.livePositions = positions;
     groupAndPairPositions(positions);
+    checkAndAutoArchiveClosedPositions(state.liveGroups);
 
     if (liveBadge) {
       if (positions.length > 0) {
@@ -1586,6 +1756,7 @@ function groupAndPairPositions(positions) {
       groups[groupKey] = {
         groupId: groupKey,
         title: matchedTrackedPair ? matchedTrackedPair.name : `${groupKey} Position`,
+        firstSeen: getPositionFirstSeen(groupKey),
         legs: []
       };
     }
@@ -1606,13 +1777,23 @@ function groupAndPairPositions(positions) {
       netBasisEntry = ((shortLeg.entryPrice - longLeg.entryPrice) / longLeg.entryPrice) * 100;
     }
 
+    // Phase 14: Breakeven Basis Calculation
+    let breakevenBasis = null;
+    if (isDeltaNeutral && combinedNotional > 0 && netBasisEntry !== null) {
+      const avgNotional = combinedNotional / 2;
+      const pnlTotalWithFunding = combinedPnl + combinedFunding;
+      const pnlPct = (pnlTotalWithFunding / avgNotional) * 100;
+      breakevenBasis = netBasisEntry - pnlPct;
+    }
+
     return {
       ...grp,
       type: isDeltaNeutral ? 'DELTA_NEUTRAL' : 'SINGLE_LEG',
       combinedPnl: parseFloat(combinedPnl.toFixed(2)),
       combinedFunding: parseFloat(combinedFunding.toFixed(2)),
       combinedNotional: parseFloat(combinedNotional.toFixed(2)),
-      netBasisEntry: netBasisEntry !== null ? parseFloat(netBasisEntry.toFixed(2)) : null
+      netBasisEntry: netBasisEntry !== null ? parseFloat(netBasisEntry.toFixed(2)) : null,
+      breakevenBasis: breakevenBasis !== null ? parseFloat(breakevenBasis.toFixed(2)) : null
     };
   });
 }
@@ -1643,21 +1824,26 @@ function renderLivePositionsUI() {
     const pnlClass = grp.combinedPnl >= 0 ? 'positive' : 'negative';
     const pnlDisplay = `$${grp.combinedPnl >= 0 ? '+' : ''}${grp.combinedPnl.toFixed(2)}`;
 
+    const durationText = grp.firstSeen ? formatDuration(Date.now() - grp.firstSeen) : '0m';
+
     let legsHtml = '';
     grp.legs.forEach(leg => {
       const dirClass = leg.direction === 'LONG' ? 'long' : 'short';
       const legPnlClass = leg.unrealizedPnl >= 0 ? 'positive' : 'negative';
+      const roeSign = leg.roe >= 0 ? '+' : '';
+      const roeDisplay = `${roeSign}${leg.roe.toFixed(2)}%`;
+      const liqPriceDisplay = leg.liquidationPx > 0 ? `$${leg.liquidationPx.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'N/A';
 
       legsHtml += `
         <div class="leg-item">
           <div class="leg-item-header">
             <div class="leg-exchange">
               <span>${leg.exchange === 'lighter' ? '⚡' : '💧'}</span>
-              <span><strong>${leg.exchangeName}</strong> (${leg.rawCoin})</span>
+              <span><strong>${leg.exchangeName}</strong> · <span class="mono-num" style="color: var(--text-gold); font-weight: 700;">${leg.leverage || 1}x</span></span>
             </div>
             <span class="leg-direction-badge ${dirClass}">${leg.direction} ${leg.size}</span>
           </div>
-          <div class="leg-metrics-grid">
+          <div class="leg-metrics-grid" style="grid-template-columns: repeat(4, 1fr);">
             <div>
               <span class="leg-m-label">${isEn ? 'Entry Price' : 'Giá Vào'}:</span>
               <div class="leg-m-val">$${leg.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
@@ -1667,8 +1853,12 @@ function renderLivePositionsUI() {
               <div class="leg-m-val">$${Math.round(leg.notional).toLocaleString()}</div>
             </div>
             <div>
-              <span class="leg-m-label">${isEn ? 'Unrealized PnL' : 'PnL Chờ Chốt'}:</span>
-              <div class="leg-m-val ${legPnlClass}">$${leg.unrealizedPnl >= 0 ? '+' : ''}${leg.unrealizedPnl.toFixed(2)}</div>
+              <span class="leg-m-label">${isEn ? 'PnL & ROE' : 'PnL & ROE'}:</span>
+              <div class="leg-m-val ${legPnlClass}">$${leg.unrealizedPnl >= 0 ? '+' : ''}${leg.unrealizedPnl.toFixed(2)} <span style="font-size: 11px;">(${roeDisplay})</span></div>
+            </div>
+            <div>
+              <span class="leg-m-label">${isEn ? 'Liq. Price' : 'Giá Thanh Lý'}:</span>
+              <div class="leg-m-val mono-num" style="color: var(--accent-warning);">${liqPriceDisplay}</div>
             </div>
           </div>
         </div>
@@ -1686,7 +1876,7 @@ function renderLivePositionsUI() {
         <div class="pos-card-header">
           <div class="pos-pair-title">
             <span>${grp.groupId}</span>
-            <span style="font-size: 13px; color: var(--text-muted); font-weight: normal;">(${grp.title})</span>
+            <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">⏱️ ${isEn ? 'Held' : 'Đã giữ'}: <strong>${durationText}</strong></span>
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
             ${tagHtml}
@@ -1697,15 +1887,19 @@ function renderLivePositionsUI() {
           </div>
         </div>
 
-        <!-- Always Visible Summary PnL Bar (Top level focus metric) -->
-        <div class="summary-pnl-bar">
+        <!-- Always Visible Summary PnL Bar & Breakeven Basis -->
+        <div class="summary-pnl-bar" style="display: grid; grid-template-columns: repeat(3, 1fr); align-items: center;">
           <div class="summary-pnl-item">
             <span class="summary-pnl-label">${isEn ? 'Combined PnL' : 'Tổng PnL 2 Chân'}</span>
             <span class="summary-pnl-val ${pnlClass}">${pnlDisplay}</span>
           </div>
-          <div class="summary-pnl-item" style="text-align: right;">
+          <div class="summary-pnl-item">
             <span class="summary-pnl-label">${isEn ? 'Entry Basis' : 'Basis Lúc Vào'}</span>
             <span class="summary-pnl-val mono-num">${grp.netBasisEntry !== null ? (grp.netBasisEntry >= 0 ? '+' : '') + grp.netBasisEntry.toFixed(2) + '%' : '—'}</span>
+          </div>
+          <div class="summary-pnl-item" style="text-align: right;">
+            <span class="summary-pnl-label" title="${isEn ? 'Breakeven Basis' : 'Ngưỡng Basis để PnL 2 chân về 0'}">🎯 ${isEn ? 'Breakeven Basis' : 'Basis Hoà Vốn'}</span>
+            <span class="summary-pnl-val mono-num" style="color: var(--text-gold);">${grp.breakevenBasis !== null ? (grp.breakevenBasis >= 0 ? '+' : '') + grp.breakevenBasis.toFixed(2) + '%' : '—'}</span>
           </div>
         </div>
 
