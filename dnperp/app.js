@@ -136,7 +136,7 @@ const i18n = {
     sectionInsightsTitle: "🧠 Phân Tích Pattern Cá Nhân & Insights",
     chartPnlTitle: "📈 PnL Lũy Kế Theo Thời Gian ($)",
     chartPairTitle: "📊 Phân Bổ Số Lệnh Theo Cặp",
-    sectionJournalTableTitle: "📋 Danh Sách Nhật Ký Giao Dịch",
+    sectionJournalTableTitle: "📋 Danh Sách Nhật Ký Giao Dịch (Dự Phòng Phase 10)",
     colTradeDate: "Ngày Mở",
     colTradePair: "Cặp Tài Sản",
     colTradeStatus: "Trạng Thái",
@@ -144,6 +144,17 @@ const i18n = {
     colTradeBasisOut: "Basis Ra",
     colTradeFunding: "Funding ($)",
     colTradePnl: "Tổng PnL ($)",
+
+    // Phase 10b Live Positions i18n
+    sectionLivePositionsTitle: "⚡ Vị Thế Realtime Tự Động Từ Ví",
+    badgeLiveSynced: "🟢 TỰ ĐỘNG ĐỒNG BỘ",
+    badgeLiveNoWallet: "⚠️ CHƯA THIẾT LẬP VÍ",
+    badgeLiveEmpty: "⚪ KHÔNG CÓ VỊ THẾ ĐANG MỞ",
+    labelDeltaNeutralPosition: "CẶP VỊ THẾ DELTA-NEUTRAL",
+    labelSingleLegPosition: "VỊ THẾ ĐƠN LẺ (1 CHÂN)",
+    labelCombinedPnl: "Tổng PnL 2 Chân:",
+    labelCombinedFunding: "Funding Tích Luỹ:",
+    labelNetBasisEntry: "Basis Lúc Vào:",
 
     sectionMarginTitle: "🛡️ Giám Sát Margin & Nguy Cơ Thanh Lý",
     marginWarnThreshold: "Ngưỡng cảnh báo Margin:",
@@ -261,7 +272,7 @@ const i18n = {
     sectionInsightsTitle: "🧠 Personal Pattern Analysis & Insights",
     chartPnlTitle: "📈 Cumulative PnL Over Time ($)",
     chartPairTitle: "📊 Trade Count Distribution By Pair",
-    sectionJournalTableTitle: "📋 Trade Journal History",
+    sectionJournalTableTitle: "📋 Trade Journal History (Phase 10 Manual Backup)",
     colTradeDate: "Open Date",
     colTradePair: "Asset Pair",
     colTradeStatus: "Status",
@@ -269,6 +280,17 @@ const i18n = {
     colTradeBasisOut: "Exit Basis",
     colTradeFunding: "Funding ($)",
     colTradePnl: "Total PnL ($)",
+
+    // Phase 10b Live Positions i18n
+    sectionLivePositionsTitle: "⚡ Automatic Real-Time Wallet Positions",
+    badgeLiveSynced: "🟢 AUTO SYNCED FROM WALLET",
+    badgeLiveNoWallet: "⚠️ WALLET NOT CONFIGURED",
+    badgeLiveEmpty: "⚪ NO ACTIVE OPEN POSITIONS",
+    labelDeltaNeutralPosition: "DELTA-NEUTRAL POSITION PAIR",
+    labelSingleLegPosition: "SINGLE-LEG POSITION",
+    labelCombinedPnl: "Combined 2-Leg PnL:",
+    labelCombinedFunding: "Cumulative Funding:",
+    labelNetBasisEntry: "Entry Basis:",
 
     sectionMarginTitle: "🛡️ Margin Monitoring & Liquidation Risk",
     marginWarnThreshold: "Margin alert threshold:",
@@ -364,6 +386,9 @@ const state = {
   signalTracker: JSON.parse(localStorage.getItem('dnperp_signal_tracker') || '{}'),
   journal: JSON.parse(localStorage.getItem('dnperp_journal_trades') || '[]'),
 
+  livePositions: [],
+  liveGroups: [],
+
   countdown: 10,
   timerId: null,
   chart: null,
@@ -428,8 +453,10 @@ function unlockDashboardUI() {
     
     if (state.config.hlWallet) {
       fetchHlMargin();
+      fetchAllLiveWalletPositions();
     } else {
       updateHlMarginUI(0, 0, 0);
+      fetchAllLiveWalletPositions();
     }
 
     updateLighterMarginUI();
@@ -805,6 +832,7 @@ function setupEventListeners() {
         document.getElementById('tab-monitor-view').classList.remove('hidden');
       } else if (targetTab === 'tab-journal') {
         document.getElementById('tab-journal-view').classList.remove('hidden');
+        fetchAllLiveWalletPositions();
         renderJournalTable();
         updateJournalAnalytics();
         updateJournalCharts();
@@ -813,6 +841,13 @@ function setupEventListeners() {
       }
     });
   });
+
+  const btnRefreshLive = document.getElementById('btnRefreshLivePositions');
+  if (btnRefreshLive) {
+    btnRefreshLive.addEventListener('click', () => {
+      fetchAllLiveWalletPositions();
+    });
+  }
 
   document.getElementById('btnManualRefresh').addEventListener('click', () => {
     state.countdown = 10;
@@ -869,7 +904,12 @@ function setupEventListeners() {
     localStorage.setItem('dnperp_wallet_address', w);
     localStorage.setItem('dnperp_hl_wallet', w);
     updateWalletSubLabel();
-    if (w) fetchHlMargin();
+    if (w) {
+      fetchHlMargin();
+      fetchAllLiveWalletPositions();
+    } else {
+      fetchAllLiveWalletPositions();
+    }
 
     updateThresholdDisplayLabels();
     recalculateBasisAndSignals();
@@ -1133,6 +1173,308 @@ window.removeTrackedPair = function(pairId) {
     updateChartData();
   }
 };
+
+// ==========================================================================
+// PHASE 10b: AUTOMATIC LIVE POSITION FETCHER & DELTA-NEUTRAL PAIRING
+// ==========================================================================
+async function fetchAllLiveWalletPositions() {
+  const wallet = state.config.hlWallet;
+  const liveBadge = document.getElementById('livePositionsBadge');
+  const walletDisplayBtn = document.getElementById('btnLiveWalletDisplay');
+
+  if (walletDisplayBtn) {
+    walletDisplayBtn.innerText = wallet 
+      ? `${state.lang === 'EN' ? 'Wallet' : 'Ví'}: ${wallet.substring(0, 6)}...${wallet.substring(wallet.length - 4)}`
+      : (state.lang === 'EN' ? 'Wallet: Not set' : 'Ví: Chưa thiết lập');
+  }
+
+  if (!wallet || wallet === '0x0000000000000000000000000000000000000000') {
+    state.livePositions = [];
+    state.liveGroups = [];
+    if (liveBadge) {
+      liveBadge.className = 'status-indicator offline';
+      liveBadge.innerText = i18n[state.lang]?.badgeLiveNoWallet || '⚠️ CHƯA THIẾT LẬP VÍ';
+    }
+    renderLivePositionsUI();
+    updateJournalAnalytics();
+    return;
+  }
+
+  try {
+    const [entRes, hlRes, ltRes] = await Promise.allSettled([
+      fetch("https://api.hyperliquid.xyz/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "clearinghouseState", user: wallet, dex: "io" })
+      }).then(r => r.ok ? r.json() : null),
+
+      fetch("https://api.hyperliquid.xyz/info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "clearinghouseState", user: wallet })
+      }).then(r => r.ok ? r.json() : null),
+
+      fetch(`https://api.rh.lighter.xyz/api/v1/account?by=l1_address&value=${wallet}`)
+        .then(r => r.ok ? r.json() : null)
+    ]);
+
+    const positions = [];
+
+    // Parse Entropy positions (dex: io)
+    if (entRes.status === 'fulfilled' && entRes.value && entRes.value.assetPositions) {
+      entRes.value.assetPositions.forEach(ap => {
+        const p = ap.position;
+        const szi = parseFloat(p.szi) || 0;
+        if (szi !== 0) {
+          const rawCoin = p.coin || '';
+          const cleanSym = rawCoin.replace(/^io:/i, '').toUpperCase();
+          positions.push({
+            id: `ENTROPY_${rawCoin}`,
+            exchange: 'entropy',
+            exchangeName: 'Hyperliquid (Entropy)',
+            rawCoin: rawCoin,
+            symbol: cleanSym,
+            size: Math.abs(szi),
+            direction: szi < 0 ? 'SHORT' : 'LONG',
+            entryPrice: parseFloat(p.entryPx) || 0,
+            notional: parseFloat(p.positionValue) || 0,
+            unrealizedPnl: parseFloat(p.unrealizedPnl) || 0,
+            cumFunding: parseFloat(p.cumFunding?.allTime) || 0,
+            liquidationPx: parseFloat(p.liquidationPx) || 0,
+            marginUsed: parseFloat(p.marginUsed) || 0
+          });
+        }
+      });
+    }
+
+    // Parse Hyperliquid Mainnet positions
+    if (hlRes.status === 'fulfilled' && hlRes.value && hlRes.value.assetPositions) {
+      hlRes.value.assetPositions.forEach(ap => {
+        const p = ap.position;
+        const szi = parseFloat(p.szi) || 0;
+        if (szi !== 0) {
+          const rawCoin = p.coin || '';
+          const cleanSym = rawCoin.replace(/^io:/i, '').toUpperCase();
+          if (!positions.some(pos => pos.id === `ENTROPY_${rawCoin}`)) {
+            positions.push({
+              id: `HL_${rawCoin}`,
+              exchange: 'hyperliquid',
+              exchangeName: 'Hyperliquid Mainnet',
+              rawCoin: rawCoin,
+              symbol: cleanSym,
+              size: Math.abs(szi),
+              direction: szi < 0 ? 'SHORT' : 'LONG',
+              entryPrice: parseFloat(p.entryPx) || 0,
+              notional: parseFloat(p.positionValue) || 0,
+              unrealizedPnl: parseFloat(p.unrealizedPnl) || 0,
+              cumFunding: parseFloat(p.cumFunding?.allTime) || 0,
+              liquidationPx: parseFloat(p.liquidationPx) || 0,
+              marginUsed: parseFloat(p.marginUsed) || 0
+            });
+          }
+        }
+      });
+    }
+
+    // Parse Lighter positions
+    if (ltRes.status === 'fulfilled' && ltRes.value && ltRes.value.code === 200 && ltRes.value.accounts && ltRes.value.accounts.length > 0) {
+      const acc = ltRes.value.accounts[0];
+      if (Array.isArray(acc.positions)) {
+        acc.positions.forEach(lp => {
+          const posQty = parseFloat(lp.position) || 0;
+          if (posQty !== 0) {
+            const sym = (lp.symbol || '').toUpperCase();
+            const sign = parseInt(lp.sign);
+            const dir = sign === 1 ? 'LONG' : (sign === -1 ? 'SHORT' : (posQty < 0 ? 'SHORT' : 'LONG'));
+            positions.push({
+              id: `LIGHTER_${sym}_${lp.market_id}`,
+              exchange: 'lighter',
+              exchangeName: 'Lighter (Robinhood Chain)',
+              rawCoin: sym,
+              symbol: sym,
+              size: Math.abs(posQty),
+              direction: dir,
+              entryPrice: parseFloat(lp.avg_entry_price) || 0,
+              notional: parseFloat(lp.position_value) || 0,
+              unrealizedPnl: parseFloat(lp.unrealized_pnl) || 0,
+              cumFunding: parseFloat(lp.total_funding_paid_out) || 0,
+              liquidationPx: parseFloat(lp.liquidation_price) || 0,
+              marginUsed: 0
+            });
+          }
+        });
+      }
+    }
+
+    state.livePositions = positions;
+    groupAndPairPositions(positions);
+
+    if (liveBadge) {
+      if (positions.length > 0) {
+        liveBadge.className = 'status-indicator live';
+        liveBadge.innerText = `${i18n[state.lang]?.badgeLiveSynced || '🟢 TỰ ĐỘNG ĐỒNG BỘ'} (${positions.length})`;
+      } else {
+        liveBadge.className = 'status-indicator offline';
+        liveBadge.innerText = i18n[state.lang]?.badgeLiveEmpty || '⚪ KHÔNG CÓ VỊ THẾ ĐANG MỞ';
+      }
+    }
+
+    renderLivePositionsUI();
+    updateJournalAnalytics();
+
+  } catch (err) {
+    console.error('Error fetching live wallet positions:', err);
+  }
+}
+
+function resolveCanonicalSymbol(sym) {
+  if (!sym) return '';
+  const s = sym.toUpperCase().replace(/^io:/i, '').replace(/-USD$/i, '');
+  if (s === 'OAI' || s === 'OPENAI') return 'OAI/OPENAI';
+  if (s === 'ANTH' || s === 'ANTHROPIC') return 'ANTH/ANTHROPIC';
+  return s;
+}
+
+function groupAndPairPositions(positions) {
+  const groups = {};
+
+  positions.forEach(pos => {
+    const matchedTrackedPair = state.trackedPairs.find(p => 
+      p.symbolA.toUpperCase() === pos.symbol || 
+      p.symbolB.toUpperCase() === pos.symbol ||
+      resolveCanonicalSymbol(p.symbolA) === resolveCanonicalSymbol(pos.symbol) ||
+      resolveCanonicalSymbol(p.symbolB) === resolveCanonicalSymbol(pos.symbol)
+    );
+
+    const groupKey = matchedTrackedPair ? matchedTrackedPair.id : resolveCanonicalSymbol(pos.symbol);
+
+    if (!groups[groupKey]) {
+      groups[groupKey] = {
+        groupId: groupKey,
+        title: matchedTrackedPair ? matchedTrackedPair.name : `${groupKey} Position`,
+        legs: []
+      };
+    }
+    groups[groupKey].legs.push(pos);
+  });
+
+  state.liveGroups = Object.values(groups).map(grp => {
+    const isDeltaNeutral = grp.legs.length >= 2;
+    const combinedPnl = grp.legs.reduce((sum, l) => sum + l.unrealizedPnl, 0);
+    const combinedFunding = grp.legs.reduce((sum, l) => sum + l.cumFunding, 0);
+    const combinedNotional = grp.legs.reduce((sum, l) => sum + l.notional, 0);
+
+    let netBasisEntry = null;
+    const shortLeg = grp.legs.find(l => l.direction === 'SHORT');
+    const longLeg = grp.legs.find(l => l.direction === 'LONG');
+
+    if (shortLeg && longLeg && longLeg.entryPrice > 0) {
+      netBasisEntry = ((shortLeg.entryPrice - longLeg.entryPrice) / longLeg.entryPrice) * 100;
+    }
+
+    return {
+      ...grp,
+      type: isDeltaNeutral ? 'DELTA_NEUTRAL' : 'SINGLE_LEG',
+      combinedPnl: parseFloat(combinedPnl.toFixed(2)),
+      combinedFunding: parseFloat(combinedFunding.toFixed(2)),
+      combinedNotional: parseFloat(combinedNotional.toFixed(2)),
+      netBasisEntry: netBasisEntry !== null ? parseFloat(netBasisEntry.toFixed(2)) : null
+    };
+  });
+}
+
+function renderLivePositionsUI() {
+  const container = document.getElementById('livePositionsContainer');
+  if (!container) return;
+  container.innerHTML = '';
+  const isEn = state.lang === 'EN';
+
+  if (!state.liveGroups || state.liveGroups.length === 0) {
+    container.innerHTML = `
+      <div class="pos-empty-card">
+        <span style="font-size: 24px;">📭</span>
+        <div style="margin-top: 8px;">${isEn ? 'No active positions detected for wallet address.' : 'Không phát hiện vị thế đang mở nào từ địa chỉ ví công khai.'}</div>
+        <div class="subtext" style="margin-top: 4px;">${isEn ? 'Positions on Hyperliquid, Entropy & Lighter will appear here automatically.' : 'Tự động quét vị thế trên Hyperliquid, Entropy & Lighter.'}</div>
+      </div>
+    `;
+    return;
+  }
+
+  state.liveGroups.forEach(grp => {
+    const isDN = grp.type === 'DELTA_NEUTRAL';
+    const tagHtml = isDN 
+      ? `<span class="dn-tag">⚖️ ${isEn ? 'DELTA-NEUTRAL PAIR' : 'CẶP DELTA-NEUTRAL'}</span>`
+      : `<span class="single-tag">📌 ${isEn ? 'SINGLE LEG' : 'VỊ THẾ ĐƠN'}</span>`;
+
+    const pnlClass = grp.combinedPnl >= 0 ? 'positive' : 'negative';
+    const pnlDisplay = `$${grp.combinedPnl >= 0 ? '+' : ''}${grp.combinedPnl.toFixed(2)}`;
+
+    let legsHtml = '';
+    grp.legs.forEach(leg => {
+      const dirClass = leg.direction === 'LONG' ? 'long' : 'short';
+      const legPnlClass = leg.unrealizedPnl >= 0 ? 'positive' : 'negative';
+
+      legsHtml += `
+        <div class="leg-item">
+          <div class="leg-item-header">
+            <div class="leg-exchange">
+              <span>${leg.exchange === 'lighter' ? '⚡' : '💧'}</span>
+              <span><strong>${leg.exchangeName}</strong> (${leg.rawCoin})</span>
+            </div>
+            <span class="leg-direction-badge ${dirClass}">${leg.direction} ${leg.size}</span>
+          </div>
+          <div class="leg-metrics-grid">
+            <div>
+              <span class="leg-m-label">${isEn ? 'Entry Price' : 'Giá Vào'}:</span>
+              <div class="leg-m-val">$${leg.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+            </div>
+            <div>
+              <span class="leg-m-label">${isEn ? 'Notional' : 'Vị Thế'}:</span>
+              <div class="leg-m-val">$${Math.round(leg.notional).toLocaleString()}</div>
+            </div>
+            <div>
+              <span class="leg-m-label">${isEn ? 'Unrealized PnL' : 'PnL Chờ Chốt'}:</span>
+              <div class="leg-m-val ${legPnlClass}">$${leg.unrealizedPnl >= 0 ? '+' : ''}${leg.unrealizedPnl.toFixed(2)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    });
+
+    const cardHtml = `
+      <div class="live-pos-card ${isDN ? 'delta-neutral' : 'single-leg'}">
+        <div class="pos-card-header">
+          <div class="pos-pair-title">
+            <span>${grp.groupId}</span>
+            <span style="font-size: 13px; color: var(--text-muted); font-weight: normal;">(${grp.title})</span>
+          </div>
+          ${tagHtml}
+        </div>
+
+        <div class="legs-container">
+          ${legsHtml}
+        </div>
+
+        <div class="pos-card-footer">
+          <div class="footer-stat">
+            <span class="footer-stat-label">${isEn ? 'Combined PnL' : 'Tổng PnL 2 Chân'}</span>
+            <span class="footer-stat-val ${pnlClass}">${pnlDisplay}</span>
+          </div>
+          <div class="footer-stat">
+            <span class="footer-stat-label">${isEn ? 'Cum. Funding' : 'Funding Tích Luỹ'}</span>
+            <span class="footer-stat-val mono-num">$${grp.combinedFunding >= 0 ? '+' : ''}${grp.combinedFunding.toFixed(2)}</span>
+          </div>
+          <div class="footer-stat">
+            <span class="footer-stat-label">${isEn ? 'Entry Basis' : 'Basis Lúc Vào'}</span>
+            <span class="footer-stat-val mono-num">${grp.netBasisEntry !== null ? (grp.netBasisEntry >= 0 ? '+' : '') + grp.netBasisEntry.toFixed(2) + '%' : '—'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.insertAdjacentHTML('beforeend', cardHtml);
+  });
+}
 
 // ==========================================================================
 // PHASE 10 TRADING JOURNAL & PERFORMANCE ANALYTICS ENGINE
