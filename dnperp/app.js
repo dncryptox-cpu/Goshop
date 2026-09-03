@@ -428,6 +428,7 @@ function switchView(viewName) {
     initJournalCharts();
   } else if (viewName === 'settings') {
     loadStoredConfig();
+    document.getElementById('settingsModal')?.classList.remove('hidden');
   }
 }
 
@@ -720,33 +721,38 @@ function loadStoredConfig() {
   const savedConfirmDelay = localStorage.getItem('dnperp_confirm_delay_mins');
   if (savedConfirmDelay) state.config.confirmDelayMins = parseInt(savedConfirmDelay) || 10;
 
-  const elInputBasis = document.getElementById('inputBasisThreshold');
-  if (elInputBasis) elInputBasis.value = state.config.basisThreshold;
+  const setInputVal = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  };
+  const setInputChecked = (id, val) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = val;
+  };
 
-  const elInputMargin = document.getElementById('inputMarginThreshold');
-  if (elInputMargin) elInputMargin.value = state.config.marginThreshold;
+  // Populate Modal Inputs
+  setInputVal('inputBasisThreshold', state.config.basisThreshold);
+  setInputVal('inputMarginThreshold', state.config.marginThreshold);
+  setInputChecked('inputUseAdaptiveBands', state.config.useAdaptiveBands);
+  setInputVal('inputConfirmDelay', state.config.confirmDelayMins);
+  setInputVal('inputTgToken', state.config.tgToken);
+  setInputVal('inputTgChatId', state.config.tgChatId);
 
-  const elInputAdaptive = document.getElementById('inputUseAdaptiveBands');
-  if (elInputAdaptive) elInputAdaptive.checked = state.config.useAdaptiveBands;
+  // Populate View-Settings Inputs
+  setInputVal('viewInputBasisThreshold', state.config.basisThreshold);
+  setInputVal('viewInputMarginThreshold', state.config.marginThreshold);
+  setInputChecked('viewInputUseAdaptiveBands', state.config.useAdaptiveBands);
+  setInputVal('viewInputTgToken', state.config.tgToken);
+  setInputVal('viewInputTgChatId', state.config.tgChatId);
 
-  const elInputDelay = document.getElementById('inputConfirmDelay');
-  if (elInputDelay) elInputDelay.value = state.config.confirmDelayMins;
-
-  const elTgToken = document.getElementById('inputTgToken');
-  if (elTgToken) elTgToken.value = state.config.tgToken;
-
-  const elTgChatId = document.getElementById('inputTgChatId');
-  if (elTgChatId) elTgChatId.value = state.config.tgChatId;
-  
   const savedWallet = localStorage.getItem('dnperp_wallet_address') || localStorage.getItem('dnperp_hl_wallet') || '';
-  const elHlWallet = document.getElementById('hlWalletAddress');
-  if (elHlWallet) elHlWallet.value = savedWallet;
+  setInputVal('hlWalletAddress', savedWallet);
+  setInputVal('viewHlWalletAddress', savedWallet);
 
-  const elLtUsed = document.getElementById('ltMarginUsed');
-  if (elLtUsed) elLtUsed.value = state.config.ltMarginUsed;
-
-  const elLtTotal = document.getElementById('ltTotalMargin');
-  if (elLtTotal) elLtTotal.value = state.config.ltTotalMargin;
+  setInputVal('ltMarginUsed', state.config.ltMarginUsed);
+  setInputVal('ltTotalMargin', state.config.ltTotalMargin);
+  setInputVal('viewLtMarginUsed', state.config.ltMarginUsed);
+  setInputVal('viewLtTotalMargin', state.config.ltTotalMargin);
 
   updateThresholdDisplayLabels();
 }
@@ -1009,82 +1015,33 @@ function setupEventListeners() {
     });
   }
 
-  const btnSaveSettingsView = document.getElementById('btnSaveSettingsView');
-  if (btnSaveSettingsView) {
-    btnSaveSettingsView.addEventListener('click', () => {
+  const saveSettingsFromUI = (isView = false) => {
+    if (isView) {
+      state.config.basisThreshold = parseFloat(document.getElementById('viewInputBasisThreshold')?.value) || 0.30;
+      state.config.marginThreshold = parseFloat(document.getElementById('viewInputMarginThreshold')?.value) || 75.0;
+      state.config.useAdaptiveBands = document.getElementById('viewInputUseAdaptiveBands')?.checked || false;
+      state.config.tgToken = document.getElementById('viewInputTgToken')?.value.trim() || '';
+      state.config.tgChatId = document.getElementById('viewInputTgChatId')?.value.trim() || '';
+      state.config.ltMarginUsed = parseFloat(document.getElementById('viewLtMarginUsed')?.value) || 0;
+      state.config.ltTotalMargin = parseFloat(document.getElementById('viewLtTotalMargin')?.value) || 1000;
+      const w = document.getElementById('viewHlWalletAddress')?.value.trim() || '';
+      state.config.hlWallet = w;
+      localStorage.setItem('dnperp_wallet_address', w);
+      localStorage.setItem('dnperp_hl_wallet', w);
+    } else {
       state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold')?.value) || 0.30;
       state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold')?.value) || 75.0;
       state.config.useAdaptiveBands = document.getElementById('inputUseAdaptiveBands')?.checked || false;
+      state.config.confirmDelayMins = parseInt(document.getElementById('inputConfirmDelay')?.value) || 10;
       state.config.tgToken = document.getElementById('inputTgToken')?.value.trim() || '';
       state.config.tgChatId = document.getElementById('inputTgChatId')?.value.trim() || '';
-
-      localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
-      localStorage.setItem('dnperp_margin_thresh', state.config.marginThreshold);
-      localStorage.setItem('dnperp_use_adaptive_bands', state.config.useAdaptiveBands);
-      localStorage.setItem('dnperp_tg_token', state.config.tgToken);
-      localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
-
+      state.config.ltMarginUsed = parseFloat(document.getElementById('ltMarginUsed')?.value) || 0;
+      state.config.ltTotalMargin = parseFloat(document.getElementById('ltTotalMargin')?.value) || 1000;
       const w = document.getElementById('hlWalletAddress')?.value.trim() || '';
       state.config.hlWallet = w;
       localStorage.setItem('dnperp_wallet_address', w);
       localStorage.setItem('dnperp_hl_wallet', w);
-      updateWalletSubLabel();
-      if (w) fetchHlMargin();
-      fetchAllLiveWalletPositions();
-
-      alert(state.lang === 'EN' ? '✅ Settings saved successfully!' : '✅ Đã lưu cấu hình thành công!');
-    });
-  }
-
-  const btnRefreshLive = document.getElementById('btnRefreshLivePositions');
-  if (btnRefreshLive) {
-    btnRefreshLive.addEventListener('click', () => {
-      fetchAllLiveWalletPositions();
-    });
-  }
-
-  document.getElementById('btnManualRefresh')?.addEventListener('click', () => {
-    state.countdown = 10;
-    fetchMarketData();
-    if (state.config.hlWallet) fetchHlMargin();
-  });
-
-  document.getElementById('btnOpenSettings')?.addEventListener('click', () => {
-    document.getElementById('settingsModal')?.classList.remove('hidden');
-  });
-
-  // Lock Session Listener
-  const lockBtn = document.getElementById('btnLockSession');
-  if (lockBtn) {
-    lockBtn.addEventListener('click', () => {
-      sessionStorage.removeItem('dnperp_unlocked_session');
-      window.location.reload();
-    });
-  }
-
-  document.querySelectorAll('.open-settings-trigger').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      document.getElementById('settingsModal')?.classList.remove('hidden');
-      const targetId = e.currentTarget.dataset.target;
-      if (targetId) {
-        setTimeout(() => {
-          const targetEl = document.getElementById(targetId);
-          if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      }
-    });
-  });
-
-  document.getElementById('btnCloseSettings')?.addEventListener('click', () => closeModal('settingsModal'));
-  document.getElementById('btnCancelSettings')?.addEventListener('click', () => closeModal('settingsModal'));
-
-  document.getElementById('btnSaveSettings')?.addEventListener('click', () => {
-    state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold')?.value) || 0.30;
-    state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold')?.value) || 75.0;
-    state.config.useAdaptiveBands = document.getElementById('inputUseAdaptiveBands')?.checked || false;
-    state.config.confirmDelayMins = parseInt(document.getElementById('inputConfirmDelay')?.value) || 10;
-    state.config.tgToken = document.getElementById('inputTgToken')?.value.trim() || '';
-    state.config.tgChatId = document.getElementById('inputTgChatId')?.value.trim() || '';
+    }
 
     localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
     localStorage.setItem('dnperp_margin_thresh', state.config.marginThreshold);
@@ -1093,23 +1050,110 @@ function setupEventListeners() {
     localStorage.setItem('dnperp_tg_token', state.config.tgToken);
     localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
 
-    const w = document.getElementById('hlWalletAddress')?.value.trim() || '';
-    state.config.hlWallet = w;
-    localStorage.setItem('dnperp_wallet_address', w);
-    localStorage.setItem('dnperp_hl_wallet', w);
     updateWalletSubLabel();
-    if (w) {
-      fetchHlMargin();
-      fetchAllLiveWalletPositions();
-    } else {
-      fetchAllLiveWalletPositions();
-    }
+    if (state.config.hlWallet) fetchHlMargin();
+    fetchAllLiveWalletPositions();
 
-    updateThresholdDisplayLabels();
+    loadStoredConfig();
     recalculateBasisAndSignals();
     updateChartThresholdLines();
-    closeModal('settingsModal');
-  });
+
+    if (!isView) {
+      closeModal('settingsModal');
+    } else {
+      const msg = document.getElementById('viewSaveSuccessMsg');
+      if (msg) {
+        msg.innerText = state.lang === 'EN' ? '✅ Settings saved successfully!' : '✅ Đã lưu cấu hình thành công!';
+        setTimeout(() => { msg.innerText = ''; }, 3000);
+      }
+    }
+  };
+
+  document.getElementById('btnSaveSettings')?.addEventListener('click', () => saveSettingsFromUI(false));
+  document.getElementById('btnSaveSettingsView')?.addEventListener('click', () => saveSettingsFromUI(true));
+
+  // Wallet Query & Clear Event Listeners
+  const bindWalletBtns = (btnQueryId, btnClearId, inputId) => {
+    document.getElementById(btnQueryId)?.addEventListener('click', () => {
+      const w = document.getElementById(inputId)?.value.trim() || '';
+      if (!w) return;
+      localStorage.setItem('dnperp_wallet_address', w);
+      localStorage.setItem('dnperp_hl_wallet', w);
+      state.config.hlWallet = w;
+      loadStoredConfig();
+      fetchHlMargin();
+      fetchAllLiveWalletPositions();
+    });
+
+    document.getElementById(btnClearId)?.addEventListener('click', () => {
+      localStorage.removeItem('dnperp_wallet_address');
+      localStorage.removeItem('dnperp_hl_wallet');
+      state.config.hlWallet = '';
+      loadStoredConfig();
+      fetchAllLiveWalletPositions();
+    });
+  };
+
+  bindWalletBtns('btnQueryHlMargin', 'btnClearWallet', 'hlWalletAddress');
+  bindWalletBtns('viewBtnQueryHlMargin', 'viewBtnClearWallet', 'viewHlWalletAddress');
+
+  // Telegram Test Alert Handlers
+  const testTgHandler = async (isView = false) => {
+    const tokenId = isView ? 'viewInputTgToken' : 'inputTgToken';
+    const chatId = isView ? 'viewInputTgChatId' : 'inputTgChatId';
+    const resultId = isView ? 'viewTgTestResult' : 'tgTestResult';
+
+    const token = document.getElementById(tokenId)?.value.trim();
+    const chat = document.getElementById(chatId)?.value.trim();
+    const resultEl = document.getElementById(resultId);
+
+    if (!token || !chat) {
+      if (resultEl) {
+        resultEl.innerText = state.lang === 'EN' ? '❌ Please enter Token & Chat ID!' : '❌ Vui lòng nhập Token & Chat ID!';
+        resultEl.style.color = 'var(--accent-danger)';
+      }
+      return;
+    }
+
+    if (resultEl) {
+      resultEl.innerText = state.lang === 'EN' ? '⏳ Sending test alert...' : '⏳ Đang gửi thử...';
+      resultEl.style.color = 'var(--text-gold)';
+    }
+
+    try {
+      const msg = `⚡ [dnperp monitor] Test alert message successfully sent!`;
+      const url = `https://api.telegram.org/bot${token}/sendMessage`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chat, text: msg, parse_mode: 'HTML' })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (resultEl) {
+          resultEl.innerText = state.lang === 'EN' ? '✅ Sent successfully!' : '✅ Đã gửi thành công!';
+          resultEl.style.color = 'var(--accent-safe)';
+        }
+      } else {
+        throw new Error(data.description || 'Telegram API error');
+      }
+    } catch (err) {
+      if (resultEl) {
+        resultEl.innerText = `❌ ${err.message}`;
+        resultEl.style.color = 'var(--accent-danger)';
+      }
+    }
+  };
+
+  document.getElementById('btnTestTgAlert')?.addEventListener('click', () => testTgHandler(false));
+  document.getElementById('viewBtnTestTgAlert')?.addEventListener('click', () => testTgHandler(true));
+
+  const btnRefreshLive = document.getElementById('btnRefreshLivePositions');
+  if (btnRefreshLive) {
+    btnRefreshLive.addEventListener('click', () => {
+      fetchAllLiveWalletPositions();
+    });
+  }
 
   // Phase 10 Trade Journal Modal Triggers
   document.getElementById('btnOpenAddTradeModal')?.addEventListener('click', () => {
