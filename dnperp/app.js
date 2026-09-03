@@ -388,6 +388,7 @@ const state = {
 
   livePositions: [],
   liveGroups: [],
+  expandedCards: JSON.parse(localStorage.getItem('dnperp_expanded_cards') || '[]'),
 
   countdown: 10,
   timerId: null,
@@ -395,6 +396,33 @@ const state = {
   journalPnlChart: null,
   journalPairChart: null,
   activeChartRange: '24h'
+};
+
+// Phase 13 Accordion Card Toggle Helper
+window.toggleCardExpand = function(cardId) {
+  const idx = state.expandedCards.indexOf(cardId);
+  if (idx !== -1) {
+    state.expandedCards.splice(idx, 1);
+  } else {
+    state.expandedCards.push(cardId);
+  }
+  localStorage.setItem('dnperp_expanded_cards', JSON.stringify(state.expandedCards));
+
+  const bodyEl = document.getElementById(`expandable-body-${cardId}`);
+  const toggleBtn = document.getElementById(`toggle-btn-${cardId}`);
+  const isExpanded = state.expandedCards.includes(cardId);
+
+  if (bodyEl) {
+    bodyEl.classList.toggle('collapsed', !isExpanded);
+  }
+
+  if (toggleBtn) {
+    const isEn = state.lang === 'EN';
+    const textSpan = toggleBtn.querySelector('.toggle-text');
+    const iconSpan = toggleBtn.querySelector('.toggle-icon');
+    if (textSpan) textSpan.innerText = isExpanded ? (isEn ? 'Collapse' : 'Thu gọn') : (isEn ? 'Details' : 'Chi tiết');
+    if (iconSpan) iconSpan.innerText = isExpanded ? '▲' : '▼';
+  }
 };
 
 // Phase 11 Passcode Verification Logic
@@ -691,30 +719,44 @@ function calculateAdaptiveBands(pairId) {
   };
 }
 
-// Dynamically Render Card Matrix for Active Tracked Pairs
+// Dynamically Render Card Matrix for Active Tracked Pairs (Phase 13 Collapsible Accordion)
 function renderSpreadCards() {
   const container = document.getElementById('spreadCardsContainer');
   container.innerHTML = '';
 
   const dict = i18n[state.lang] || i18n.VI;
+  const isEn = state.lang === 'EN';
 
   state.trackedPairs.forEach(pair => {
     const connA = ConnectorRegistry.get(pair.exchangeA) || { name: pair.exchangeA };
     const connB = ConnectorRegistry.get(pair.exchangeB) || { name: pair.exchangeB };
 
+    const cardId = `card-${pair.id}`;
+    const isExpanded = state.expandedCards.includes(cardId);
+
+    const toggleText = isExpanded ? (isEn ? 'Collapse' : 'Thu gọn') : (isEn ? 'Details' : 'Chi tiết');
+    const toggleIcon = isExpanded ? '▲' : '▼';
+
     const cardHtml = `
-      <div class="spread-card" id="card-${pair.id}">
+      <div class="spread-card" id="${cardId}">
         <div class="card-top">
           <div class="pair-info">
             <span class="pair-symbol">${pair.id}</span>
             <span class="pair-name">${pair.name}</span>
           </div>
-          <div class="action-badge neutral" id="signal-${pair.id}">
-            <span class="badge-icon">⚪</span>
-            <span class="badge-text">${dict.signalNeutral}</span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div class="action-badge neutral" id="signal-${pair.id}">
+              <span class="badge-icon">⚪</span>
+              <span class="badge-text">${dict.signalNeutral}</span>
+            </div>
+            <button class="card-expand-toggle-btn" id="toggle-btn-${cardId}" onclick="toggleCardExpand('${cardId}')">
+              <span class="toggle-text">${toggleText}</span>
+              <span class="toggle-icon">${toggleIcon}</span>
+            </button>
           </div>
         </div>
 
+        <!-- Always Visible Collapsed Hero Section -->
         <div class="basis-hero-box">
           <div class="basis-label">${dict.basisLabel.replace('Sàn A', connA.name).replace('Sàn B', connB.name)}</div>
           <div class="basis-value-group">
@@ -723,53 +765,56 @@ function renderSpreadCards() {
           </div>
         </div>
 
-        <!-- Phase 9b Adaptive Bands Box -->
-        <div class="adaptive-band-box" id="adaptiveBandBox-${pair.id}">
-          <!-- Dynamic band content inserted by recalculateBasisAndSignals() -->
-        </div>
-
-        <div class="price-comparison-grid">
-          <div class="source-col entropy">
-            <div class="source-header">
-              <span class="source-tag">${connA.name}</span>
-              <span class="dex-tag">${pair.symbolA}</span>
-            </div>
-            <div class="source-price mono-num" id="priceA-${pair.id}">$0.00</div>
-            <div class="source-metrics">
-              <div class="metric-item">
-                <span class="m-label">${dict.fundingYear}</span>
-                <span class="m-val mono-num" id="fundingA-${pair.id}">0.00%</span>
-              </div>
-              <div class="metric-item">
-                <span class="m-label">${dict.vol24h}</span>
-                <span class="m-val mono-num" id="volA-${pair.id}">$0</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="vs-divider">VS</div>
-
-          <div class="source-col lighter">
-            <div class="source-header">
-              <span class="source-tag">${connB.name}</span>
-              <span class="dex-tag">${pair.symbolB}</span>
-            </div>
-            <div class="source-price mono-num" id="priceB-${pair.id}">$0.00</div>
-            <div class="source-metrics">
-              <div class="metric-item">
-                <span class="m-label">${dict.fundingProxy}</span>
-                <span class="m-val mono-num" id="fundingB-${pair.id}">0.00%</span>
-              </div>
-              <div class="metric-item">
-                <span class="m-label">${dict.vol24h}</span>
-                <span class="m-val mono-num" id="volB-${pair.id}">$0</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <div class="strategy-recommendation" id="strat-${pair.id}">
           ${dict.stratNeutral.replace('{thresh}', state.config.basisThreshold.toFixed(2))}
+        </div>
+
+        <!-- Expandable Body Container -->
+        <div class="expandable-body ${isExpanded ? '' : 'collapsed'}" id="expandable-body-${cardId}">
+          <!-- Phase 9b Adaptive Bands Box -->
+          <div class="adaptive-band-box" id="adaptiveBandBox-${pair.id}">
+            <!-- Dynamic band content inserted by recalculateBasisAndSignals() -->
+          </div>
+
+          <div class="price-comparison-grid">
+            <div class="source-col entropy">
+              <div class="source-header">
+                <span class="source-tag">${connA.name}</span>
+                <span class="dex-tag">${pair.symbolA}</span>
+              </div>
+              <div class="source-price mono-num" id="priceA-${pair.id}">$0.00</div>
+              <div class="source-metrics">
+                <div class="metric-item">
+                  <span class="m-label">${dict.fundingYear}</span>
+                  <span class="m-val mono-num" id="fundingA-${pair.id}">0.00%</span>
+                </div>
+                <div class="metric-item">
+                  <span class="m-label">${dict.vol24h}</span>
+                  <span class="m-val mono-num" id="volA-${pair.id}">$0</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="vs-divider">VS</div>
+
+            <div class="source-col lighter">
+              <div class="source-header">
+                <span class="source-tag">${connB.name}</span>
+                <span class="dex-tag">${pair.symbolB}</span>
+              </div>
+              <div class="source-price mono-num" id="priceB-${pair.id}">$0.00</div>
+              <div class="source-metrics">
+                <div class="metric-item">
+                  <span class="m-label">${dict.fundingProxy}</span>
+                  <span class="m-val mono-num" id="fundingB-${pair.id}">0.00%</span>
+                </div>
+                <div class="metric-item">
+                  <span class="m-label">${dict.vol24h}</span>
+                  <span class="m-val mono-num" id="volB-${pair.id}">$0</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -1441,32 +1486,55 @@ function renderLivePositionsUI() {
       `;
     });
 
+    const cardId = `livepos-${grp.groupId}`;
+    const isExpanded = state.expandedCards.includes(cardId);
+
+    const toggleText = isExpanded ? (isEn ? 'Collapse' : 'Thu gọn') : (isEn ? 'Details' : 'Chi tiết');
+    const toggleIcon = isExpanded ? '▲' : '▼';
+
     const cardHtml = `
-      <div class="live-pos-card ${isDN ? 'delta-neutral' : 'single-leg'}">
+      <div class="live-pos-card ${isDN ? 'delta-neutral' : 'single-leg'}" id="${cardId}">
         <div class="pos-card-header">
           <div class="pos-pair-title">
             <span>${grp.groupId}</span>
             <span style="font-size: 13px; color: var(--text-muted); font-weight: normal;">(${grp.title})</span>
           </div>
-          ${tagHtml}
+          <div style="display: flex; align-items: center; gap: 8px;">
+            ${tagHtml}
+            <button class="card-expand-toggle-btn" id="toggle-btn-${cardId}" onclick="toggleCardExpand('${cardId}')">
+              <span class="toggle-text">${toggleText}</span>
+              <span class="toggle-icon">${toggleIcon}</span>
+            </button>
+          </div>
         </div>
 
-        <div class="legs-container">
-          ${legsHtml}
+        <!-- Always Visible Summary PnL Bar (Top level focus metric) -->
+        <div class="summary-pnl-bar">
+          <div class="summary-pnl-item">
+            <span class="summary-pnl-label">${isEn ? 'Combined PnL' : 'Tổng PnL 2 Chân'}</span>
+            <span class="summary-pnl-val ${pnlClass}">${pnlDisplay}</span>
+          </div>
+          <div class="summary-pnl-item" style="text-align: right;">
+            <span class="summary-pnl-label">${isEn ? 'Entry Basis' : 'Basis Lúc Vào'}</span>
+            <span class="summary-pnl-val mono-num">${grp.netBasisEntry !== null ? (grp.netBasisEntry >= 0 ? '+' : '') + grp.netBasisEntry.toFixed(2) + '%' : '—'}</span>
+          </div>
         </div>
 
-        <div class="pos-card-footer">
-          <div class="footer-stat">
-            <span class="footer-stat-label">${isEn ? 'Combined PnL' : 'Tổng PnL 2 Chân'}</span>
-            <span class="footer-stat-val ${pnlClass}">${pnlDisplay}</span>
+        <!-- Expandable Body Container -->
+        <div class="expandable-body ${isExpanded ? '' : 'collapsed'}" id="expandable-body-${cardId}">
+          <div class="legs-container">
+            ${legsHtml}
           </div>
-          <div class="footer-stat">
-            <span class="footer-stat-label">${isEn ? 'Cum. Funding' : 'Funding Tích Luỹ'}</span>
-            <span class="footer-stat-val mono-num">$${grp.combinedFunding >= 0 ? '+' : ''}${grp.combinedFunding.toFixed(2)}</span>
-          </div>
-          <div class="footer-stat">
-            <span class="footer-stat-label">${isEn ? 'Entry Basis' : 'Basis Lúc Vào'}</span>
-            <span class="footer-stat-val mono-num">${grp.netBasisEntry !== null ? (grp.netBasisEntry >= 0 ? '+' : '') + grp.netBasisEntry.toFixed(2) + '%' : '—'}</span>
+
+          <div class="pos-card-footer">
+            <div class="footer-stat">
+              <span class="footer-stat-label">${isEn ? 'Cum. Funding' : 'Funding Tích Luỹ'}</span>
+              <span class="footer-stat-val mono-num">$${grp.combinedFunding >= 0 ? '+' : ''}${grp.combinedFunding.toFixed(2)}</span>
+            </div>
+            <div class="footer-stat">
+              <span class="footer-stat-label">${isEn ? 'Total Notional' : 'Tổng Vị Thế Notional'}</span>
+              <span class="footer-stat-val mono-num">$${Math.round(grp.combinedNotional).toLocaleString()}</span>
+            </div>
           </div>
         </div>
       </div>
