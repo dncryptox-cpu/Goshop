@@ -391,6 +391,12 @@ const state = {
   expandedCards: JSON.parse(localStorage.getItem('dnperp_expanded_cards') || '[]'),
   currentView: 'overview',
   selectedPairId: 'SNDK',
+  selectedChartPair: 'SNDK',
+  candleTimeframe: '1h',
+  hlChartInstance: null,
+  hlCandleSeries: null,
+  ltChartInstance: null,
+  ltCandleSeries: null,
   journalFilterPair: 'ALL',
   journalFilterStatus: 'ALL',
   journalSearchQuery: '',
@@ -525,6 +531,10 @@ function unlockDashboardUI() {
     renderSpreadCards();
     renderPairsTable();
     initChart();
+    renderPairChartTabs();
+    initCandleTimeframeToolbar();
+    updateChartData();
+    fetchAndRenderCandleCharts();
     
     renderJournalTable();
     updateJournalAnalytics();
@@ -3053,9 +3063,46 @@ function initChart() {
   });
 }
 
-// Update Chart Data dynamically for active tracked pairs
+// Phase 16: Render Pair Tabs for Basis History Chart
+function renderPairChartTabs() {
+  const container = document.getElementById('basisPairTabsContainer');
+  if (!container) return;
+
+  if (!state.trackedPairs || state.trackedPairs.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  // Fallback to first tracked pair if current selected is invalid
+  const pairIds = state.trackedPairs.map(p => p.id);
+  if (!state.selectedChartPair || !pairIds.includes(state.selectedChartPair)) {
+    state.selectedChartPair = pairIds[0] || 'SNDK';
+  }
+
+  container.innerHTML = state.trackedPairs.map(pair => {
+    const isActive = pair.id === state.selectedChartPair ? 'active' : '';
+    return `<button class="pair-chart-tab ${isActive}" data-pair="${pair.id}">${pair.id}</button>`;
+  }).join('');
+
+  container.querySelectorAll('.pair-chart-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const pairId = btn.getAttribute('data-pair');
+      if (!pairId) return;
+      state.selectedChartPair = pairId;
+      renderPairChartTabs();
+      updateChartData();
+      fetchAndRenderCandleCharts();
+    });
+  });
+}
+
+// Update Chart Data dynamically for state.selectedChartPair ONLY (Phase 16)
 function updateChartData() {
   if (!state.chart) return;
+
+  renderPairChartTabs();
+
+  const pairId = state.selectedChartPair || state.trackedPairs?.[0]?.id || 'SNDK';
 
   const now = Date.now();
   let duration = 24 * 60 * 60 * 1000;
@@ -3070,65 +3117,105 @@ function updateChartData() {
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   });
 
-  const datasets = [];
-  const legendHtml = [];
+  const series = filtered.map(h => {
+    if (h.pairs && h.pairs[pairId] !== undefined) return h.pairs[pairId];
+    if (pairId === 'SNDK' && h.sndk !== undefined) return h.sndk;
+    if (pairId === 'ANTH' && h.anth !== undefined) return h.anth;
+    return 0;
+  });
 
-  state.trackedPairs.forEach((pair, idx) => {
-    const color = PALETTE[idx % PALETTE.length];
-    
-    const series = filtered.map(h => {
-      if (h.pairs && h.pairs[pair.id] !== undefined) return h.pairs[pair.id];
-      if (pair.id === 'SNDK' && h.sndk !== undefined) return h.sndk;
-      if (pair.id === 'ANTH' && h.anth !== undefined) return h.anth;
-      return 0;
-    });
+  const pairIndex = state.trackedPairs.findIndex(p => p.id === pairId);
+  const color = PALETTE[pairIndex >= 0 ? pairIndex % PALETTE.length : 0];
 
-    datasets.push({
-      label: `${pair.id} Basis %`,
+  const datasets = [
+    {
+      label: `${pairId} Basis %`,
       data: series,
       borderColor: color,
       backgroundColor: color + '1a',
-      borderWidth: 2,
+      borderWidth: 2.5,
       tension: 0.2,
       pointRadius: 0,
       pointHoverRadius: 5
+    }
+  ];
+
+  const legendHtml = [
+    `<div class="legend-item"><span class="legend-color" style="background: ${color}"></span> <b>${pairId} Basis %</b></div>`
+  ];
+
+  // Render Adaptive Bands for selected pair if available (Phase 9b)
+  const bands = typeof calculateAdaptiveBandsForPair === 'function' ? calculateAdaptiveBandsForPair(pairId) : null;
+  if (bands && bands.isSufficient) {
+    const upperLabel = state.lang === 'EN' ? 'Upper Band' : 'Ngưỡng Upper';
+    const midLabel = state.lang === 'EN' ? 'Mean (30d)' : 'Trung bình (30 ngày)';
+    const lowerLabel = state.lang === 'EN' ? 'Lower Band' : 'Ngưỡng Lower';
+
+    datasets.push({
+      label: upperLabel,
+      data: filtered.map(() => bands.upper),
+      borderColor: 'rgba(38, 166, 154, 0.7)',
+      borderWidth: 1.5,
+      borderDash: [4, 4],
+      pointRadius: 0,
+      fill: false
+    });
+
+    datasets.push({
+      label: midLabel,
+      data: filtered.map(() => bands.mean),
+      borderColor: 'rgba(255, 179, 0, 0.5)',
+      borderWidth: 1,
+      borderDash: [2, 2],
+      pointRadius: 0,
+      fill: false
+    });
+
+    datasets.push({
+      label: lowerLabel,
+      data: filtered.map(() => bands.lower),
+      borderColor: 'rgba(239, 83, 80, 0.7)',
+      borderWidth: 1.5,
+      borderDash: [4, 4],
+      pointRadius: 0,
+      fill: false
     });
 
     legendHtml.push(`
-      <div class="legend-item">
-        <span class="legend-color" style="background: ${color}"></span> ${pair.id} Basis %
-      </div>
+      <div class="legend-item"><span class="legend-color line-upper"></span> ${upperLabel} (+${bands.upper.toFixed(2)}%)</div>
+      <div class="legend-item"><span class="legend-color" style="background: var(--text-gold); height: 2px;"></span> ${midLabel} (${bands.mean.toFixed(2)}%)</div>
+      <div class="legend-item"><span class="legend-color line-lower"></span> ${lowerLabel} (${bands.lower.toFixed(2)}%)</div>
     `);
-  });
+  } else {
+    const thresh = state.config.basisThreshold || 0.3;
+    const upperLabel = state.lang === 'EN' ? 'Upper Threshold' : 'Ngưỡng Upper';
+    const lowerLabel = state.lang === 'EN' ? 'Lower Threshold' : 'Ngưỡng Lower';
 
-  const thresh = state.config.basisThreshold;
-  datasets.push({
-    label: 'Upper Threshold',
-    data: filtered.map(() => thresh),
-    borderColor: 'rgba(78, 159, 112, 0.6)',
-    borderWidth: 1.5,
-    borderDash: [5, 5],
-    pointRadius: 0,
-    fill: false
-  });
+    datasets.push({
+      label: upperLabel,
+      data: filtered.map(() => thresh),
+      borderColor: 'rgba(38, 166, 154, 0.7)',
+      borderWidth: 1.5,
+      borderDash: [5, 5],
+      pointRadius: 0,
+      fill: false
+    });
 
-  datasets.push({
-    label: 'Lower Threshold',
-    data: filtered.map(() => -thresh),
-    borderColor: 'rgba(217, 56, 56, 0.6)',
-    borderWidth: 1.5,
-    borderDash: [5, 5],
-    pointRadius: 0,
-    fill: false
-  });
+    datasets.push({
+      label: lowerLabel,
+      data: filtered.map(() => -thresh),
+      borderColor: 'rgba(239, 83, 80, 0.7)',
+      borderWidth: 1.5,
+      borderDash: [5, 5],
+      pointRadius: 0,
+      fill: false
+    });
 
-  const upperLabel = state.lang === 'EN' ? 'Upper Threshold' : 'Ngưỡng Upper';
-  const lowerLabel = state.lang === 'EN' ? 'Lower Threshold' : 'Ngưỡng Lower';
-
-  legendHtml.push(`
-    <div class="legend-item"><span class="legend-color line-upper"></span> ${upperLabel} (+<span class="displayThresholdVal">${thresh.toFixed(2)}%</span>)</div>
-    <div class="legend-item"><span class="legend-color line-lower"></span> ${lowerLabel} (-<span class="displayThresholdVal">${thresh.toFixed(2)}%</span>)</div>
-  `);
+    legendHtml.push(`
+      <div class="legend-item"><span class="legend-color line-upper"></span> ${upperLabel} (+${thresh.toFixed(2)}%)</div>
+      <div class="legend-item"><span class="legend-color line-lower"></span> ${lowerLabel} (-${thresh.toFixed(2)}%)</div>
+    `);
+  }
 
   state.chart.data.labels = labels;
   state.chart.data.datasets = datasets;
@@ -3136,6 +3223,265 @@ function updateChartData() {
 
   const legendContainer = document.getElementById('chartLegendContainer');
   if (legendContainer) legendContainer.innerHTML = legendHtml.join('');
+}
+
+// Phase 16: Map pairId to Hyperliquid coin and Lighter market_id
+function getExchangeSymbolsForPair(pairId) {
+  const map = {
+    OAI: { hlCoin: 'io:OAI', ltMarketId: 42, title: 'OpenAI Synthetic' },
+    ANTH: { hlCoin: 'io:ANTH', ltMarketId: 38, title: 'Anthropic Pre-IPO' },
+    SNDK: { hlCoin: 'io:SNDK', ltMarketId: 32, title: 'SanDisk Synthetic' },
+    BTC: { hlCoin: 'BTC', ltMarketId: 1, title: 'Bitcoin' },
+    ETH: { hlCoin: 'ETH', ltMarketId: 0, title: 'Ethereum' },
+    SOL: { hlCoin: 'SOL', ltMarketId: 3, title: 'Solana' }
+  };
+
+  if (map[pairId]) return map[pairId];
+
+  const tracked = state.trackedPairs?.find(p => p.id === pairId);
+  return {
+    hlCoin: tracked?.hlCoin || `io:${pairId}`,
+    ltMarketId: tracked?.ltMarketId || 0,
+    title: tracked?.name || pairId
+  };
+}
+
+// Phase 16: Real Candlestick Charts using TradingView Lightweight Charts CDN
+async function fetchAndRenderCandleCharts() {
+  if (typeof LightweightCharts === 'undefined') {
+    console.warn('LightweightCharts CDN library not loaded yet.');
+    return;
+  }
+
+  const pairId = state.selectedChartPair || 'SNDK';
+  const symbols = getExchangeSymbolsForPair(pairId);
+  const tf = state.candleTimeframe || '1h';
+
+  // Update selected pair name label
+  const pairLabel = document.getElementById('candleSelectedPairName');
+  if (pairLabel) pairLabel.innerText = `${pairId} (${symbols.title})`;
+
+  // Calculate startTime / endTime for Hyperliquid candleSnapshot
+  const endTime = Date.now();
+  let startTimeHours = 48;
+  if (tf === '4h') startTimeHours = 7 * 24;
+  if (tf === '1d') startTimeHours = 30 * 24;
+  const startTime = endTime - (startTimeHours * 3600 * 1000);
+
+  // -------------------------------------------------------------
+  // 1. HYPERLIQUID / ENTROPY REAL CANDLESTICK CHART
+  // -------------------------------------------------------------
+  const hlContainer = document.getElementById('hlCandleChartContainer');
+  if (hlContainer) {
+    const calcW = hlContainer.clientWidth || hlContainer.offsetWidth || 500;
+    if (!state.hlChartInstance) {
+      hlContainer.innerHTML = '';
+      state.hlChartInstance = LightweightCharts.createChart(hlContainer, {
+        width: calcW,
+        height: 220,
+        layout: {
+          background: { color: '#09101b' },
+          textColor: '#a0aec0'
+        },
+        grid: {
+          vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
+          horzLines: { color: 'rgba(255, 255, 255, 0.04)' }
+        },
+        crosshair: { mode: 1 },
+        timeScale: { borderColor: '#1e324d', timeVisible: true }
+      });
+      state.hlCandleSeries = state.hlChartInstance.addCandlestickSeries({
+        upColor: '#26a69a',
+        downColor: '#ef5350',
+        borderVisible: false,
+        wickUpColor: '#26a69a',
+        wickDownColor: '#ef5350'
+      });
+
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(entries => {
+          if (entries[0] && state.hlChartInstance && entries[0].contentRect.width > 0) {
+            state.hlChartInstance.applyOptions({ width: entries[0].contentRect.width });
+          }
+        }).observe(hlContainer);
+      }
+    } else {
+      state.hlChartInstance.applyOptions({ width: calcW });
+    }
+
+    try {
+      const res = await fetch('https://api.hyperliquid.xyz/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'candleSnapshot',
+          req: { coin: symbols.hlCoin, interval: tf, startTime, endTime }
+        })
+      });
+
+      if (res.ok) {
+        const rawCandles = await res.json();
+        if (Array.isArray(rawCandles) && rawCandles.length > 0) {
+          const candles = rawCandles.map(c => ({
+            time: Math.floor(c.t / 1000),
+            open: parseFloat(c.o),
+            high: parseFloat(c.h),
+            low: parseFloat(c.l),
+            close: parseFloat(c.c)
+          })).sort((a, b) => a.time - b.time);
+
+          // Deduplicate timestamps (Lightweight Charts strict requirement)
+          const uniqueCandles = [];
+          const seenTimes = new Set();
+          for (const c of candles) {
+            if (!seenTimes.has(c.time)) {
+              seenTimes.add(c.time);
+              uniqueCandles.push(c);
+            }
+          }
+
+          state.hlCandleSeries.setData(uniqueCandles);
+          setTimeout(() => {
+            if (state.hlChartInstance && hlContainer) {
+              state.hlChartInstance.applyOptions({ width: hlContainer.clientWidth || 500 });
+              state.hlChartInstance.timeScale().fitContent();
+            }
+          }, 50);
+
+          const latestClose = uniqueCandles[uniqueCandles.length - 1].close;
+          const hlPriceEl = document.getElementById('hlPriceVal');
+          if (hlPriceEl) hlPriceEl.innerText = `$${latestClose.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+        }
+      }
+    } catch (e) {
+      console.error('HL Candle fetch error:', e);
+    }
+  }
+
+  // -------------------------------------------------------------
+  // 2. LIGHTER / ROBINHOOD CHAIN PRICE CHART (Trades / Mark Price Fallback)
+  // -------------------------------------------------------------
+  const ltContainer = document.getElementById('ltCandleChartContainer');
+  if (ltContainer) {
+    const calcW = ltContainer.clientWidth || ltContainer.offsetWidth || 500;
+    if (!state.ltChartInstance) {
+      ltContainer.innerHTML = '';
+      state.ltChartInstance = LightweightCharts.createChart(ltContainer, {
+        width: calcW,
+        height: 220,
+        layout: {
+          background: { color: '#09101b' },
+          textColor: '#a0aec0'
+        },
+        grid: {
+          vertLines: { color: 'rgba(255, 255, 255, 0.04)' },
+          horzLines: { color: 'rgba(255, 255, 255, 0.04)' }
+        },
+        crosshair: { mode: 1 },
+        timeScale: { borderColor: '#1e324d', timeVisible: true }
+      });
+      state.ltCandleSeries = state.ltChartInstance.addAreaSeries({
+        topColor: 'rgba(255, 179, 0, 0.4)',
+        bottomColor: 'rgba(255, 179, 0, 0.0)',
+        lineColor: '#ffb300',
+        lineWidth: 2
+      });
+
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(entries => {
+          if (entries[0] && state.ltChartInstance && entries[0].contentRect.width > 0) {
+            state.ltChartInstance.applyOptions({ width: entries[0].contentRect.width });
+          }
+        }).observe(ltContainer);
+      }
+    } else {
+      state.ltChartInstance.applyOptions({ width: calcW });
+    }
+
+    let ltCandles = [];
+
+    // Try Lighter recentTrades API first
+    if (symbols.ltMarketId !== undefined && symbols.ltMarketId > 0) {
+      try {
+        const res = await fetch(`https://api.rh.lighter.xyz/api/v1/recentTrades?market_id=${symbols.ltMarketId}&limit=100`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.trades && Array.isArray(data.trades) && data.trades.length > 0) {
+            ltCandles = data.trades.map(t => ({
+              time: Math.floor(t.timestamp / 1000 || Date.now() / 1000),
+              value: parseFloat(t.price)
+            })).sort((a, b) => a.time - b.time);
+
+            const noteEl = document.getElementById('ltPriceNote');
+            if (noteEl) noteEl.innerText = 'Dữ liệu giá thật từ Trade History (Lighter API)';
+          }
+        }
+      } catch (e) {
+        console.warn('Lighter trade history fetch error, using markPrice fallback:', e);
+      }
+    }
+
+    // Fallback to historical markPrice if recentTrades unavailable
+    if (ltCandles.length === 0) {
+      const historyCutoff = endTime - (startTimeHours * 3600 * 1000);
+      const historyFiltered = state.history.filter(h => h.time >= historyCutoff);
+
+      ltCandles = historyFiltered.map(h => {
+        let price = h.ltPrices?.[pairId] || 0;
+        if (!price && h.hlPrices?.[pairId] && h.pairs?.[pairId] !== undefined) {
+          price = h.hlPrices[pairId] * (1 - h.pairs[pairId] / 100);
+        }
+        return {
+          time: Math.floor(h.time / 1000),
+          value: price
+        };
+      }).filter(c => c.value > 0).sort((a, b) => a.time - b.time);
+
+      const noteEl = document.getElementById('ltPriceNote');
+      if (noteEl) noteEl.innerText = 'Dữ liệu giá xấp xỉ từ Mark Price (Phase 9b)';
+    }
+
+    if (ltCandles.length > 0) {
+      const uniqueCandles = [];
+      const seen = new Set();
+      for (const c of ltCandles) {
+        if (!seen.has(c.time)) {
+          seen.add(c.time);
+          uniqueCandles.push(c);
+        }
+      }
+      state.ltCandleSeries.setData(uniqueCandles);
+      setTimeout(() => {
+        if (state.ltChartInstance && ltContainer) {
+          state.ltChartInstance.applyOptions({ width: ltContainer.clientWidth || 500 });
+          state.ltChartInstance.timeScale().fitContent();
+        }
+      }, 50);
+
+      const latestVal = uniqueCandles[uniqueCandles.length - 1].value;
+      const ltPriceEl = document.getElementById('ltPriceVal');
+      if (ltPriceEl) ltPriceEl.innerText = `$${latestVal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+    }
+  }
+}
+
+// Phase 16: Initialize Timeframe Toolbar Listeners
+function initCandleTimeframeToolbar() {
+  const toolbar = document.getElementById('candleTimeframeToolbar');
+  if (!toolbar) return;
+
+  toolbar.querySelectorAll('.candle-tf-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tf = btn.getAttribute('data-tf');
+      if (!tf) return;
+      state.candleTimeframe = tf;
+
+      toolbar.querySelectorAll('.candle-tf-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      fetchAndRenderCandleCharts();
+    });
+  });
 }
 
 function updateChartThresholdLines() {
