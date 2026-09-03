@@ -649,10 +649,10 @@ function setLanguage(lang) {
   state.lang = lang;
   localStorage.setItem('dnperp_lang', lang);
 
-  document.getElementById('langBtnVI').classList.toggle('active', lang === 'VI');
-  document.getElementById('langBtnEN').classList.toggle('active', lang === 'EN');
-  document.getElementById('drawerLangBtnVI').classList.toggle('active', lang === 'VI');
-  document.getElementById('drawerLangBtnEN').classList.toggle('active', lang === 'EN');
+  document.getElementById('langBtnVI')?.classList.toggle('active', lang === 'VI');
+  document.getElementById('langBtnEN')?.classList.toggle('active', lang === 'EN');
+  document.getElementById('drawerLangBtnVI')?.classList.toggle('active', lang === 'VI');
+  document.getElementById('drawerLangBtnEN')?.classList.toggle('active', lang === 'EN');
 
   const dict = i18n[lang] || i18n.VI;
   document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -662,14 +662,17 @@ function setLanguage(lang) {
     }
   });
 
-  document.getElementById('hlWalletAddress').placeholder = dict.placeholderWallet;
+  const hlInput = document.getElementById('hlWalletAddress');
+  if (hlInput) hlInput.placeholder = dict.placeholderWallet;
 
+  const knVi = document.getElementById('knowledge-content-vi');
+  const knEn = document.getElementById('knowledge-content-en');
   if (lang === 'EN') {
-    document.getElementById('knowledge-content-vi').classList.add('hidden');
-    document.getElementById('knowledge-content-en').classList.remove('hidden');
+    if (knVi) knVi.classList.add('hidden');
+    if (knEn) knEn.classList.remove('hidden');
   } else {
-    document.getElementById('knowledge-content-vi').classList.remove('hidden');
-    document.getElementById('knowledge-content-en').classList.add('hidden');
+    if (knVi) knVi.classList.remove('hidden');
+    if (knEn) knEn.classList.add('hidden');
   }
 
   renderSpreadCards();
@@ -682,6 +685,7 @@ function setLanguage(lang) {
 function updateWalletSubLabel() {
   const w = state.config.hlWallet;
   const subEl = document.getElementById('displayHlWalletSub');
+  if (!subEl) return;
   const isEn = state.lang === 'EN';
   if (w) {
     const shortW = `${w.substring(0, 6)}...${w.substring(w.length - 4)}`;
@@ -698,7 +702,8 @@ function initMarketState() {
       state.market[p.id] = { priceA: 0, fundingA: 0, volA: 0, priceB: 0, fundingB: 0, volB: 0, basis: 0, basisAbs: 0 };
     }
   });
-  document.getElementById('trackedPairsCount').innerText = state.trackedPairs.length;
+  const elCount = document.getElementById('trackedPairsCount');
+  if (elCount) elCount.innerText = state.trackedPairs.length;
 }
 
 // Load Configuration into UI Input Controls
@@ -715,29 +720,50 @@ function loadStoredConfig() {
   const savedConfirmDelay = localStorage.getItem('dnperp_confirm_delay_mins');
   if (savedConfirmDelay) state.config.confirmDelayMins = parseInt(savedConfirmDelay) || 10;
 
-  document.getElementById('inputBasisThreshold').value = state.config.basisThreshold;
-  document.getElementById('inputMarginThreshold').value = state.config.marginThreshold;
-  document.getElementById('inputUseAdaptiveBands').checked = state.config.useAdaptiveBands;
-  document.getElementById('inputConfirmDelay').value = state.config.confirmDelayMins;
-  document.getElementById('inputTgToken').value = state.config.tgToken;
-  document.getElementById('inputTgChatId').value = state.config.tgChatId;
+  const elInputBasis = document.getElementById('inputBasisThreshold');
+  if (elInputBasis) elInputBasis.value = state.config.basisThreshold;
+
+  const elInputMargin = document.getElementById('inputMarginThreshold');
+  if (elInputMargin) elInputMargin.value = state.config.marginThreshold;
+
+  const elInputAdaptive = document.getElementById('inputUseAdaptiveBands');
+  if (elInputAdaptive) elInputAdaptive.checked = state.config.useAdaptiveBands;
+
+  const elInputDelay = document.getElementById('inputConfirmDelay');
+  if (elInputDelay) elInputDelay.value = state.config.confirmDelayMins;
+
+  const elTgToken = document.getElementById('inputTgToken');
+  if (elTgToken) elTgToken.value = state.config.tgToken;
+
+  const elTgChatId = document.getElementById('inputTgChatId');
+  if (elTgChatId) elTgChatId.value = state.config.tgChatId;
   
   const savedWallet = localStorage.getItem('dnperp_wallet_address') || localStorage.getItem('dnperp_hl_wallet') || '';
-  document.getElementById('hlWalletAddress').value = savedWallet;
+  const elHlWallet = document.getElementById('hlWalletAddress');
+  if (elHlWallet) elHlWallet.value = savedWallet;
 
-  document.getElementById('ltMarginUsed').value = state.config.ltMarginUsed;
-  document.getElementById('ltTotalMargin').value = state.config.ltTotalMargin;
+  const elLtUsed = document.getElementById('ltMarginUsed');
+  if (elLtUsed) elLtUsed.value = state.config.ltMarginUsed;
+
+  const elLtTotal = document.getElementById('ltTotalMargin');
+  if (elLtTotal) elLtTotal.value = state.config.ltTotalMargin;
 
   updateThresholdDisplayLabels();
 }
 
 function updateThresholdDisplayLabels() {
-  document.getElementById('displayBasisThreshold').innerText = state.config.useAdaptiveBands 
-    ? (state.lang === 'EN' ? 'Adaptive 30-Day Bands' : 'Dải 30 Ngày Tự Thích Ứng')
-    : state.config.basisThreshold.toFixed(2) + '%';
+  const elBasis = document.getElementById('displayBasisThreshold');
+  if (elBasis) {
+    elBasis.innerText = state.config.useAdaptiveBands 
+      ? (state.lang === 'EN' ? 'Adaptive 30-Day Bands' : 'Dải 30 Ngày Tự Thích Ứng')
+      : state.config.basisThreshold.toFixed(2) + '%';
+  }
 
-  document.getElementById('displayMarginThreshold').innerText = state.config.marginThreshold.toFixed(1) + '%';
-  
+  const elMargin = document.getElementById('displayMarginThreshold');
+  if (elMargin) {
+    elMargin.innerText = state.config.marginThreshold.toFixed(1) + '%';
+  }
+
   document.querySelectorAll('.displayThresholdVal').forEach(el => {
     el.innerText = state.config.basisThreshold.toFixed(2) + '%';
   });
@@ -944,10 +970,10 @@ function seed30DaysHistoryIfEmpty() {
 
 // Event Listeners Setup
 function setupEventListeners() {
-  document.getElementById('langBtnVI').addEventListener('click', () => setLanguage('VI'));
-  document.getElementById('langBtnEN').addEventListener('click', () => setLanguage('EN'));
-  document.getElementById('drawerLangBtnVI').addEventListener('click', () => setLanguage('VI'));
-  document.getElementById('drawerLangBtnEN').addEventListener('click', () => setLanguage('EN'));
+  document.getElementById('langBtnVI')?.addEventListener('click', () => setLanguage('VI'));
+  document.getElementById('langBtnEN')?.addEventListener('click', () => setLanguage('EN'));
+  document.getElementById('drawerLangBtnVI')?.addEventListener('click', () => setLanguage('VI'));
+  document.getElementById('drawerLangBtnEN')?.addEventListener('click', () => setLanguage('EN'));
 
   // Phase 13 v2 Sidebar & Bottom Nav View Switcher Triggers
   document.querySelectorAll('.sidebar-nav-btn, .bottom-nav-btn').forEach(btn => {
@@ -986,11 +1012,11 @@ function setupEventListeners() {
   const btnSaveSettingsView = document.getElementById('btnSaveSettingsView');
   if (btnSaveSettingsView) {
     btnSaveSettingsView.addEventListener('click', () => {
-      state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold').value) || 0.30;
-      state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold').value) || 75.0;
-      state.config.useAdaptiveBands = document.getElementById('inputUseAdaptiveBands').checked;
-      state.config.tgToken = document.getElementById('inputTgToken').value.trim();
-      state.config.tgChatId = document.getElementById('inputTgChatId').value.trim();
+      state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold')?.value) || 0.30;
+      state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold')?.value) || 75.0;
+      state.config.useAdaptiveBands = document.getElementById('inputUseAdaptiveBands')?.checked || false;
+      state.config.tgToken = document.getElementById('inputTgToken')?.value.trim() || '';
+      state.config.tgChatId = document.getElementById('inputTgChatId')?.value.trim() || '';
 
       localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
       localStorage.setItem('dnperp_margin_thresh', state.config.marginThreshold);
@@ -998,7 +1024,7 @@ function setupEventListeners() {
       localStorage.setItem('dnperp_tg_token', state.config.tgToken);
       localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
 
-      const w = document.getElementById('hlWalletAddress').value.trim();
+      const w = document.getElementById('hlWalletAddress')?.value.trim() || '';
       state.config.hlWallet = w;
       localStorage.setItem('dnperp_wallet_address', w);
       localStorage.setItem('dnperp_hl_wallet', w);
@@ -1017,14 +1043,14 @@ function setupEventListeners() {
     });
   }
 
-  document.getElementById('btnManualRefresh').addEventListener('click', () => {
+  document.getElementById('btnManualRefresh')?.addEventListener('click', () => {
     state.countdown = 10;
     fetchMarketData();
     if (state.config.hlWallet) fetchHlMargin();
   });
 
-  document.getElementById('btnOpenSettings').addEventListener('click', () => {
-    document.getElementById('settingsModal').classList.remove('hidden');
+  document.getElementById('btnOpenSettings')?.addEventListener('click', () => {
+    document.getElementById('settingsModal')?.classList.remove('hidden');
   });
 
   // Lock Session Listener
@@ -1038,7 +1064,7 @@ function setupEventListeners() {
 
   document.querySelectorAll('.open-settings-trigger').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      document.getElementById('settingsModal').classList.remove('hidden');
+      document.getElementById('settingsModal')?.classList.remove('hidden');
       const targetId = e.currentTarget.dataset.target;
       if (targetId) {
         setTimeout(() => {
@@ -1049,16 +1075,16 @@ function setupEventListeners() {
     });
   });
 
-  document.getElementById('btnCloseSettings').addEventListener('click', () => closeModal('settingsModal'));
-  document.getElementById('btnCancelSettings').addEventListener('click', () => closeModal('settingsModal'));
+  document.getElementById('btnCloseSettings')?.addEventListener('click', () => closeModal('settingsModal'));
+  document.getElementById('btnCancelSettings')?.addEventListener('click', () => closeModal('settingsModal'));
 
-  document.getElementById('btnSaveSettings').addEventListener('click', () => {
-    state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold').value) || 0.30;
-    state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold').value) || 75.0;
-    state.config.useAdaptiveBands = document.getElementById('inputUseAdaptiveBands').checked;
-    state.config.confirmDelayMins = parseInt(document.getElementById('inputConfirmDelay').value) || 10;
-    state.config.tgToken = document.getElementById('inputTgToken').value.trim();
-    state.config.tgChatId = document.getElementById('inputTgChatId').value.trim();
+  document.getElementById('btnSaveSettings')?.addEventListener('click', () => {
+    state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold')?.value) || 0.30;
+    state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold')?.value) || 75.0;
+    state.config.useAdaptiveBands = document.getElementById('inputUseAdaptiveBands')?.checked || false;
+    state.config.confirmDelayMins = parseInt(document.getElementById('inputConfirmDelay')?.value) || 10;
+    state.config.tgToken = document.getElementById('inputTgToken')?.value.trim() || '';
+    state.config.tgChatId = document.getElementById('inputTgChatId')?.value.trim() || '';
 
     localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
     localStorage.setItem('dnperp_margin_thresh', state.config.marginThreshold);
@@ -1067,7 +1093,7 @@ function setupEventListeners() {
     localStorage.setItem('dnperp_tg_token', state.config.tgToken);
     localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
 
-    const w = document.getElementById('hlWalletAddress').value.trim();
+    const w = document.getElementById('hlWalletAddress')?.value.trim() || '';
     state.config.hlWallet = w;
     localStorage.setItem('dnperp_wallet_address', w);
     localStorage.setItem('dnperp_hl_wallet', w);
@@ -1086,41 +1112,44 @@ function setupEventListeners() {
   });
 
   // Phase 10 Trade Journal Modal Triggers
-  document.getElementById('btnOpenAddTradeModal').addEventListener('click', () => {
+  document.getElementById('btnOpenAddTradeModal')?.addEventListener('click', () => {
     resetTradeForm();
-    document.getElementById('tradeModalTitle').innerText = state.lang === 'EN' ? '📝 New Trade Entry' : '📝 Nhập Lệnh Mới Vào Nhật Ký';
-    document.getElementById('tradeModal').classList.remove('hidden');
+    const modalTitle = document.getElementById('tradeModalTitle');
+    if (modalTitle) modalTitle.innerText = state.lang === 'EN' ? '📝 New Trade Entry' : '📝 Nhập Lệnh Mới Vào Nhật Ký';
+    document.getElementById('tradeModal')?.classList.remove('hidden');
   });
 
-  document.getElementById('btnCloseTradeModal').addEventListener('click', () => closeModal('tradeModal'));
-  document.getElementById('btnCancelTradeModal').addEventListener('click', () => closeModal('tradeModal'));
+  document.getElementById('btnCloseTradeModal')?.addEventListener('click', () => closeModal('tradeModal'));
+  document.getElementById('btnCancelTradeModal')?.addEventListener('click', () => closeModal('tradeModal'));
 
-  document.getElementById('btnSaveTradeSubmit').addEventListener('click', saveTradeEntry);
+  document.getElementById('btnSaveTradeSubmit')?.addEventListener('click', saveTradeEntry);
 
   const calcBasisEntry = () => {
-    const pL = parseFloat(document.getElementById('tradePriceLong').value) || 0;
-    const pS = parseFloat(document.getElementById('tradePriceShort').value) || 0;
+    const pL = parseFloat(document.getElementById('tradePriceLong')?.value) || 0;
+    const pS = parseFloat(document.getElementById('tradePriceShort')?.value) || 0;
     if (pL > 0 && pS > 0) {
       const b = ((pS - pL) / pL) * 100;
-      document.getElementById('tradeBasisEntry').value = b.toFixed(2);
+      const target = document.getElementById('tradeBasisEntry');
+      if (target) target.value = b.toFixed(2);
     }
   };
-  document.getElementById('tradePriceLong').addEventListener('input', calcBasisEntry);
-  document.getElementById('tradePriceShort').addEventListener('input', calcBasisEntry);
+  document.getElementById('tradePriceLong')?.addEventListener('input', calcBasisEntry);
+  document.getElementById('tradePriceShort')?.addEventListener('input', calcBasisEntry);
 
   const calcBasisExit = () => {
-    const pLx = parseFloat(document.getElementById('tradePriceLongExit').value) || 0;
-    const pSx = parseFloat(document.getElementById('tradePriceShortExit').value) || 0;
+    const pLx = parseFloat(document.getElementById('tradePriceLongExit')?.value) || 0;
+    const pSx = parseFloat(document.getElementById('tradePriceShortExit')?.value) || 0;
     if (pLx > 0 && pSx > 0) {
       const b = ((pSx - pLx) / pLx) * 100;
-      document.getElementById('tradeBasisExit').value = b.toFixed(2);
+      const target = document.getElementById('tradeBasisExit');
+      if (target) target.value = b.toFixed(2);
     }
   };
-  document.getElementById('tradePriceLongExit').addEventListener('input', calcBasisExit);
-  document.getElementById('tradePriceShortExit').addEventListener('input', calcBasisExit);
+  document.getElementById('tradePriceLongExit')?.addEventListener('input', calcBasisExit);
+  document.getElementById('tradePriceShortExit')?.addEventListener('input', calcBasisExit);
 
-  document.getElementById('btnQueryHlMargin').addEventListener('click', () => {
-    const w = document.getElementById('hlWalletAddress').value.trim();
+  document.getElementById('btnQueryHlMargin')?.addEventListener('click', () => {
+    const w = document.getElementById('hlWalletAddress')?.value.trim() || '';
     if (w) {
       state.config.hlWallet = w;
       localStorage.setItem('dnperp_wallet_address', w);
@@ -1130,54 +1159,61 @@ function setupEventListeners() {
     }
   });
 
-  document.getElementById('btnClearWallet').addEventListener('click', () => {
+  document.getElementById('btnClearWallet')?.addEventListener('click', () => {
     localStorage.removeItem('dnperp_wallet_address');
     localStorage.removeItem('dnperp_hl_wallet');
     state.config.hlWallet = '';
-    document.getElementById('hlWalletAddress').value = '';
+    const input = document.getElementById('hlWalletAddress');
+    if (input) input.value = '';
     updateWalletSubLabel();
     updateHlMarginUI(0, 0, 0);
   });
 
   const updateLt = () => {
-    const u = parseFloat(document.getElementById('ltMarginUsed').value) || 0;
-    const t = parseFloat(document.getElementById('ltTotalMargin').value) || 1;
+    const u = parseFloat(document.getElementById('ltMarginUsed')?.value) || 0;
+    const t = parseFloat(document.getElementById('ltTotalMargin')?.value) || 1;
     state.config.ltMarginUsed = u;
     state.config.ltTotalMargin = t;
     localStorage.setItem('dnperp_lt_used', u);
     localStorage.setItem('dnperp_lt_total', t);
     updateLighterMarginUI();
   };
-  document.getElementById('ltMarginUsed').addEventListener('input', updateLt);
-  document.getElementById('ltTotalMargin').addEventListener('input', updateLt);
+  document.getElementById('ltMarginUsed')?.addEventListener('input', updateLt);
+  document.getElementById('ltTotalMargin')?.addEventListener('input', updateLt);
 
-  document.getElementById('btnTestTgAlert').addEventListener('click', async () => {
+  document.getElementById('btnTestTgAlert')?.addEventListener('click', async () => {
     const resEl = document.getElementById('tgTestResult');
-    const token = document.getElementById('inputTgToken').value.trim();
-    const chatId = document.getElementById('inputTgChatId').value.trim();
+    const token = document.getElementById('inputTgToken')?.value.trim() || '';
+    const chatId = document.getElementById('inputTgChatId')?.value.trim() || '';
 
     if (!token || !chatId) {
-      resEl.innerText = state.lang === 'EN' ? '❌ Please enter Bot Token & Chat ID!' : '❌ Vui lòng nhập Bot Token và Chat ID!';
-      resEl.style.color = 'var(--accent-danger)';
+      if (resEl) {
+        resEl.innerText = state.lang === 'EN' ? '❌ Please enter Bot Token & Chat ID!' : '❌ Vui lòng nhập Bot Token và Chat ID!';
+        resEl.style.color = 'var(--accent-danger)';
+      }
       return;
     }
 
-    resEl.innerText = state.lang === 'EN' ? '⏳ Sending test alert...' : '⏳ Đang gửi thử...';
-    resEl.style.color = 'var(--text-gold)';
+    if (resEl) {
+      resEl.innerText = state.lang === 'EN' ? '⏳ Sending test alert...' : '⏳ Đang gửi thử...';
+      resEl.style.color = 'var(--text-gold)';
+    }
 
     const msg = `🧪 <b>Test Telegram Alert — Entropy ↔ Lighter Monitor</b>\n\n✅ Connection verified from <code>godnc.com/dnperp</code>!\nRealtime alerts ready (Adaptive 30-Day Bands + Passcode Protection).`;
     const success = await sendTelegramMessage(token, chatId, msg);
 
-    if (success) {
-      resEl.innerText = state.lang === 'EN' ? '✅ Alert sent successfully!' : '✅ Đã gửi thành công vào Telegram!';
-      resEl.style.color = 'var(--accent-safe)';
-    } else {
-      resEl.innerText = state.lang === 'EN' ? '❌ Failed to send. Check Token/Chat ID!' : '❌ Gửi thất bại. Kiểm tra lại Token/Chat ID!';
-      resEl.style.color = 'var(--accent-danger)';
+    if (resEl) {
+      if (success) {
+        resEl.innerText = state.lang === 'EN' ? '✅ Alert sent successfully!' : '✅ Đã gửi thành công vào Telegram!';
+        resEl.style.color = 'var(--accent-safe)';
+      } else {
+        resEl.innerText = state.lang === 'EN' ? '❌ Failed to send. Check Token/Chat ID!' : '❌ Gửi thất bại. Kiểm tra lại Token/Chat ID!';
+        resEl.style.color = 'var(--accent-danger)';
+      }
     }
   });
 
-  document.getElementById('btnAddPairSubmit').addEventListener('click', verifyAndAddPair);
+  document.getElementById('btnAddPairSubmit')?.addEventListener('click', verifyAndAddPair);
 
   document.querySelectorAll('.chart-tab').forEach(tab => {
     tab.addEventListener('click', (e) => {
@@ -1188,7 +1224,7 @@ function setupEventListeners() {
     });
   });
 
-  document.getElementById('btnClearHistory').addEventListener('click', () => {
+  document.getElementById('btnClearHistory')?.addEventListener('click', () => {
     const confirmMsg = state.lang === 'EN' 
       ? 'Are you sure you want to clear 30-day historical data?' 
       : 'Bạn có chắc chắn muốn xoá toàn bộ lịch sử 30 ngày đã lưu?';
