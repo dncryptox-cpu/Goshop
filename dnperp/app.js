@@ -389,6 +389,11 @@ const state = {
   livePositions: [],
   liveGroups: [],
   expandedCards: JSON.parse(localStorage.getItem('dnperp_expanded_cards') || '[]'),
+  currentView: 'overview',
+  selectedPairId: 'SNDK',
+  journalFilterPair: 'ALL',
+  journalFilterStatus: 'ALL',
+  journalSearchQuery: '',
 
   countdown: 10,
   timerId: null,
@@ -397,6 +402,34 @@ const state = {
   journalPairChart: null,
   activeChartRange: '24h'
 };
+
+// Phase 13 v2 View Switcher Navigation Engine
+function switchView(viewName) {
+  state.currentView = viewName;
+  
+  // Sidebar & Bottom Nav Active States
+  document.querySelectorAll('.sidebar-nav-btn, .bottom-nav-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === viewName);
+  });
+
+  // Hide all view panels and reveal target panel
+  document.querySelectorAll('.view-panel').forEach(panel => panel.classList.add('hidden'));
+  const targetPanel = document.getElementById(`view-${viewName}`);
+  if (targetPanel) targetPanel.classList.remove('hidden');
+
+  if (viewName === 'overview') {
+    renderOverviewPairsList();
+    renderOverviewPairDetail();
+    fetchAllLiveWalletPositions();
+  } else if (viewName === 'journal') {
+    fetchAllLiveWalletPositions();
+    renderJournalTable();
+    updateJournalAnalytics();
+    initJournalCharts();
+  } else if (viewName === 'settings') {
+    loadStoredConfig();
+  }
+}
 
 // Phase 13 Accordion Card Toggle Helper
 window.toggleCardExpand = function(cardId) {
@@ -719,8 +752,128 @@ function calculateAdaptiveBands(pairId) {
   };
 }
 
+// Phase 13 v2 Overview Split Panel Pair Renderers
+function renderOverviewPairsList() {
+  const container = document.getElementById('pairsMiniList');
+  if (!container) return;
+  container.innerHTML = '';
+
+  state.trackedPairs.forEach(pair => {
+    const data = state.market[pair.id] || { basis: 0 };
+    const isActive = pair.id === state.selectedPairId;
+    const basisVal = data.basis || 0;
+    const basisText = (basisVal >= 0 ? '+' : '') + basisVal.toFixed(2) + '%';
+    const colorClass = Math.abs(basisVal) >= state.config.basisThreshold ? 'warning-text' : (basisVal > 0 ? 'positive' : 'negative');
+
+    const itemHtml = `
+      <div class="pair-mini-item ${isActive ? 'active' : ''}" onclick="selectOverviewPair('${pair.id}')">
+        <div style="display: flex; flex-direction: column;">
+          <span class="pair-mini-symbol">${pair.id}</span>
+          <span style="font-size: 11px; color: var(--text-dim);">${pair.name}</span>
+        </div>
+        <span class="pair-mini-basis ${colorClass}">${basisText}</span>
+      </div>
+    `;
+    container.insertAdjacentHTML('beforeend', itemHtml);
+  });
+}
+
+window.selectOverviewPair = function(pairId) {
+  state.selectedPairId = pairId;
+  renderOverviewPairsList();
+  renderOverviewPairDetail();
+};
+
+function renderOverviewPairDetail() {
+  const container = document.getElementById('selectedPairCardContainer');
+  if (!container) return;
+  
+  const pair = state.trackedPairs.find(p => p.id === state.selectedPairId) || state.trackedPairs[0];
+  if (!pair) return;
+
+  const connA = ConnectorRegistry.get(pair.exchangeA) || { name: pair.exchangeA };
+  const connB = ConnectorRegistry.get(pair.exchangeB) || { name: pair.exchangeB };
+  const dict = i18n[state.lang] || i18n.VI;
+
+  const cardHtml = `
+    <div class="spread-card" style="border: none; padding: 0; box-shadow: none; background: transparent;">
+      <div class="card-top">
+        <div class="pair-info">
+          <span class="pair-symbol">${pair.id}</span>
+          <span class="pair-name">${pair.name}</span>
+        </div>
+        <div class="action-badge neutral" id="signal-${pair.id}">
+          <span class="badge-icon">⚪</span>
+          <span class="badge-text">${dict.signalNeutral}</span>
+        </div>
+      </div>
+
+      <div class="basis-hero-box" style="margin-top: 10px;">
+        <div class="basis-label">${dict.basisLabel.replace('Sàn A', connA.name).replace('Sàn B', connB.name)}</div>
+        <div class="basis-value-group">
+          <span class="basis-percent mono-num" id="basis-${pair.id}">0.00%</span>
+          <span class="basis-abs mono-num" id="basisAbs-${pair.id}">($0.00)</span>
+        </div>
+      </div>
+
+      <div class="strategy-recommendation" id="strat-${pair.id}" style="margin-top: 8px;">
+        ${dict.stratNeutral.replace('{thresh}', state.config.basisThreshold.toFixed(2))}
+      </div>
+
+      <div class="adaptive-band-box" id="adaptiveBandBox-${pair.id}" style="margin-top: 10px;">
+        <!-- Dynamic bands -->
+      </div>
+
+      <div class="price-comparison-grid" style="margin-top: 12px;">
+        <div class="source-col entropy">
+          <div class="source-header">
+            <span class="source-tag">${connA.name}</span>
+            <span class="dex-tag">${pair.symbolA}</span>
+          </div>
+          <div class="source-price mono-num" id="priceA-${pair.id}">$0.00</div>
+          <div class="source-metrics">
+            <div class="metric-item">
+              <span class="m-label">${dict.fundingYear}</span>
+              <span class="m-val mono-num" id="fundingA-${pair.id}">0.00%</span>
+            </div>
+            <div class="metric-item">
+              <span class="m-label">${dict.vol24h}</span>
+              <span class="m-val mono-num" id="volA-${pair.id}">$0</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="vs-divider">VS</div>
+
+        <div class="source-col lighter">
+          <div class="source-header">
+            <span class="source-tag">${connB.name}</span>
+            <span class="dex-tag">${pair.symbolB}</span>
+          </div>
+          <div class="source-price mono-num" id="priceB-${pair.id}">$0.00</div>
+          <div class="source-metrics">
+            <div class="metric-item">
+              <span class="m-label">${dict.fundingProxy}</span>
+              <span class="m-val mono-num" id="fundingB-${pair.id}">0.00%</span>
+            </div>
+            <div class="metric-item">
+              <span class="m-label">${dict.vol24h}</span>
+              <span class="m-val mono-num" id="volB-${pair.id}">$0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  container.innerHTML = cardHtml;
+  recalculateBasisAndSignals();
+}
+
 // Dynamically Render Card Matrix for Active Tracked Pairs (Phase 13 Collapsible Accordion)
 function renderSpreadCards() {
+  renderOverviewPairsList();
+  renderOverviewPairDetail();
+}
   const container = document.getElementById('spreadCardsContainer');
   container.innerHTML = '';
 
@@ -862,30 +1015,66 @@ function setupEventListeners() {
   document.getElementById('drawerLangBtnVI').addEventListener('click', () => setLanguage('VI'));
   document.getElementById('drawerLangBtnEN').addEventListener('click', () => setLanguage('EN'));
 
-  document.querySelectorAll('.nav-tab-btn').forEach(btn => {
+  // Phase 13 v2 Sidebar & Bottom Nav View Switcher Triggers
+  document.querySelectorAll('.sidebar-nav-btn, .bottom-nav-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
-      document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
-      const targetBtn = e.currentTarget;
-      targetBtn.classList.add('active');
-
-      const targetTab = targetBtn.dataset.tab;
-      document.getElementById('tab-monitor-view').classList.add('hidden');
-      document.getElementById('tab-journal-view').classList.add('hidden');
-      document.getElementById('tab-knowledge-view').classList.add('hidden');
-
-      if (targetTab === 'tab-monitor') {
-        document.getElementById('tab-monitor-view').classList.remove('hidden');
-      } else if (targetTab === 'tab-journal') {
-        document.getElementById('tab-journal-view').classList.remove('hidden');
-        fetchAllLiveWalletPositions();
-        renderJournalTable();
-        updateJournalAnalytics();
-        updateJournalCharts();
-      } else if (targetTab === 'tab-knowledge') {
-        document.getElementById('tab-knowledge-view').classList.remove('hidden');
-      }
+      const viewName = e.currentTarget.dataset.view;
+      if (viewName) switchView(viewName);
     });
   });
+
+  // Journal Filter Controls (Nguyên tắc #6)
+  const filterPair = document.getElementById('filterJournalPair');
+  const filterStatus = document.getElementById('filterJournalStatus');
+  const searchInput = document.getElementById('searchJournal');
+
+  if (filterPair) {
+    filterPair.addEventListener('change', (e) => {
+      state.journalFilterPair = e.target.value;
+      renderJournalTable();
+    });
+  }
+
+  if (filterStatus) {
+    filterStatus.addEventListener('change', (e) => {
+      state.journalFilterStatus = e.target.value;
+      renderJournalTable();
+    });
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      state.journalSearchQuery = e.target.value.toLowerCase().trim();
+      renderJournalTable();
+    });
+  }
+
+  const btnSaveSettingsView = document.getElementById('btnSaveSettingsView');
+  if (btnSaveSettingsView) {
+    btnSaveSettingsView.addEventListener('click', () => {
+      state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold').value) || 0.30;
+      state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold').value) || 75.0;
+      state.config.useAdaptiveBands = document.getElementById('inputUseAdaptiveBands').checked;
+      state.config.tgToken = document.getElementById('inputTgToken').value.trim();
+      state.config.tgChatId = document.getElementById('inputTgChatId').value.trim();
+
+      localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
+      localStorage.setItem('dnperp_margin_thresh', state.config.marginThreshold);
+      localStorage.setItem('dnperp_use_adaptive_bands', state.config.useAdaptiveBands);
+      localStorage.setItem('dnperp_tg_token', state.config.tgToken);
+      localStorage.setItem('dnperp_tg_chat_id', state.config.tgChatId);
+
+      const w = document.getElementById('hlWalletAddress').value.trim();
+      state.config.hlWallet = w;
+      localStorage.setItem('dnperp_wallet_address', w);
+      localStorage.setItem('dnperp_hl_wallet', w);
+      updateWalletSubLabel();
+      if (w) fetchHlMargin();
+      fetchAllLiveWalletPositions();
+
+      alert(state.lang === 'EN' ? '✅ Settings saved successfully!' : '✅ Đã lưu cấu hình thành công!');
+    });
+  }
 
   const btnRefreshLive = document.getElementById('btnRefreshLivePositions');
   if (btnRefreshLive) {
@@ -1679,19 +1868,44 @@ window.deleteTradeEntry = function(tradeId) {
   }
 };
 
-// Render Journal Trades Table
+// Render Journal Trades Table (Phase 13 v2 Tread.fi Table & Filters)
 function renderJournalTable() {
   const tbody = document.getElementById('journalTableBody');
+  const filterPairSelect = document.getElementById('filterJournalPair');
   if (!tbody) return;
   tbody.innerHTML = '';
   const isEn = state.lang === 'EN';
 
-  if (state.journal.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 24px;">${isEn ? 'No journal trade entries recorded yet. Click "➕ New Trade Entry" to record your first trade.' : 'Chưa có bản ghi nhật ký giao dịch nào. Bấm "➕ Nhập Lệnh Mới" để bắt đầu ghi chép.'}</td></tr>`;
+  // Populate pair filter dropdown
+  if (filterPairSelect) {
+    const currentVal = filterPairSelect.value;
+    filterPairSelect.innerHTML = `<option value="ALL">${isEn ? 'All Pairs' : 'Tất cả các cặp'}</option>`;
+    state.trackedPairs.forEach(p => {
+      filterPairSelect.insertAdjacentHTML('beforeend', `<option value="${p.id}">${p.id} (${p.name})</option>`);
+    });
+    filterPairSelect.value = currentVal || 'ALL';
+  }
+
+  // Filter Trades Array
+  let filtered = state.journal.filter(trade => {
+    if (state.journalFilterPair !== 'ALL' && trade.pairId !== state.journalFilterPair) return false;
+    if (state.journalFilterStatus !== 'ALL' && trade.status !== state.journalFilterStatus) return false;
+    if (state.journalSearchQuery) {
+      const q = state.journalSearchQuery;
+      const matchPair = (trade.pairId || '').toLowerCase().includes(q);
+      const matchNotes = (trade.notes || '').toLowerCase().includes(q);
+      const matchId = (trade.id || '').toLowerCase().includes(q);
+      if (!matchPair && !matchNotes && !matchId) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 24px;">${isEn ? 'No matching trade records found.' : 'Không tìm thấy bản ghi lệnh nào phù hợp với bộ lọc.'}</td></tr>`;
     return;
   }
 
-  state.journal.forEach(trade => {
+  filtered.forEach(trade => {
     const isClosed = trade.status === 'CLOSED';
     const statusBadge = isClosed 
       ? `<span class="trade-status-badge closed">🔵 ${isEn ? 'CLOSED' : 'ĐÃ ĐÓNG'}</span>`
@@ -1711,13 +1925,15 @@ function renderJournalTable() {
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><span class="mono-num">${openDate}</span></td>
-      <td><strong>${trade.pairId}</strong></td>
-      <td>${statusBadge}</td>
+      <td><strong>${trade.pairId}</strong> <span style="font-size: 11px; color: var(--text-dim);">(${trade.id})</span></td>
+      <td><span class="mono-num">$${trade.priceLong ? trade.priceLong.toFixed(2) : '—'}</span></td>
+      <td><span class="mono-num">$${trade.priceShort ? trade.priceShort.toFixed(2) : '—'}</span></td>
       <td><span class="mono-num">${basisIn}</span></td>
       <td><span class="mono-num">${basisOut}</span></td>
-      <td><span class="mono-num">${funding}</span></td>
       <td><span class="mono-num ${pnlClass}"><strong>${pnlDisplay}</strong></span></td>
+      <td><span class="mono-num">${funding}</span></td>
+      <td><span class="mono-num" style="font-size: 11px; color: var(--text-muted);">${openDate}</span></td>
+      <td>${statusBadge}</td>
       <td style="text-align: right;">
         <button class="btn btn-outline btn-xs" onclick="editTradeEntry('${trade.id}')">✏️ ${isEn ? 'Edit' : 'Sửa'}</button>
         <button class="btn btn-danger btn-xs" onclick="deleteTradeEntry('${trade.id}')">🗑️ ${isEn ? 'Del' : 'Xoá'}</button>
