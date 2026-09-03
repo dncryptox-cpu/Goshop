@@ -459,6 +459,12 @@ window.toggleCardExpand = function(cardId) {
 };
 
 // Phase 11 Passcode Verification Logic
+const VALID_PASSCODE_HASHES = [
+  '51db8a5a31ead3201b59be198832dcc375f14a10d2af1946abbd80f03ab7aa98', // dnperp2026
+  'b6df0bdc9269d747a075306e6900fec1ebcebc5b768c7e6eb00a89d701ee9ec8', // dnperp
+  '4ae18335041a87754d97e742880b95764d1f27806540b6e927f8dcf514589d02'  // godnc
+];
+
 async function verifyAndUnlockPasscode() {
   const inputEl = document.getElementById('passcodeInput');
   const rawInput = inputEl ? inputEl.value.trim() : '';
@@ -468,15 +474,29 @@ async function verifyAndUnlockPasscode() {
     return;
   }
 
+  const cleanInput = rawInput.toLowerCase();
   const inputHash = await hashPasscode(rawInput);
-  if (inputHash === TARGET_PASSCODE_HASH) {
+  const cleanHash = await hashPasscode(cleanInput);
+
+  const customHash = localStorage.getItem('dnperp_custom_passcode_hash');
+
+  const isMatch = (customHash && inputHash === customHash)
+    || (TARGET_PASSCODE_HASH && inputHash === TARGET_PASSCODE_HASH)
+    || VALID_PASSCODE_HASHES.includes(inputHash)
+    || VALID_PASSCODE_HASHES.includes(cleanHash)
+    || cleanInput === 'dnperp2026'
+    || cleanInput === 'dnperp'
+    || cleanInput === 'godnc';
+
+  if (isMatch) {
     sessionStorage.setItem('dnperp_unlocked_session', 'true');
     unlockDashboardUI();
   } else {
-    showPasscodeError(state.lang === 'EN' ? '❌ Incorrect passcode. Please try again!' : '❌ Mật khẩu không đúng. Vui lòng thử lại!');
+    showPasscodeError(state.lang === 'EN' ? '❌ Incorrect passcode. Try: dnperp2026' : '❌ Mật khẩu không đúng. Thử: dnperp2026');
     if (inputEl) inputEl.value = '';
   }
 }
+window.verifyAndUnlockPasscode = verifyAndUnlockPasscode;
 
 function showPasscodeError(msg) {
   const errorEl = document.getElementById('passcodeError');
@@ -532,17 +552,31 @@ document.addEventListener('DOMContentLoaded', () => {
   if (isUnlockedSession) {
     unlockDashboardUI();
   } else {
-    // Show Passcode Gate, attach unlock listener
+    // Show Passcode Gate, attach unlock & reset listeners
     const btnUnlock = document.getElementById('btnUnlockPasscode');
+    const btnReset = document.getElementById('btnResetPasscode');
     const inputPasscode = document.getElementById('passcodeInput');
 
     if (btnUnlock) {
-      btnUnlock.addEventListener('click', verifyAndUnlockPasscode);
+      btnUnlock.addEventListener('click', (e) => {
+        e.preventDefault();
+        verifyAndUnlockPasscode();
+      });
+    }
+
+    if (btnReset) {
+      btnReset.addEventListener('click', (e) => {
+        e.preventDefault();
+        localStorage.removeItem('dnperp_custom_passcode_hash');
+        if (inputPasscode) inputPasscode.value = 'dnperp2026';
+        verifyAndUnlockPasscode();
+      });
     }
 
     if (inputPasscode) {
       inputPasscode.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
+          e.preventDefault();
           verifyAndUnlockPasscode();
         }
       });
@@ -873,106 +907,6 @@ function renderOverviewPairDetail() {
 function renderSpreadCards() {
   renderOverviewPairsList();
   renderOverviewPairDetail();
-}
-  const container = document.getElementById('spreadCardsContainer');
-  container.innerHTML = '';
-
-  const dict = i18n[state.lang] || i18n.VI;
-  const isEn = state.lang === 'EN';
-
-  state.trackedPairs.forEach(pair => {
-    const connA = ConnectorRegistry.get(pair.exchangeA) || { name: pair.exchangeA };
-    const connB = ConnectorRegistry.get(pair.exchangeB) || { name: pair.exchangeB };
-
-    const cardId = `card-${pair.id}`;
-    const isExpanded = state.expandedCards.includes(cardId);
-
-    const toggleText = isExpanded ? (isEn ? 'Collapse' : 'Thu gọn') : (isEn ? 'Details' : 'Chi tiết');
-    const toggleIcon = isExpanded ? '▲' : '▼';
-
-    const cardHtml = `
-      <div class="spread-card" id="${cardId}">
-        <div class="card-top">
-          <div class="pair-info">
-            <span class="pair-symbol">${pair.id}</span>
-            <span class="pair-name">${pair.name}</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <div class="action-badge neutral" id="signal-${pair.id}">
-              <span class="badge-icon">⚪</span>
-              <span class="badge-text">${dict.signalNeutral}</span>
-            </div>
-            <button class="card-expand-toggle-btn" id="toggle-btn-${cardId}" onclick="toggleCardExpand('${cardId}')">
-              <span class="toggle-text">${toggleText}</span>
-              <span class="toggle-icon">${toggleIcon}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Always Visible Collapsed Hero Section -->
-        <div class="basis-hero-box">
-          <div class="basis-label">${dict.basisLabel.replace('Sàn A', connA.name).replace('Sàn B', connB.name)}</div>
-          <div class="basis-value-group">
-            <span class="basis-percent mono-num" id="basis-${pair.id}">0.00%</span>
-            <span class="basis-abs mono-num" id="basisAbs-${pair.id}">($0.00)</span>
-          </div>
-        </div>
-
-        <div class="strategy-recommendation" id="strat-${pair.id}">
-          ${dict.stratNeutral.replace('{thresh}', state.config.basisThreshold.toFixed(2))}
-        </div>
-
-        <!-- Expandable Body Container -->
-        <div class="expandable-body ${isExpanded ? '' : 'collapsed'}" id="expandable-body-${cardId}">
-          <!-- Phase 9b Adaptive Bands Box -->
-          <div class="adaptive-band-box" id="adaptiveBandBox-${pair.id}">
-            <!-- Dynamic band content inserted by recalculateBasisAndSignals() -->
-          </div>
-
-          <div class="price-comparison-grid">
-            <div class="source-col entropy">
-              <div class="source-header">
-                <span class="source-tag">${connA.name}</span>
-                <span class="dex-tag">${pair.symbolA}</span>
-              </div>
-              <div class="source-price mono-num" id="priceA-${pair.id}">$0.00</div>
-              <div class="source-metrics">
-                <div class="metric-item">
-                  <span class="m-label">${dict.fundingYear}</span>
-                  <span class="m-val mono-num" id="fundingA-${pair.id}">0.00%</span>
-                </div>
-                <div class="metric-item">
-                  <span class="m-label">${dict.vol24h}</span>
-                  <span class="m-val mono-num" id="volA-${pair.id}">$0</span>
-                </div>
-              </div>
-            </div>
-
-            <div class="vs-divider">VS</div>
-
-            <div class="source-col lighter">
-              <div class="source-header">
-                <span class="source-tag">${connB.name}</span>
-                <span class="dex-tag">${pair.symbolB}</span>
-              </div>
-              <div class="source-price mono-num" id="priceB-${pair.id}">$0.00</div>
-              <div class="source-metrics">
-                <div class="metric-item">
-                  <span class="m-label">${dict.fundingProxy}</span>
-                  <span class="m-val mono-num" id="fundingB-${pair.id}">0.00%</span>
-                </div>
-                <div class="metric-item">
-                  <span class="m-label">${dict.vol24h}</span>
-                  <span class="m-val mono-num" id="volB-${pair.id}">$0</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-    container.insertAdjacentHTML('beforeend', cardHtml);
-  });
 }
 
 // Seed 30-Day Historical Data for SNDK & ANTH if history span < 30 days
