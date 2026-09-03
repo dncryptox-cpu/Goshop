@@ -1794,6 +1794,42 @@ function groupAndPairPositions(positions) {
     groups[groupKey].legs.push(pos);
   });
 
+  processLivePositionsGroupState(groups);
+}
+
+// Phase 15: Helper to retrieve recent historical basis (~10-15 mins ago) for trend calculation
+function getRecentHistoricalBasis(pairId, targetAgeMins = 12) {
+  if (!state.history || state.history.length === 0) return null;
+  const now = Date.now();
+  const targetTime = now - (targetAgeMins * 60 * 1000);
+  const minTime = now - (25 * 60 * 1000);
+
+  const validPoints = state.history.filter(h => 
+    h.time >= minTime && 
+    h.time <= (now - 3 * 60 * 1000) && 
+    h.pairs && 
+    h.pairs[pairId] !== undefined
+  );
+
+  if (validPoints.length === 0) return null;
+
+  let bestPoint = validPoints[0];
+  let minDiff = Math.abs(bestPoint.time - targetTime);
+
+  for (let i = 1; i < validPoints.length; i++) {
+    const diff = Math.abs(validPoints[i].time - targetTime);
+    if (diff < minDiff) {
+      minDiff = diff;
+      bestPoint = validPoints[i];
+    }
+  }
+
+  return bestPoint.pairs[pairId];
+}
+
+function processLivePositionsGroupState(groups) {
+  const isEn = state.lang === 'EN';
+
   state.liveGroups = Object.values(groups).map(grp => {
     const isDeltaNeutral = grp.legs.length >= 2;
     const combinedPnl = grp.legs.reduce((sum, l) => sum + l.unrealizedPnl, 0);
@@ -1801,11 +1837,17 @@ function groupAndPairPositions(positions) {
     const combinedNotional = grp.legs.reduce((sum, l) => sum + l.notional, 0);
 
     let netBasisEntry = null;
+    let basisNow = null;
     const shortLeg = grp.legs.find(l => l.direction === 'SHORT');
     const longLeg = grp.legs.find(l => l.direction === 'LONG');
 
     if (shortLeg && longLeg && longLeg.entryPrice > 0) {
       netBasisEntry = ((shortLeg.entryPrice - longLeg.entryPrice) / longLeg.entryPrice) * 100;
+
+      // Phase 15: Basis Hiện Tại
+      const shortPriceNow = shortLeg.markPrice ?? (shortLeg.size > 0 ? (shortLeg.notional / shortLeg.size) : shortLeg.entryPrice);
+      const longPriceNow = longLeg.markPrice ?? (longLeg.size > 0 ? (longLeg.notional / longLeg.size) : longLeg.entryPrice);
+      basisNow = ((shortPriceNow - longPriceNow) / longLeg.entryPrice) * 100;
     }
 
     // Phase 14: Breakeven Basis Calculation
@@ -1817,6 +1859,44 @@ function groupAndPairPositions(positions) {
       breakevenBasis = netBasisEntry - pnlPct;
     }
 
+    // Phase 15: Distance to Breakeven & Status Badge
+    let distanceToBreakeven = null;
+    let statusLabel = '';
+    let statusColor = 'green';
+
+    if (basisNow !== null && breakevenBasis !== null) {
+      distanceToBreakeven = Math.abs(basisNow - breakevenBasis);
+    }
+
+    if (combinedPnl >= 0) {
+      statusLabel = isEn ? 'PROFITABLE' : 'ĐANG CÓ LỜI';
+      statusColor = 'green';
+    } else {
+      if (distanceToBreakeven !== null && distanceToBreakeven <= 0.15) {
+        statusLabel = isEn ? 'NEAR BREAKEVEN' : 'GẦN HOÀ VỐN';
+        statusColor = 'amber';
+      } else {
+        statusLabel = isEn ? 'LOSING' : 'ĐANG LỖ';
+        statusColor = 'rust';
+      }
+    }
+
+    // Phase 15: Trend Arrow (So sánh với basisRecentPast từ ~10-15 phút trước)
+    let basisTrend = null;
+    let trendArrow = '';
+    let trendColor = '';
+    const recentPastBasis = getRecentHistoricalBasis(grp.groupId, 12);
+    if (basisNow !== null && recentPastBasis !== null) {
+      basisTrend = basisNow - recentPastBasis;
+      if (basisTrend < -0.01) {
+        trendArrow = '↓';
+        trendColor = 'var(--accent-safe)'; // Green (co lại, tin tốt)
+      } else if (basisTrend > 0.01) {
+        trendArrow = '↑';
+        trendColor = 'var(--accent-danger)'; // Red (giãn thêm, tin xấu)
+      }
+    }
+
     return {
       ...grp,
       type: isDeltaNeutral ? 'DELTA_NEUTRAL' : 'SINGLE_LEG',
@@ -1824,7 +1904,13 @@ function groupAndPairPositions(positions) {
       combinedFunding: parseFloat(combinedFunding.toFixed(2)),
       combinedNotional: parseFloat(combinedNotional.toFixed(2)),
       netBasisEntry: netBasisEntry !== null ? parseFloat(netBasisEntry.toFixed(2)) : null,
-      breakevenBasis: breakevenBasis !== null ? parseFloat(breakevenBasis.toFixed(2)) : null
+      basisNow: basisNow !== null ? parseFloat(basisNow.toFixed(2)) : null,
+      breakevenBasis: breakevenBasis !== null ? parseFloat(breakevenBasis.toFixed(2)) : null,
+      distanceToBreakeven: distanceToBreakeven !== null ? parseFloat(distanceToBreakeven.toFixed(2)) : null,
+      statusLabel,
+      statusColor,
+      trendArrow,
+      trendColor
     };
   });
 }
@@ -1854,8 +1940,22 @@ function renderLivePositionsUI() {
 
     const pnlClass = grp.combinedPnl >= 0 ? 'positive' : 'negative';
     const pnlDisplay = `$${grp.combinedPnl >= 0 ? '+' : ''}${grp.combinedPnl.toFixed(2)}`;
+    const isProfitable = grp.combinedPnl >= 0;
 
     const durationText = grp.firstSeen ? formatDuration(Date.now() - grp.firstSeen) : '0m';
+
+    let distNote = '—';
+    if (grp.distanceToBreakeven !== null) {
+      if (isProfitable) {
+        distNote = isEn
+          ? `Profitable (passed BE by ${grp.distanceToBreakeven.toFixed(2)}%)`
+          : `Đang lời (đã vượt hoà vốn ${grp.distanceToBreakeven.toFixed(2)}đ%)`;
+      } else {
+        distNote = isEn
+          ? `Needs basis to contract by ${grp.distanceToBreakeven.toFixed(2)}% to BE`
+          : `Cần basis co thêm ${grp.distanceToBreakeven.toFixed(2)}đ% nữa`;
+      }
+    }
 
     let legsHtml = '';
     grp.legs.forEach(leg => {
@@ -1905,8 +2005,9 @@ function renderLivePositionsUI() {
     const cardHtml = `
       <div class="live-pos-card ${isDN ? 'delta-neutral' : 'single-leg'}" id="${cardId}">
         <div class="pos-card-header">
-          <div class="pos-pair-title">
+          <div class="pos-pair-title" style="display: flex; align-items: center; gap: 8px;">
             <span>${grp.groupId}</span>
+            <span class="pos-status-badge ${grp.statusColor}">● ${grp.statusLabel}</span>
             <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">⏱️ ${isEn ? 'Held' : 'Đã giữ'}: <strong>${durationText}</strong></span>
           </div>
           <div style="display: flex; align-items: center; gap: 8px;">
@@ -1918,25 +2019,47 @@ function renderLivePositionsUI() {
           </div>
         </div>
 
-        <!-- Always Visible Summary PnL Bar & Breakeven Basis -->
-        <div class="summary-pnl-bar" style="display: grid; grid-template-columns: repeat(3, 1fr); align-items: center;">
-          <div class="summary-pnl-item">
-            <span class="summary-pnl-label">${isEn ? 'Combined PnL' : 'Tổng PnL 2 Chân'}</span>
-            <span class="summary-pnl-val ${pnlClass}">${pnlDisplay}</span>
+        <!-- Phase 15: Compact 4-Tile Stat Grid (Desktop 4-col, Mobile 2-col) -->
+        <div class="pos-stat-tile-grid">
+          <div class="pos-stat-tile">
+            <span class="pos-stat-label">${isEn ? 'Status & PnL' : 'Trạng Thái & PnL'}</span>
+            <div class="pos-stat-val">
+              <span class="pos-status-badge ${grp.statusColor}">● ${grp.statusLabel}</span>
+            </div>
+            <div class="pos-stat-sub" style="color: ${pnlClass === 'positive' ? 'var(--accent-safe)' : 'var(--accent-danger)'}; font-weight: 700;">
+              PnL: ${pnlDisplay}
+            </div>
           </div>
-          <div class="summary-pnl-item">
-            <span class="summary-pnl-label">${isEn ? 'Entry Basis' : 'Basis Lúc Vào'}</span>
-            <span class="summary-pnl-val mono-num">${grp.netBasisEntry !== null ? (grp.netBasisEntry >= 0 ? '+' : '') + grp.netBasisEntry.toFixed(2) + '%' : '—'}</span>
+
+          <div class="pos-stat-tile">
+            <span class="pos-stat-label">${isEn ? 'Current Basis' : 'Basis Hiện Tại'}</span>
+            <div class="pos-stat-val mono-num">
+              ${grp.basisNow !== null ? (grp.basisNow >= 0 ? '+' : '') + grp.basisNow.toFixed(2) + '%' : '—'}
+              ${grp.trendArrow ? `<span style="color: ${grp.trendColor}; font-weight: bold; margin-left: 2px;">${grp.trendArrow}</span>` : ''}
+            </div>
+            <div class="pos-stat-sub">${isEn ? 'Entry' : 'Lúc vào'}: ${grp.netBasisEntry !== null ? (grp.netBasisEntry >= 0 ? '+' : '') + grp.netBasisEntry.toFixed(2) + '%' : '—'}</div>
           </div>
-          <div class="summary-pnl-item" style="text-align: right;">
-            <span class="summary-pnl-label" title="${isEn ? 'Breakeven Basis' : 'Ngưỡng Basis để PnL 2 chân về 0'}">🎯 ${isEn ? 'Breakeven Basis' : 'Basis Hoà Vốn'}</span>
-            <span class="summary-pnl-val mono-num" style="color: var(--text-gold);">${grp.breakevenBasis !== null ? (grp.breakevenBasis >= 0 ? '+' : '') + grp.breakevenBasis.toFixed(2) + '%' : '—'}</span>
+
+          <div class="pos-stat-tile">
+            <span class="pos-stat-label">${isEn ? 'Breakeven Basis' : 'Basis Hoà Vốn'}</span>
+            <div class="pos-stat-val mono-num" style="color: var(--text-gold);">
+              ${grp.breakevenBasis !== null ? (grp.breakevenBasis >= 0 ? '+' : '') + grp.breakevenBasis.toFixed(2) + '%' : '—'}
+            </div>
+            <div class="pos-stat-sub" title="Breakeven Target">${isEn ? 'Target for PnL = $0' : 'Mức PnL 2 chân = $0'}</div>
+          </div>
+
+          <div class="pos-stat-tile">
+            <span class="pos-stat-label">${isEn ? 'Dist. to BE' : 'Cách Hoà Vốn'}</span>
+            <div class="pos-stat-val mono-num" style="color: ${isProfitable ? 'var(--accent-safe)' : 'var(--text-cream)'};">
+              ${grp.distanceToBreakeven !== null ? grp.distanceToBreakeven.toFixed(2) + 'đ%' : '—'}
+            </div>
+            <div class="pos-stat-sub" title="${distNote}">${distNote}</div>
           </div>
         </div>
 
         <!-- Expandable Body Container -->
         <div class="expandable-body ${isExpanded ? '' : 'collapsed'}" id="expandable-body-${cardId}">
-          <div class="legs-container">
+          <div class="legs-container" style="margin-top: 12px;">
             ${legsHtml}
           </div>
 
