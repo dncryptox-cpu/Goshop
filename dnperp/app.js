@@ -553,6 +553,53 @@ function unlockDashboardUI() {
 
     updateLighterMarginUI();
     startCountdown();
+
+    if (window.StorageAdapter) {
+      syncStorageWithRemote();
+    }
+  }
+}
+
+async function syncStorageWithRemote() {
+  if (!window.StorageAdapter) return;
+  try {
+    const wallet = await StorageAdapter.loadData('dnperp_wallet_address');
+    if (wallet && wallet !== state.config.hlWallet) {
+      state.config.hlWallet = wallet;
+      const inputWallet = document.getElementById('inputHlWallet');
+      if (inputWallet) inputWallet.value = wallet;
+      updateWalletSubLabel();
+      fetchHlMargin();
+      fetchAllLiveWalletPositions();
+    }
+
+    const pairs = await StorageAdapter.loadData('dnperp_tracked_pairs');
+    if (pairs && Array.isArray(pairs) && pairs.length > 0) {
+      state.trackedPairs = pairs;
+      initMarketState();
+      populateTradeModalPairsDropdown();
+      renderSpreadCards();
+      renderPairsTable();
+      renderPairChartTabs();
+    }
+
+    const history = await StorageAdapter.loadData('dnperp_basis_history');
+    if (history && Array.isArray(history) && history.length > 0) {
+      state.history = history;
+      updateChartData();
+    }
+
+    const journal = await StorageAdapter.loadData('dnperp_journal_trades');
+    if (journal && Array.isArray(journal)) {
+      state.journal = journal;
+      renderJournalTable();
+      updateJournalAnalytics();
+      initJournalCharts();
+    }
+
+    console.log('☁️ StorageAdapter: Multi-device sync completed successfully.');
+  } catch (err) {
+    console.warn('StorageAdapter sync error:', err);
   }
 }
 
