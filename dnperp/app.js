@@ -1085,6 +1085,7 @@ function setupEventListeners() {
       state.config.hlWallet = w;
       localStorage.setItem('dnperp_wallet_address', w);
       localStorage.setItem('dnperp_hl_wallet', w);
+      if (window.StorageAdapter) StorageAdapter.saveData('dnperp_wallet_address', w);
     } else {
       state.config.basisThreshold = parseFloat(document.getElementById('inputBasisThreshold')?.value) || 0.30;
       state.config.marginThreshold = parseFloat(document.getElementById('inputMarginThreshold')?.value) || 75.0;
@@ -1098,6 +1099,7 @@ function setupEventListeners() {
       state.config.hlWallet = w;
       localStorage.setItem('dnperp_wallet_address', w);
       localStorage.setItem('dnperp_hl_wallet', w);
+      if (window.StorageAdapter) StorageAdapter.saveData('dnperp_wallet_address', w);
     }
 
     localStorage.setItem('dnperp_basis_thresh', state.config.basisThreshold);
@@ -1440,6 +1442,7 @@ async function verifyAndAddPair() {
 
     state.trackedPairs.push(newPair);
     localStorage.setItem('dnperp_tracked_pairs', JSON.stringify(state.trackedPairs));
+    if (window.StorageAdapter) StorageAdapter.saveData('dnperp_tracked_pairs', state.trackedPairs);
 
     initMarketState();
     populateTradeModalPairsDropdown();
@@ -1482,6 +1485,7 @@ window.removeTrackedPair = function(pairId) {
   if (confirm(msg)) {
     state.trackedPairs = state.trackedPairs.filter(p => p.id !== pairId);
     localStorage.setItem('dnperp_tracked_pairs', JSON.stringify(state.trackedPairs));
+    if (window.StorageAdapter) StorageAdapter.saveData('dnperp_tracked_pairs', state.trackedPairs);
 
     delete state.market[pairId];
     delete state.signalTracker[pairId];
@@ -1661,6 +1665,7 @@ function checkAndAutoArchiveClosedPositions(currentGroups) {
 
   if (archivedAny) {
     localStorage.setItem('dnperp_journal_trades', JSON.stringify(state.journal));
+    if (window.StorageAdapter) StorageAdapter.saveData('dnperp_journal_trades', state.journal);
     renderJournalTable();
     updateJournalAnalytics();
     initJournalCharts();
@@ -1694,6 +1699,7 @@ function savePositionsSnapshot(groups) {
   localStorage.setItem('dnperp_open_positions_snapshot', JSON.stringify(snapshot));
   localStorage.setItem('dnperp_snapshot_ever_initialized', 'true');
   localStorage.setItem('dnperp_open_positions_snapshot_backup', JSON.stringify(snapshot));
+  if (window.StorageAdapter) StorageAdapter.saveData('dnperp_open_positions_snapshot', snapshot);
 }
 
 // Window helper for simulation / manual testing (Phase 17: supports forceLiquidated flag)
@@ -2315,6 +2321,7 @@ function saveTradeEntry() {
   }
 
   localStorage.setItem('dnperp_journal_trades', JSON.stringify(state.journal));
+  if (window.StorageAdapter) StorageAdapter.saveData('dnperp_journal_trades', state.journal);
 
   closeModal('tradeModal');
   renderJournalTable();
@@ -2361,6 +2368,7 @@ window.deleteTradeEntry = function(tradeId) {
   if (confirm(msg)) {
     state.journal = state.journal.filter(t => t.id !== tradeId);
     localStorage.setItem('dnperp_journal_trades', JSON.stringify(state.journal));
+    if (window.StorageAdapter) StorageAdapter.saveData('dnperp_journal_trades', state.journal);
     renderJournalTable();
     updateJournalAnalytics();
     updateJournalCharts();
@@ -3112,6 +3120,7 @@ function updateLighterMarginUI() {
 // Save History to LocalStorage
 function saveHistory() {
   localStorage.setItem('dnperp_history', JSON.stringify(state.history));
+  if (window.StorageAdapter) StorageAdapter.saveData('dnperp_basis_history', state.history);
 }
 
 // Send Telegram Message Helper
