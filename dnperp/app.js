@@ -562,8 +562,9 @@ function unlockDashboardUI() {
 
 async function syncStorageWithRemote() {
   if (!window.StorageAdapter) return;
+
+  // 1. Register Real-Time Broadcast & Remote Sync Listener (Cross-Browser / Multi-Tab)
   try {
-    // 1. Register Real-Time Broadcast & Remote Sync Listener (Cross-Browser / Multi-Tab)
     if (!state.isStorageSyncSubscribed) {
       state.isStorageSyncSubscribed = true;
       StorageAdapter.onSync((key, data) => {
@@ -596,8 +597,12 @@ async function syncStorageWithRemote() {
         }
       });
     }
+  } catch (err) {
+    console.warn('StorageAdapter sync step 1 (listener) error:', err);
+  }
 
-    // 2. Fetch Wallet Address from Supabase
+  // 2. Fetch Wallet Address from Supabase
+  try {
     const wallet = await StorageAdapter.loadData('dnperp_wallet_address');
     if (wallet) {
       state.config.hlWallet = wallet;
@@ -608,8 +613,12 @@ async function syncStorageWithRemote() {
       updateWalletSubLabel();
       fetchHlMargin();
     }
+  } catch (err) {
+    console.warn('StorageAdapter sync step 2 (wallet) error:', err);
+  }
 
-    // 3. Fetch Tracked Pairs from Supabase
+  // 3. Fetch Tracked Pairs from Supabase
+  try {
     const pairs = await StorageAdapter.loadData('dnperp_tracked_pairs');
     if (pairs && Array.isArray(pairs) && pairs.length > 0) {
       state.trackedPairs = pairs;
@@ -619,15 +628,23 @@ async function syncStorageWithRemote() {
       renderPairsTable();
       renderPairChartTabs();
     }
+  } catch (err) {
+    console.warn('StorageAdapter sync step 3 (pairs) error:', err);
+  }
 
-    // 4. Fetch Basis History from Supabase
+  // 4. Fetch Basis History from Supabase
+  try {
     const history = await StorageAdapter.loadData('dnperp_basis_history');
     if (history && Array.isArray(history) && history.length > 0) {
       state.history = history;
       updateChartData();
     }
+  } catch (err) {
+    console.warn('StorageAdapter sync step 4 (history) error:', err);
+  }
 
-    // 5. Fetch Journal Trades from Supabase
+  // 5. Fetch Journal Trades from Supabase
+  try {
     const journal = await StorageAdapter.loadData('dnperp_journal_trades');
     if (journal && Array.isArray(journal)) {
       state.journal = journal;
@@ -635,16 +652,20 @@ async function syncStorageWithRemote() {
       updateJournalAnalytics();
       initJournalCharts();
     }
+  } catch (err) {
+    console.warn('StorageAdapter sync step 5 (journal) error:', err);
+  }
 
-    // 6. Always trigger live positions fetch after full storage sync is complete
+  // 6. Always trigger live positions fetch after full storage sync is complete
+  try {
     if (state.config.hlWallet) {
       await fetchAllLiveWalletPositions();
     }
-
-    console.log('☁️ StorageAdapter: Multi-device sync completed successfully.');
   } catch (err) {
-    console.warn('StorageAdapter sync error:', err);
+    console.warn('StorageAdapter sync step 6 (positions) error:', err);
   }
+
+  console.log('☁️ StorageAdapter: Multi-device sync completed successfully.');
 }
 
 // Initialize App on DOM Load
@@ -2701,10 +2722,36 @@ function generatePersonalInsights(closedTrades) {
 
 // Render Phase 10 Journal Charts
 function initJournalCharts() {
-  const pnlCtx = document.getElementById('journalPnlChart')?.getContext('2d');
-  const pairCtx = document.getElementById('journalPairChart')?.getContext('2d');
+  const pnlCanvas = document.getElementById('journalPnlChart');
+  const pairCanvas = document.getElementById('journalPairChart');
 
-  if (pnlCtx) {
+  // Destroy existing chart instances on state or Chart.js registry before creating new ones
+  if (state.journalPnlChart) {
+    try { state.journalPnlChart.destroy(); } catch (e) {}
+    state.journalPnlChart = null;
+  }
+  if (pnlCanvas && typeof Chart !== 'undefined' && Chart.getChart) {
+    const existingPnl = Chart.getChart(pnlCanvas);
+    if (existingPnl) {
+      try { existingPnl.destroy(); } catch (e) {}
+    }
+  }
+
+  if (state.journalPairChart) {
+    try { state.journalPairChart.destroy(); } catch (e) {}
+    state.journalPairChart = null;
+  }
+  if (pairCanvas && typeof Chart !== 'undefined' && Chart.getChart) {
+    const existingPair = Chart.getChart(pairCanvas);
+    if (existingPair) {
+      try { existingPair.destroy(); } catch (e) {}
+    }
+  }
+
+  const pnlCtx = pnlCanvas?.getContext('2d');
+  const pairCtx = pairCanvas?.getContext('2d');
+
+  if (pnlCtx && typeof Chart !== 'undefined') {
     state.journalPnlChart = new Chart(pnlCtx, {
       type: 'line',
       data: { labels: [], datasets: [] },
@@ -2720,7 +2767,7 @@ function initJournalCharts() {
     });
   }
 
-  if (pairCtx) {
+  if (pairCtx && typeof Chart !== 'undefined') {
     state.journalPairChart = new Chart(pairCtx, {
       type: 'doughnut',
       data: { labels: [], datasets: [] },
@@ -2733,6 +2780,8 @@ function initJournalCharts() {
       }
     });
   }
+
+  updateJournalCharts();
 }
 
 function updateJournalCharts() {
@@ -3482,13 +3531,18 @@ async function fetchAndRenderCandleCharts() {
         crosshair: { mode: 1 },
         timeScale: { borderColor: '#1e324d', timeVisible: true }
       });
-      state.hlCandleSeries = state.hlChartInstance.addCandlestickSeries({
+      const hlCandleOptions = {
         upColor: '#26a69a',
         downColor: '#ef5350',
         borderVisible: false,
         wickUpColor: '#26a69a',
         wickDownColor: '#ef5350'
-      });
+      };
+      if (typeof state.hlChartInstance.addSeries === 'function' && typeof LightweightCharts !== 'undefined' && LightweightCharts.CandlestickSeries) {
+        state.hlCandleSeries = state.hlChartInstance.addSeries(LightweightCharts.CandlestickSeries, hlCandleOptions);
+      } else if (typeof state.hlChartInstance.addCandlestickSeries === 'function') {
+        state.hlCandleSeries = state.hlChartInstance.addCandlestickSeries(hlCandleOptions);
+      }
 
       if (typeof ResizeObserver !== 'undefined') {
         new ResizeObserver(entries => {
@@ -3572,12 +3626,17 @@ async function fetchAndRenderCandleCharts() {
         crosshair: { mode: 1 },
         timeScale: { borderColor: '#1e324d', timeVisible: true }
       });
-      state.ltCandleSeries = state.ltChartInstance.addAreaSeries({
+      const ltAreaOptions = {
         topColor: 'rgba(255, 179, 0, 0.4)',
         bottomColor: 'rgba(255, 179, 0, 0.0)',
         lineColor: '#ffb300',
         lineWidth: 2
-      });
+      };
+      if (typeof state.ltChartInstance.addSeries === 'function' && typeof LightweightCharts !== 'undefined' && LightweightCharts.AreaSeries) {
+        state.ltCandleSeries = state.ltChartInstance.addSeries(LightweightCharts.AreaSeries, ltAreaOptions);
+      } else if (typeof state.ltChartInstance.addAreaSeries === 'function') {
+        state.ltCandleSeries = state.ltChartInstance.addAreaSeries(ltAreaOptions);
+      }
 
       if (typeof ResizeObserver !== 'undefined') {
         new ResizeObserver(entries => {
