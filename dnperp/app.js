@@ -563,16 +563,53 @@ function unlockDashboardUI() {
 async function syncStorageWithRemote() {
   if (!window.StorageAdapter) return;
   try {
+    // 1. Register Real-Time Broadcast & Remote Sync Listener (Cross-Browser / Multi-Tab)
+    if (!state.isStorageSyncSubscribed) {
+      state.isStorageSyncSubscribed = true;
+      StorageAdapter.onSync((key, data) => {
+        console.log(`⚡ StorageAdapter: Real-time update received for '${key}'`);
+        if (key === 'dnperp_wallet_address' && data) {
+          state.config.hlWallet = data;
+          const inputWallet = document.getElementById('inputHlWallet');
+          if (inputWallet) inputWallet.value = data;
+          const viewWallet = document.getElementById('viewHlWalletAddress');
+          if (viewWallet) viewWallet.value = data;
+          updateWalletSubLabel();
+          fetchHlMargin();
+          fetchAllLiveWalletPositions();
+        } else if (key === 'dnperp_tracked_pairs' && Array.isArray(data)) {
+          state.trackedPairs = data;
+          initMarketState();
+          populateTradeModalPairsDropdown();
+          renderSpreadCards();
+          renderPairsTable();
+          renderPairChartTabs();
+          fetchAllLiveWalletPositions();
+        } else if (key === 'dnperp_journal_trades' && Array.isArray(data)) {
+          state.journal = data;
+          renderJournalTable();
+          updateJournalAnalytics();
+          initJournalCharts();
+        } else if (key === 'dnperp_basis_history' && Array.isArray(data)) {
+          state.history = data;
+          updateChartData();
+        }
+      });
+    }
+
+    // 2. Fetch Wallet Address from Supabase
     const wallet = await StorageAdapter.loadData('dnperp_wallet_address');
-    if (wallet && wallet !== state.config.hlWallet) {
+    if (wallet) {
       state.config.hlWallet = wallet;
       const inputWallet = document.getElementById('inputHlWallet');
       if (inputWallet) inputWallet.value = wallet;
+      const viewWallet = document.getElementById('viewHlWalletAddress');
+      if (viewWallet) viewWallet.value = wallet;
       updateWalletSubLabel();
       fetchHlMargin();
-      fetchAllLiveWalletPositions();
     }
 
+    // 3. Fetch Tracked Pairs from Supabase
     const pairs = await StorageAdapter.loadData('dnperp_tracked_pairs');
     if (pairs && Array.isArray(pairs) && pairs.length > 0) {
       state.trackedPairs = pairs;
@@ -583,18 +620,25 @@ async function syncStorageWithRemote() {
       renderPairChartTabs();
     }
 
+    // 4. Fetch Basis History from Supabase
     const history = await StorageAdapter.loadData('dnperp_basis_history');
     if (history && Array.isArray(history) && history.length > 0) {
       state.history = history;
       updateChartData();
     }
 
+    // 5. Fetch Journal Trades from Supabase
     const journal = await StorageAdapter.loadData('dnperp_journal_trades');
     if (journal && Array.isArray(journal)) {
       state.journal = journal;
       renderJournalTable();
       updateJournalAnalytics();
       initJournalCharts();
+    }
+
+    // 6. Always trigger live positions fetch after full storage sync is complete
+    if (state.config.hlWallet) {
+      await fetchAllLiveWalletPositions();
     }
 
     console.log('☁️ StorageAdapter: Multi-device sync completed successfully.');
