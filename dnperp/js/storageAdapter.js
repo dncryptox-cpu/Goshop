@@ -10,9 +10,9 @@
  */
 
 const StorageAdapter = {
-  // Supabase Configuration (Default fallback project config with RLS)
-  supabaseUrl: window.DNPERP_SUPABASE_URL || 'https://xvhrmgtnmsognhvuduvg.supabase.co',
-  supabaseKey: window.DNPERP_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh2aHJtZ3RubXNvZ25odnVkdXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjUyODk2MDAsImV4cCI6MjA0MDg2NTYwMH0.3e5x8_1234567890abcdefghijklmnopqrstuvwxyz',
+  // Supabase Configuration (Official Project URL & Anon Key)
+  supabaseUrl: window.DNPERP_SUPABASE_URL || 'https://oennjovursxobufecwkd.supabase.co',
+  supabaseKey: window.DNPERP_SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lbm5qb3Z1cnN4b2J1ZmVjd2tkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0OTY4OTAsImV4cCI6MjEwNDA3Mjg5MH0.sA3frly_Z_kHb9Hsbep3oUI2zNMXlygEHDyk_Cj84yY',
 
   syncListeners: [],
   channel: null,
