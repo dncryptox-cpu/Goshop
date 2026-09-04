@@ -1488,14 +1488,48 @@ function formatDuration(ms) {
 
 function checkAndAutoArchiveClosedPositions(currentGroups) {
   const storedSnapshotStr = localStorage.getItem('dnperp_open_positions_snapshot');
+  const everInitialized = localStorage.getItem('dnperp_snapshot_ever_initialized') === 'true';
+
+  let prevGroups = null;
+
   if (!storedSnapshotStr) {
+    if (everInitialized) {
+      console.warn('⚠️ Mất mốc theo dõi vị thế trước đó — có thể đã bỏ lỡ ghi nhận 1 số lệnh đã đóng/thanh lý!');
+      const warningBanner = document.getElementById('snapshotLossAlertBannerContainer');
+      if (warningBanner) {
+        warningBanner.classList.remove('hidden');
+      }
+
+      // Try restoring baseline from backup snapshot
+      const backupStr = localStorage.getItem('dnperp_open_positions_snapshot_backup');
+      if (backupStr) {
+        try {
+          prevGroups = JSON.parse(backupStr);
+        } catch (e) {
+          prevGroups = null;
+        }
+      }
+    }
+
+    if (!prevGroups) {
+      savePositionsSnapshot(currentGroups);
+      return;
+    }
+  } else {
+    try {
+      prevGroups = JSON.parse(storedSnapshotStr);
+    } catch (e) {
+      console.error('Error parsing stored positions snapshot:', e);
+      prevGroups = null;
+    }
+  }
+
+  if (!prevGroups || !Array.isArray(prevGroups)) {
     savePositionsSnapshot(currentGroups);
     return;
   }
 
-  const prevGroups = JSON.parse(storedSnapshotStr);
   const currentGroupIds = new Set(currentGroups.map(g => g.groupId));
-
   let archivedAny = false;
 
   prevGroups.forEach(prevGrp => {
@@ -1513,12 +1547,44 @@ function checkAndAutoArchiveClosedPositions(currentGroups) {
       const basisIn = prevGrp.netBasisEntry !== null ? prevGrp.netBasisEntry : 0;
       const basisOut = prevGrp.lastKnownMarketBasis !== undefined ? prevGrp.lastKnownMarketBasis : basisIn;
 
+      // Detect Liquidation Proximity (Phase 17)
+      let wasLiquidated = false;
+      if (prevGrp.legs && Array.isArray(prevGrp.legs)) {
+        wasLiquidated = prevGrp.legs.some(leg => {
+          if (!leg.liquidationPx || leg.liquidationPx <= 0) return false;
+
+          let lastKnownPrice = null;
+          const pairId = prevGrp.groupId;
+          if (state.market && state.market[pairId]) {
+            const pair = state.trackedPairs.find(p => p.id === pairId);
+            if (pair) {
+              if (leg.exchange === pair.exchangeA || leg.symbol === pair.symbolA) {
+                lastKnownPrice = state.market[pairId].priceA;
+              } else if (leg.exchange === pair.exchangeB || leg.symbol === pair.symbolB) {
+                lastKnownPrice = state.market[pairId].priceB;
+              }
+            }
+          }
+          if (!lastKnownPrice && leg.notional && leg.size && leg.size > 0) {
+            lastKnownPrice = leg.notional / leg.size;
+          }
+          if (!lastKnownPrice) {
+            lastKnownPrice = leg.entryPrice;
+          }
+
+          if (!lastKnownPrice || lastKnownPrice <= 0) return false;
+
+          const proximity = Math.abs(lastKnownPrice - leg.liquidationPx) / leg.liquidationPx;
+          return proximity < 0.005; // Within ±0.5% threshold
+        });
+      }
+
       const autoTradeRecord = {
         id: `AUTO_${prevGrp.groupId}_${Date.now()}`,
         dateOpen: openDateIso,
         dateClose: closeDateIso,
         pairId: prevGrp.groupId,
-        status: 'CLOSED',
+        status: wasLiquidated ? 'LIQUIDATED' : 'CLOSED',
         capital: parseFloat(capitalEst.toFixed(2)),
         priceLong: longLeg ? longLeg.entryPrice : 0,
         notionalLong: longLeg ? longLeg.notional : 500,
@@ -1531,9 +1597,13 @@ function checkAndAutoArchiveClosedPositions(currentGroups) {
         pnlBasis: parseFloat((prevGrp.combinedPnl || 0).toFixed(2)),
         fundingAccrued: parseFloat((prevGrp.combinedFunding || 0).toFixed(2)),
         totalPnl: parseFloat(((prevGrp.combinedPnl || 0) + (prevGrp.combinedFunding || 0)).toFixed(2)),
-        notes: state.lang === 'EN' 
-          ? '⚡ Auto-archived from live wallet position closure (Estimated values)' 
-          : '⚡ Tự động ghi nhận từ ví khi đóng vị thế (Giá ước tính)'
+        notes: wasLiquidated
+          ? (state.lang === 'EN' 
+              ? '🔴 Auto-detected: possibly LIQUIDATED (price near liquidation threshold)' 
+              : '🔴 Tự phát hiện: có thể ĐÃ BỊ THANH LÝ (giá gần ngưỡng thanh lý)')
+          : (state.lang === 'EN' 
+              ? '⚡ Auto-archived from live wallet position closure (Estimated values)' 
+              : '⚡ Tự động ghi nhận từ ví khi đóng vị thế (Giá ước tính)')
       };
 
       state.journal.unshift(autoTradeRecord);
@@ -1570,20 +1640,30 @@ function savePositionsSnapshot(groups) {
       entryPrice: l.entryPrice,
       notional: l.notional,
       unrealizedPnl: l.unrealizedPnl,
-      cumFunding: l.cumFunding
+      cumFunding: l.cumFunding,
+      liquidationPx: l.liquidationPx || 0
     }))
   }));
   localStorage.setItem('dnperp_open_positions_snapshot', JSON.stringify(snapshot));
+  localStorage.setItem('dnperp_snapshot_ever_initialized', 'true');
+  localStorage.setItem('dnperp_open_positions_snapshot_backup', JSON.stringify(snapshot));
 }
 
-// Window helper for simulation / manual testing
-window.simulatePositionClosure = function(groupId) {
+// Window helper for simulation / manual testing (Phase 17: supports forceLiquidated flag)
+window.simulatePositionClosure = function(groupId, forceLiquidated = false) {
   const storedSnapshotStr = localStorage.getItem('dnperp_open_positions_snapshot');
   if (!storedSnapshotStr) return;
   const snapshot = JSON.parse(storedSnapshotStr);
   const targetIndex = snapshot.findIndex(g => g.groupId === groupId);
   if (targetIndex !== -1) {
     const closedGroup = snapshot[targetIndex];
+    if (forceLiquidated && closedGroup.legs && closedGroup.legs.length > 0) {
+      closedGroup.legs.forEach(leg => {
+        const p = leg.entryPrice || 100;
+        leg.liquidationPx = p * 0.998; // 0.2% proximity to trigger liquidation detection
+      });
+      localStorage.setItem('dnperp_open_positions_snapshot', JSON.stringify(snapshot));
+    }
     snapshot.splice(targetIndex, 1);
     localStorage.setItem('dnperp_open_positions_snapshot', JSON.stringify(snapshot));
     state.liveGroups = state.liveGroups.filter(g => g.groupId !== groupId);
@@ -1591,7 +1671,8 @@ window.simulatePositionClosure = function(groupId) {
     checkAndAutoArchiveClosedPositions(state.liveGroups);
     renderLivePositionsUI();
     updateJournalAnalytics();
-    alert(state.lang === 'EN' ? `⚡ Simulated closure for position ${groupId}! Auto-archived to Trade Journal.` : `⚡ Giả lập đóng vị thế ${groupId} thành công! Đã tự động lưu vào Nhật Ký Giao Dịch.`);
+    const tag = forceLiquidated ? '🔴 LIQUIDATED (Bị thanh lý)' : 'CLOSED (Đóng thường)';
+    alert(state.lang === 'EN' ? `⚡ Simulated closure (${tag}) for position ${groupId}!` : `⚡ Giả lập đóng vị thế (${tag}) cho ${groupId} thành công!`);
   }
 };
 
@@ -2278,25 +2359,36 @@ function renderJournalTable() {
 
   filtered.forEach(trade => {
     const isClosed = trade.status === 'CLOSED';
-    const statusBadge = isClosed 
-      ? `<span class="trade-status-badge closed">🔵 ${isEn ? 'CLOSED' : 'ĐÃ ĐÓNG'}</span>`
-      : `<span class="trade-status-badge open">🟢 ${isEn ? 'OPEN' : 'ĐANG MỞ'}</span>`;
+    const isLiquidated = trade.status === 'LIQUIDATED';
+    const isDone = isClosed || isLiquidated;
+
+    let statusBadge = `<span class="trade-status-badge open">🟢 ${isEn ? 'OPEN' : 'ĐANG MỞ'}</span>`;
+    if (isLiquidated) {
+      statusBadge = `<span class="trade-status-badge liquidated" style="background: rgba(239,83,80,0.18); color: #ef5350; border: 1px solid rgba(239,83,80,0.5); padding: 3px 8px; border-radius: 4px; font-weight: 700; font-size: 11px;">🔴 ${isEn ? 'LIQUIDATED' : 'BỊ THANH LÝ'}</span>`;
+    } else if (isClosed) {
+      statusBadge = `<span class="trade-status-badge closed">🔵 ${isEn ? 'CLOSED' : 'ĐÃ ĐÓNG'}</span>`;
+    }
 
     const openDate = trade.dateOpen ? new Date(trade.dateOpen).toLocaleDateString() : 'N/A';
     const basisIn = `${trade.basisEntry >= 0 ? '+' : ''}${trade.basisEntry.toFixed(2)}%`;
-    const basisOut = isClosed && trade.basisExit !== null ? `${trade.basisExit >= 0 ? '+' : ''}${trade.basisExit.toFixed(2)}%` : '—';
+    const basisOut = isDone && trade.basisExit !== null ? `${trade.basisExit >= 0 ? '+' : ''}${trade.basisExit.toFixed(2)}%` : '—';
     const funding = `$${trade.fundingAccrued.toFixed(2)}`;
     
     let pnlDisplay = '—';
     let pnlClass = '';
-    if (isClosed) {
+    if (isDone) {
       pnlDisplay = `$${trade.totalPnl >= 0 ? '+' : ''}${trade.totalPnl.toFixed(2)}`;
       pnlClass = trade.totalPnl >= 0 ? 'positive' : 'negative';
     }
 
+    const noteText = trade.notes ? `<div style="font-size: 10px; color: ${isLiquidated ? '#ef5350' : 'var(--text-muted)'}; margin-top: 2px; line-height: 1.2;">${trade.notes}</div>` : '';
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><strong>${trade.pairId}</strong> <span style="font-size: 11px; color: var(--text-dim);">(${trade.id})</span></td>
+      <td>
+        <strong>${trade.pairId}</strong> <span style="font-size: 11px; color: var(--text-dim);">(${trade.id})</span>
+        ${noteText}
+      </td>
       <td><span class="mono-num">$${trade.priceLong ? trade.priceLong.toFixed(2) : '—'}</span></td>
       <td><span class="mono-num">$${trade.priceShort ? trade.priceShort.toFixed(2) : '—'}</span></td>
       <td><span class="mono-num">${basisIn}</span></td>
@@ -2320,7 +2412,7 @@ function updateJournalAnalytics() {
   const trades = state.journal;
 
   const openTrades = trades.filter(t => t.status === 'OPEN');
-  const closedTrades = trades.filter(t => t.status === 'CLOSED');
+  const closedTrades = trades.filter(t => t.status === 'CLOSED' || t.status === 'LIQUIDATED');
 
   const activeNotional = openTrades.reduce((sum, t) => sum + (t.notionalLong + t.notionalShort), 0);
   const activeCapital = openTrades.reduce((sum, t) => sum + t.capital, 0);
