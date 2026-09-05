@@ -1650,14 +1650,49 @@ function checkAndAutoArchiveClosedPositions(currentGroups) {
 
   prevGroups.forEach(prevGrp => {
     if (!currentGroupIds.has(prevGrp.groupId)) {
+      // 1. Anti-Duplicate Lock: Skip if a record for this closure event is already archived
+      const isAlreadyArchived = state.journal.some(t => {
+        if (t.id && t.id.includes(`AUTO_${prevGrp.groupId}`)) return true;
+        if (t.pairId === prevGrp.groupId) {
+          const tCloseTime = t.dateClose ? new Date(t.dateClose).getTime() : 0;
+          const nowTime = Date.now();
+          if (Math.abs(nowTime - tCloseTime) < 3600000) return true; // Archived within last hour
+        }
+        return false;
+      });
+
+      if (isAlreadyArchived) {
+        console.log(`🔒 Auto-archive skipped: Closure record for ${prevGrp.groupId} already exists.`);
+        return;
+      }
+
       console.log(`⚡ Position ${prevGrp.groupId} closed! Auto-archiving to Trade Journal...`);
 
       const firstSeen = getPositionFirstSeen(prevGrp.groupId);
       const openDateIso = new Date(firstSeen).toISOString().slice(0, 16);
       const closeDateIso = new Date().toISOString().slice(0, 16);
 
-      const longLeg = prevGrp.legs ? prevGrp.legs.find(l => l.direction === 'LONG') : null;
-      const shortLeg = prevGrp.legs ? prevGrp.legs.find(l => l.direction === 'SHORT') : null;
+      // Robust Leg Matching (Case-insensitive + Fallback for 2-leg pairs)
+      let longLeg = prevGrp.legs ? prevGrp.legs.find(l => String(l.direction).toUpperCase() === 'LONG') : null;
+      let shortLeg = prevGrp.legs ? prevGrp.legs.find(l => String(l.direction).toUpperCase() === 'SHORT') : null;
+
+      if (!shortLeg && prevGrp.legs && prevGrp.legs.length >= 2) {
+        shortLeg = prevGrp.legs.find(l => l !== longLeg);
+      }
+      if (!longLeg && prevGrp.legs && prevGrp.legs.length >= 2) {
+        longLeg = prevGrp.legs.find(l => l !== shortLeg);
+      }
+
+      const getLegPrice = (leg) => {
+        if (!leg) return 0;
+        if (leg.entryPrice && leg.entryPrice > 0) return leg.entryPrice;
+        if (leg.entryPx && leg.entryPx > 0) return leg.entryPx;
+        if (leg.notional && leg.size && leg.size > 0) return leg.notional / leg.size;
+        return 0;
+      };
+
+      const pLong = getLegPrice(longLeg);
+      const pShort = getLegPrice(shortLeg);
 
       const capitalEst = prevGrp.combinedNotional || 1000;
       const basisIn = prevGrp.netBasisEntry !== null ? prevGrp.netBasisEntry : 0;
@@ -1685,7 +1720,7 @@ function checkAndAutoArchiveClosedPositions(currentGroups) {
             lastKnownPrice = leg.notional / leg.size;
           }
           if (!lastKnownPrice) {
-            lastKnownPrice = leg.entryPrice;
+            lastKnownPrice = getLegPrice(leg);
           }
 
           if (!lastKnownPrice || lastKnownPrice <= 0) return false;
@@ -1702,14 +1737,14 @@ function checkAndAutoArchiveClosedPositions(currentGroups) {
         pairId: prevGrp.groupId,
         status: wasLiquidated ? 'LIQUIDATED' : 'CLOSED',
         capital: parseFloat(capitalEst.toFixed(2)),
-        priceLong: longLeg ? longLeg.entryPrice : 0,
+        priceLong: pLong,
         notionalLong: longLeg ? longLeg.notional : 500,
-        priceShort: shortLeg ? shortLeg.entryPrice : 0,
+        priceShort: pShort,
         notionalShort: shortLeg ? shortLeg.notional : 500,
         basisEntry: parseFloat(basisIn.toFixed(2)),
         basisExit: parseFloat(basisOut.toFixed(2)),
-        priceLongExit: longLeg ? longLeg.entryPrice : 0,
-        priceShortExit: shortLeg ? shortLeg.entryPrice : 0,
+        priceLongExit: pLong,
+        priceShortExit: pShort,
         pnlBasis: parseFloat((prevGrp.combinedPnl || 0).toFixed(2)),
         fundingAccrued: parseFloat((prevGrp.combinedFunding || 0).toFixed(2)),
         totalPnl: parseFloat(((prevGrp.combinedPnl || 0) + (prevGrp.combinedFunding || 0)).toFixed(2)),
