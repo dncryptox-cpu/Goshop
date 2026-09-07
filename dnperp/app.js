@@ -3317,7 +3317,25 @@ function initChart() {
           borderWidth: 1,
           padding: 12,
           callbacks: {
-            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(3)}%`
+            label: (ctx) => {
+              if (ctx.dataset.tradeMeta && ctx.dataset.tradeMeta[ctx.dataIndex]) {
+                const meta = ctx.dataset.tradeMeta[ctx.dataIndex];
+                if (meta.type === 'OPEN') {
+                  const bIn = (meta.trade.basisEntry !== undefined && meta.trade.basisEntry !== null) 
+                    ? (meta.trade.basisEntry >= 0 ? `+${meta.trade.basisEntry.toFixed(2)}%` : `${meta.trade.basisEntry.toFixed(2)}%`)
+                    : `${ctx.parsed.y.toFixed(2)}%`;
+                  return `[Mở lệnh] ${meta.trade.pairId} — Basis vào: ${bIn}`;
+                } else if (meta.type === 'CLOSE') {
+                  const bOut = (meta.trade.basisExit !== undefined && meta.trade.basisExit !== null)
+                    ? (meta.trade.basisExit >= 0 ? `+${meta.trade.basisExit.toFixed(2)}%` : `${meta.trade.basisExit.toFixed(2)}%`)
+                    : `${ctx.parsed.y.toFixed(2)}%`;
+                  const pnl = meta.trade.totalPnl || 0;
+                  const pnlStr = pnl >= 0 ? `+$${pnl.toFixed(2)}` : `-$${Math.abs(pnl).toFixed(2)}`;
+                  return `[Đóng lệnh] ${meta.trade.pairId} — Basis ra: ${bOut} — PnL: ${pnlStr}`;
+                }
+              }
+              return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(3)}%`;
+            }
           }
         }
       },
@@ -3492,6 +3510,125 @@ function updateChartData() {
       <div class="legend-item"><span class="legend-color line-lower"></span> ${lowerLabel} (-${thresh.toFixed(2)}%)</div>
     `);
   }
+
+  // -------------------------------------------------------------
+  // Phase 24: Trade Open & Close Markers Overlay on Basis History Chart
+  // -------------------------------------------------------------
+  const tradesForThisPair = (state.journal || []).filter(t => t.pairId === pairId);
+
+  const openMarkerData = new Array(filtered.length).fill(null);
+  const openMarkerMeta = new Array(filtered.length).fill(null);
+
+  const closeWinMarkerData = new Array(filtered.length).fill(null);
+  const closeWinMarkerMeta = new Array(filtered.length).fill(null);
+
+  const closeLossMarkerData = new Array(filtered.length).fill(null);
+  const closeLossMarkerMeta = new Array(filtered.length).fill(null);
+
+  function parseTradeMs(val) {
+    if (!val) return null;
+    if (typeof val === 'number') return val;
+    const ms = new Date(val).getTime();
+    return isNaN(ms) ? null : ms;
+  }
+
+  function findClosestFilteredIndex(timeMs) {
+    if (!timeMs || filtered.length === 0) return -1;
+    let minDiff = Infinity;
+    let bestIdx = -1;
+    for (let i = 0; i < filtered.length; i++) {
+      const diff = Math.abs(filtered[i].time - timeMs);
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestIdx = i;
+      }
+    }
+    return minDiff <= 12 * 60 * 60 * 1000 ? bestIdx : -1;
+  }
+
+  tradesForThisPair.forEach(t => {
+    // Open Marker
+    const openMs = parseTradeMs(t.dateOpen);
+    const openIdx = findClosestFilteredIndex(openMs);
+    if (openIdx !== -1) {
+      const val = (t.basisEntry !== undefined && t.basisEntry !== null && !isNaN(t.basisEntry))
+        ? parseFloat(t.basisEntry)
+        : (series[openIdx] !== undefined ? series[openIdx] : 0);
+      openMarkerData[openIdx] = val;
+      openMarkerMeta[openIdx] = { type: 'OPEN', trade: t };
+    }
+
+    // Close Marker (only if closed or liquidated)
+    if (t.status === 'CLOSED' || t.status === 'LIQUIDATED') {
+      const closeMs = parseTradeMs(t.dateClose);
+      const closeIdx = findClosestFilteredIndex(closeMs);
+      if (closeIdx !== -1) {
+        const val = (t.basisExit !== undefined && t.basisExit !== null && !isNaN(t.basisExit))
+          ? parseFloat(t.basisExit)
+          : (series[closeIdx] !== undefined ? series[closeIdx] : 0);
+        const pnl = t.totalPnl || 0;
+        if (pnl >= 0) {
+          closeWinMarkerData[closeIdx] = val;
+          closeWinMarkerMeta[closeIdx] = { type: 'CLOSE', trade: t };
+        } else {
+          closeLossMarkerData[closeIdx] = val;
+          closeLossMarkerMeta[closeIdx] = { type: 'CLOSE', trade: t };
+        }
+      }
+    }
+  });
+
+  const openLabel = state.lang === 'EN' ? '● Open Trade' : '● Mở lệnh';
+  const winLabel = state.lang === 'EN' ? '● Close (Profit)' : '● Đóng lệnh (lời)';
+  const lossLabel = state.lang === 'EN' ? '● Close (Loss)' : '● Đóng lệnh (lỗ)';
+
+  datasets.push({
+    label: openLabel,
+    data: openMarkerData,
+    tradeMeta: openMarkerMeta,
+    borderColor: '#38bdf8',
+    backgroundColor: '#38bdf8',
+    pointRadius: 6,
+    pointHoverRadius: 9,
+    pointBorderColor: '#0c1420',
+    pointBorderWidth: 2,
+    showLine: false,
+    fill: false
+  });
+
+  datasets.push({
+    label: winLabel,
+    data: closeWinMarkerData,
+    tradeMeta: closeWinMarkerMeta,
+    borderColor: '#26a69a',
+    backgroundColor: '#26a69a',
+    pointRadius: 7,
+    pointHoverRadius: 10,
+    pointBorderColor: '#0c1420',
+    pointBorderWidth: 2,
+    showLine: false,
+    fill: false
+  });
+
+  datasets.push({
+    label: lossLabel,
+    data: closeLossMarkerData,
+    tradeMeta: closeLossMarkerMeta,
+    borderColor: '#ef5350',
+    backgroundColor: '#ef5350',
+    pointRadius: 7,
+    pointHoverRadius: 10,
+    pointBorderColor: '#0c1420',
+    pointBorderWidth: 2,
+    showLine: false,
+    fill: false
+  });
+
+  legendHtml.push(`
+    <div class="legend-item"><span class="legend-color" style="background: #38bdf8; border-radius: 50%;"></span> ${openLabel}</div>
+    <div class="legend-item"><span class="legend-color" style="background: #26a69a; border-radius: 50%;"></span> ${winLabel}</div>
+    <div class="legend-item"><span class="legend-color" style="background: #ef5350; border-radius: 50%;"></span> ${lossLabel}</div>
+  `);
 
   state.chart.data.labels = labels;
   state.chart.data.datasets = datasets;
