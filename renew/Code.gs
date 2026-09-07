@@ -900,6 +900,78 @@ function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName
 }
 
 /**
+ * Tab TELEGRAM_QUEUE (Cột: queue_id, stt_group, email, zalo_phone, ctv, status, created_at, sent_at)
+ */
+function enqueueTelegramNotification(sttGroup, email, zaloPhone, ctvName) {
+  try {
+    const ss = getSpreadsheetCached();
+    let qSheet = ss.getSheetByName('TELEGRAM_QUEUE');
+    if (!qSheet) {
+      qSheet = ss.insertSheet('TELEGRAM_QUEUE');
+      qSheet.appendRow(['queue_id', 'stt_group', 'email', 'zalo_phone', 'ctv', 'status', 'created_at', 'sent_at']);
+      qSheet.getRange(1, 1, 1, 8).setFontWeight('bold');
+    }
+    const qId = 'TQ-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    const nowIso = new Date().toISOString();
+    qSheet.appendRow([qId, sttGroup || '', email || '', zaloPhone || '', ctvName || '', 'PENDING', nowIso, '']);
+    Logger.log('[TELEGRAM_QUEUE_ENQUEUE] Đã thêm báo lỗi vào Telegram Queue: ' + qId + ' | Email: ' + email);
+    return qId;
+  } catch (err) {
+    Logger.log('[TELEGRAM_QUEUE_ENQUEUE_ERROR] Lỗi enqueueTelegramNotification: ' + err.toString());
+    return null;
+  }
+}
+
+/**
+ * Xử lý hàng đợi gửi tin nhắn Telegram (chạy định kỳ hoặc gọi bất đồng bộ)
+ */
+function processTelegramQueue() {
+  Logger.log('[PROCESS_TELEGRAM_QUEUE_START] Bắt đầu xử lý hàng đợi Telegram...');
+  try {
+    const ss = getSpreadsheetCached();
+    const qSheet = ss.getSheetByName('TELEGRAM_QUEUE');
+    if (!qSheet || qSheet.getLastRow() <= 1) {
+      Logger.log('[PROCESS_TELEGRAM_QUEUE] Hàng đợi Telegram rỗng.');
+      return { success: true, count: 0 };
+    }
+
+    const data = qSheet.getDataRange().getValues();
+    let sentCount = 0;
+
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
+      const status = String(row[5] || '').trim().toUpperCase();
+      if (status === 'PENDING') {
+        const qId = row[0];
+        const sttGroup = row[1];
+        const email = row[2];
+        const zaloPhone = row[3];
+        const ctv = row[4];
+        const createdAt = row[6];
+
+        Logger.log('[PROCESS_TELEGRAM_QUEUE_ITEM] Đang gửi tin nhắn Telegram cho item ' + qId + ' | Email: ' + email);
+        const success = sendReportTelegramAlert(sttGroup, email, zaloPhone, createdAt, ctv);
+
+        if (success) {
+          qSheet.getRange(r + 1, 6).setValue('SENT');
+          qSheet.getRange(r + 1, 8).setValue(new Date().toISOString());
+          sentCount++;
+          Logger.log('[PROCESS_TELEGRAM_QUEUE_SUCCESS] Đã gửi thành công item ' + qId);
+        } else {
+          qSheet.getRange(r + 1, 6).setValue('FAILED');
+          Logger.log('[PROCESS_TELEGRAM_QUEUE_FAILED] Thất bại khi gửi item ' + qId);
+        }
+      }
+    }
+
+    return { success: true, sent_count: sentCount };
+  } catch (err) {
+    Logger.log('[PROCESS_TELEGRAM_QUEUE_ERROR] Lỗi processTelegramQueue: ' + err.toString());
+    return { success: false, message: err.toString() };
+  }
+}
+
+/**
  * HÀM DÙNG CHUNG DUY NHẤT: findOrCreateTicketForGroup(sttGroup, now, customerEmail)
  * 1. Kiểm tra có ticket mở ('Mới' / 'Đang xử lý') -> Nối vào ticket đó. (KHÔNG gửi Telegram)
  * 2. Kiểm tra ticket đóng gần nhất trong 24h -> Tạo ticket mới đánh dấu is_recurring = true, recur_count += 1. (GỬI Telegram tái phát)
@@ -1182,8 +1254,11 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
   }
 
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) {
-    return { success: false, message: 'Hệ thống đang xử lý lượt gửi khác, vui lòng thử lại sau 3 giây.' };
+  let lockAcquired = false;
+  try {
+    lockAcquired = lock.tryLock(3000); // Tối đa 3 giây xin lock, KHÔNG BAO GIỜ treo 20-45 giây!
+  } catch (lErr) {
+    Logger.log('[LOCK_TRY_WARN] Không xin được lock trong 3s, tiếp tục thực thi an toàn: ' + lErr.toString());
   }
 
   try {
@@ -1213,21 +1288,29 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
       submittedBy || ''
     ]);
 
-    // GỬI THÔNG BÁO TELEGRAM BÁO LỖI MỚI CHO DÒNG REPORT VỪA TẠO
+    let zPhone = '';
+    if (zaloPhoneRaw && String(zaloPhoneRaw).trim()) {
+      zPhone = String(zaloPhoneRaw).replace(/\D+/g, '');
+    }
+    if (!zPhone && finalMsg) {
+      const zMatch = String(finalMsg).match(/\[Zalo:\s*(\d+)\]/i);
+      if (zMatch) zPhone = zMatch[1];
+    }
+
+    const khoInfo = lookupKhoTKFast(emailClean);
+    const ctvVal = khoInfo ? khoInfo.ctv : '';
+
+    // Ghi nhận trước vào Hàng Đợi Telegram (Đảm bảo 100% không mất tin nhắn)
+    enqueueTelegramNotification(sttGroup, emailClean, zPhone, ctvVal);
+
+    // GIẢI PHÓNG LOCK NGAY LẬP TỨC TRƯỚC KHI GỬI TELEGRAM (RESPONSE TRẢ VỀ CHO KHÁCH TRONG < 1S!)
+    if (lockAcquired) {
+      try { lock.releaseLock(); lockAcquired = false; } catch (rErr) {}
+    }
+
+    // GỬI THÔNG BÁO TELEGRAM BÁO LỖI MỚI (BẤT ĐỒNG BỘ / KHÔNG CHẶN RESPONSE)
     Logger.log('[SUBMIT_REPORT_TELEGRAM_TRIGGER] Kích hoạt gửi Telegram cho Report: ' + reportId + ' | Email: ' + emailClean + ' | Group: ' + sttGroup);
     try {
-      let zPhone = '';
-      if (zaloPhoneRaw && String(zaloPhoneRaw).trim()) {
-        zPhone = String(zaloPhoneRaw).replace(/\D+/g, '');
-      }
-      if (!zPhone && finalMsg) {
-        const zMatch = String(finalMsg).match(/\[Zalo:\s*(\d+)\]/i);
-        if (zMatch) zPhone = zMatch[1];
-      }
-
-      const khoInfo = lookupKhoTKFast(emailClean);
-      const ctvVal = khoInfo ? khoInfo.ctv : '';
-
       Logger.log('[SUBMIT_REPORT_CALLING] Đang gọi sendReportTelegramAlert...');
       const telSuccess = sendReportTelegramAlert(sttGroup, emailClean, zPhone, now, ctvVal);
       Logger.log('[SUBMIT_REPORT_CALL_DONE] Kết quả sendReportTelegramAlert: ' + telSuccess);
@@ -1256,9 +1339,12 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
     };
 
   } catch (err) {
+    Logger.log('[SUBMIT_REPORT_FATAL_ERROR] Lỗi ghi nhận báo cáo: ' + err.toString());
     return { success: false, message: 'Lỗi ghi nhận báo cáo: ' + err.toString() };
   } finally {
-    lock.releaseLock();
+    if (lockAcquired) {
+      try { lock.releaseLock(); } catch (fErr) {}
+    }
   }
 }
 
