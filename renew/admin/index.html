@@ -320,8 +320,12 @@
                             <div class="p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs flex-grow sm:flex-grow-0 transition-all"
                                  :class="isZaloSent(item.customer_email, item.zalo_phone) ? 'bg-white/5 border-white/10 opacity-70' : 'bg-white/10 border-white/20'">
                                 <div>
-                                    <div class="flex items-center gap-1.5">
+                                    <div class="flex items-center gap-1.5 flex-wrap">
                                         <span class="font-mono font-black text-amber-300 text-sm" x-text="item.stt_group"></span>
+                                        <template x-if="getDatagocCtv(item.customer_email)">
+                                            <span class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-blue-500/30 text-blue-200 border border-blue-400/40 tracking-tight"
+                                                  x-text="'CTV: ' + getDatagocCtv(item.customer_email)"></span>
+                                        </template>
                                         <span class="font-mono text-white text-xs font-bold" x-text="item.customer_email"></span>
                                         <template x-if="isZaloSent(item.customer_email, item.zalo_phone)">
                                             <span class="text-[9px] bg-green-500/20 text-green-300 border border-green-500/40 px-1.5 py-0.2 rounded font-bold">✓ Đã Báo</span>
@@ -1911,6 +1915,93 @@
                     }
                 },
 
+                dataGocCtvMap: {},
+
+                async fetchDatagocCtvMap() {
+                    try {
+                        const sheetId = '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c';
+                        const map = {};
+                        
+                        const [datagocRes, appDataRes] = await Promise.all([
+                            fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=DATAGoc&t=${Date.now()}`).then(r => r.text()).catch(() => ''),
+                            fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=APP_DATA&t=${Date.now()}`).then(r => r.text()).catch(() => '')
+                        ]);
+
+                        const processCsv = (csvText) => {
+                            if (!csvText) return;
+                            const rows = this.parseCsvRows(csvText);
+                            for (let i = 1; i < rows.length; i++) {
+                                const r = rows[i];
+                                if (r && r.length >= 8) {
+                                    const primaryEmail = String(r[2] || '').trim().toLowerCase();
+                                    const mailPhu = String(r[6] || '').trim().toLowerCase();
+                                    const ctv = String(r[7] || '').trim();
+                                    if (ctv && ctv.toUpperCase() !== 'CTV' && ctv !== '#REF!') {
+                                        if (primaryEmail && !map[primaryEmail]) map[primaryEmail] = ctv;
+                                        if (mailPhu && !map[mailPhu]) map[mailPhu] = ctv;
+                                    }
+                                }
+                            }
+                        };
+
+                        processCsv(datagocRes);
+                        processCsv(appDataRes);
+
+                        this.dataGocCtvMap = map;
+                    } catch (err) {
+                        console.error('Lỗi tải dữ liệu DATAGoc CTV map:', err);
+                    }
+                },
+
+                parseCsvRows(csvText) {
+                    if (!csvText) return [];
+                    const rows = [];
+                    let currentRow = [];
+                    let currentCell = '';
+                    let inQuotes = false;
+                    
+                    for (let i = 0; i < csvText.length; i++) {
+                        const c = csvText[i];
+                        const nextC = csvText[i + 1];
+                        
+                        if (c === '"') {
+                            if (inQuotes && nextC === '"') {
+                                currentCell += '"';
+                                i++;
+                            } else {
+                                inQuotes = !inQuotes;
+                            }
+                        } else if (c === ',' && !inQuotes) {
+                            currentRow.push(currentCell.trim());
+                            currentCell = '';
+                        } else if ((c === '\r' || c === '\n') && !inQuotes) {
+                            if (c === '\r' && nextC === '\n') i++;
+                            currentRow.push(currentCell.trim());
+                            if (currentRow.length > 0 && currentRow.some(cell => cell)) {
+                                rows.push(currentRow);
+                            }
+                            currentRow = [];
+                            currentCell = '';
+                        } else {
+                            currentCell += c;
+                        }
+                    }
+                    if (currentCell || currentRow.length > 0) {
+                        currentRow.push(currentCell.trim());
+                        if (currentRow.length > 0 && currentRow.some(cell => cell)) {
+                            rows.push(currentRow);
+                        }
+                    }
+                    return rows;
+                },
+
+                getDatagocCtv(email) {
+                    if (!email) return '';
+                    const cleanEmail = String(email).trim().toLowerCase();
+                    if (!cleanEmail || !this.dataGocCtvMap) return '';
+                    return this.dataGocCtvMap[cleanEmail] || '';
+                },
+
                 init() {
                     this.checkRoutingFromUrl();
                     window.addEventListener('hashchange', () => this.checkRoutingFromUrl());
@@ -1921,6 +2012,7 @@
                         this.role = localStorage.getItem('fam_admin_role') || 'staff';
                         this.loadTickets();
                         this.fetchMailPhuRequests();
+                        this.fetchDatagocCtvMap();
                     }
 
                     // Tự động polling làm mới danh sách ticket & mail phụ mỗi 60 giây
@@ -1950,6 +2042,7 @@
                         localStorage.setItem('fam_admin_role', 'admin');
                         this.loadTickets();
                         this.fetchMailPhuRequests();
+                        this.fetchDatagocCtvMap();
                         this.showToast('👑 Quản Lý đăng nhập thành công (Xem Zalo full)', 'success', 'crown');
                     } else if (u === 'goshop' && p === 'goshop') {
                         this.role = 'staff';
@@ -1958,6 +2051,7 @@
                         localStorage.setItem('fam_admin_role', 'staff');
                         this.loadTickets();
                         this.fetchMailPhuRequests();
+                        this.fetchDatagocCtvMap();
                         this.showToast('👤 Nhân Viên đăng nhập thành công', 'info', 'user');
                     } else {
                         alert('❌ Sai Tên đăng nhập hoặc Mật khẩu! Vui lòng thử lại.');
