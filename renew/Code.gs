@@ -835,6 +835,44 @@ function sendTelegramNotification(message) {
 }
 
 /**
+ * GỬI THÔNG BÁO BÁO LỖI MỚI TỪ KHÁCH VỀ TELEGRAM BOT
+ * Format chuẩn tương tự thông báo đơn hàng:
+ * ⚠️ CÓ BÁO LỖI MỚI TỪ KHÁCH!
+ * 📦 Mã: {RN.../PL...}
+ * 👤 Khách: {email}
+ * 📞 Zalo: {số zalo}
+ * 🕐 Thời gian: {ngày giờ báo lỗi}
+ * 🏷️ CTV: {tên CTV nếu có}
+ */
+function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName) {
+  try {
+    let formattedDate = '';
+    if (reportTime instanceof Date) {
+      formattedDate = Utilities.formatDate(reportTime, Session.getScriptTimeZone() || 'GMT+7', 'HH:mm dd/MM/yyyy');
+    } else if (reportTime) {
+      formattedDate = String(reportTime);
+    } else {
+      formattedDate = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'GMT+7', 'HH:mm dd/MM/yyyy');
+    }
+
+    let msg = `⚠️ <b>CÓ BÁO LỖI MỚI TỪ KHÁCH!</b>\n\n` +
+              `📦 <b>Mã:</b> ${sttGroup || 'N/A'}\n` +
+              `👤 <b>Khách:</b> ${email || 'N/A'}\n` +
+              `📞 <b>Zalo:</b> ${zaloPhone || 'Chưa cung cấp'}\n` +
+              `🕐 <b>Thời gian:</b> ${formattedDate}`;
+
+    if (ctvName && String(ctvName).trim() && String(ctvName).trim().toUpperCase() !== 'CTV' && String(ctvName).trim() !== '#REF!') {
+      msg += `\n🏷️ <b>CTV:</b> ${String(ctvName).trim()}`;
+    }
+
+    return sendTelegramNotification(msg);
+  } catch (err) {
+    Logger.log('Lỗi sendReportTelegramAlert: ' + err.toString());
+    return false;
+  }
+}
+
+/**
  * HÀM DÙNG CHUNG DUY NHẤT: findOrCreateTicketForGroup(sttGroup, now, customerEmail)
  * 1. Kiểm tra có ticket mở ('Mới' / 'Đang xử lý') -> Nối vào ticket đó. (KHÔNG gửi Telegram)
  * 2. Kiểm tra ticket đóng gần nhất trong 24h -> Tạo ticket mới đánh dấu is_recurring = true, recur_count += 1. (GỬI Telegram tái phát)
@@ -942,31 +980,7 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail, activityStatus
     actStatusClean
   ]);
 
-  // GỬI THÔNG BÁO TELEGRAM KHI TẠO TICKET MỚI (TẠO MỚI HOẶC TÁI PHÁT)
-  try {
-    const ownerEmail = getSttOwnerEmail(sttGroup);
-    const formattedDate = Utilities.formatDate(now, Session.getScriptTimeZone() || 'GMT+7', 'HH:mm dd-MM-yyyy');
-    
-    let msg = '';
-    if (isRecurring) {
-      msg += `🚨 <b>Sự cố fam TÁI PHÁT: ${sttGroup}</b> (Lần thứ ${recurCount})\n`;
-      msg += `👤 Khách báo: ${customerEmail || 'Khách/CTV báo'}\n`;
-      if (ownerEmail) msg += `📧 Tài khoản gốc: ${ownerEmail}\n`;
-      msg += `🕐 Báo lúc: ${formattedDate}\n`;
-      msg += `🔁 Đây là lần tái phát thứ ${recurCount} trong 24h qua — cần kiểm tra kỹ hơn thay vì fix tạm.\n`;
-      msg += `👉 Admin xử lý tại: https://godnc.com/renew/admin/`;
-    } else {
-      msg += `🚨 <b>Sự cố fam mới: ${sttGroup}</b>\n`;
-      msg += `👤 Khách báo: ${customerEmail || 'Khách/CTV báo'}\n`;
-      if (ownerEmail) msg += `📧 Tài khoản gốc: ${ownerEmail}\n`;
-      msg += `🕐 Báo lúc: ${formattedDate}\n`;
-      msg += `👉 Admin xử lý tại: https://godnc.com/renew/admin/`;
-    }
-
-    sendTelegramNotification(msg);
-  } catch (telErr) {
-    Logger.log('Lỗi tạo tin nhắn Telegram: ' + telErr.toString());
-  }
+  // (Đã chuyển sang gửi thông báo Telegram cho mỗi báo lỗi mới theo format chuẩn trong submitReport / submitBulkReport)
 
   return {
     ticket_id: targetTicketId,
@@ -1172,6 +1186,25 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
       submittedBy || ''
     ]);
 
+    // GỬI THÔNG BÁO TELEGRAM BÁO LỖI MỚI CHO DÒNG REPORT VỪA TẠO
+    try {
+      let zPhone = '';
+      if (zaloPhoneRaw && String(zaloPhoneRaw).trim()) {
+        zPhone = String(zaloPhoneRaw).replace(/\D+/g, '');
+      }
+      if (!zPhone && finalMsg) {
+        const zMatch = String(finalMsg).match(/\[Zalo:\s*(\d+)\]/i);
+        if (zMatch) zPhone = zMatch[1];
+      }
+
+      const khoInfo = lookupKhoTKFast(emailClean);
+      const ctvVal = khoInfo ? khoInfo.ctv : '';
+
+      sendReportTelegramAlert(sttGroup, emailClean, zPhone, now, ctvVal);
+    } catch (telErr) {
+      Logger.log('Lỗi gửi thông báo Telegram báo lỗi: ' + telErr.toString());
+    }
+
     const cacheHealth = checkCacheHealth();
 
     return {
@@ -1353,6 +1386,20 @@ function submitBulkReport(rawTextOrList, ctvName, activityStatus) {
     // Ghi 1 lần Batch Insert vào REPORTS
     if (newReportsRows.length > 0 && reportsSheet) {
       reportsSheet.getRange(reportsSheet.getLastRow() + 1, 1, newReportsRows.length, 6).setValues(newReportsRows);
+
+      // GỬI THÔNG BÁO TELEGRAM CHO TỪNG BÁO LỖI HÀNG LOẠT
+      try {
+        for (let r = 0; r < newReportsRows.length; r++) {
+          const rRow = newReportsRows[r]; // [reportId, ticketId, email, nowIso, message, submittedBy]
+          const rEmail = rRow[2];
+          const khoInfo = lookupKhoTKFast(rEmail);
+          const stt = khoInfo ? khoInfo.stt_group : '';
+          const ctvVal = ctvName || (khoInfo ? khoInfo.ctv : '');
+          sendReportTelegramAlert(stt, rEmail, '', now, ctvVal);
+        }
+      } catch (bErr) {
+        Logger.log('Lỗi gửi Telegram cho submitBulkReport: ' + bErr.toString());
+      }
     }
 
     return {
