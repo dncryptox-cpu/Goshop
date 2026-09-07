@@ -800,19 +800,28 @@ function getSttOwnerEmail(sttGroup) {
  * Đọc BOT_TOKEN và CHAT_ID từ Script Properties của Apps Script
  */
 function sendTelegramNotification(message) {
+  Logger.log('[TELEGRAM_START] Bắt đầu gọi sendTelegramNotification...');
   try {
     const props = PropertiesService.getScriptProperties();
-    const botToken = props.getProperty('BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN') || '7948647340:AAFWFVUHabmWqsoR53cbPgS5CVWWGjaIae4';
-    const chatId = props.getProperty('CHAT_ID') || props.getProperty('TELEGRAM_CHAT_ID') || '1134598172';
-
-    if (!botToken || !chatId) {
-      Logger.log('CẢNH BÁO TELEGRAM: Chưa cấu hình BOT_TOKEN hoặc CHAT_ID trong Script Properties.');
-      return false;
+    let botToken = props.getProperty('BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
+    if (!botToken || !String(botToken).trim()) {
+      botToken = '7948647340:AAFWFVUHabmWqsoR53cbPgS5CVWWGjaIae4';
+    } else {
+      botToken = String(botToken).trim();
     }
 
-    const url = 'https://api.telegram.org/bot' + botToken.trim() + '/sendMessage';
+    let chatId = props.getProperty('CHAT_ID') || props.getProperty('TELEGRAM_CHAT_ID');
+    if (!chatId || !String(chatId).trim()) {
+      chatId = '1134598172';
+    } else {
+      chatId = String(chatId).trim();
+    }
+
+    Logger.log('[TELEGRAM_CONFIG] BotToken prefix: ' + botToken.substring(0, 10) + '... | ChatID: ' + chatId);
+
+    const url = 'https://api.telegram.org/bot' + botToken + '/sendMessage';
     const payload = {
-      chat_id: chatId.trim(),
+      chat_id: chatId,
       text: message,
       parse_mode: 'HTML',
       disable_web_page_preview: true
@@ -822,14 +831,28 @@ function sendTelegramNotification(message) {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(payload),
-      muteHttpExceptions: true
+      muteHttpExceptions: true,
+      escaping: false
     };
 
+    Logger.log('[TELEGRAM_FETCHING] Đang gửi UrlFetchApp.fetch tới Telegram API...');
+    const startTime = Date.now();
     const response = UrlFetchApp.fetch(url, options);
-    Logger.log('TELEGRAM RESPONSE: ' + response.getContentText());
-    return true;
+    const duration = Date.now() - startTime;
+    const responseText = response.getContentText();
+    const responseCode = response.getResponseCode();
+
+    Logger.log('[TELEGRAM_RESPONSE] Code: ' + responseCode + ' | Duration: ' + duration + 'ms | Output: ' + responseText);
+
+    if (responseCode === 200) {
+      Logger.log('[TELEGRAM_SUCCESS] Gửi tin nhắn Telegram thành công!');
+      return true;
+    } else {
+      Logger.log('[TELEGRAM_ERROR_CODE] Telegram API trả về mã lỗi HTTP ' + responseCode + ': ' + responseText);
+      return false;
+    }
   } catch (err) {
-    Logger.log('LỖI GỬI TELEGRAM: ' + err.toString());
+    Logger.log('[TELEGRAM_EXCEPTION] Ngoại lệ khi gọi UrlFetchApp Telegram: ' + err.toString() + ' | Stack: ' + (err.stack || 'N/A'));
     return false;
   }
 }
@@ -845,6 +868,7 @@ function sendTelegramNotification(message) {
  * 🏷️ CTV: {tên CTV nếu có}
  */
 function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName) {
+  Logger.log('[REPORT_TELEGRAM_START] Chuẩn bị nội dung báo lỗi Telegram cho Email: ' + email + ' | Mã: ' + sttGroup);
   try {
     let formattedDate = '';
     if (reportTime instanceof Date) {
@@ -865,9 +889,12 @@ function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName
       msg += `\n🏷️ <b>CTV:</b> ${String(ctvName).trim()}`;
     }
 
-    return sendTelegramNotification(msg);
+    Logger.log('[REPORT_TELEGRAM_MSG]\n' + msg);
+    const result = sendTelegramNotification(msg);
+    Logger.log('[REPORT_TELEGRAM_RESULT] Kết quả gửi Telegram báo lỗi: ' + result);
+    return result;
   } catch (err) {
-    Logger.log('Lỗi sendReportTelegramAlert: ' + err.toString());
+    Logger.log('[REPORT_TELEGRAM_ERROR] Lỗi trong sendReportTelegramAlert: ' + err.toString());
     return false;
   }
 }
@@ -1187,6 +1214,7 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
     ]);
 
     // GỬI THÔNG BÁO TELEGRAM BÁO LỖI MỚI CHO DÒNG REPORT VỪA TẠO
+    Logger.log('[SUBMIT_REPORT_TELEGRAM_TRIGGER] Kích hoạt gửi Telegram cho Report: ' + reportId + ' | Email: ' + emailClean + ' | Group: ' + sttGroup);
     try {
       let zPhone = '';
       if (zaloPhoneRaw && String(zaloPhoneRaw).trim()) {
@@ -1200,9 +1228,11 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
       const khoInfo = lookupKhoTKFast(emailClean);
       const ctvVal = khoInfo ? khoInfo.ctv : '';
 
-      sendReportTelegramAlert(sttGroup, emailClean, zPhone, now, ctvVal);
+      Logger.log('[SUBMIT_REPORT_CALLING] Đang gọi sendReportTelegramAlert...');
+      const telSuccess = sendReportTelegramAlert(sttGroup, emailClean, zPhone, now, ctvVal);
+      Logger.log('[SUBMIT_REPORT_CALL_DONE] Kết quả sendReportTelegramAlert: ' + telSuccess);
     } catch (telErr) {
-      Logger.log('Lỗi gửi thông báo Telegram báo lỗi: ' + telErr.toString());
+      Logger.log('[SUBMIT_REPORT_TELEGRAM_CATCH_ERROR] Ngoại lệ khi gửi thông báo Telegram: ' + telErr.toString() + ' | Stack: ' + (telErr.stack || 'N/A'));
     }
 
     const cacheHealth = checkCacheHealth();
