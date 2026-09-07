@@ -413,6 +413,11 @@ const state = {
 function switchView(viewName) {
   state.currentView = viewName;
   
+  // Close any open modal overlays when changing views to avoid GPU backdrop blur compositing overhead
+  closeModal('settingsModal');
+  closeModal('tradeModal');
+  closeModal('pairsModal');
+
   // Sidebar & Bottom Nav Active States
   document.querySelectorAll('.sidebar-nav-btn, .bottom-nav-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewName);
@@ -434,7 +439,6 @@ function switchView(viewName) {
     initJournalCharts();
   } else if (viewName === 'settings') {
     loadStoredConfig();
-    document.getElementById('settingsModal')?.classList.remove('hidden');
   }
 }
 
@@ -1109,6 +1113,25 @@ function setupEventListeners() {
       const viewName = e.currentTarget.dataset.view;
       if (viewName) switchView(viewName);
     });
+  });
+
+  // Settings Drawer Triggers & Close Handlers
+  document.querySelectorAll('.open-settings-trigger').forEach(btn => {
+    btn.addEventListener('click', () => {
+      loadStoredConfig();
+      renderPairsTable();
+      document.getElementById('settingsModal')?.classList.remove('hidden');
+    });
+  });
+
+  document.getElementById('btnCloseSettings')?.addEventListener('click', () => {
+    closeModal('settingsModal');
+  });
+
+  document.getElementById('settingsModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'settingsModal') {
+      closeModal('settingsModal');
+    }
   });
 
   // Journal Filter Controls (Nguyên tắc #6)
