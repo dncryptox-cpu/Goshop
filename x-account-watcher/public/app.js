@@ -130,11 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Trigger Manual Scan
   btnScanNow.addEventListener('click', async () => {
-    if (!state.hasXToken) {
-      alert('⚠️ Chưa cấu hình X_BEARER_TOKEN! Vui lòng kiểm tra Vercel Environment Variables trước khi quét.');
-      return;
-    }
-
     btnScanNow.disabled = true;
     showStatusBanner('⚡ Đang kết nối X API v2 để quét bài mới & gọi Gemini dịch tiếng Việt...');
     
@@ -144,8 +139,6 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (data.status === 'success') {
         const { newInserted, duplicatesSkipped, details } = data.result;
-
-        // Check if details contains API errors (e.g. 402 Payment Required)
         const errorDetail = details ? details.find(d => !d.success && d.message) : null;
 
         if (errorDetail) {
@@ -242,9 +235,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // Helper to check if text contains Vietnamese diacritics
+  function isVietnameseText(text) {
+    if (!text) return false;
+    return /[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(text);
+  }
+
+  // Render UI v2 Compact Single Column Card Layout
   function renderPostsFeed(items) {
     if (!items || items.length === 0) {
-      if (!state.hasXToken) {
+      if (!state.hasXToken && !window.location.hostname.includes('godnc.com')) {
         postsFeed.innerHTML = `
           <div class="loading-spinner" style="border-color: var(--accent-warning);">
             <strong style="color: #f5b7b1;">⚠️ BÀI ĐĂNG THẬT SẼ HIỂN THỊ TẠI ĐÂY SAU KHI CẤU HÌNH X API KEY</strong><br>
@@ -258,9 +258,6 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="loading-spinner" style="border-color: #f39c12; background: rgba(243, 156, 18, 0.1);">
             <strong style="color: #f39c12;">⚠️ THÔNG BÁO TỪ X API:</strong><br>
             <span style="font-size: 0.95rem; color: #f8f3e6; display: block; margin: 10px 0;">${escapeHtml(state.lastApiError)}</span>
-            <small style="color: var(--text-muted); line-height: 1.5;">
-              Lưu ý: Gói Free của X API v2 ($0/tháng) chỉ cho phép đăng bài (Write-only). X API v2 yêu cầu nâng cấp gói Basic ($100/tháng) để cấp quyền đọc bài viết từ các tài khoản.
-            </small>
           </div>
         `;
       } else {
@@ -284,10 +281,42 @@ document.addEventListener('DOMContentLoaded', () => {
       const typeLabel = item.post_type === 'reply' ? '💬 Reply' : '📝 Bài gốc';
       const typeClass = item.post_type === 'reply' ? 'reply' : 'tweet';
 
+      const isVietnamese = item.original_lang === 'vi' || isVietnameseText(item.original_content);
       const originalHtml = escapeHtml(item.original_content);
-      const translatedHtml = item.translated_content 
-        ? escapeHtml(item.translated_content)
-        : (item.original_lang === 'vi' ? '<em style="color: var(--text-muted);">(Gốc là Tiếng Việt - Không cần dịch)</em>' : '<em style="color: var(--text-muted);">(Chưa dịch hoặc chưa cấu hình GEMINI_API_KEY)</em>');
+      const translatedHtml = item.translated_content ? escapeHtml(item.translated_content) : null;
+
+      let contentMarkup = '';
+
+      if (isVietnamese || !translatedHtml) {
+        // Vietnamese Original Post: Render 1 single main content column (ZERO EMPTY BOXES OR PLACEHOLDERS)
+        contentMarkup = `
+          <div class="single-content-container">
+            <div class="main-text-box vietnamese">
+              <div class="vi-badge">🇻🇳 Nội dung gốc (Tiếng Việt)</div>
+              <div class="text-body">${originalHtml}</div>
+            </div>
+          </div>
+        `;
+      } else {
+        // English Original Post: Render Vietnamese Translation as Primary + Accordion Toggle for English Original
+        contentMarkup = `
+          <div class="single-content-container">
+            <div class="main-text-box translated">
+              <div class="gemini-badge">✨ Bản dịch Tiếng Việt (Gemini AI)</div>
+              <div class="text-body">${translatedHtml}</div>
+            </div>
+
+            <button class="accordion-toggle-btn" onclick="toggleAccordion(${item.id})">
+              <span id="acc-label-${item.id}">🌐 Xem bản gốc tiếng Anh</span> <span id="acc-arrow-${item.id}">▾</span>
+            </button>
+
+            <div class="accordion-box hidden" id="acc-box-${item.id}">
+              <div class="accordion-label">Nguyên văn Tiếng Anh (X):</div>
+              <div class="original-en-text">${originalHtml}</div>
+            </div>
+          </div>
+        `;
+      }
 
       return `
         <article class="post-card" id="post-${item.id}">
@@ -299,17 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="post-date">${dateStr}</span>
           </div>
 
-          <div class="dual-content-grid">
-            <div class="content-col col-original">
-              <div class="col-label">Nội dung gốc (${(item.original_lang || 'en').toUpperCase()})</div>
-              <div class="text-body">${originalHtml}</div>
-            </div>
-
-            <div class="content-col col-translated">
-              <div class="col-label gemini">✨ Dịch Tiếng Việt (Gemini AI)</div>
-              <div class="text-body translated-body">${translatedHtml}</div>
-            </div>
-          </div>
+          ${contentMarkup}
 
           <div class="card-footer">
             <a href="${item.original_url}" target="_blank" class="original-link">Xem bài gốc trên X ↗</a>
@@ -379,6 +398,25 @@ document.addEventListener('DOMContentLoaded', () => {
       console.warn('Error rendering dynamic tabs:', err);
     }
   }
+
+  // Accordion Toggle Helper
+  window.toggleAccordion = (id) => {
+    const box = document.getElementById(`acc-box-${id}`);
+    const label = document.getElementById(`acc-label-${id}`);
+    const arrow = document.getElementById(`acc-arrow-${id}`);
+    if (box) {
+      const isHidden = box.classList.contains('hidden');
+      if (isHidden) {
+        box.classList.remove('hidden');
+        if (label) label.textContent = '🌐 Thu gọn bản gốc tiếng Anh';
+        if (arrow) arrow.textContent = '▴';
+      } else {
+        box.classList.add('hidden');
+        if (label) label.textContent = '🌐 Xem bản gốc tiếng Anh';
+        if (arrow) arrow.textContent = '▾';
+      }
+    }
+  };
 
   // Global Window Helper Functions
   window.toggleBookmark = async (id) => {
