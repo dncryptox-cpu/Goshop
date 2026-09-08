@@ -15,6 +15,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // 1. GET /api/config-status - Returns real status & health check of API keys
+app.get('/api/config-status', async (req, res) => {
   const rawKey = process.env.GEMINI_API_KEY || '';
   const cleanKey = rawKey.trim().replace(/^["']|["']$/g, '');
   const hasXToken = Boolean(process.env.X_BEARER_TOKEN && process.env.X_BEARER_TOKEN.trim() !== '');
