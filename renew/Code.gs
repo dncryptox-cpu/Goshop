@@ -990,7 +990,6 @@ function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName
     let msg = `⚠️ <b>CÓ BÁO LỖI MỚI TỪ KHÁCH!</b>\n\n` +
               `📦 <b>Mã:</b> ${sttGroup || 'N/A'}\n` +
               `👤 <b>Khách:</b> ${email || 'N/A'}\n` +
-              `📞 <b>Zalo:</b> ${zaloPhone || 'Chưa cung cấp'}\n` +
               `🕐 <b>Thời gian:</b> ${formattedDate}`;
 
     if (ctvName && String(ctvName).trim() && String(ctvName).trim().toUpperCase() !== 'CTV' && String(ctvName).trim() !== '#REF!') {
