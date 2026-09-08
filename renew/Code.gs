@@ -31,14 +31,26 @@ function clearRequestCache() {
 }
 
 function getSpreadsheetCached() {
+  const _s = new Date().getTime();
+  Logger.log('getSpreadsheetCached - START: ' + _s);
   if (!_REQUEST_CACHE.spreadsheet) {
     try {
+      const _s1 = new Date().getTime();
+      Logger.log('SpreadsheetApp.getActiveSpreadsheet - START: ' + _s1);
       _REQUEST_CACHE.spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+      const _e1 = new Date().getTime();
+      Logger.log('SpreadsheetApp.getActiveSpreadsheet - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
     } catch (err) {}
     if (!_REQUEST_CACHE.spreadsheet) {
+      const _s2 = new Date().getTime();
+      Logger.log('SpreadsheetApp.openById(1-rxr...) - START: ' + _s2);
       _REQUEST_CACHE.spreadsheet = SpreadsheetApp.openById('1-rxrJrBTMY3DqJ_DMRzPMg7lzEEIhvpfxPtaEVPl0jY');
+      const _e2 = new Date().getTime();
+      Logger.log('SpreadsheetApp.openById(1-rxr...) - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
     }
   }
+  const _e = new Date().getTime();
+  Logger.log('getSpreadsheetCached - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
   return _REQUEST_CACHE.spreadsheet;
 }
 
@@ -47,26 +59,44 @@ function getSpreadsheet() {
 }
 
 function getSheetCached(sheetName) {
+  const _s = new Date().getTime();
+  Logger.log('getSheetCached(' + sheetName + ') - START: ' + _s);
   if (!_REQUEST_CACHE.sheets[sheetName]) {
     const ss = getSpreadsheetCached();
+    const _s1 = new Date().getTime();
+    Logger.log('ss.getSheetByName(' + sheetName + ') - START: ' + _s1);
     _REQUEST_CACHE.sheets[sheetName] = ss.getSheetByName(sheetName);
+    const _e1 = new Date().getTime();
+    Logger.log('ss.getSheetByName(' + sheetName + ') - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
   }
+  const _e = new Date().getTime();
+  Logger.log('getSheetCached(' + sheetName + ') - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
   return _REQUEST_CACHE.sheets[sheetName];
 }
 
 function readSheetValuesCached(sheetName) {
+  const _s = new Date().getTime();
+  Logger.log('readSheetValuesCached(' + sheetName + ') - START: ' + _s);
   if (!_REQUEST_CACHE.sheetValues[sheetName]) {
     const sheet = getSheetCached(sheetName);
     if (!sheet || sheet.getLastRow() === 0) {
       _REQUEST_CACHE.sheetValues[sheetName] = [];
     } else {
+      const _s1 = new Date().getTime();
+      Logger.log('sheet.getDataRange().getValues() (' + sheetName + ') - START: ' + _s1);
       _REQUEST_CACHE.sheetValues[sheetName] = sheet.getDataRange().getValues();
+      const _e1 = new Date().getTime();
+      Logger.log('sheet.getDataRange().getValues() (' + sheetName + ') - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
     }
   }
+  const _e = new Date().getTime();
+  Logger.log('readSheetValuesCached(' + sheetName + ') - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
   return _REQUEST_CACHE.sheetValues[sheetName];
 }
 
 function readSheetAsObjects(sheetName) {
+  const _s = new Date().getTime();
+  Logger.log('readSheetAsObjects(' + sheetName + ') - START: ' + _s);
   if (!_REQUEST_CACHE.sheetObjects[sheetName]) {
     const values = readSheetValuesCached(sheetName);
     if (values.length <= 1) {
@@ -85,36 +115,78 @@ function readSheetAsObjects(sheetName) {
       _REQUEST_CACHE.sheetObjects[sheetName] = objects;
     }
   }
+  const _e = new Date().getTime();
+  Logger.log('readSheetAsObjects(' + sheetName + ') - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
   return _REQUEST_CACHE.sheetObjects[sheetName];
 }
 
 function appendRowFast(sheetName, rowArray) {
+  const _s = new Date().getTime();
+  Logger.log('appendRowFast(' + sheetName + ') - START: ' + _s);
   const sheet = getSheetCached(sheetName);
-  if (!sheet) return;
+  if (!sheet) {
+    const _e = new Date().getTime();
+    Logger.log('appendRowFast(' + sheetName + ') - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
+    return;
+  }
+  const _s1 = new Date().getTime();
+  Logger.log('sheet.appendRow(' + sheetName + ') - START: ' + _s1);
   sheet.appendRow(rowArray);
-  
+  const _e1 = new Date().getTime();
+  Logger.log('sheet.appendRow(' + sheetName + ') - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
   delete _REQUEST_CACHE.sheetValues[sheetName];
   delete _REQUEST_CACHE.sheetObjects[sheetName];
+  const _e = new Date().getTime();
+  Logger.log('appendRowFast(' + sheetName + ') - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
 }
 
 function updateRowRangeFast(sheetName, rowIndex, startCol, rowValuesArray) {
+  const _s = new Date().getTime();
+  Logger.log('updateRowRangeFast(' + sheetName + ') - START: ' + _s);
   const sheet = getSheetCached(sheetName);
-  if (!sheet || !rowValuesArray || rowValuesArray.length === 0) return;
+  if (!sheet || !rowValuesArray || rowValuesArray.length === 0) {
+    const _e = new Date().getTime();
+    Logger.log('updateRowRangeFast(' + sheetName + ') - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
+    return;
+  }
+  const _s1 = new Date().getTime();
+  Logger.log('sheet.getRange.setValues(' + sheetName + ') - START: ' + _s1);
   sheet.getRange(rowIndex, startCol, 1, rowValuesArray.length).setValues([rowValuesArray]);
+  const _e1 = new Date().getTime();
+  Logger.log('sheet.getRange.setValues(' + sheetName + ') - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
 
   delete _REQUEST_CACHE.sheetValues[sheetName];
   delete _REQUEST_CACHE.sheetObjects[sheetName];
+  const _e = new Date().getTime();
+  Logger.log('updateRowRangeFast(' + sheetName + ') - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
 }
 
 function getKhoTKDataCached() {
+  const _s = new Date().getTime();
+  Logger.log('getKhoTKDataCached - START: ' + _s);
   if (!_REQUEST_CACHE.khoTkValues) {
     try {
+      const _s1 = new Date().getTime();
+      Logger.log('SpreadsheetApp.openById(KHO_TK_ID) - START: ' + _s1);
       const khoSpreadsheet = SpreadsheetApp.openById(KHO_TK_ID);
+      const _e1 = new Date().getTime();
+      Logger.log('SpreadsheetApp.openById(KHO_TK_ID) - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
+      const _s2 = new Date().getTime();
+      Logger.log('khoSpreadsheet.getSheetByName(' + KHO_TK_TAB_NAME + ') - START: ' + _s2);
       const dataSheet = khoSpreadsheet.getSheetByName(KHO_TK_TAB_NAME);
+      const _e2 = new Date().getTime();
+      Logger.log('khoSpreadsheet.getSheetByName(' + KHO_TK_TAB_NAME + ') - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
+
       if (dataSheet && dataSheet.getLastRow() > 1) {
         const lastRow = dataSheet.getLastRow();
         const maxCols = Math.min(18, Math.max(16, dataSheet.getLastColumn()));
+        const _s3 = new Date().getTime();
+        Logger.log('dataSheet.getRange(1, 1, ' + lastRow + ', ' + maxCols + ').getValues() - START: ' + _s3);
         _REQUEST_CACHE.khoTkValues = dataSheet.getRange(1, 1, lastRow, maxCols).getValues();
+        const _e3 = new Date().getTime();
+        Logger.log('dataSheet.getRange(1, 1, ' + lastRow + ', ' + maxCols + ').getValues() - END: ' + _e3 + ' | Duration: ' + (_e3 - _s3) + 'ms');
       } else {
         _REQUEST_CACHE.khoTkValues = [];
       }
@@ -123,6 +195,8 @@ function getKhoTKDataCached() {
       _REQUEST_CACHE.khoTkValues = [];
     }
   }
+  const _e = new Date().getTime();
+  Logger.log('getKhoTKDataCached - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
   return _REQUEST_CACHE.khoTkValues;
 }
 
@@ -384,10 +458,24 @@ function setupDatabase() {
  * Helper: Kiểm tra sức khỏe cache email
  */
 function checkCacheHealth() {
+  const _s = new Date().getTime();
+  Logger.log('checkCacheHealth - START: ' + _s);
+
+  const _s1 = new Date().getTime();
+  Logger.log('checkCacheHealth -> SpreadsheetApp.getActiveSpreadsheet - START: ' + _s1);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const _e1 = new Date().getTime();
+  Logger.log('checkCacheHealth -> SpreadsheetApp.getActiveSpreadsheet - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
+  const _s2 = new Date().getTime();
+  Logger.log('checkCacheHealth -> ss.getSheetByName(EMAIL_LOOKUP_CACHE) - START: ' + _s2);
   const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+  const _e2 = new Date().getTime();
+  Logger.log('checkCacheHealth -> ss.getSheetByName(EMAIL_LOOKUP_CACHE) - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
 
   if (!cacheSheet || cacheSheet.getLastRow() <= 1) {
+    const _e = new Date().getTime();
+    Logger.log('checkCacheHealth - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
     return {
       cache_stale: true,
       stale_hours: 999,
@@ -396,7 +484,12 @@ function checkCacheHealth() {
     };
   }
 
+  const _s3 = new Date().getTime();
+  Logger.log('checkCacheHealth -> cacheSheet.getDataRange().getValues() - START: ' + _s3);
   const data = cacheSheet.getDataRange().getValues();
+  const _e3 = new Date().getTime();
+  Logger.log('checkCacheHealth -> cacheSheet.getDataRange().getValues() - END: ' + _e3 + ' | Duration: ' + (_e3 - _s3) + 'ms');
+
   let latestSynced = null;
   let totalCount = data.length - 1;
 
@@ -411,6 +504,8 @@ function checkCacheHealth() {
   }
 
   if (!latestSynced || isNaN(latestSynced.getTime())) {
+    const _e = new Date().getTime();
+    Logger.log('checkCacheHealth - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
     return {
       cache_stale: true,
       stale_hours: 999,
@@ -423,12 +518,16 @@ function checkCacheHealth() {
   const diffHours = (now.getTime() - latestSynced.getTime()) / (1000 * 3600);
   const staleHoursRounded = Math.round(diffHours * 10) / 10;
 
-  return {
+  const res = {
     cache_stale: diffHours > STALE_CACHE_THRESHOLD_HOURS,
     stale_hours: staleHoursRounded,
     last_synced_at: latestSynced.toISOString(),
     count: totalCount
   };
+
+  const _e = new Date().getTime();
+  Logger.log('checkCacheHealth - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
+  return res;
 }
 
 /**
@@ -800,9 +899,15 @@ function getSttOwnerEmail(sttGroup) {
  * Đọc BOT_TOKEN và CHAT_ID từ Script Properties của Apps Script
  */
 function sendTelegramNotification(message) {
-  Logger.log('[TELEGRAM_START] Bắt đầu gọi sendTelegramNotification...');
+  const _s = new Date().getTime();
+  Logger.log('sendTelegramNotification - START: ' + _s);
   try {
+    const _s1 = new Date().getTime();
+    Logger.log('sendTelegramNotification -> PropertiesService.getScriptProperties - START: ' + _s1);
     const props = PropertiesService.getScriptProperties();
+    const _e1 = new Date().getTime();
+    Logger.log('sendTelegramNotification -> PropertiesService.getScriptProperties - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
     let botToken = props.getProperty('BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
     if (!botToken || !String(botToken).trim()) {
       botToken = '7948647340:AAFWFVUHabmWqsoR53cbPgS5CVWWGjaIae4';
@@ -836,39 +941,42 @@ function sendTelegramNotification(message) {
     };
 
     Logger.log('[TELEGRAM_FETCHING] Đang gửi UrlFetchApp.fetch tới Telegram API...');
-    const startTime = Date.now();
+    const _s2 = new Date().getTime();
+    Logger.log('sendTelegramNotification -> UrlFetchApp.fetch - START: ' + _s2);
     const response = UrlFetchApp.fetch(url, options);
-    const duration = Date.now() - startTime;
+    const _e2 = new Date().getTime();
+    Logger.log('sendTelegramNotification -> UrlFetchApp.fetch - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
+
     const responseText = response.getContentText();
     const responseCode = response.getResponseCode();
 
-    Logger.log('[TELEGRAM_RESPONSE] Code: ' + responseCode + ' | Duration: ' + duration + 'ms | Output: ' + responseText);
+    Logger.log('[TELEGRAM_RESPONSE] Code: ' + responseCode + ' | Output: ' + responseText);
 
     if (responseCode === 200) {
       Logger.log('[TELEGRAM_SUCCESS] Gửi tin nhắn Telegram thành công!');
+      const _e = new Date().getTime();
+      Logger.log('sendTelegramNotification - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
       return true;
     } else {
       Logger.log('[TELEGRAM_ERROR_CODE] Telegram API trả về mã lỗi HTTP ' + responseCode + ': ' + responseText);
+      const _e = new Date().getTime();
+      Logger.log('sendTelegramNotification (FAILED_HTTP) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
       return false;
     }
   } catch (err) {
-    Logger.log('[TELEGRAM_EXCEPTION] Ngoại lệ khi gọi UrlFetchApp Telegram: ' + err.toString() + ' | Stack: ' + (err.stack || 'N/A'));
+    Logger.log('[TELEGRAM_EXCEPTION] Ngoại lệ khi gọi UrlFetchApp Telegram: ' + err.toString());
+    const _e = new Date().getTime();
+    Logger.log('sendTelegramNotification (EXCEPTION) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
     return false;
   }
 }
 
 /**
  * GỬI THÔNG BÁO BÁO LỖI MỚI TỪ KHÁCH VỀ TELEGRAM BOT
- * Format chuẩn tương tự thông báo đơn hàng:
- * ⚠️ CÓ BÁO LỖI MỚI TỪ KHÁCH!
- * 📦 Mã: {RN.../PL...}
- * 👤 Khách: {email}
- * 📞 Zalo: {số zalo}
- * 🕐 Thời gian: {ngày giờ báo lỗi}
- * 🏷️ CTV: {tên CTV nếu có}
  */
 function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName) {
-  Logger.log('[REPORT_TELEGRAM_START] Chuẩn bị nội dung báo lỗi Telegram cho Email: ' + email + ' | Mã: ' + sttGroup);
+  const _s = new Date().getTime();
+  Logger.log('sendReportTelegramAlert - START: ' + _s);
   try {
     let formattedDate = '';
     if (reportTime instanceof Date) {
@@ -890,11 +998,19 @@ function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName
     }
 
     Logger.log('[REPORT_TELEGRAM_MSG]\n' + msg);
+    const _s1 = new Date().getTime();
+    Logger.log('sendReportTelegramAlert -> sendTelegramNotification - START: ' + _s1);
     const result = sendTelegramNotification(msg);
-    Logger.log('[REPORT_TELEGRAM_RESULT] Kết quả gửi Telegram báo lỗi: ' + result);
+    const _e1 = new Date().getTime();
+    Logger.log('sendReportTelegramAlert -> sendTelegramNotification - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+    
+    const _e = new Date().getTime();
+    Logger.log('sendReportTelegramAlert - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
     return result;
   } catch (err) {
     Logger.log('[REPORT_TELEGRAM_ERROR] Lỗi trong sendReportTelegramAlert: ' + err.toString());
+    const _e = new Date().getTime();
+    Logger.log('sendReportTelegramAlert (ERROR) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
     return false;
   }
 }
@@ -903,21 +1019,47 @@ function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName
  * Tab TELEGRAM_QUEUE (Cột: queue_id, stt_group, email, zalo_phone, ctv, status, created_at, sent_at)
  */
 function enqueueTelegramNotification(sttGroup, email, zaloPhone, ctvName) {
+  const _s = new Date().getTime();
+  Logger.log('enqueueTelegramNotification - START: ' + _s);
   try {
+    const _s1 = new Date().getTime();
+    Logger.log('enqueueTelegramNotification -> getSpreadsheetCached - START: ' + _s1);
     const ss = getSpreadsheetCached();
+    const _e1 = new Date().getTime();
+    Logger.log('enqueueTelegramNotification -> getSpreadsheetCached - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
+    const _s2 = new Date().getTime();
+    Logger.log('enqueueTelegramNotification -> ss.getSheetByName(TELEGRAM_QUEUE) - START: ' + _s2);
     let qSheet = ss.getSheetByName('TELEGRAM_QUEUE');
+    const _e2 = new Date().getTime();
+    Logger.log('enqueueTelegramNotification -> ss.getSheetByName(TELEGRAM_QUEUE) - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
+
     if (!qSheet) {
+      const _s3 = new Date().getTime();
+      Logger.log('enqueueTelegramNotification -> ss.insertSheet(TELEGRAM_QUEUE) - START: ' + _s3);
       qSheet = ss.insertSheet('TELEGRAM_QUEUE');
       qSheet.appendRow(['queue_id', 'stt_group', 'email', 'zalo_phone', 'ctv', 'status', 'created_at', 'sent_at']);
       qSheet.getRange(1, 1, 1, 8).setFontWeight('bold');
+      const _e3 = new Date().getTime();
+      Logger.log('enqueueTelegramNotification -> ss.insertSheet(TELEGRAM_QUEUE) - END: ' + _e3 + ' | Duration: ' + (_e3 - _s3) + 'ms');
     }
     const qId = 'TQ-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     const nowIso = new Date().toISOString();
+    
+    const _s4 = new Date().getTime();
+    Logger.log('enqueueTelegramNotification -> qSheet.appendRow - START: ' + _s4);
     qSheet.appendRow([qId, sttGroup || '', email || '', zaloPhone || '', ctvName || '', 'PENDING', nowIso, '']);
+    const _e4 = new Date().getTime();
+    Logger.log('enqueueTelegramNotification -> qSheet.appendRow - END: ' + _e4 + ' | Duration: ' + (_e4 - _s4) + 'ms');
+    
     Logger.log('[TELEGRAM_QUEUE_ENQUEUE] Đã thêm báo lỗi vào Telegram Queue: ' + qId + ' | Email: ' + email);
+    const _e = new Date().getTime();
+    Logger.log('enqueueTelegramNotification - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
     return qId;
   } catch (err) {
     Logger.log('[TELEGRAM_QUEUE_ENQUEUE_ERROR] Lỗi enqueueTelegramNotification: ' + err.toString());
+    const _e = new Date().getTime();
+    Logger.log('enqueueTelegramNotification (ERROR) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
     return null;
   }
 }
@@ -973,12 +1115,17 @@ function processTelegramQueue() {
 
 /**
  * HÀM DÙNG CHUNG DUY NHẤT: findOrCreateTicketForGroup(sttGroup, now, customerEmail)
- * 1. Kiểm tra có ticket mở ('Mới' / 'Đang xử lý') -> Nối vào ticket đó. (KHÔNG gửi Telegram)
- * 2. Kiểm tra ticket đóng gần nhất trong 24h -> Tạo ticket mới đánh dấu is_recurring = true, recur_count += 1. (GỬI Telegram tái phát)
- * 3. Nếu không có -> Tạo ticket mới bình thường. (GỬI Telegram sự cố mới)
  */
 function findOrCreateTicketForGroup(sttGroup, now, customerEmail, activityStatus) {
+  const _s = new Date().getTime();
+  Logger.log('findOrCreateTicketForGroup - START: ' + _s);
+
+  const _s1 = new Date().getTime();
+  Logger.log('findOrCreateTicketForGroup -> readSheetAsObjects(TICKETS) - START: ' + _s1);
   const tickets = readSheetAsObjects('TICKETS');
+  const _e1 = new Date().getTime();
+  Logger.log('findOrCreateTicketForGroup -> readSheetAsObjects(TICKETS) - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
   const nowIso = now.toISOString();
 
   let openTicketRowIndex = -1;
@@ -1026,14 +1173,25 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail, activityStatus
 
   if (openTicketData) {
     // Đã có ticket mở -> Cập nhật updated_at
+    const _s2 = new Date().getTime();
+    Logger.log('findOrCreateTicketForGroup -> updateRowRangeFast(TICKETS) - START: ' + _s2);
     updateRowRangeFast('TICKETS', openTicketRowIndex, 5, [nowIso]);
+    const _e2 = new Date().getTime();
+    Logger.log('findOrCreateTicketForGroup -> updateRowRangeFast(TICKETS) - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
+
     // Nếu ticket chưa có activity_status mà lần này có thông tin -> tự động cập nhật
     if (activityStatus && (!openTicketData.activity_status || openTicketData.activity_status === '')) {
       try {
+        const _s3 = new Date().getTime();
+        Logger.log('findOrCreateTicketForGroup -> updateActivityStatus - START: ' + _s3);
         updateActivityStatus(openTicketData.ticket_id, activityStatus);
+        const _e3 = new Date().getTime();
+        Logger.log('findOrCreateTicketForGroup -> updateActivityStatus - END: ' + _e3 + ' | Duration: ' + (_e3 - _s3) + 'ms');
         openTicketData.activity_status = activityStatus;
       } catch (eAct) {}
     }
+    const _e = new Date().getTime();
+    Logger.log('findOrCreateTicketForGroup (EXISTING OPEN) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
     return {
       ticket_id: openTicketData.ticket_id,
       stt_group: sttGroup,
@@ -1063,6 +1221,8 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail, activityStatus
   const ticketStatus = 'Mới';
   const actStatusClean = (activityStatus === 'Đang hoạt động' || activityStatus === 'Không hoạt động') ? activityStatus : '';
 
+  const _s4 = new Date().getTime();
+  Logger.log('findOrCreateTicketForGroup -> appendRowFast(TICKETS) - START: ' + _s4);
   appendRowFast('TICKETS', [
     targetTicketId,
     sttGroup,
@@ -1078,9 +1238,11 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail, activityStatus
     'Fix thường',
     actStatusClean
   ]);
+  const _e4 = new Date().getTime();
+  Logger.log('findOrCreateTicketForGroup -> appendRowFast(TICKETS) - END: ' + _e4 + ' | Duration: ' + (_e4 - _s4) + 'ms');
 
-  // (Đã chuyển sang gửi thông báo Telegram cho mỗi báo lỗi mới theo format chuẩn trong submitReport / submitBulkReport)
-
+  const _e = new Date().getTime();
+  Logger.log('findOrCreateTicketForGroup (NEW CREATED) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
   return {
     ticket_id: targetTicketId,
     stt_group: sttGroup,
@@ -1095,7 +1257,6 @@ function findOrCreateTicketForGroup(sttGroup, now, customerEmail, activityStatus
 
 /**
  * API Admin: updateActivityStatus(ticketIdOrGroupInput, activityStatus)
- * Cập nhật/Tạo trạng thái hoạt động ("Đang hoạt động" / "Không hoạt động") cho 1 HOẶC HÀNG LOẠT mã Fam (vd: PL387, PL388, PL389)
  */
 function updateActivityStatus(ticketIdOrGroupInput, activityStatus) {
   if (!ticketIdOrGroupInput) {
@@ -1223,7 +1384,12 @@ function updateActivityStatus(ticketIdOrGroupInput, activityStatus) {
  * API 1: submitReport(email, message, submittedBy, zaloPhoneRaw)
  */
 function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRaw, activityStatusRaw) {
+  const _subStart = new Date().getTime();
+  Logger.log('submitReport OVERALL - START: ' + _subStart);
+
   if (!emailRaw) {
+    const _subEnd = new Date().getTime();
+    Logger.log('submitReport OVERALL - END: ' + _subEnd + ' | Duration: ' + (_subEnd - _subStart) + 'ms');
     return { 
       success: false, 
       error: "missing_email",
@@ -1232,9 +1398,16 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
   }
 
   const emailClean = String(emailRaw).trim().toLowerCase();
+
+  const _s1 = new Date().getTime();
+  Logger.log('submitReport -> getSttGroupByEmail - START: ' + _s1);
   const sttGroup = getSttGroupByEmail(emailClean);
+  const _e1 = new Date().getTime();
+  Logger.log('submitReport -> getSttGroupByEmail - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
 
   if (!sttGroup) {
+    const _subEnd = new Date().getTime();
+    Logger.log('submitReport OVERALL - END: ' + _subEnd + ' | Duration: ' + (_subEnd - _subStart) + 'ms');
     return {
       success: false,
       error: "email_not_found",
@@ -1253,21 +1426,34 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
     }
   }
 
+  const _sLock = new Date().getTime();
+  Logger.log('submitReport -> LockService.getScriptLock().tryLock(3000) - START: ' + _sLock);
   const lock = LockService.getScriptLock();
   let lockAcquired = false;
   try {
-    lockAcquired = lock.tryLock(3000); // Tối đa 3 giây xin lock, KHÔNG BAO GIỜ treo 20-45 giây!
+    lockAcquired = lock.tryLock(3000);
   } catch (lErr) {
     Logger.log('[LOCK_TRY_WARN] Không xin được lock trong 3s, tiếp tục thực thi an toàn: ' + lErr.toString());
   }
+  const _eLock = new Date().getTime();
+  Logger.log('submitReport -> LockService.getScriptLock().tryLock(3000) - END: ' + _eLock + ' | Duration: ' + (_eLock - _sLock) + 'ms | Acquired: ' + lockAcquired);
 
   try {
     const now = new Date();
     const nowIso = now.toISOString();
-    const ticketInfo = findOrCreateTicketForGroup(sttGroup, now, emailClean, actStatus);
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const _s2 = new Date().getTime();
+    Logger.log('submitReport -> findOrCreateTicketForGroup - START: ' + _s2);
+    const ticketInfo = findOrCreateTicketForGroup(sttGroup, now, emailClean, actStatus);
+    const _e2 = new Date().getTime();
+    Logger.log('submitReport -> findOrCreateTicketForGroup - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
+
+    const _s3 = new Date().getTime();
+    Logger.log('submitReport -> getSpreadsheetCached & getSheetByName(REPORTS) - START: ' + _s3);
+    const ss = getSpreadsheetCached();
     const reportsSheet = ss.getSheetByName('REPORTS');
+    const _e3 = new Date().getTime();
+    Logger.log('submitReport -> getSpreadsheetCached & getSheetByName(REPORTS) - END: ' + _e3 + ' | Duration: ' + (_e3 - _s3) + 'ms');
 
     let finalMsg = message || '';
     if (zaloPhoneRaw && String(zaloPhoneRaw).trim()) {
@@ -1277,8 +1463,10 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
       }
     }
 
-    // Insert 1 dòng vào REPORTS (ghi kèm submitted_by ở cột 6)
     const reportId = 'RP-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+
+    const _s4 = new Date().getTime();
+    Logger.log('submitReport -> appendRowFast(REPORTS) - START: ' + _s4);
     appendRowFast('REPORTS', [
       reportId,
       ticketInfo.ticket_id,
@@ -1287,6 +1475,8 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
       finalMsg,
       submittedBy || ''
     ]);
+    const _e4 = new Date().getTime();
+    Logger.log('submitReport -> appendRowFast(REPORTS) - END: ' + _e4 + ' | Duration: ' + (_e4 - _s4) + 'ms');
 
     let zPhone = '';
     if (zaloPhoneRaw && String(zaloPhoneRaw).trim()) {
@@ -1297,30 +1487,41 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
       if (zMatch) zPhone = zMatch[1];
     }
 
+    const _s5 = new Date().getTime();
+    Logger.log('submitReport -> lookupKhoTKFast(emailClean) - START: ' + _s5);
     const khoInfo = lookupKhoTKFast(emailClean);
+    const _e5 = new Date().getTime();
+    Logger.log('submitReport -> lookupKhoTKFast(emailClean) - END: ' + _e5 + ' | Duration: ' + (_e5 - _s5) + 'ms');
     const ctvVal = khoInfo ? khoInfo.ctv : '';
 
-    // Ghi nhận trước vào Hàng Đợi Telegram (Đảm bảo 100% không mất tin nhắn)
+    const _s6 = new Date().getTime();
+    Logger.log('submitReport -> enqueueTelegramNotification - START: ' + _s6);
     enqueueTelegramNotification(sttGroup, emailClean, zPhone, ctvVal);
+    const _e6 = new Date().getTime();
+    Logger.log('submitReport -> enqueueTelegramNotification - END: ' + _e6 + ' | Duration: ' + (_e6 - _s6) + 'ms');
 
-    // GIẢI PHÓNG LOCK NGAY LẬP TỨC TRƯỚC KHI GỬI TELEGRAM (RESPONSE TRẢ VỀ CHO KHÁCH TRONG < 1S!)
     if (lockAcquired) {
       try { lock.releaseLock(); lockAcquired = false; } catch (rErr) {}
     }
 
-    // GỬI THÔNG BÁO TELEGRAM BÁO LỖI MỚI (BẤT ĐỒNG BỘ / KHÔNG CHẶN RESPONSE)
-    Logger.log('[SUBMIT_REPORT_TELEGRAM_TRIGGER] Kích hoạt gửi Telegram cho Report: ' + reportId + ' | Email: ' + emailClean + ' | Group: ' + sttGroup);
+    const _s7 = new Date().getTime();
+    Logger.log('submitReport -> sendReportTelegramAlert - START: ' + _s7);
     try {
-      Logger.log('[SUBMIT_REPORT_CALLING] Đang gọi sendReportTelegramAlert...');
       const telSuccess = sendReportTelegramAlert(sttGroup, emailClean, zPhone, now, ctvVal);
-      Logger.log('[SUBMIT_REPORT_CALL_DONE] Kết quả sendReportTelegramAlert: ' + telSuccess);
+      const _e7 = new Date().getTime();
+      Logger.log('submitReport -> sendReportTelegramAlert - END: ' + _e7 + ' | Duration: ' + (_e7 - _s7) + 'ms | Success: ' + telSuccess);
     } catch (telErr) {
-      Logger.log('[SUBMIT_REPORT_TELEGRAM_CATCH_ERROR] Ngoại lệ khi gửi thông báo Telegram: ' + telErr.toString() + ' | Stack: ' + (telErr.stack || 'N/A'));
+      const _e7 = new Date().getTime();
+      Logger.log('submitReport -> sendReportTelegramAlert - ERROR: ' + _e7 + ' | Duration: ' + (_e7 - _s7) + 'ms | Err: ' + telErr.toString());
     }
 
+    const _s8 = new Date().getTime();
+    Logger.log('submitReport -> checkCacheHealth - START: ' + _s8);
     const cacheHealth = checkCacheHealth();
+    const _e8 = new Date().getTime();
+    Logger.log('submitReport -> checkCacheHealth - END: ' + _e8 + ' | Duration: ' + (_e8 - _s8) + 'ms');
 
-    return {
+    const res = {
       success: true,
       stt_group: sttGroup,
       ticket_id: ticketInfo.ticket_id,
@@ -1656,13 +1857,28 @@ function checkBulkStatus(rawTextOrList) {
  * fallback sang lookupKhoTKDirect nếu chưa có trong cache.
  */
 function lookupKhoTKFast(emailClean) {
-  if (!emailClean) return null;
+  const _s = new Date().getTime();
+  Logger.log('lookupKhoTKFast - START: ' + _s);
+  if (!emailClean) {
+    const _e = new Date().getTime();
+    Logger.log('lookupKhoTKFast - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
+    return null;
+  }
   const targetEmail = String(emailClean).trim().toLowerCase();
-  if (!targetEmail || !targetEmail.includes('@')) return null;
+  if (!targetEmail || !targetEmail.includes('@')) {
+    const _e = new Date().getTime();
+    Logger.log('lookupKhoTKFast - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
+    return null;
+  }
 
   // 1. Tra cứu siêu tốc trong tab EMAIL_LOOKUP_CACHE (0.01s)
   try {
+    const _s1 = new Date().getTime();
+    Logger.log('lookupKhoTKFast -> readSheetAsObjects(EMAIL_LOOKUP_CACHE) - START: ' + _s1);
     const cacheObjects = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
+    const _e1 = new Date().getTime();
+    Logger.log('lookupKhoTKFast -> readSheetAsObjects(EMAIL_LOOKUP_CACHE) - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
     if (cacheObjects && cacheObjects.length > 0) {
       for (let i = 0; i < cacheObjects.length; i++) {
         const item = cacheObjects[i];
@@ -1674,6 +1890,8 @@ function lookupKhoTKFast(emailClean) {
           const ngayHetHan = String(item.ngay_het_han || (item._rowValues ? item._rowValues[5] : '') || '').trim();
 
           if (sttGroup) {
+            const _e = new Date().getTime();
+            Logger.log('lookupKhoTKFast (CACHE HIT) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
             return {
               stt_group: sttGroup,
               email: targetEmail,
@@ -1691,11 +1909,17 @@ function lookupKhoTKFast(emailClean) {
     Logger.log('Lỗi đọc EMAIL_LOOKUP_CACHE trong lookupKhoTKFast: ' + errCache.toString());
   }
 
-  // 2. Fallback quét trực tiếp từ Kho TK nếu chưa có trong Cache (với giới hạn 5 dòng chống carry-forward)
+  // 2. Fallback quét trực tiếp từ Kho TK nếu chưa có trong Cache
+  const _s2 = new Date().getTime();
+  Logger.log('lookupKhoTKFast -> lookupKhoTKDirect - START: ' + _s2);
   const directInfo = lookupKhoTKDirect(targetEmail);
+  const _e2 = new Date().getTime();
+  Logger.log('lookupKhoTKFast -> lookupKhoTKDirect - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
+
   if (directInfo && directInfo.stt_group) {
-    // Tự động bổ sung vào EMAIL_LOOKUP_CACHE để các lần tra cứu sau 0ms
     try {
+      const _s3 = new Date().getTime();
+      Logger.log('lookupKhoTKFast -> cacheSheet.appendRow - START: ' + _s3);
       const ss = getSpreadsheetCached();
       const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
       if (cacheSheet) {
@@ -1708,19 +1932,42 @@ function lookupKhoTKFast(emailClean) {
           directInfo.ngay_het_han || ''
         ]);
       }
+      const _e3 = new Date().getTime();
+      Logger.log('lookupKhoTKFast -> cacheSheet.appendRow - END: ' + _e3 + ' | Duration: ' + (_e3 - _s3) + 'ms');
     } catch (eApp) {}
   }
+  const _e = new Date().getTime();
+  Logger.log('lookupKhoTKFast (FALLBACK DIRECT) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
   return directInfo;
 }
 
 function lookupKhoTKDirect(emailClean) {
-  if (!emailClean) return null;
+  const _s = new Date().getTime();
+  Logger.log('lookupKhoTKDirect - START: ' + _s);
+  if (!emailClean) {
+    const _e = new Date().getTime();
+    Logger.log('lookupKhoTKDirect - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
+    return null;
+  }
   const targetEmail = String(emailClean).trim().toLowerCase();
-  if (!targetEmail || !targetEmail.includes('@')) return null;
+  if (!targetEmail || !targetEmail.includes('@')) {
+    const _e = new Date().getTime();
+    Logger.log('lookupKhoTKDirect - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
+    return null;
+  }
 
   try {
+    const _s1 = new Date().getTime();
+    Logger.log('lookupKhoTKDirect -> getKhoTKDataCached - START: ' + _s1);
     const khoData = getKhoTKDataCached();
-    if (!khoData || khoData.length <= 1) return null;
+    const _e1 = new Date().getTime();
+    Logger.log('lookupKhoTKDirect -> getKhoTKDataCached - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
+    if (!khoData || khoData.length <= 1) {
+      const _e = new Date().getTime();
+      Logger.log('lookupKhoTKDirect - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
+      return null;
+    }
 
     let currentSttGroup = '';
     let groupRowCount = 0;
@@ -1811,9 +2058,15 @@ function lookupKhoTKDirect(emailClean) {
         let ownerClean = currentOwnerEmail || ((colOwner !== -1 && row[colOwner]) ? String(row[colOwner]).trim() : '');
 
         if (!ownerClean && currentSttGroup) {
+          const _s2 = new Date().getTime();
+          Logger.log('lookupKhoTKDirect -> getSttOwnerEmail - START: ' + _s2);
           ownerClean = getSttOwnerEmail(currentSttGroup);
+          const _e2 = new Date().getTime();
+          Logger.log('lookupKhoTKDirect -> getSttOwnerEmail - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
         }
 
+        const _e = new Date().getTime();
+        Logger.log('lookupKhoTKDirect (MATCH FOUND) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
         return {
           stt_group: currentSttGroup,
           email: targetEmail,
@@ -1828,6 +2081,8 @@ function lookupKhoTKDirect(emailClean) {
   } catch (err) {
     Logger.log('Lỗi lookupKhoTKDirect: ' + err.toString());
   }
+  const _e = new Date().getTime();
+  Logger.log('lookupKhoTKDirect (NOT FOUND) - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
   return null;
 }
 
