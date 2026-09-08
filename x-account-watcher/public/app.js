@@ -14,7 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
     search: '',
     posts: [],
     hasXToken: false,
-    hasGeminiKey: false
+    hasGeminiKey: false,
+    lastApiError: null
   };
 
   // DOM Elements
@@ -142,8 +143,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       
       if (data.status === 'success') {
-        const { newInserted, duplicatesSkipped } = data.result;
-        showStatusBanner(`✅ Hoàn thành quét: Thêm mới ${newInserted} bài đăng, Bỏ qua ${duplicatesSkipped} bài trùng lặp.`);
+        const { newInserted, duplicatesSkipped, details } = data.result;
+
+        // Check if details contains API errors (e.g. 402 Payment Required)
+        const errorDetail = details ? details.find(d => !d.success && d.message) : null;
+
+        if (errorDetail) {
+          state.lastApiError = errorDetail.message;
+          showStatusBanner(`⚠️ Lỗi từ X API: ${errorDetail.message}`);
+        } else if (newInserted === 0 && duplicatesSkipped === 0) {
+          showStatusBanner(`ℹ️ Không có bài viết mới từ các tài khoản đã chọn.`);
+        } else {
+          showStatusBanner(`✅ Hoàn thành quét: Thêm mới ${newInserted} bài đăng, Bỏ qua ${duplicatesSkipped} bài trùng lặp.`);
+        }
+
         await loadPosts();
         await loadRateLimitLogs();
       } else if (data.status === 'warning') {
@@ -155,7 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showStatusBanner(`❌ Lỗi kết nối máy chủ: ${err.message}`);
     } finally {
       btnScanNow.disabled = false;
-      setTimeout(hideStatusBanner, 6000);
+      setTimeout(hideStatusBanner, 8000);
     }
   });
 
@@ -240,11 +253,23 @@ document.addEventListener('DOMContentLoaded', () => {
             </small>
           </div>
         `;
+      } else if (state.lastApiError) {
+        postsFeed.innerHTML = `
+          <div class="loading-spinner" style="border-color: #f39c12; background: rgba(243, 156, 18, 0.1);">
+            <strong style="color: #f39c12;">⚠️ THÔNG BÁO TỪ X API:</strong><br>
+            <span style="font-size: 0.95rem; color: #f8f3e6; display: block; margin: 10px 0;">${escapeHtml(state.lastApiError)}</span>
+            <small style="color: var(--text-muted); line-height: 1.5;">
+              Lưu ý: Gói Free của X API v2 ($0/tháng) chỉ cho phép đăng bài (Write-only). X API v2 yêu cầu nâng cấp gói Basic ($100/tháng) để cấp quyền đọc bài viết từ các tài khoản.
+            </small>
+          </div>
+        `;
       } else {
         postsFeed.innerHTML = `
           <div class="loading-spinner">
-            Chưa tìm thấy bài đăng nào khớp với điều kiện lọc.<br>
-            <small>Bấm "Quét ngay" để kiểm tra bài viết mới nhất từ X API.</small>
+            Chưa tìm thấy bài đăng nào lưu trong cơ sở dữ liệu.<br>
+            <small style="display: block; margin-top: 8px; color: var(--text-secondary);">
+              Bấm "Quét ngay" ở trên để gửi yêu cầu lấy bài viết mới từ X API v2.
+            </small>
           </div>
         `;
       }
