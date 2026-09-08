@@ -25,7 +25,7 @@ async function testGeminiConnection(geminiApiKey) {
     return { ok: false, status: 'unconfigured', message: 'Chưa cấu hình GEMINI_API_KEY trong file .env / Vercel' };
   }
 
-  const models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+  const models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.5-flash-001', 'gemini-1.5-flash-002', 'gemini-2.0-flash-exp', 'gemini-pro'];
   let lastError = null;
 
   for (const model of models) {
@@ -86,7 +86,7 @@ ${text}
 
 Chỉ trả về nội dung đã dịch tiếng Việt, không kèm lời giải thích hay tựa đề.`;
 
-  const models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+  const models = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.5-flash-001', 'gemini-1.5-flash-002', 'gemini-2.0-flash-exp', 'gemini-pro'];
   let lastErrorDetail = null;
 
   for (const model of models) {
