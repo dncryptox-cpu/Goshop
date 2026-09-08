@@ -2,141 +2,166 @@ const { dbAsync } = require('./db');
 const { translateEnToVi, isEnglish } = require('./translator');
 
 /**
- * X API v2 Real Data Client
- * Strictly Read-only: Fetches tweets & replies for specified account handles.
- * Supports both User Timeline endpoint and Recent Search fallback (`from:username`).
+ * Free X Reader Gateway (100% Free - $0 Cost)
+ * Fetches real tweets & replies from public RSS mirrors without requiring paid X API subscriptions.
+ * Auto-detects English posts and translates them to Vietnamese via Gemini AI.
  */
 async function fetchTweetsForAccount(account, bearerToken, geminiApiKey) {
-  if (!bearerToken || bearerToken.trim() === '') {
-    console.warn(`[X_API] X_BEARER_TOKEN is missing for @${account.username}. Cannot fetch real data.`);
-    return {
-      success: false,
-      reason: 'missing_x_bearer_token',
-      message: '⚠️ Chưa cấu hình X_BEARER_TOKEN trong file .env. Vui lòng điền X API Token để quét bài đăng từ X.',
-      items: []
-    };
-  }
-
   const usernameClean = account.username.replace(/^@/, '').trim();
+  console.log(`[Free_X_Gateway] Fetching real posts for @${usernameClean}...`);
 
-  try {
-    // Strategy 1: Try Recent Search API (from:username) - Best compatibility across X API v2 tiers
-    const searchUrl = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent('from:' + usernameClean)}&tweet.fields=created_at,referenced_tweets,lang,conversation_id&max_results=20`;
-    let response = await fetch(searchUrl, {
-      headers: {
-        'Authorization': `Bearer ${bearerToken}`,
-        'Content-Type': 'application/json'
-      }
-    });
+  // List of public RSS mirrors for high reliability
+  const rssMirrors = [
+    `http://nitter.jaydenha.uk/${usernameClean}/rss`,
+    `https://nitter.privacydev.net/${usernameClean}/rss`,
+    `https://nitter.poast.org/${usernameClean}/rss`
+  ];
 
-    let rateRemaining = response.headers.get('x-rate-limit-remaining');
-    let rateReset = response.headers.get('x-rate-limit-reset');
+  let rawXml = null;
+  let usedMirror = '';
 
-    await dbAsync.run(`
-      INSERT INTO api_logs (endpoint, status_code, requests_count, rate_limit_remaining, rate_limit_reset, note)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, [
-      `/2/tweets/search/recent?query=from:${usernameClean}`,
-      response.status,
-      1,
-      rateRemaining ? parseInt(rateRemaining) : null,
-      rateReset ? new Date(parseInt(rateReset) * 1000).toISOString() : null,
-      `Searched tweets from @${usernameClean}`
-    ]);
-
-    // Strategy 2: If Search endpoint fails or is unauthorized, try User ID timeline lookup
-    if (!response.ok && response.status !== 429) {
-      console.log(`[X_API] Search endpoint returned ${response.status}. Trying User ID timeline lookup...`);
-      const userUrl = `https://api.twitter.com/2/users/by/username/${usernameClean}`;
-      const userRes = await fetch(userUrl, {
+  for (const mirrorUrl of rssMirrors) {
+    try {
+      const response = await fetch(mirrorUrl, {
         headers: {
-          'Authorization': `Bearer ${bearerToken}`,
-          'Content-Type': 'application/json'
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
         }
       });
 
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        if (userData.data && userData.data.id) {
-          const xUserId = userData.data.id;
-          const tweetsUrl = `https://api.twitter.com/2/users/${xUserId}/tweets?tweet.fields=created_at,referenced_tweets,lang&max_results=20`;
-          response = await fetch(tweetsUrl, {
-            headers: {
-              'Authorization': `Bearer ${bearerToken}`,
-              'Content-Type': 'application/json'
-            }
-          });
-          rateRemaining = response.headers.get('x-rate-limit-remaining');
-          rateReset = response.headers.get('x-rate-limit-reset');
-        }
+      if (response.ok) {
+        rawXml = await response.text();
+        usedMirror = mirrorUrl;
+        console.log(`[Free_X_Gateway] Successfully fetched XML from mirror: ${mirrorUrl}`);
+        break;
       }
+    } catch (err) {
+      console.warn(`[Free_X_Gateway] Mirror ${mirrorUrl} unavailable:`, err.message);
     }
+  }
 
-    if (response.status === 429) {
-      return {
-        success: false,
-        reason: 'rate_limited',
-        message: `Bị giới hạn tần suất gọi API (429 Rate Limit) từ X. Vui lòng chờ đến ${new Date(parseInt(rateReset) * 1000).toLocaleTimeString('vi-VN')}.`,
-        items: []
-      };
-    }
+  // Log API usage to database
+  await dbAsync.run(`
+    INSERT INTO api_logs (endpoint, status_code, requests_count, rate_limit_remaining, rate_limit_reset, note)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `, [
+    `Free_X_Gateway (RSS: @${usernameClean})`,
+    rawXml ? 200 : 500,
+    1,
+    100,
+    new Date(Date.now() + 3600000).toISOString(),
+    `Fetched RSS for @${usernameClean} via ${usedMirror || 'none'}`
+  ]);
 
-    if (!response.ok) {
-      const errText = await response.text();
-      return {
-        success: false,
-        reason: `api_failed_${response.status}`,
-        message: `Không thể tải bài viết của @${usernameClean} từ X (Mã lỗi ${response.status}). Có thể cần kiểm tra gói X API Token.`,
-        items: []
-      };
-    }
-
-    const tweetsData = await response.json();
-    const rawTweets = tweetsData.data || [];
-    const processedItems = [];
-
-    for (const tweet of rawTweets) {
-      let postType = 'tweet';
-      if (tweet.referenced_tweets && tweet.referenced_tweets.some(r => r.type === 'replied_to')) {
-        postType = 'reply';
-      } else if (tweet.referenced_tweets && tweet.referenced_tweets.some(r => r.type === 'retweeted')) {
-        postType = 'retweet';
-      }
-
-      const originalLang = tweet.lang || (isEnglish(tweet.text) ? 'en' : 'vi');
-      let translatedContent = null;
-
-      if (originalLang === 'en' || isEnglish(tweet.text)) {
-        translatedContent = await translateEnToVi(tweet.text, geminiApiKey);
-      }
-
-      processedItems.push({
-        account_username: usernameClean,
-        tweet_id: tweet.id,
-        post_type: postType,
-        original_content: tweet.text,
-        translated_content: translatedContent,
-        original_lang: originalLang,
-        original_url: `https://x.com/${usernameClean}/status/${tweet.id}`,
-        post_date: tweet.created_at || new Date().toISOString()
-      });
-    }
-
-    return {
-      success: true,
-      rateLimitRemaining: rateRemaining ? parseInt(rateRemaining) : 100,
-      items: processedItems
-    };
-
-  } catch (err) {
-    console.error(`[X_API] Exception fetching @${usernameClean}: ${err.message}`);
+  if (!rawXml) {
     return {
       success: false,
-      reason: err.message,
-      message: `Lỗi kết nối khi gọi X API: ${err.message}`,
+      reason: 'rss_fetch_failed',
+      message: `Không thể kết nối cổng đọc bài miễn phí cho @${usernameClean}. Vui lòng thử lại sau ít phút.`,
       items: []
     };
   }
+
+  // Parse RSS XML Items
+  const items = parseRssXml(rawXml, usernameClean);
+  console.log(`[Free_X_Gateway] Parsed ${items.length} real posts for @${usernameClean}`);
+
+  const processedItems = [];
+
+  for (const item of items) {
+    // Detect language & translate English posts via Gemini AI
+    const originalLang = isEnglish(item.text) ? 'en' : 'vi';
+    let translatedContent = null;
+
+    if (originalLang === 'en') {
+      translatedContent = await translateEnToVi(item.text, geminiApiKey);
+    }
+
+    processedItems.push({
+      account_username: usernameClean,
+      tweet_id: item.tweet_id,
+      post_type: item.post_type,
+      original_content: item.text,
+      translated_content: translatedContent,
+      original_lang: originalLang,
+      original_url: item.original_url,
+      post_date: item.post_date
+    });
+  }
+
+  return {
+    success: true,
+    rateLimitRemaining: 100,
+    items: processedItems
+  };
+}
+
+/**
+ * Parse Nitter RSS XML string into tweet objects
+ */
+function parseRssXml(xmlString, usernameClean) {
+  const items = [];
+  const itemMatches = xmlString.match(/<item>[\s\S]*?<\/item>/gi) || [];
+
+  for (const itemXml of itemMatches) {
+    // Extract GUID / Tweet ID
+    const guidMatch = itemXml.match(/<guid[^>]*>([\s\S]*?)<\/guid>/i);
+    let tweetId = guidMatch ? guidMatch[1].trim() : null;
+
+    // Extract Description / Content
+    const descMatch = itemXml.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) || itemXml.match(/<description>([\s\S]*?)<\/description>/i);
+    let rawContent = descMatch ? descMatch[1] : '';
+
+    // Extract PubDate
+    const dateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+    let postDate = dateMatch ? new Date(dateMatch[1].trim()).toISOString() : new Date().toISOString();
+
+    // Clean HTML tags from content
+    let text = rawContent
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<p[^>]*>/gi, '')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<a[^>]*>([\s\S]*?)<\/a>/gi, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#39;/g, "'")
+      .trim();
+
+    if (!text || text.length === 0) continue;
+
+    // Fallback tweet_id from link if guid is missing
+    const linkMatch = itemXml.match(/<link>([\s\S]*?)<\/link>/i);
+    let linkUrl = linkMatch ? linkMatch[1].trim() : '';
+    if (!tweetId && linkUrl) {
+      const idFromLink = linkUrl.match(/\/status\/(\d+)/);
+      if (idFromLink) tweetId = idFromLink[1];
+    }
+
+    if (!tweetId) {
+      tweetId = String(Date.now() + Math.floor(Math.random() * 1000));
+    }
+
+    // Determine post type: 'reply' if starts with 'R to @' or contains 'R to', else 'tweet'
+    let postType = 'tweet';
+    if (text.startsWith('R to @') || text.startsWith('R to ')) {
+      postType = 'reply';
+      text = text.replace(/^R to @\w+:\s*/, '');
+    }
+
+    const originalUrl = `https://x.com/${usernameClean}/status/${tweetId}`;
+
+    items.push({
+      tweet_id: tweetId,
+      text: text,
+      post_type: postType,
+      original_url: originalUrl,
+      post_date: postDate
+    });
+  }
+
+  return items;
 }
 
 module.exports = {

@@ -29,18 +29,8 @@ async function runScan() {
   const token = process.env.X_BEARER_TOKEN;
   const geminiKey = process.env.GEMINI_API_KEY;
 
-  if (!token || token.trim() === '') {
-    isScanning = false;
-    lastScanResult = {
-      timestamp: new Date().toISOString(),
-      totalFetched: 0,
-      newInserted: 0,
-      duplicatesSkipped: 0,
-      statusMessage: '⚠️ Chưa cấu hình X_BEARER_TOKEN trong file .env. Vui lòng điền X API Token để bắt đầu quét dữ liệu thật từ X.',
-      details: []
-    };
-    return { status: 'warning', result: lastScanResult };
-  }
+  // Free Gateway allows scanning without requiring paid X_BEARER_TOKEN
+
 
   try {
     const accounts = await dbAsync.all(`SELECT * FROM accounts WHERE active = 1`);
