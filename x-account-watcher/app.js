@@ -75,12 +75,20 @@ document.addEventListener('DOMContentLoaded', () => {
           configWarningBanner.classList.add('hidden');
         }
 
-        if (!state.hasGeminiKey) {
-          geminiDot.classList.add('off');
-          geminiStatusText.textContent = 'Gemini AI: Chưa nhập Key';
+        const health = data.gemini_health;
+        if (health && health.ok) {
+          geminiDot.className = 'badge-dot active';
+          geminiStatusText.textContent = 'Gemini AI: Sẵn sàng (Đã kết nối)';
+        } else if (health && health.status === 'error') {
+          geminiDot.className = 'badge-dot warning';
+          geminiStatusText.textContent = `Gemini AI: Lỗi API Key`;
+          geminiStatusText.title = health.message;
+        } else if (state.hasGeminiKey) {
+          geminiDot.className = 'badge-dot';
+          geminiStatusText.textContent = 'Gemini AI: Đã cấu hình Key';
         } else {
-          geminiDot.classList.remove('off');
-          geminiStatusText.textContent = 'Gemini AI: Đã kết nối';
+          geminiDot.className = 'badge-dot off';
+          geminiStatusText.textContent = 'Gemini AI: Chưa cấu hình Key';
         }
       }
     } catch (err) {

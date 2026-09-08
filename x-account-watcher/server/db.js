@@ -182,6 +182,18 @@ const dbAsync = {
           const [id] = params;
           await supabase.from('accounts').update({ active: 0 }).eq('id', id);
           return { changes: 1 };
+        } else if (sql.includes('UPDATE posts SET translated_content =')) {
+          const [translated_content, id] = params;
+          await supabase.from('posts').update({ translated_content }).eq('id', id);
+          return { changes: 1 };
+        } else if (sql.includes('UPDATE posts SET is_bookmarked =')) {
+          const [is_bookmarked, id] = params;
+          await supabase.from('posts').update({ is_bookmarked }).eq('id', id);
+          return { changes: 1 };
+        } else if (sql.includes('UPDATE posts SET is_deleted =')) {
+          const [is_deleted, id] = params;
+          await supabase.from('posts').update({ is_deleted }).eq('id', id);
+          return { changes: 1 };
         }
       } catch (err) {
         console.warn('[Supabase Run Error]:', err.message);

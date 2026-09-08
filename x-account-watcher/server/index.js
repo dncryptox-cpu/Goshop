@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const { initDb, dbAsync } = require('./db');
 const { runScan, startCronScheduler, getLastScanResult } = require('./scheduler');
+const { testGeminiConnection, translateEnToVi } = require('./translator');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,14 +14,22 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// 1. GET /api/config-status - Returns status of environment API keys
-app.get('/api/config-status', (req, res) => {
+// 1. GET /api/config-status - Returns real status & health check of API keys
+app.get('/api/config-status', async (req, res) => {
+  const geminiKey = process.env.GEMINI_API_KEY;
   const hasXToken = Boolean(process.env.X_BEARER_TOKEN && process.env.X_BEARER_TOKEN.trim() !== '');
-  const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim() !== '');
+  const hasGeminiKey = Boolean(geminiKey && geminiKey.trim() !== '');
+
+  let geminiHealth = { ok: false, status: 'unconfigured', message: 'Chưa cấu hình GEMINI_API_KEY' };
+  if (hasGeminiKey) {
+    geminiHealth = await testGeminiConnection(geminiKey);
+  }
+
   res.json({
     success: true,
     has_x_token: hasXToken,
-    has_gemini_key: hasGeminiKey
+    has_gemini_key: hasGeminiKey,
+    gemini_health: geminiHealth
   });
 });
 
@@ -168,6 +177,46 @@ app.get('/api/rate-limit', async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+// 11. POST / GET /api/backfill-translations - Translate all existing English posts missing translation
+const handleBackfill = async (req, res) => {
+  try {
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    if (!geminiApiKey || geminiApiKey.trim() === '') {
+      return res.status(400).json({ success: false, message: 'GEMINI_API_KEY chưa được cấu hình' });
+    }
+
+    const posts = await dbAsync.all(`SELECT * FROM posts WHERE original_lang = 'en' AND (translated_content IS NULL OR translated_content = '') AND is_deleted = 0`);
+    let translatedCount = 0;
+    let failedCount = 0;
+    const results = [];
+
+    for (const post of posts) {
+      const translation = await translateEnToVi(post.original_content, geminiApiKey);
+      if (translation) {
+        await dbAsync.run(`UPDATE posts SET translated_content = ? WHERE id = ?`, [translation, post.id]);
+        translatedCount++;
+        results.push({ id: post.id, account: post.account_username, success: true, translation });
+      } else {
+        failedCount++;
+        results.push({ id: post.id, account: post.account_username, success: false });
+      }
+    }
+
+    res.json({
+      success: true,
+      total_english_posts: posts.length,
+      translated_count: translatedCount,
+      failed_count: failedCount,
+      results
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+app.get('/api/backfill-translations', handleBackfill);
+app.post('/api/backfill-translations', handleBackfill);
 
 // Start Express server after DB init
 initDb().then(() => {
