@@ -281,6 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const typeLabel = item.post_type === 'reply' ? '💬 Reply' : '📝 Bài gốc';
       const typeClass = item.post_type === 'reply' ? 'reply' : 'tweet';
 
+      const avatarInitial = (item.account_username || 'X').charAt(0).toUpperCase();
       const isVietnamese = item.original_lang === 'vi' || isVietnameseText(item.original_content);
       const originalHtml = escapeHtml(item.original_content);
       const translatedHtml = item.translated_content ? escapeHtml(item.translated_content) : null;
@@ -288,26 +289,30 @@ document.addEventListener('DOMContentLoaded', () => {
       let contentMarkup = '';
 
       if (isVietnamese || !translatedHtml) {
-        // Vietnamese Original Post: Render 1 single main content column (ZERO EMPTY BOXES OR PLACEHOLDERS)
+        // Vietnamese Original Post: Single Content Box (Clean, zero empty space)
         contentMarkup = `
           <div class="single-content-container">
             <div class="main-text-box vietnamese">
-              <div class="vi-badge">🇻🇳 Nội dung gốc (Tiếng Việt)</div>
+              <div class="content-badge vi-badge">
+                <span class="badge-flag">🇻🇳</span> Nội dung gốc (Tiếng Việt)
+              </div>
               <div class="text-body">${originalHtml}</div>
             </div>
           </div>
         `;
       } else {
-        // English Original Post: Render Vietnamese Translation as Primary + Accordion Toggle for English Original
+        // English Original Post: Gemini AI Translation Primary + Accordion Toggle
         contentMarkup = `
           <div class="single-content-container">
             <div class="main-text-box translated">
-              <div class="gemini-badge">✨ Bản dịch Tiếng Việt (Gemini AI)</div>
+              <div class="content-badge gemini-badge">
+                <span class="badge-sparkle">✨</span> Bản dịch Tiếng Việt (Gemini AI)
+              </div>
               <div class="text-body">${translatedHtml}</div>
             </div>
 
             <button class="accordion-toggle-btn" onclick="toggleAccordion(${item.id})">
-              <span id="acc-label-${item.id}">🌐 Xem bản gốc tiếng Anh</span> <span id="acc-arrow-${item.id}">▾</span>
+              <span id="acc-label-${item.id}">🌐 Xem bản gốc tiếng Anh</span> <span id="acc-arrow-${item.id}" class="accordion-arrow">▾</span>
             </button>
 
             <div class="accordion-box hidden" id="acc-box-${item.id}">
@@ -322,19 +327,30 @@ document.addEventListener('DOMContentLoaded', () => {
         <article class="post-card" id="post-${item.id}">
           <div class="card-header">
             <div class="author-meta">
-              <a href="https://x.com/${item.account_username}" target="_blank" class="author-handle">@${escapeHtml(item.account_username)}</a>
-              <span class="post-type-tag ${typeClass}">${typeLabel}</span>
+              <div class="author-avatar ${typeClass}">${avatarInitial}</div>
+              <div class="author-details">
+                <a href="https://x.com/${item.account_username}" target="_blank" class="author-handle">@${escapeHtml(item.account_username)}</a>
+                <span class="post-type-tag ${typeClass}">${typeLabel}</span>
+              </div>
             </div>
-            <span class="post-date">${dateStr}</span>
+            <div class="post-date-badge">
+              <span class="date-icon">🕒</span> ${dateStr}
+            </div>
           </div>
 
           ${contentMarkup}
 
           <div class="card-footer">
-            <a href="${item.original_url}" target="_blank" class="original-link">Xem bài gốc trên X ↗</a>
+            <a href="${item.original_url}" target="_blank" class="original-link-btn">
+              <span>Xem trên X</span> <span class="link-arrow">↗</span>
+            </a>
             <div class="card-actions">
-              <button class="icon-btn ${starClass}" onclick="toggleBookmark(${item.id})" title="Đánh dấu lưu trữ">⭐</button>
-              <button class="icon-btn" onclick="deletePost(${item.id})" title="Xoá bản ghi">🗑️</button>
+              <button class="action-btn star-btn ${starClass}" onclick="toggleBookmark(${item.id})" title="Đánh dấu lưu trữ">
+                <span>⭐</span> <span class="action-label">${item.is_bookmarked ? 'Đã lưu' : 'Lưu'}</span>
+              </button>
+              <button class="action-btn delete-btn" onclick="deletePost(${item.id})" title="Xoá bản ghi">
+                <span>🗑️</span> <span class="action-label">Xoá</span>
+              </button>
             </div>
           </div>
         </article>
