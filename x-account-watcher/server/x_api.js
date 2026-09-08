@@ -4,7 +4,7 @@ const { translateEnToVi, isEnglish } = require('./translator');
 /**
  * X API v2 Real Data Client
  * Strictly Read-only: Fetches tweets & replies for specified account handles.
- * NO FAKE/MOCK DATA IS GENERATED. If token is missing or API fails, explicit error is returned.
+ * Supports both User Timeline endpoint and Recent Search fallback (`from:username`).
  */
 async function fetchTweetsForAccount(account, bearerToken, geminiApiKey) {
   if (!bearerToken || bearerToken.trim() === '') {
@@ -20,109 +20,82 @@ async function fetchTweetsForAccount(account, bearerToken, geminiApiKey) {
   const usernameClean = account.username.replace(/^@/, '').trim();
 
   try {
-    // Step 1: Get User ID from username
-    const userUrl = `https://api.twitter.com/2/users/by/username/${usernameClean}`;
-    const userRes = await fetch(userUrl, {
+    // Strategy 1: Try Recent Search API (from:username) - Best compatibility across X API v2 tiers
+    const searchUrl = `https://api.twitter.com/2/tweets/search/recent?query=${encodeURIComponent('from:' + usernameClean)}&tweet.fields=created_at,referenced_tweets,lang,conversation_id&max_results=20`;
+    let response = await fetch(searchUrl, {
       headers: {
         'Authorization': `Bearer ${bearerToken}`,
         'Content-Type': 'application/json'
       }
     });
 
-    const rateRemaining = userRes.headers.get('x-rate-limit-remaining');
-    const rateReset = userRes.headers.get('x-rate-limit-reset');
+    let rateRemaining = response.headers.get('x-rate-limit-remaining');
+    let rateReset = response.headers.get('x-rate-limit-reset');
 
-    // Log API Usage
     await dbAsync.run(`
       INSERT INTO api_logs (endpoint, status_code, requests_count, rate_limit_remaining, rate_limit_reset, note)
       VALUES (?, ?, ?, ?, ?, ?)
     `, [
-      `/2/users/by/username/${usernameClean}`,
-      userRes.status,
+      `/2/tweets/search/recent?query=from:${usernameClean}`,
+      response.status,
       1,
       rateRemaining ? parseInt(rateRemaining) : null,
       rateReset ? new Date(parseInt(rateReset) * 1000).toISOString() : null,
-      `Fetched user ID for @${usernameClean}`
+      `Searched tweets from @${usernameClean}`
     ]);
 
-    if (!userRes.ok) {
-      const errText = await userRes.text();
-      console.error(`[X_API] User lookup failed (${userRes.status}): ${errText}`);
-      return {
-        success: false,
-        reason: `user_lookup_failed_${userRes.status}`,
-        message: `Không thể tìm thấy tài khoản @${usernameClean} trên X (Mã lỗi ${userRes.status}).`,
-        items: []
-      };
-    }
+    // Strategy 2: If Search endpoint fails or is unauthorized, try User ID timeline lookup
+    if (!response.ok && response.status !== 429) {
+      console.log(`[X_API] Search endpoint returned ${response.status}. Trying User ID timeline lookup...`);
+      const userUrl = `https://api.twitter.com/2/users/by/username/${usernameClean}`;
+      const userRes = await fetch(userUrl, {
+        headers: {
+          'Authorization': `Bearer ${bearerToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
 
-    const userData = await userRes.json();
-    if (!userData.data || !userData.data.id) {
-      return {
-        success: false,
-        reason: 'user_not_found',
-        message: `Tài khoản @${usernameClean} không tồn tại hoặc đã bị khoá trên X.`,
-        items: []
-      };
-    }
-
-    const xUserId = userData.data.id;
-    const xDisplayName = userData.data.name || usernameClean;
-
-    // Update x_user_id and display_name in database
-    await dbAsync.run(`
-      UPDATE accounts SET x_user_id = ?, display_name = ? WHERE username = ?
-    `, [xUserId, xDisplayName, usernameClean]);
-
-    // Step 2: Fetch recent tweets & replies for this user ID
-    const tweetsUrl = `https://api.twitter.com/2/users/${xUserId}/tweets?tweet.fields=created_at,referenced_tweets,lang,conversation_id&max_results=20`;
-    const tweetsRes = await fetch(tweetsUrl, {
-      headers: {
-        'Authorization': `Bearer ${bearerToken}`,
-        'Content-Type': 'application/json'
+      if (userRes.ok) {
+        const userData = await userRes.json();
+        if (userData.data && userData.data.id) {
+          const xUserId = userData.data.id;
+          const tweetsUrl = `https://api.twitter.com/2/users/${xUserId}/tweets?tweet.fields=created_at,referenced_tweets,lang&max_results=20`;
+          response = await fetch(tweetsUrl, {
+            headers: {
+              'Authorization': `Bearer ${bearerToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          rateRemaining = response.headers.get('x-rate-limit-remaining');
+          rateReset = response.headers.get('x-rate-limit-reset');
+        }
       }
-    });
+    }
 
-    const tweetRateRemaining = tweetsRes.headers.get('x-rate-limit-remaining');
-    const tweetRateReset = tweetsRes.headers.get('x-rate-limit-reset');
-
-    await dbAsync.run(`
-      INSERT INTO api_logs (endpoint, status_code, requests_count, rate_limit_remaining, rate_limit_reset, note)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, [
-      `/2/users/${xUserId}/tweets`,
-      tweetsRes.status,
-      1,
-      tweetRateRemaining ? parseInt(tweetRateRemaining) : null,
-      tweetRateReset ? new Date(parseInt(tweetRateReset) * 1000).toISOString() : null,
-      `Fetched timeline for @${usernameClean}`
-    ]);
-
-    if (tweetsRes.status === 429) {
+    if (response.status === 429) {
       return {
         success: false,
         reason: 'rate_limited',
-        message: `Bị giới hạn tần suất gọi API (429 Rate Limit) từ X. Vui lòng chờ đến ${new Date(parseInt(tweetRateReset) * 1000).toLocaleTimeString('vi-VN')}.`,
+        message: `Bị giới hạn tần suất gọi API (429 Rate Limit) từ X. Vui lòng chờ đến ${new Date(parseInt(rateReset) * 1000).toLocaleTimeString('vi-VN')}.`,
         items: []
       };
     }
 
-    if (!tweetsRes.ok) {
-      const errText = await tweetsRes.text();
+    if (!response.ok) {
+      const errText = await response.text();
       return {
         success: false,
-        reason: `timeline_failed_${tweetsRes.status}`,
-        message: `Không thể tải timeline bài viết của @${usernameClean} (Mã lỗi ${tweetsRes.status}).`,
+        reason: `api_failed_${response.status}`,
+        message: `Không thể tải bài viết của @${usernameClean} từ X (Mã lỗi ${response.status}). Có thể cần kiểm tra gói X API Token.`,
         items: []
       };
     }
 
-    const tweetsData = await tweetsRes.json();
+    const tweetsData = await response.json();
     const rawTweets = tweetsData.data || [];
     const processedItems = [];
 
     for (const tweet of rawTweets) {
-      // Determine post type: 'reply' if referenced_tweets has 'replied_to', else 'tweet'
       let postType = 'tweet';
       if (tweet.referenced_tweets && tweet.referenced_tweets.some(r => r.type === 'replied_to')) {
         postType = 'reply';
@@ -130,7 +103,6 @@ async function fetchTweetsForAccount(account, bearerToken, geminiApiKey) {
         postType = 'retweet';
       }
 
-      // Check language & perform Gemini translation if English
       const originalLang = tweet.lang || (isEnglish(tweet.text) ? 'en' : 'vi');
       let translatedContent = null;
 
@@ -152,7 +124,7 @@ async function fetchTweetsForAccount(account, bearerToken, geminiApiKey) {
 
     return {
       success: true,
-      rateLimitRemaining: tweetRateRemaining ? parseInt(tweetRateRemaining) : 100,
+      rateLimitRemaining: rateRemaining ? parseInt(rateRemaining) : 100,
       items: processedItems
     };
 
