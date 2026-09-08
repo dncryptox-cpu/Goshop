@@ -15,20 +15,26 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // 1. GET /api/config-status - Returns real status & health check of API keys
-app.get('/api/config-status', async (req, res) => {
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const rawKey = process.env.GEMINI_API_KEY || '';
+  const cleanKey = rawKey.trim().replace(/^["']|["']$/g, '');
   const hasXToken = Boolean(process.env.X_BEARER_TOKEN && process.env.X_BEARER_TOKEN.trim() !== '');
-  const hasGeminiKey = Boolean(geminiKey && geminiKey.trim() !== '');
+  const hasGeminiKey = Boolean(cleanKey !== '');
 
   let geminiHealth = { ok: false, status: 'unconfigured', message: 'Chưa cấu hình GEMINI_API_KEY' };
   if (hasGeminiKey) {
-    geminiHealth = await testGeminiConnection(geminiKey);
+    geminiHealth = await testGeminiConnection(cleanKey);
   }
 
   res.json({
     success: true,
     has_x_token: hasXToken,
     has_gemini_key: hasGeminiKey,
+    gemini_key_info: {
+      length: cleanKey.length,
+      prefix: cleanKey.substring(0, 6),
+      suffix: cleanKey.slice(-4),
+      is_aiza: cleanKey.startsWith('AIza')
+    },
     gemini_health: geminiHealth
   });
 });
