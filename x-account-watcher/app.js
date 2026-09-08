@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function initApp() {
     await checkConfigStatus();
     await loadAccountsList();
+    await loadDynamicTabs();
     await loadPosts();
     await loadRateLimitLogs();
   }

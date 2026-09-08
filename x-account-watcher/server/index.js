@@ -171,12 +171,16 @@ app.get('/api/rate-limit', async (req, res) => {
 
 // Start Express server after DB init
 initDb().then(() => {
-  app.listen(PORT, () => {
-    console.log(`====================================================`);
-    console.log(`  X Account Watcher is running on http://localhost:${PORT}`);
-    console.log(`====================================================`);
-    startCronScheduler();
-  });
+  if (process.env.VERCEL !== '1') {
+    app.listen(PORT, () => {
+      console.log(`====================================================`);
+      console.log(`  X Account Watcher is running on http://localhost:${PORT}`);
+      console.log(`====================================================`);
+      startCronScheduler();
+    });
+  }
 }).catch(err => {
   console.error('Failed to initialize Database:', err);
 });
+
+module.exports = app;
