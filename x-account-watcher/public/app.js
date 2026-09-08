@@ -1,4 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
+  // API Base URL (Connects godnc.com / GitHub Pages directly to live Vercel backend)
+  const API_BASE_URL = (window.location.hostname.includes('godnc.com') || window.location.hostname.includes('github.io'))
+    ? 'https://goshop-ngla.vercel.app/api'
+    : '/api';
+
   // State Management
   const state = {
     currentAccount: 'All',
@@ -51,7 +56,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Check API keys presence
   async function checkConfigStatus() {
     try {
-      const res = await fetch('/api/config-status');
+      const res = await fetch(`${API_BASE_URL}/config-status`);
       const data = await res.json();
       if (data.success) {
         state.hasXToken = data.has_x_token;
@@ -62,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
           apiDot.classList.add('off');
           apiStatusText.textContent = 'X API: Token chưa nhập';
           configWarningBanner.classList.remove('hidden');
-          warningBannerText.textContent = '⚠️ Chưa cấu hình X_BEARER_TOKEN trong file .env. Vui lòng nhập Token từ X Developer Portal để bắt đầu quét dữ liệu thật.';
+          warningBannerText.textContent = '⚠️ Chưa cấu hình X_BEARER_TOKEN trong Vercel Environment Variables. Vui lòng nhập Token để bắt đầu quét dữ liệu thật.';
         } else {
           apiDot.classList.remove('off');
           apiStatusText.textContent = 'X API: Sẵn sàng';
@@ -125,7 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Trigger Manual Scan
   btnScanNow.addEventListener('click', async () => {
     if (!state.hasXToken) {
-      alert('⚠️ Chưa cấu hình X_BEARER_TOKEN trong file .env! Vui lòng nhập X API Key trước khi quét.');
+      alert('⚠️ Chưa cấu hình X_BEARER_TOKEN! Vui lòng kiểm tra Vercel Environment Variables trước khi quét.');
       return;
     }
 
@@ -133,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showStatusBanner('⚡ Đang kết nối X API v2 để quét bài mới & gọi Gemini dịch tiếng Việt...');
     
     try {
-      const res = await fetch('/api/scan', { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/scan`, { method: 'POST' });
       const data = await res.json();
       
       if (data.status === 'success') {
@@ -176,7 +181,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const displayName = document.getElementById('newAccountDisplayName').value.trim();
 
     try {
-      const res = await fetch('/api/accounts', {
+      const res = await fetch(`${API_BASE_URL}/accounts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: inputVal, display_name: displayName })
@@ -209,7 +214,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     try {
-      const res = await fetch(`/api/posts?${params.toString()}`);
+      const res = await fetch(`${API_BASE_URL}/posts?${params.toString()}`);
       const data = await res.json();
       
       if (!data.success) {
@@ -231,7 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="loading-spinner" style="border-color: var(--accent-warning);">
             <strong style="color: #f5b7b1;">⚠️ BÀI ĐĂNG THẬT SẼ HIỂN THỊ TẠI ĐÂY SAU KHI CẤU HÌNH X API KEY</strong><br>
             <small style="color: var(--text-secondary); display: block; margin-top: 8px;">
-              Hệ thống tuân thủ nguyên tắc không tạo dữ liệu giả lập. Vui lòng nhập <code>X_BEARER_TOKEN</code> trong file <code>.env</code> và bấm "Quét ngay".
+              Hệ thống tuân thủ nguyên tắc không tạo dữ liệu giả lập. Vui lòng nhập <code>X_BEARER_TOKEN</code> trong Vercel Environment Variables và bấm "Quét ngay".
             </small>
           </div>
         `;
@@ -296,7 +301,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Rate Limit Logger
   async function loadRateLimitLogs() {
     try {
-      const res = await fetch('/api/rate-limit');
+      const res = await fetch(`${API_BASE_URL}/rate-limit`);
       const data = await res.json();
       if (data.success && data.recent_logs && data.recent_logs.length > 0) {
         const latest = data.recent_logs[0];
@@ -311,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Load Accounts List
   async function loadAccountsList() {
     try {
-      const res = await fetch('/api/accounts');
+      const res = await fetch(`${API_BASE_URL}/accounts`);
       const data = await res.json();
       if (data.success) {
         renderAccountsModalList(data.data);
@@ -335,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function loadDynamicTabs() {
     try {
-      const res = await fetch('/api/accounts');
+      const res = await fetch(`${API_BASE_URL}/accounts`);
       const data = await res.json();
       if (data.success) {
         const activeAcc = state.currentAccount;
@@ -353,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Global Window Helper Functions
   window.toggleBookmark = async (id) => {
     try {
-      const res = await fetch(`/api/posts/${id}/bookmark`, { method: 'POST' });
+      const res = await fetch(`${API_BASE_URL}/posts/${id}/bookmark`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
         loadPosts();
@@ -366,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.deletePost = async (id) => {
     if (!confirm('Bạn có chắc chắn muốn xoá bài viết này?')) return;
     try {
-      const res = await fetch(`/api/posts/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/posts/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         loadPosts();
@@ -379,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.deactivateAccount = async (id) => {
     if (!confirm('Bạn có chắc chắn muốn huỷ theo dõi tài khoản này?')) return;
     try {
-      const res = await fetch(`/api/accounts/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API_BASE_URL}/accounts/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         await loadAccountsList();
