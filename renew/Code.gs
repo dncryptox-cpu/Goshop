@@ -4295,3 +4295,12 @@ function autoClassifyPlusTickets() {
     lock.releaseLock();
   }
 }
+
+/**
+ * Hàm test độc lập để chạy trực tiếp trong Apps Script Editor và xem Nhật ký thực thi
+ */
+function testSubmitReportLogs() {
+  const emailTest = 'Vuduckhang1499@gmail.com';
+  const result = submitReport(emailTest, 'Kiểm tra đo thời gian log', 'Test Admin', '0912345678', 'a', 'Đang hoạt động');
+  Logger.log('===> KẾT QUẢ CUỐI CÙNG: ' + JSON.stringify(result));
+}
