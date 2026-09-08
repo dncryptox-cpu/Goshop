@@ -1539,6 +1539,10 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
         : 'Đã tạo báo cáo sự cố thành công cho Fam ' + sttGroup + '.'
     };
 
+    const _subEnd = new Date().getTime();
+    Logger.log('submitReport OVERALL - END: ' + _subEnd + ' | Duration: ' + (_subEnd - _subStart) + 'ms');
+    return res;
+
   } catch (err) {
     Logger.log('[SUBMIT_REPORT_FATAL_ERROR] Lỗi ghi nhận báo cáo: ' + err.toString());
     return { success: false, message: 'Lỗi ghi nhận báo cáo: ' + err.toString() };
