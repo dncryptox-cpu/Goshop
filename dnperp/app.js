@@ -408,6 +408,7 @@ const state = {
   journalPairChart: null,
   activeChartRange: '24h'
 };
+window.state = state;
 
 // Phase 13 v2 View Switcher Navigation Engine
 function switchView(viewName) {
@@ -943,6 +944,146 @@ function calculateAdaptiveBands(pairId) {
     lower: parseFloat(lower.toFixed(2))
   };
 }
+
+// Phase 25a: Basis Stationarity Checker Calculation Module (Pure JS Statistics Engine)
+function calculateBasisStationarity(pairId, options = {}) {
+  const defaults = {
+    minPoints: 20,
+    zcrThresholdPercent: 15.0, // Zero-crossing rate threshold (>= 15% means oscillating)
+    maxNormalizedSlopePerDay: 0.05, // % basis change per day (|slope| <= 0.05%/day)
+    maxAutocorrelationLag1: 0.85, // Lag-1 autocorrelation cutoff (< 0.85 means mean-reverting)
+    windowDays: 30
+  };
+  const config = { ...defaults, ...options };
+
+  const now = Date.now();
+  const windowMs = config.windowDays * 24 * 60 * 60 * 1000;
+  const cutoff = now - windowMs;
+
+  // Filter history points for target pair within window
+  const points = (state.history || [])
+    .filter(h => h && h.time >= cutoff && h.pairs && typeof h.pairs[pairId] === 'number')
+    .map(h => ({ time: h.time, basis: h.pairs[pairId] }));
+
+  const N = points.length;
+
+  if (N < config.minPoints) {
+    const res = {
+      pairId,
+      dataPoints: N,
+      minRequiredPoints: config.minPoints,
+      mean: 0,
+      stdDev: 0,
+      zeroCrossingRatePercent: 0,
+      normalizedSlopePerDay: 0,
+      autocorrelationLag1: 0,
+      verdictCode: 'INSUFFICIENT_DATA',
+      verdictText: (state.lang === 'EN')
+        ? `Insufficient data (needs at least ${config.minPoints} points, found ${N})`
+        : `Cần thêm dữ liệu (cần ít nhất ${config.minPoints} điểm, hiện có ${N} điểm)`
+    };
+    console.log(`📊 [BasisStationarityChecker] Result for ${pairId}:`, res);
+    return res;
+  }
+
+  // 1. Mean & Standard Deviation
+  const sumY = points.reduce((acc, p) => acc + p.basis, 0);
+  const mean = sumY / N;
+
+  const sumSquaredDiff = points.reduce((acc, p) => acc + Math.pow(p.basis - mean, 2), 0);
+  const stdDev = Math.sqrt(sumSquaredDiff / N);
+
+  // 2. Zero-Crossing Rate (ZCR)
+  let zeroCrossingCount = 0;
+  for (let i = 1; i < N; i++) {
+    const prev = points[i - 1].basis - mean;
+    const curr = points[i].basis - mean;
+    if ((prev > 0 && curr < 0) || (prev < 0 && curr > 0)) {
+      zeroCrossingCount++;
+    }
+  }
+  const zeroCrossingRatePercent = ((zeroCrossingCount / (N - 1)) * 100);
+
+  // 3. Linear Regression Slope (Normalized to % basis / day)
+  const t0 = points[0].time;
+  const msPerDay = 86400000;
+
+  let sumX = 0;
+  let sumXY = 0;
+  let sumX2 = 0;
+
+  for (let i = 0; i < N; i++) {
+    const x = (points[i].time - t0) / msPerDay; // x in days from start
+    const y = points[i].basis;
+    sumX += x;
+    sumXY += x * y;
+    sumX2 += x * x;
+  }
+
+  const denominator = (N * sumX2) - (sumX * sumX);
+  const slopePerDay = denominator !== 0
+    ? ((N * sumXY) - (sumX * sumY)) / denominator
+    : 0;
+
+  // 4. Lag-1 Autocorrelation (rho_1)
+  let numAutoCorr = 0;
+  for (let i = 1; i < N; i++) {
+    numAutoCorr += (points[i].basis - mean) * (points[i - 1].basis - mean);
+  }
+  const autocorrelationLag1 = sumSquaredDiff > 0 ? (numAutoCorr / sumSquaredDiff) : 0;
+
+  // 5. Verdict Classification
+  const isZcrHigh = zeroCrossingRatePercent >= config.zcrThresholdPercent;
+  const isSlopeSmall = Math.abs(slopePerDay) <= config.maxNormalizedSlopePerDay;
+  const isAutoCorrOk = autocorrelationLag1 < config.maxAutocorrelationLag1;
+
+  const isMeanReverting = isZcrHigh && isSlopeSmall && isAutoCorrOk;
+
+  let verdictCode = 'TRENDING_WARNING';
+  let verdictText = (state.lang === 'EN')
+    ? 'TRENDING — WARNING: Spread has strong trend / directional bias (high ANTH risk)'
+    : 'TRENDING — CẢNH BÁO: Có xu hướng — rủi ro giống ANTH, không nên coi là spread mean-reverting';
+
+  if (isMeanReverting) {
+    verdictCode = 'MEAN_REVERTING';
+    verdictText = (state.lang === 'EN')
+      ? 'MEAN-REVERTING: Suitable for adaptive volatility band strategy'
+      : 'MEAN-REVERTING: Phù hợp cho dải tự thích ứng (adaptive band)';
+  }
+
+  const result = {
+    pairId,
+    dataPoints: N,
+    mean: parseFloat(mean.toFixed(4)),
+    stdDev: parseFloat(stdDev.toFixed(4)),
+    zeroCrossingRatePercent: parseFloat(zeroCrossingRatePercent.toFixed(2)),
+    normalizedSlopePerDay: parseFloat(slopePerDay.toFixed(5)),
+    autocorrelationLag1: parseFloat(autocorrelationLag1.toFixed(4)),
+    verdictCode,
+    verdictText,
+    criteria: {
+      isZcrHigh,
+      isSlopeSmall,
+      isAutoCorrOk
+    }
+  };
+
+  console.log(`📊 [BasisStationarityChecker] Result for ${pairId}:`, result);
+  return result;
+}
+
+window.calculateBasisStationarity = calculateBasisStationarity;
+window.checkAllPairsStationarity = function() {
+  const results = {};
+  if (state.trackedPairs && Array.isArray(state.trackedPairs)) {
+    state.trackedPairs.forEach(p => {
+      results[p.id] = calculateBasisStationarity(p.id);
+    });
+  }
+  console.table(results);
+  return results;
+};
+
 
 // Phase 13 v2 Overview Split Panel Pair Renderers
 function renderOverviewPairsList() {
