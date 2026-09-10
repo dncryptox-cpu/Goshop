@@ -263,14 +263,16 @@ function handleRequest(e) {
         const resolvedByParam = params.resolvedBy || params.resolved_by;
         const noteParam = params.note;
         const resTypeParam = params.resolutionType || params.resolution_type;
-        result = updateTicketStatus(ticketIdParam, newStatusParam, resolvedByParam, noteParam, resTypeParam);
+        const sendEmailParam = params.send_email === true || params.send_email === 'true' || params.sendEmail === true || params.sendEmail === 'true';
+        result = updateTicketStatus(ticketIdParam, newStatusParam, resolvedByParam, noteParam, resTypeParam, sendEmailParam);
         break;
       case 'resolveTicketWithType':
         const rTicketId = params.ticket_id || params.ticketId;
         const rResType = params.resolutionType || params.resolution_type || 'Fix thường';
         const rResolvedBy = params.resolvedBy || params.resolved_by || 'Admin';
         const rNote = params.note;
-        result = updateTicketStatus(rTicketId, 'Đã xử lý', rResolvedBy, rNote, rResType);
+        const rSendEmail = params.send_email === true || params.send_email === 'true' || params.sendEmail === true || params.sendEmail === 'true';
+        result = updateTicketStatus(rTicketId, 'Đã xử lý', rResolvedBy, rNote, rResType, rSendEmail);
         break;
       case 'updateActivityStatus':
         const actTicketId = params.ticket_id || params.ticketId;
@@ -2532,10 +2534,10 @@ function listTickets(filterStatus) {
 }
 
 /**
- * API 4: updateTicketStatus(ticket_id, newStatus, resolvedBy, note, resolutionType)
- * Tự động gửi mail thông báo khi chuyển thành 'Đã xử lý'
+ * API 4: updateTicketStatus(ticket_id, newStatus, resolvedBy, note, resolutionType, sendEmail)
+ * Chỉ gửi mail thông báo khi chuyển thành 'Đã xử lý' NẾU admin tích chọn sendEmail (Mặc định không gửi)
  */
-function updateTicketStatus(ticketId, newStatus, resolvedBy, note, resolutionType) {
+function updateTicketStatus(ticketId, newStatus, resolvedBy, note, resolutionType, sendEmail) {
   if (!ticketId || !newStatus) {
     return { success: false, message: 'Thiếu ticket_id hoặc newStatus.' };
   }
@@ -2592,7 +2594,9 @@ function updateTicketStatus(ticketId, newStatus, resolvedBy, note, resolutionTyp
         rowValues[11] = resolutionType; // resolution_type
       }
 
-      if (!currentTicket.notified_at) {
+      const shouldSendEmail = (sendEmail === true || sendEmail === 'true');
+
+      if (shouldSendEmail && !currentTicket.notified_at) {
         const customerEmails = [];
         if (reportsSheet && reportsSheet.getLastRow() > 1) {
           const rData = reportsSheet.getDataRange().getValues();
@@ -4246,30 +4250,7 @@ function autoClassifyPlusTickets() {
         rowVal[9] = `Tự động phân loại: ${resType}`; // note
         rowVal[11] = resType; // resolution_type
 
-        // Send notification email to customer if not already notified
-        if (!rowVal[10]) {
-          const custEmails = reportEmailsMap[ticketId] ? Array.from(reportEmailsMap[ticketId]) : [];
-          const resolvedTimeStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
-                                  new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-          for (let eIdx = 0; eIdx < custEmails.length; eIdx++) {
-            const email = custEmails[eIdx];
-            try {
-              MailApp.sendEmail({
-                to: email,
-                subject: '[Go DNC] Sự cố nhóm tài khoản Fam ' + sttGroup + ' đã được khắc phục',
-                body: 'Chào bạn,\n\n' +
-                      'Sự cố nhóm tài khoản Fam (' + sttGroup + ') của bạn đã được đội ngũ kỹ thuật Go DNC xử lý hoàn tất lúc ' + resolvedTimeStr + '.\n\n' +
-                      'Nếu bạn vẫn gặp gián đoạn hoặc cần hỗ trợ thêm, vui lòng gửi báo lỗi mới tại: https://godnc.com/renew/\n\n' +
-                      'Cảm ơn bạn đã đồng hành cùng Go DNC!\n' +
-                      'Trân trọng,\nĐội ngũ Kỹ Thuật Go DNC'
-              });
-            } catch (mailErr) {
-              Logger.log('CẢNH BÁO gửi mail tự động thất bại cho ' + email + ': ' + mailErr.toString());
-            }
-          }
-          rowVal[10] = nowIso; // notified_at
-        }
+        // Tự động phân loại ticket PL không tự động gửi mail hàng loạt (Option 2)
 
         // Fast update single row in RAM / Sheet
         updateRowRangeFast('TICKETS', tObj._rowIndex, 1, rowVal);
