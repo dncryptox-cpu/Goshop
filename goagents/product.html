@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chi Tiết Sản Phẩm - Goagents Store</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              500: '#6366f1',
+              600: '#4f46e5',
+              dark: '#090d16',
+              card: '#121a2b'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body x-data="productDetail" class="bg-[#090d16] text-slate-100 min-h-screen flex flex-col font-sans">
+
+  <!-- Header Navigation -->
+  <header class="sticky top-0 z-40 bg-[#090d16]/90 backdrop-blur-md border-b border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <a href="index.html" class="flex items-center gap-2.5 group">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 group-hover:scale-105 transition-transform">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div>
+          <span class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-indigo-200 to-indigo-400 bg-clip-text text-transparent">GOAGENTS</span>
+          <span class="block text-[10px] font-bold text-indigo-400 tracking-wider uppercase -mt-1">AI & Premium Store</span>
+        </div>
+      </a>
+
+      <nav class="hidden md:flex items-center gap-7 text-sm font-semibold text-slate-300">
+        <a href="index.html" class="hover:text-white transition-colors">Trang chủ</a>
+        <a href="products.html" class="text-indigo-400 font-bold">Tất cả sản phẩm</a>
+        <a href="about.html" class="hover:text-white transition-colors">Về chúng tôi</a>
+        <a href="support.html" class="hover:text-white transition-colors">Bảo hành & FAQ</a>
+      </nav>
+
+      <div class="hidden sm:flex items-center gap-3">
+        <a :href="$store.shop.config.ZALO_URL" target="_blank" class="btn-primary text-xs py-2 px-3.5 rounded-lg flex items-center gap-1.5">
+          <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12c0 2.17.69 4.19 1.87 5.84L2.5 21.5l3.81-1.33C7.9 21.33 9.89 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+          <span>Chat Zalo Tư Vấn</span>
+        </a>
+      </div>
+
+      <button @click="$store.shop.mobileMenuOpen = !$store.shop.mobileMenuOpen" class="md:hidden p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-grow py-8 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+    <!-- Breadcrumb -->
+    <div class="flex items-center gap-2 text-xs text-slate-400 mb-6">
+      <a href="index.html" class="hover:text-indigo-400">Trang chủ</a>
+      <span>/</span>
+      <a href="products.html" class="hover:text-indigo-400">Sản phẩm</a>
+      <span>/</span>
+      <span class="text-slate-200 font-semibold" x-text="product ? product.name : 'Chi tiết'"></span>
+    </div>
+
+    <!-- Loading Skeleton -->
+    <template x-if="loading">
+      <div class="glass-panel p-8 animate-pulse grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div class="w-full h-80 bg-slate-800 rounded-xl"></div>
+        <div class="space-y-4">
+          <div class="h-8 bg-slate-800 rounded w-3/4"></div>
+          <div class="h-4 bg-slate-800/60 rounded w-full"></div>
+          <div class="h-10 bg-slate-800 rounded w-1/2"></div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Not Found View -->
+    <div x-show="!loading && notFound" x-cloak class="glass-panel p-12 text-center space-y-4 max-w-md mx-auto my-12">
+      <div class="w-14 h-14 bg-rose-500/20 text-rose-400 rounded-full flex items-center justify-center mx-auto">
+        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+      </div>
+      <h2 class="text-xl font-bold text-white">Không tìm thấy sản phẩm</h2>
+      <p class="text-xs text-slate-400">Sản phẩm bạn đang tìm kiếm không tồn tại hoặc đã ngưng kinh doanh.</p>
+      <a href="products.html" class="btn-primary py-2.5 px-6 rounded-lg text-xs">Quay lại danh sách sản phẩm</a>
+    </div>
+
+    <!-- Product Detail Layout -->
+    <div x-show="!loading && product" class="space-y-8">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        
+        <!-- Left: Image Preview & Guarantee Badges (5 cols) -->
+        <div class="lg:col-span-5 space-y-4">
+          <div class="glass-panel p-2 overflow-hidden rounded-xl border border-slate-800">
+            <img :src="product ? product.image_url : ''" :alt="product ? product.name : ''" class="w-full h-80 object-cover rounded-lg">
+          </div>
+
+          <!-- Guarantees Grid -->
+          <div class="grid grid-cols-3 gap-2 text-center">
+            <div class="glass-panel p-3">
+              <svg class="w-5 h-5 text-indigo-400 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <div class="text-[11px] font-bold text-white">Chính Chủ 100%</div>
+              <div class="text-[10px] text-slate-400">Email cá nhân</div>
+            </div>
+            <div class="glass-panel p-3">
+              <svg class="w-5 h-5 text-emerald-400 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+              <div class="text-[11px] font-bold text-white">Bảo Hành 1:1</div>
+              <div class="text-[10px] text-slate-400">Full thời hạn</div>
+            </div>
+            <div class="glass-panel p-3">
+              <svg class="w-5 h-5 text-cyan-400 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              <div class="text-[11px] font-bold text-white">Xử Lý &lt; 5 Phút</div>
+              <div class="text-[10px] text-slate-400">Kích hoạt Zalo</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Info, Package Selection & Purchasing (7 cols) -->
+        <div class="lg:col-span-7 glass-panel p-6 space-y-6">
+          <div>
+            <div class="inline-block badge-category mb-2" x-text="product ? (product.categories ? product.categories.name : 'Sản phẩm') : ''"></div>
+            <h1 class="text-2xl sm:text-3xl font-extrabold text-white leading-tight" x-text="product ? product.name : ''"></h1>
+            <p class="text-sm text-slate-300 mt-2 leading-relaxed" x-text="product ? product.short_description : ''"></p>
+          </div>
+
+          <!-- Package Duration Options -->
+          <div class="space-y-2 border-t border-slate-800/80 pt-4">
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Chọn Gói Thời Hạn Dịch Vụ</label>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <template x-for="(pkg, idx) in packages" :key="idx">
+                <button @click="selectedPackageIndex = idx" :class="selectedPackageIndex === idx ? 'bg-indigo-600 border-indigo-400 text-white font-bold' : 'bg-slate-900/80 border-slate-800 text-slate-300 hover:bg-slate-800'" class="p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between">
+                  <span class="text-xs" x-text="pkg.label"></span>
+                  <span x-show="pkg.badge" class="text-[9px] font-bold text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded mt-1 inline-block w-max" x-text="pkg.badge"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Price Display Section -->
+          <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
+            <div>
+              <span class="text-xs text-slate-400 block">Giá thanh toán ưu đãi</span>
+              <div class="flex items-baseline gap-2 mt-0.5">
+                <span class="text-2xl sm:text-3xl font-extrabold text-cyan-400" x-text="formatVND(activePackage.priceSale)"></span>
+                <span x-show="activePackage.priceOriginal > activePackage.priceSale" class="price-strike text-sm" x-text="formatVND(activePackage.priceOriginal)"></span>
+              </div>
+            </div>
+            <div x-show="discountPercent > 0" class="badge-discount text-xs py-1 px-3">
+              Tiết kiệm <span x-text="`${discountPercent}%`"></span>
+            </div>
+          </div>
+
+          <!-- CTA Buttons -->
+          <div class="flex flex-col sm:flex-row gap-3 pt-2">
+            <button @click="buyNow()" class="flex-1 btn-primary py-3.5 px-6 rounded-xl text-base font-bold flex items-center justify-center gap-2">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 11h14l1 12H4L5 11z"/></svg>
+              <span>Đặt Mua Ngay — Giảm Giá</span>
+            </button>
+            <a :href="`https://zalo.me/${$store.shop.config.ZALO_PHONE}?text=${encodeURIComponent('Tôi muốn tư vấn sản phẩm: ' + (product ? product.name : ''))}`" target="_blank" class="btn-outline py-3.5 px-6 rounded-xl text-sm font-semibold flex items-center justify-center gap-2">
+              <svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12c0 2.17.69 4.19 1.87 5.84L2.5 21.5l3.81-1.33C7.9 21.33 9.89 22 12 22c5.52 0 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+              <span>Tư Vấn Zalo</span>
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Detailed Description & Warranty Section -->
+      <div class="glass-panel p-6 md:p-8 space-y-6">
+        <h3 class="text-xl font-bold text-white border-b border-slate-800 pb-3 flex items-center gap-2">
+          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Mô Tả Chi Tiết & Quyền Lợi Bản Quyền
+        </h3>
+
+        <div class="space-y-3 text-slate-300 text-sm leading-relaxed">
+          <template x-for="(line, idx) in descriptionParagraphs" :key="idx">
+            <p x-text="line" class="leading-relaxed"></p>
+          </template>
+        </div>
+
+        <div class="p-4 rounded-xl bg-indigo-950/40 border border-indigo-500/30 space-y-2 mt-6">
+          <h4 class="font-bold text-sm text-indigo-300 flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            Cam Kết Bảo Hành Từ Goagents:
+          </h4>
+          <ul class="text-xs text-slate-300 space-y-1.5 pl-6 list-disc">
+            <li>Bảo hành 1 đổi 1 lập tức trong suốt thời hạn gói dịch vụ đã mua.</li>
+            <li>Hỗ trợ kỹ thuật 24/7 trực tiếp qua kênh Zalo CSKH.</li>
+            <li>Cam kết tài khoản ổn định, không bị dính lỗi rác hoặc ngắt đoạn sử dụng.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-[#060911] border-t border-slate-800/80 pt-10 pb-8 text-slate-400 text-sm mt-12">
+    <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+      &copy; 2026 Goagents Store. All rights reserved.
+    </div>
+  </footer>
+
+  <!-- Include Order Modal -->
+  <div x-show="$store.shop.orderModalOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop" @keydown.escape.window="$store.shop.closeOrderModal()">
+    <div class="glass-panel w-full max-w-lg overflow-hidden shadow-2xl border border-indigo-500/30 bg-[#0e1626]" @click.away="$store.shop.closeOrderModal()">
+      <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+        <h3 class="font-bold text-lg text-white flex items-center gap-2">
+          <svg class="w-5 h-5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 11h14l1 12H4L5 11z"/></svg>
+          Đặt Mua Sản Phẩm
+        </h3>
+        <button @click="$store.shop.closeOrderModal()" class="text-slate-400 hover:text-white p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div x-show="!$store.shop.orderSuccess" class="p-5 space-y-4">
+        <template x-if="$store.shop.selectedProduct">
+          <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center gap-3">
+            <img :src="$store.shop.selectedProduct.image_url" class="w-12 h-12 rounded object-cover shrink-0">
+            <div class="flex-grow min-w-0">
+              <h4 class="font-bold text-sm text-white truncate" x-text="$store.shop.selectedProduct.name"></h4>
+              <div class="text-xs text-indigo-300 font-semibold" x-text="`Gói chọn: ${$store.shop.selectedPackage ? $store.shop.selectedPackage.label : 'Tiêu chuẩn'}`"></div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-xs text-slate-400">Đơn giá</div>
+              <div class="font-bold text-sm text-cyan-400" x-text="formatVND($store.shop.unitPrice)"></div>
+            </div>
+          </div>
+        </template>
+
+        <div x-show="$store.shop.orderError" x-cloak class="p-3 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-semibold" x-text="$store.shop.orderError"></div>
+
+        <div class="space-y-3">
+          <div class="filter-group">
+            <label>Họ và tên của bạn <span class="text-rose-400">*</span></label>
+            <input type="text" x-model="$store.shop.customerName" placeholder="Ví dụ: Nguyễn Văn A" class="input-control">
+          </div>
+
+          <div class="grid grid-cols-3 gap-2">
+            <div class="col-span-1 filter-group">
+              <label>Kênh liên hệ</label>
+              <select x-model="$store.shop.contactChannel" class="input-control">
+                <option value="zalo">Zalo</option>
+                <option value="phone">Số Điện Thoại</option>
+                <option value="facebook">Facebook</option>
+              </select>
+            </div>
+            <div class="col-span-2 filter-group">
+              <label>SĐT / Zalo nhận tài khoản <span class="text-rose-400">*</span></label>
+              <input type="text" x-model="$store.shop.contactValue" placeholder="Nhập số Zalo của bạn" class="input-control">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="filter-group">
+              <label>Số lượng</label>
+              <input type="number" min="1" max="50" x-model="$store.shop.quantity" class="input-control">
+            </div>
+            <div class="filter-group">
+              <label>Tổng tiền cần thanh toán</label>
+              <div class="input-control font-extrabold text-cyan-400 text-base bg-slate-900 border-indigo-500/30 flex items-center" x-text="formatVND($store.shop.totalPrice)"></div>
+            </div>
+          </div>
+
+          <div class="filter-group">
+            <label>Ghi chú (Tùy chọn)</label>
+            <input type="text" x-model="$store.shop.note" placeholder="Email nhận tài khoản hoặc ghi chú..." class="input-control">
+          </div>
+        </div>
+
+        <div class="pt-2">
+          <button @click="$store.shop.submitOrder()" :disabled="$store.shop.orderSubmitting" class="w-full btn-primary py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+            <span x-text="$store.shop.orderSubmitting ? 'Đang Gửi Đơn Hàng...' : 'Xác Nhận Đặt Mua Ngay'"></span>
+          </button>
+        </div>
+      </div>
+
+      <div x-show="$store.shop.orderSuccess" x-cloak class="p-6 text-center space-y-4">
+        <div class="w-14 h-14 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center text-emerald-400 mx-auto">
+          <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+        </div>
+        <div>
+          <h3 class="text-xl font-extrabold text-white">Đã Gửi Đơn Hàng Thành Công!</h3>
+          <p class="text-xs text-slate-400 mt-1">Mã đơn hàng: <strong class="text-indigo-400" x-text="$store.shop.orderResult ? $store.shop.orderResult.orderId : ''"></strong></p>
+        </div>
+        <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 text-left text-xs space-y-2">
+          <div class="flex justify-between border-b border-slate-800 pb-2">
+            <span class="text-slate-400">Khách hàng:</span>
+            <span class="font-bold text-white" x-text="$store.shop.customerName"></span>
+          </div>
+          <div class="flex justify-between border-b border-slate-800 pb-2">
+            <span class="text-slate-400">Liên hệ Zalo:</span>
+            <span class="font-bold text-emerald-400" x-text="$store.shop.contactValue"></span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-slate-400">Tổng tiền:</span>
+            <span class="font-extrabold text-cyan-400 text-sm" x-text="formatVND($store.shop.totalPrice)"></span>
+          </div>
+        </div>
+        <div class="pt-2 flex flex-col gap-2">
+          <a :href="`https://zalo.me/${$store.shop.config.ZALO_PHONE}`" target="_blank" class="w-full btn-primary py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+            <span>Mở Zalo Chat Ngay Để Kích Hoạt Nhanh</span>
+          </a>
+          <button @click="$store.shop.closeOrderModal()" class="w-full btn-outline py-2.5 rounded-xl text-xs">
+            Đóng cửa sổ
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="js/supabase-client.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/product-detail.js"></script>
+</body>
+</html>
