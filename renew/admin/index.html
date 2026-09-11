@@ -134,16 +134,16 @@
                     <a href="/renew/admin/" @click.prevent="setAdminTab('all')"
                        :class="activeAdminTab === 'all' ? 'bg-blue-600 text-white font-black shadow-md shadow-blue-500/20' : 'bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold'"
                        class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                        <span>⚡ Bảng Điều Khiển & Phân Loại</span>
+                    </a>
+
+                    <a href="/renew/admin/#tickets" @click.prevent="setAdminTab('tickets')"
+                       :class="activeAdminTab === 'tickets' ? 'bg-blue-600 text-white font-black shadow-md shadow-blue-500/20' : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold'"
+                       class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
                         <i data-lucide="wrench" class="w-4 h-4"></i>
                         <span>🛠️ Tất Cả Ticket & Tra Cứu</span>
                         <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/20 font-bold" x-text="tickets.length"></span>
-                    </a>
-
-                    <a href="/renew/admin/#overview" @click.prevent="setAdminTab('overview')"
-                       :class="activeAdminTab === 'overview' ? 'bg-indigo-600 text-white font-black shadow-md shadow-indigo-500/20' : 'bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold'"
-                       class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
-                        <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
-                        <span>📊 Thống Kê Tổng Quan</span>
                     </a>
 
                     <a href="/renew/admin/mailphu/" @click.prevent="setAdminTab('mailphu')"
@@ -216,7 +216,7 @@
 
                             <button @click="loadTickets()" :disabled="loading.admin" class="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
                                 <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.admin}"></i>
-                                <span>Tải Lại Dữ Liệu</span>
+                                <span>Tải Lại</span>
                             </button>
 
                             <button @click="syncCacheNow()" :disabled="loading.sync" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer">
@@ -226,6 +226,376 @@
                         </div>
                     </div>
 
+                    <!-- Summary Stats Cards (5 Column Layout) -->
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                        <div class="bg-gray-50 p-3 rounded-xl border border-gray-200">
+                            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tổng Nhóm Lỗi</span>
+                            <p class="text-xl font-black text-gray-900 mt-0.5" x-text="stats.total">0</p>
+                        </div>
+                        <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Đang Chờ Fix</span>
+                                <span class="text-[10px] font-black text-amber-800 bg-amber-200/80 px-1.5 py-0.2 rounded" x-text="'⏳ ' + unclassifiedTickets.length"></span>
+                            </div>
+                            <p class="text-xl font-black text-amber-800 mt-0.5" x-text="stats.open">0</p>
+                            <div class="flex items-center gap-1.5 text-[10px] font-bold mt-1 text-gray-600 pt-1 border-t border-amber-200/60">
+                                <span class="text-emerald-700">🟢 <span x-text="activeTickets.length"></span></span>
+                                <span>·</span>
+                                <span class="text-rose-700">🔴 <span x-text="inactiveTickets.length"></span></span>
+                            </div>
+                        </div>
+                        <div class="bg-rose-50 p-3 rounded-xl border border-rose-200">
+                            <span class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Bị Báo Lại</span>
+                            <p class="text-xl font-black text-rose-800 mt-0.5" x-text="stats.recurring">0</p>
+                        </div>
+                        <div class="bg-red-50 p-3 rounded-xl border border-red-200">
+                            <span class="text-[10px] font-bold text-red-700 uppercase tracking-wider flex items-center gap-1">
+                                <span>⏰ Quá Hạn (>2h)</span>
+                            </span>
+                            <p class="text-xl font-black text-red-800 mt-0.5" x-text="stats.overdue">0</p>
+                        </div>
+                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
+                            <span class="text-[10px] font-bold text-green-700 uppercase tracking-wider">Đã Fix Xong</span>
+                            <p class="text-xl font-black text-green-800 mt-0.5" x-text="stats.resolved">0</p>
+                        </div>
+                    </div>
+
+                    <!-- PROACTIVE QUICK FIX BAR (KHUNG ADMIN CHỦ ĐỘNG FIX NHANH HÀNG LOẠT) -->
+                    <div class="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border border-emerald-500/40 rounded-2xl p-4 md:p-5 text-white card-shadow space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300">
+                                    <i data-lucide="zap" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-xs font-black uppercase tracking-wider text-emerald-200">⚡ ADMIN CHỦ ĐỘNG FIX NHANH HÀNG LOẠT (PASTE MÃ RN HOẶC EMAIL)</h3>
+                                    <p class="text-[11px] text-gray-300">Dán email hoặc mã RN vừa fix xong vào đây ➔ Tự động ghi nhận ĐÃ FIX cho toàn hệ thống & đẩy sang CTV</p>
+                                </div>
+                            </div>
+                            <span class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold">
+                                Tự động đẩy sang Khu 2 CTV
+                            </span>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <div class="relative flex-grow">
+                                <textarea x-model="quickFixText" rows="2"
+                                          placeholder="Dán mã RN hoặc email vừa fix xong vào đây (mỗi dòng 1 mã RN/email hoặc dán nguyên đoạn text)...&#10;Ví dụ: RN78, b01054241931@gmail.com, hoangdinhtuan396@gmail.com"
+                                          class="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-white font-mono placeholder-gray-400 focus:bg-black/40 focus:border-emerald-400 focus:outline-none transition-all"></textarea>
+                            </div>
+
+                            <div class="flex flex-col gap-2 self-stretch sm:self-auto">
+                                <label class="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer select-none border"
+                                       :class="sendEmailNotice ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-white/10 text-gray-300 border-white/20 hover:bg-white/20'">
+                                    <input type="checkbox" x-model="sendEmailNotice" class="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-400 cursor-pointer">
+                                    <span x-text="sendEmailNotice ? '✉️ Đã bật gửi mail' : '🔕 Không gửi mail'"></span>
+                                </label>
+
+                                <button @click="submitProactiveQuickFix()" :disabled="loading.quickFix || !quickFixText.trim()"
+                                        class="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer whitespace-nowrap">
+                                    <i data-lucide="check-circle-2" class="w-4 h-4 text-gray-950" :class="loading.quickFix ? 'animate-spin' : ''"></i>
+                                    <span x-text="loading.quickFix ? 'Đang ghi nhận...' : '🟢 GHI NHẬN ĐÃ FIX HOÀN TẤT'"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KHUNG TỔNG HỢP KHÁCH ĐĂNG KÝ NHẬN BÁO ZALO (CHỈ HIỂN THỊ VỚI ADMIN) -->
+                    <div x-show="role === 'admin' && zaloPendingList.length > 0" class="bg-gradient-to-r from-emerald-900 via-teal-900 to-emerald-950 border border-emerald-500/50 rounded-2xl p-4 text-white card-shadow space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="phone-call" class="w-4 h-4 text-emerald-300"></i>
+                                <h3 class="text-xs font-black uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
+                                    <span>📱 BÁO THÔNG BÁO ZALO CHO KHÁCH</span>
+                                    <span class="bg-emerald-500/30 text-emerald-200 px-2 py-0.2 rounded-full text-[10px]" x-text="'(' + zaloPendingList.length + ' lượt)'"></span>
+                                </h3>
+                            </div>
+
+                            <!-- BỘ LỌC TRẠNG THÁI BÁO ZALO -->
+                            <div class="flex items-center gap-1 text-xs">
+                                <button @click="zaloFilter = 'pending'"
+                                        :class="zaloFilter === 'pending' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
+                                        class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
+                                    ⏳ Chưa Báo (<span x-text="zaloPendingList.filter(i => !isZaloSent(i.customer_email, i.zalo_phone)).length"></span>)
+                                </button>
+                                <button @click="zaloFilter = 'sent'"
+                                        :class="zaloFilter === 'sent' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
+                                        class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
+                                    ✅ Đã Báo (<span x-text="zaloPendingList.filter(i => isZaloSent(i.customer_email, i.zalo_phone)).length"></span>)
+                                </button>
+                                <button @click="zaloFilter = 'all'"
+                                        :class="zaloFilter === 'all' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
+                                        class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
+                                    Tất Cả (<span x-text="zaloPendingList.length"></span>)
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <template x-for="item in filteredZaloList" :key="item.customer_email + item.zalo_phone">
+                                <div class="p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs flex-grow sm:flex-grow-0 transition-all"
+                                     :class="isZaloSent(item.customer_email, item.zalo_phone) ? 'bg-white/5 border-white/10 opacity-70' : 'bg-white/10 border-white/20'">
+                                    <div>
+                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                            <span class="font-mono font-black text-amber-300 text-sm" x-text="item.stt_group"></span>
+                                            <template x-if="getDatagocCtv(item.customer_email)">
+                                                <span class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-blue-500/30 text-blue-200 border border-blue-400/40 tracking-tight"
+                                                      x-text="'CTV: ' + getDatagocCtv(item.customer_email)"></span>
+                                            </template>
+                                            <span class="font-mono text-white text-xs font-bold" x-text="item.customer_email"></span>
+                                            <template x-if="isZaloSent(item.customer_email, item.zalo_phone)">
+                                                <span class="text-[9px] bg-green-500/20 text-green-300 border border-green-500/40 px-1.5 py-0.2 rounded font-bold">✓ Đã Báo</span>
+                                            </template>
+                                        </div>
+                                        <div class="text-[10px] text-emerald-300 font-bold flex items-center gap-1 pt-0.5">
+                                            <i data-lucide="phone" class="w-3 h-3"></i>
+                                            <span>Zalo: <strong x-text="item.zalo_phone" class="underline font-mono"></strong></span>
+                                            <span class="text-gray-300 font-normal ml-1" x-text="formatDate(item.reported_at)"></span>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-1.5">
+                                        <button @click="openZaloChat(item.ticket, item.customer_email, item.zalo_phone)"
+                                                class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-lg shadow-sm transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer">
+                                            <i data-lucide="message-square" class="w-3 h-3 text-gray-950"></i>
+                                            <span>Chat Zalo</span>
+                                        </button>
+
+                                        <button @click="toggleZaloSent(item.customer_email, item.ticket ? item.ticket.ticket_id : null, item.zalo_phone)"
+                                                :class="isZaloSent(item.customer_email, item.zalo_phone) ? 'bg-amber-500/30 text-amber-200 border-amber-400/40' : 'bg-white/10 text-gray-300 hover:bg-white/20'"
+                                                class="px-2 py-1.5 border rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                                                :title="isZaloSent(item.customer_email, item.zalo_phone) ? 'Bấm để hủy đánh dấu' : 'Bấm để đánh dấu đã báo Zalo'">
+                                            <span x-text="isZaloSent(item.customer_email, item.zalo_phone) ? '↩ Hủy' : '✓ Đã Báo'"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- ⚡ BẢNG LIỆT KÊ TICKET FAM CẦN FIX — THEO TRỤC HOẠT ĐỘNG / KHÔNG HOẠT ĐỘNG -->
+                    <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 text-white rounded-3xl p-4 sm:p-5 card-shadow space-y-5 border border-indigo-500/30">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-600 flex items-center justify-center text-gray-950 font-black shadow-md">
+                                    <i data-lucide="zap" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-xs sm:text-sm font-black tracking-tight text-white flex items-center gap-2">
+                                        ⚡ BẢNG LIỆT KÊ TICKET FAM CẦN FIX
+                                    </h3>
+                                    <p class="text-[11px] text-gray-300 font-medium">
+                                        Tổ chức theo trạng thái nhóm — Ưu tiên Phân loại trước, Xử lý dứt điểm theo đúng quy trình
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Sub-stats -->
+                            <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                                <span class="px-3 py-1 bg-amber-500/20 border border-amber-400/40 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1">
+                                    ⏳ Chưa phân loại: <strong class="text-amber-200 font-mono text-sm" x-text="unclassifiedTickets.length"></strong>
+                                </span>
+                                <span class="px-3 py-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1">
+                                    🟢 Đang hoạt động: <strong class="text-emerald-200 font-mono text-sm" x-text="activeTickets.length"></strong>
+                                </span>
+                                <span class="px-3 py-1 bg-rose-500/20 border border-rose-400/40 text-rose-300 rounded-xl text-xs font-bold flex items-center gap-1">
+                                    🔴 Không hoạt động: <strong class="text-rose-200 font-mono text-sm" x-text="inactiveTickets.length"></strong>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- 1. KHỐI CHƯA PHÂN LOẠI (ƯU TIÊN TRÊN CÙNG) -->
+                        <div class="bg-amber-950/40 border-2 border-amber-500/50 rounded-2xl p-4 space-y-3 shadow-lg">
+                            <div class="flex items-center justify-between border-b border-amber-500/30 pb-2.5">
+                                <div class="flex items-center gap-2">
+                                    <span class="w-3 h-3 rounded-full bg-amber-400 animate-pulse"></span>
+                                    <h4 class="text-xs sm:text-sm font-black uppercase tracking-wider text-amber-300 flex items-center gap-2">
+                                        <span>⏳ 1. CHƯA PHÂN LOẠI — CẦN GẮN NHÃN NGAY</span>
+                                        <span class="bg-amber-500 text-gray-950 text-xs px-2.5 py-0.5 rounded-full font-mono font-black" x-text="unclassifiedTickets.length"></span>
+                                    </h4>
+                                </div>
+                                <span class="text-[11px] text-amber-200/80 font-semibold">Bấm 🟢 hoặc 🔴 trên từng thẻ để chuyển khối</span>
+                            </div>
+
+                            <!-- List Items Chưa phân loại -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                <template x-if="unclassifiedTickets.length === 0">
+                                    <div class="col-span-full p-6 text-center text-xs text-amber-200/70 italic bg-amber-500/10 rounded-xl border border-amber-500/20">
+                                        🎉 Tuyệt vời! Không có ticket nào chưa phân loại.
+                                    </div>
+                                </template>
+
+                                <template x-for="t in unclassifiedTickets" :key="t.ticket_id">
+                                    <div class="bg-white/10 hover:bg-white/15 border border-amber-400/30 rounded-xl p-3.5 space-y-3 transition-all flex flex-col justify-between">
+                                        <div class="space-y-2">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-mono font-black text-amber-300 text-base" x-text="t.stt_group"></span>
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
+                                                          :class="String(t.stt_group).toUpperCase().startsWith('PL') ? 'bg-purple-500/30 text-purple-300 border border-purple-400/40' : 'bg-blue-500/30 text-blue-300 border border-blue-400/40'"
+                                                          x-text="String(t.stt_group).toUpperCase().startsWith('PL') ? 'PL' : 'RN'"></span>
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-black"
+                                                          :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-white/10 text-gray-300')"
+                                                          x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count) : (getTicketAgeText(t) || 'Mới')"></span>
+                                                </div>
+                                            </div>
+
+                                            <div class="text-xs space-y-1">
+                                                <div class="flex items-center justify-between text-[11px] text-gray-300">
+                                                    <span>👑 Chủ Fam: <strong class="font-mono text-amber-200 select-all" x-text="t.owner_email || 'Chưa rõ'"></strong></span>
+                                                    <button @click="copyText(t.owner_email)" x-show="t.owner_email" class="text-amber-400 hover:text-white text-[10px] underline">Copy</button>
+                                                </div>
+                                                <div class="text-[11px] text-indigo-200 font-medium">
+                                                    👤 Khách báo: <span class="font-mono font-bold text-white" x-text="t.reported_emails && t.reported_emails.length ? t.reported_emails.join(', ') : 'Chưa có email'"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- 2 LARGE PROMINENT BUTTONS FOR FAST TAGGING -->
+                                        <div class="grid grid-cols-2 gap-2 pt-1 border-t border-white/10">
+                                            <button @click="tagTicketActivity(t.ticket_id, 'Đang hoạt động')"
+                                                    :disabled="loading.activityTicketId === t.ticket_id"
+                                                    class="py-2.5 px-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer">
+                                                <span>🟢 Đang hoạt động</span>
+                                            </button>
+                                            <button @click="tagTicketActivity(t.ticket_id, 'Không hoạt động')"
+                                                    :disabled="loading.activityTicketId === t.ticket_id"
+                                                    class="py-2.5 px-2 bg-rose-500 hover:bg-rose-400 active:scale-95 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer">
+                                                <span>🔴 Không hoạt động</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- GRID 2 KHỐI ĐÃ PHÂN LOẠI: ĐANG HOẠT ĐỘNG vs KHÔNG HOẠT ĐỘNG -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+                            <!-- 2. KHỐI ĐANG HOẠT ĐỘNG — MẤT PREMIUM -->
+                            <div class="bg-emerald-950/30 border border-emerald-500/40 rounded-2xl p-4 space-y-3">
+                                <div class="flex items-center justify-between border-b border-emerald-500/20 pb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                                        <h4 class="text-xs font-black uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
+                                            <span>🟢 2. ĐANG HOẠT ĐỘNG — MẤT PREMIUM</span>
+                                            <span class="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.2 rounded-full font-mono font-bold" x-text="activeTickets.length"></span>
+                                        </h4>
+                                    </div>
+                                    <span class="text-[10px] text-emerald-200/70 font-medium">Không rời nhóm · Đổi mail phụ / Cấp TK tạm</span>
+                                </div>
+
+                                <!-- List Items Active -->
+                                <div class="space-y-2.5 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
+                                    <template x-if="activeTickets.length === 0">
+                                        <div class="p-6 text-center text-xs text-gray-400 italic bg-white/5 rounded-xl border border-white/5">
+                                            🎉 Không có nhóm đang hoạt động nào cần xử lý.
+                                        </div>
+                                    </template>
+
+                                    <template x-for="t in activeTickets" :key="t.ticket_id">
+                                        <div class="bg-white/10 hover:bg-white/15 border border-emerald-500/30 rounded-xl p-3.5 space-y-2.5 transition-all">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-mono font-black text-emerald-300 text-base" x-text="t.stt_group"></span>
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
+                                                          :class="String(t.stt_group).toUpperCase().startsWith('PL') ? 'bg-purple-500/30 text-purple-300 border border-purple-400/40' : 'bg-blue-500/30 text-blue-300 border border-blue-400/40'"
+                                                          x-text="String(t.stt_group).toUpperCase().startsWith('PL') ? 'PL' : 'RN'"></span>
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-black"
+                                                          :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-emerald-500/30 text-emerald-300 border border-emerald-400/40')"
+                                                          x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count) : (getTicketAgeText(t) || 'Mới')"></span>
+                                                </div>
+
+                                                <button @click="tagTicketActivity(t.ticket_id, '')" title="Hủy nhãn"
+                                                        class="text-[10px] text-gray-400 hover:text-white underline">
+                                                    Hủy nhãn
+                                                </button>
+                                            </div>
+
+                                            <div class="text-xs space-y-1">
+                                                <div class="flex items-center justify-between text-[11px] text-gray-300">
+                                                    <span>👑 Chủ Fam: <strong class="font-mono text-amber-200 select-all" x-text="t.owner_email || 'Chưa rõ'"></strong></span>
+                                                    <button @click="copyText(t.owner_email)" x-show="t.owner_email" class="text-amber-400 hover:text-white text-[10px] underline">Copy</button>
+                                                </div>
+                                                <div class="text-[11px] text-emerald-200 font-medium">
+                                                    👤 Khách báo: <span class="font-mono font-bold text-white" x-text="t.reported_emails && t.reported_emails.length ? t.reported_emails.join(', ') : 'Chưa có email'"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- 3. KHỐI KHÔNG HOẠT ĐỘNG — KHÔNG RỜI NHÓM được -->
+                            <div class="bg-rose-950/30 border border-rose-500/40 rounded-2xl p-4 space-y-3">
+                                <div class="flex items-center justify-between border-b border-rose-500/20 pb-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2.5 h-2.5 rounded-full bg-rose-400"></span>
+                                        <h4 class="text-xs font-black uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
+                                            <span>🔴 3. KHÔNG HOẠT ĐỘNG — CHỜ MỜI NHÓM MỚI</span>
+                                            <span class="bg-rose-600/40 text-rose-200 text-[10px] px-2 py-0.2 rounded-full font-mono font-bold" x-text="inactiveTickets.length"></span>
+                                        </h4>
+                                    </div>
+                                    <span class="text-[10px] text-rose-200/70 font-medium">Cần mời nhóm Fam mới</span>
+                                </div>
+
+                                <!-- List Items Inactive -->
+                                <div class="space-y-2.5 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
+                                    <template x-if="inactiveTickets.length === 0">
+                                        <div class="p-6 text-center text-xs text-gray-400 italic bg-white/5 rounded-xl border border-white/5">
+                                            🎉 Không có nhóm không hoạt động nào cần xử lý.
+                                        </div>
+                                    </template>
+
+                                    <template x-for="t in inactiveTickets" :key="t.ticket_id">
+                                        <div class="bg-white/10 hover:bg-white/15 border border-rose-500/30 rounded-xl p-3.5 space-y-2.5 transition-all">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-mono font-black text-rose-300 text-base" x-text="t.stt_group"></span>
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
+                                                          :class="String(t.stt_group).toUpperCase().startsWith('PL') ? 'bg-purple-500/30 text-purple-300 border border-purple-400/40' : 'bg-blue-500/30 text-blue-300 border border-blue-400/40'"
+                                                          x-text="String(t.stt_group).toUpperCase().startsWith('PL') ? 'PL' : 'RN'"></span>
+                                                    <span class="px-2 py-0.5 rounded text-[10px] font-black"
+                                                          :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-rose-500/30 text-rose-300 border border-rose-400/40')"
+                                                          x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count) : (getTicketAgeText(t) || 'Mới')"></span>
+                                                </div>
+
+                                                <button @click="tagTicketActivity(t.ticket_id, '')" title="Đổi nhãn"
+                                                        class="text-[10px] text-gray-400 hover:text-white underline">
+                                                    Đổi nhãn
+                                                </button>
+                                            </div>
+
+                                            <div class="text-xs space-y-1">
+                                                <div class="flex items-center justify-between text-[11px] text-gray-300">
+                                                    <span>👑 Chủ Fam: <strong class="font-mono text-amber-200 select-all" x-text="t.owner_email || 'Chưa rõ'"></strong></span>
+                                                    <button @click="copyText(t.owner_email)" x-show="t.owner_email" class="text-amber-400 hover:text-white text-[10px] underline">Copy</button>
+                                                </div>
+                                                <div class="text-[11px] text-rose-200 font-medium">
+                                                    👤 Khách báo: <span class="font-mono font-bold text-white" x-text="t.reported_emails && t.reported_emails.length ? t.reported_emails.join(', ') : 'Chưa có email'"></span>
+                                                </div>
+                                            </div>
+
+                                            <!-- HÀNH ĐỘNG CHO NHÓM KHÔNG HOẠT ĐỘNG: FIX XONG (MỜI NHÓM MỚI) -->
+                                            <div class="pt-1 border-t border-white/10">
+                                                <button @click="resolveTicketWithType(t, 'Fix thường')" :disabled="t.saving"
+                                                        class="w-full py-2.5 px-3 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                                                    <i data-lucide="check-circle-2" class="w-4 h-4 text-gray-950"></i>
+                                                    <span>✅ Fix Xong (Đã Mời Nhóm Mới)</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                </div> <!-- END TAB ALL (MAIN DASHBOARD) -->
+
+                <!-- TAB TICKETS: 🛠️ TẤT CẢ TICKET & TRA CỨU -->
+                <div x-show="activeAdminTab === 'tickets'" x-transition x-cloak class="space-y-5">
                     <!-- STICKY SEARCH & CHIP FILTER BAR (HIGH-CLARITY SAAS DESIGN) -->
                     <div class="sticky top-16 z-40 bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl p-3.5 card-shadow space-y-3">
                         <div class="relative">
@@ -467,393 +837,7 @@
                             <p class="text-xs text-slate-500" x-show="searchQuery">Thử gõ lại mã RN (vd: RN34) hoặc xóa ô tìm kiếm.</p>
                         </div>
                     </div>
-
-                </div> <!-- END TAB 1 (ALL / TICKET TRA CỨU) -->
-
-                <!-- TAB 2: 📊 THỐNG KÊ TỔNG QUAN & HOẠT ĐỘNG NHÓM -->
-                <div x-show="activeAdminTab === 'overview'" x-transition x-cloak class="space-y-5">
-                    <!-- Summary Stats Cards (5 Column Layout) -->
-                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                        <div class="bg-gray-50 p-3 rounded-xl border border-gray-200">
-                            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tổng Nhóm Lỗi</span>
-                            <p class="text-xl font-black text-gray-900 mt-0.5" x-text="stats.total">0</p>
-                        </div>
-                        <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
-                            <div class="flex items-center justify-between">
-                                <span class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Đang Chờ Fix</span>
-                                <span class="text-[10px] font-black text-amber-800 bg-amber-200/80 px-1.5 py-0.2 rounded" x-text="'⏳ ' + unclassifiedTickets.length"></span>
-                            </div>
-                            <p class="text-xl font-black text-amber-800 mt-0.5" x-text="stats.open">0</p>
-                            <div class="flex items-center gap-1.5 text-[10px] font-bold mt-1 text-gray-600 pt-1 border-t border-amber-200/60">
-                                <span class="text-emerald-700">🟢 <span x-text="activeTickets.length"></span></span>
-                                <span>·</span>
-                                <span class="text-rose-700">🔴 <span x-text="inactiveTickets.length"></span></span>
-                            </div>
-                        </div>
-                        <div class="bg-rose-50 p-3 rounded-xl border border-rose-200">
-                            <span class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Bị Báo Lại</span>
-                            <p class="text-xl font-black text-rose-800 mt-0.5" x-text="stats.recurring">0</p>
-                        </div>
-                        <div class="bg-red-50 p-3 rounded-xl border border-red-200">
-                            <span class="text-[10px] font-bold text-red-700 uppercase tracking-wider flex items-center gap-1">
-                                <span>⏰ Quá Hạn (>2h)</span>
-                            </span>
-                            <p class="text-xl font-black text-red-800 mt-0.5" x-text="stats.overdue">0</p>
-                        </div>
-                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
-                            <span class="text-[10px] font-bold text-green-700 uppercase tracking-wider">Đã Fix Xong</span>
-                            <p class="text-xl font-black text-green-800 mt-0.5" x-text="stats.resolved">0</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- PROACTIVE QUICK FIX BAR (KHUNG ADMIN CHỦ ĐỘNG FIX NHANH HÀNG LOẠT) -->
-                <div class="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border border-emerald-500/40 rounded-2xl p-4 md:p-5 text-white card-shadow space-y-3">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2.5">
-                        <div class="flex items-center gap-2">
-                            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300">
-                                <i data-lucide="zap" class="w-4 h-4"></i>
-                            </div>
-                            <div>
-                                <h3 class="text-xs font-black uppercase tracking-wider text-emerald-200">⚡ ADMIN CHỦ ĐỘNG FIX NHANH HÀNG LOẠT (PASTE MÃ RN HOẶC EMAIL)</h3>
-                                <p class="text-[11px] text-gray-300">Dán email hoặc mã RN vừa fix xong vào đây ➔ Tự động ghi nhận ĐÃ FIX cho toàn hệ thống & đẩy sang CTV</p>
-                            </div>
-                        </div>
-                        <span class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold">
-                            Tự động đẩy sang Khu 2 CTV
-                        </span>
-                    </div>
-
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        <div class="relative flex-grow">
-                            <textarea x-model="quickFixText" rows="2"
-                                      placeholder="Dán mã RN hoặc email vừa fix xong vào đây (mỗi dòng 1 mã RN/email hoặc dán nguyên đoạn text)...&#10;Ví dụ: RN78, b01054241931@gmail.com, hoangdinhtuan396@gmail.com"
-                                      class="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-white font-mono placeholder-gray-400 focus:bg-black/40 focus:border-emerald-400 focus:outline-none transition-all"></textarea>
-                        </div>
-
-                        <div class="flex flex-col gap-2 self-stretch sm:self-auto">
-                            <label class="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer select-none border"
-                                   :class="sendEmailNotice ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-white/10 text-gray-300 border-white/20 hover:bg-white/20'">
-                                <input type="checkbox" x-model="sendEmailNotice" class="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-400 cursor-pointer">
-                                <span x-text="sendEmailNotice ? '✉️ Đã bật gửi mail' : '🔕 Không gửi mail'"></span>
-                            </label>
-
-                            <button @click="submitProactiveQuickFix()" :disabled="loading.quickFix || !quickFixText.trim()"
-                                    class="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer whitespace-nowrap">
-                                <i data-lucide="check-circle-2" class="w-4 h-4 text-gray-950" :class="loading.quickFix ? 'animate-spin' : ''"></i>
-                                <span x-text="loading.quickFix ? 'Đang ghi nhận...' : '🟢 GHI NHẬN ĐÃ FIX HOÀN TẤT'"></span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- KHUNG TỔNG HỢP KHÁCH ĐĂNG KÝ NHẬN BÁO ZALO (CHỈ HIỂN THỊ VỚI ADMIN) -->
-                <div x-show="role === 'admin' && zaloPendingList.length > 0" class="bg-gradient-to-r from-emerald-900 via-teal-900 to-emerald-950 border border-emerald-500/50 rounded-2xl p-4 text-white card-shadow space-y-3">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2">
-                        <div class="flex items-center gap-2">
-                            <i data-lucide="phone-call" class="w-4 h-4 text-emerald-300"></i>
-                            <h3 class="text-xs font-black uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
-                                <span>📱 BÁO THÔNG BÁO ZALO CHO KHÁCH</span>
-                                <span class="bg-emerald-500/30 text-emerald-200 px-2 py-0.2 rounded-full text-[10px]" x-text="'(' + zaloPendingList.length + ' lượt)'"></span>
-                            </h3>
-                        </div>
-
-                        <!-- BỘ LỌC TRẠNG THÁI BÁO ZALO -->
-                        <div class="flex items-center gap-1 text-xs">
-                            <button @click="zaloFilter = 'pending'"
-                                    :class="zaloFilter === 'pending' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
-                                    class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
-                                ⏳ Chưa Báo (<span x-text="zaloPendingList.filter(i => !isZaloSent(i.customer_email, i.zalo_phone)).length"></span>)
-                            </button>
-                            <button @click="zaloFilter = 'sent'"
-                                    :class="zaloFilter === 'sent' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
-                                    class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
-                                ✅ Đã Báo (<span x-text="zaloPendingList.filter(i => isZaloSent(i.customer_email, i.zalo_phone)).length"></span>)
-                            </button>
-                            <button @click="zaloFilter = 'all'"
-                                    :class="zaloFilter === 'all' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
-                                    class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
-                                Tất Cả (<span x-text="zaloPendingList.length"></span>)
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="flex flex-wrap gap-2">
-                        <template x-for="item in filteredZaloList" :key="item.customer_email + item.zalo_phone">
-                            <div class="p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs flex-grow sm:flex-grow-0 transition-all"
-                                 :class="isZaloSent(item.customer_email, item.zalo_phone) ? 'bg-white/5 border-white/10 opacity-70' : 'bg-white/10 border-white/20'">
-                                <div>
-                                    <div class="flex items-center gap-1.5 flex-wrap">
-                                        <span class="font-mono font-black text-amber-300 text-sm" x-text="item.stt_group"></span>
-                                        <template x-if="getDatagocCtv(item.customer_email)">
-                                            <span class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-blue-500/30 text-blue-200 border border-blue-400/40 tracking-tight"
-                                                  x-text="'CTV: ' + getDatagocCtv(item.customer_email)"></span>
-                                        </template>
-                                        <span class="font-mono text-white text-xs font-bold" x-text="item.customer_email"></span>
-                                        <template x-if="isZaloSent(item.customer_email, item.zalo_phone)">
-                                            <span class="text-[9px] bg-green-500/20 text-green-300 border border-green-500/40 px-1.5 py-0.2 rounded font-bold">✓ Đã Báo</span>
-                                        </template>
-                                    </div>
-                                    <div class="text-[10px] text-emerald-300 font-bold flex items-center gap-1 pt-0.5">
-                                        <i data-lucide="phone" class="w-3 h-3"></i>
-                                        <span>Zalo: <strong x-text="item.zalo_phone" class="underline font-mono"></strong></span>
-                                        <span class="text-gray-300 font-normal ml-1" x-text="formatDate(item.reported_at)"></span>
-                                    </div>
-                                </div>
-
-                                <div class="flex items-center gap-1.5">
-                                    <button @click="openZaloChat(item.ticket, item.customer_email, item.zalo_phone)"
-                                            class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-lg shadow-sm transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer">
-                                        <i data-lucide="message-square" class="w-3 h-3 text-gray-950"></i>
-                                        <span>Chat Zalo</span>
-                                    </button>
-
-                                    <button @click="toggleZaloSent(item.customer_email, item.ticket ? item.ticket.ticket_id : null, item.zalo_phone)"
-                                            :class="isZaloSent(item.customer_email, item.zalo_phone) ? 'bg-amber-500/30 text-amber-200 border-amber-400/40' : 'bg-white/10 text-gray-300 hover:bg-white/20'"
-                                            class="px-2 py-1.5 border rounded-lg text-[10px] font-bold transition-all cursor-pointer"
-                                            :title="isZaloSent(item.customer_email, item.zalo_phone) ? 'Bấm để hủy đánh dấu' : 'Bấm để đánh dấu đã báo Zalo'">
-                                        <span x-text="isZaloSent(item.customer_email, item.zalo_phone) ? '↩ Hủy' : '✓ Đã Báo'"></span>
-                                    </button>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
-                </div>
-
-                <!-- ⚡ BẢNG LIỆT KÊ TICKET FAM CẦN FIX — THEO TRỤC HOẠT ĐỘNG / KHÔNG HOẠT ĐỘNG -->
-                <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 text-white rounded-3xl p-4 sm:p-5 card-shadow space-y-5 border border-indigo-500/30">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
-                        <div class="flex items-center gap-2.5">
-                            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-600 flex items-center justify-center text-gray-950 font-black shadow-md">
-                                <i data-lucide="zap" class="w-4 h-4"></i>
-                            </div>
-                            <div>
-                                <h3 class="text-xs sm:text-sm font-black tracking-tight text-white flex items-center gap-2">
-                                    ⚡ BẢNG LIỆT KÊ TICKET FAM CẦN FIX
-                                </h3>
-                                <p class="text-[11px] text-gray-300 font-medium">
-                                    Tổ chức theo trạng thái nhóm — Ưu tiên Phân loại trước, Xử lý dứt điểm theo đúng quy trình
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Sub-stats -->
-                        <div class="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-                            <span class="px-3 py-1 bg-amber-500/20 border border-amber-400/40 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1">
-                                ⏳ Chưa phân loại: <strong class="text-amber-200 font-mono text-sm" x-text="unclassifiedTickets.length"></strong>
-                            </span>
-                            <span class="px-3 py-1 bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 rounded-xl text-xs font-bold flex items-center gap-1">
-                                🟢 Đang hoạt động: <strong class="text-emerald-200 font-mono text-sm" x-text="activeTickets.length"></strong>
-                            </span>
-                            <span class="px-3 py-1 bg-rose-500/20 border border-rose-400/40 text-rose-300 rounded-xl text-xs font-bold flex items-center gap-1">
-                                🔴 Không hoạt động: <strong class="text-rose-200 font-mono text-sm" x-text="inactiveTickets.length"></strong>
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- 1. KHỐI CHƯA PHÂN LOẠI (ƯU TIÊN TRÊN CÙNG) -->
-                    <div class="bg-amber-950/40 border-2 border-amber-500/50 rounded-2xl p-4 space-y-3 shadow-lg">
-                        <div class="flex items-center justify-between border-b border-amber-500/30 pb-2.5">
-                            <div class="flex items-center gap-2">
-                                <span class="w-3 h-3 rounded-full bg-amber-400 animate-pulse"></span>
-                                <h4 class="text-xs sm:text-sm font-black uppercase tracking-wider text-amber-300 flex items-center gap-2">
-                                    <span>⏳ 1. CHƯA PHÂN LOẠI — CẦN GẮN NHÃN NGAY</span>
-                                    <span class="bg-amber-500 text-gray-950 text-xs px-2.5 py-0.5 rounded-full font-mono font-black" x-text="unclassifiedTickets.length"></span>
-                                </h4>
-                            </div>
-                            <span class="text-[11px] text-amber-200/80 font-semibold">Bấm 🟢 hoặc 🔴 trên từng thẻ để chuyển khối</span>
-                        </div>
-
-                        <!-- List Items Chưa phân loại -->
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            <template x-if="unclassifiedTickets.length === 0">
-                                <div class="col-span-full p-6 text-center text-xs text-amber-200/70 italic bg-amber-500/10 rounded-xl border border-amber-500/20">
-                                    🎉 Tuyệt vời! Không có ticket nào chưa phân loại.
-                                </div>
-                            </template>
-
-                            <template x-for="t in unclassifiedTickets" :key="t.ticket_id">
-                                <div class="bg-white/10 hover:bg-white/15 border border-amber-400/30 rounded-xl p-3.5 space-y-3 transition-all flex flex-col justify-between">
-                                    <div class="space-y-2">
-                                        <div class="flex items-center justify-between gap-2">
-                                            <div class="flex items-center gap-2">
-                                                <span class="font-mono font-black text-amber-300 text-base" x-text="t.stt_group"></span>
-                                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
-                                                      :class="String(t.stt_group).toUpperCase().startsWith('PL') ? 'bg-purple-500/30 text-purple-300 border border-purple-400/40' : 'bg-blue-500/30 text-blue-300 border border-blue-400/40'"
-                                                      x-text="String(t.stt_group).toUpperCase().startsWith('PL') ? 'PL' : 'RN'"></span>
-                                                <span class="px-2 py-0.5 rounded text-[10px] font-black"
-                                                      :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-white/10 text-gray-300')"
-                                                      x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count) : (getTicketAgeText(t) || 'Mới')"></span>
-                                            </div>
-                                        </div>
-
-                                        <div class="text-xs space-y-1">
-                                            <div class="flex items-center justify-between text-[11px] text-gray-300">
-                                                <span>👑 Chủ Fam: <strong class="font-mono text-amber-200 select-all" x-text="t.owner_email || 'Chưa rõ'"></strong></span>
-                                                <button @click="copyText(t.owner_email)" x-show="t.owner_email" class="text-amber-400 hover:text-white text-[10px] underline">Copy</button>
-                                            </div>
-                                            <div class="text-[11px] text-indigo-200 font-medium">
-                                                👤 Khách báo: <span class="font-mono font-bold text-white" x-text="t.reported_emails && t.reported_emails.length ? t.reported_emails.join(', ') : 'Chưa có email'"></span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <!-- 2 LARGE PROMINENT BUTTONS FOR FAST TAGGING -->
-                                    <div class="grid grid-cols-2 gap-2 pt-1 border-t border-white/10">
-                                        <button @click="tagTicketActivity(t.ticket_id, 'Đang hoạt động')"
-                                                :disabled="loading.activityTicketId === t.ticket_id"
-                                                class="py-2.5 px-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer">
-                                            <span>🟢 Đang hoạt động</span>
-                                        </button>
-                                        <button @click="tagTicketActivity(t.ticket_id, 'Không hoạt động')"
-                                                :disabled="loading.activityTicketId === t.ticket_id"
-                                                class="py-2.5 px-2 bg-rose-500 hover:bg-rose-400 active:scale-95 text-white font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1 cursor-pointer">
-                                            <span>🔴 Không hoạt động</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
-
-                    <!-- GRID 2 KHỐI ĐÃ PHÂN LOẠI: ĐANG HOẠT ĐỘNG vs KHÔNG HOẠT ĐỘNG -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-
-                        <!-- 2. KHỐI ĐANG HOẠT ĐỘNG — MẤT PREMIUM -->
-                        <div class="bg-emerald-950/30 border border-emerald-500/40 rounded-2xl p-4 space-y-3">
-                            <div class="flex items-center justify-between border-b border-emerald-500/20 pb-2">
-                                <div class="flex items-center gap-2">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                                    <h4 class="text-xs font-black uppercase tracking-wider text-emerald-300 flex items-center gap-1.5">
-                                        <span>🟢 2. ĐANG HOẠT ĐỘNG — MẤT PREMIUM</span>
-                                        <span class="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.2 rounded-full font-mono font-bold" x-text="activeTickets.length"></span>
-                                    </h4>
-                                </div>
-                                <span class="text-[10px] text-emerald-200/70 font-medium">Không rời nhóm · Đổi mail phụ / Cấp TK tạm</span>
-                            </div>
-
-                            <!-- List Items Active -->
-                            <div class="space-y-2.5 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
-                                <template x-if="activeTickets.length === 0">
-                                    <div class="p-6 text-center text-xs text-gray-400 italic bg-white/5 rounded-xl border border-white/5">
-                                        🎉 Không có nhóm đang hoạt động nào cần xử lý.
-                                    </div>
-                                </template>
-
-                                <template x-for="t in activeTickets" :key="t.ticket_id">
-                                    <div class="bg-white/10 hover:bg-white/15 border border-emerald-500/30 rounded-xl p-3.5 space-y-2.5 transition-all">
-                                        <div class="flex items-center justify-between gap-2">
-                                            <div class="flex items-center gap-2">
-                                                <span class="font-mono font-black text-emerald-300 text-base" x-text="t.stt_group"></span>
-                                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
-                                                      :class="String(t.stt_group).toUpperCase().startsWith('PL') ? 'bg-purple-500/30 text-purple-300 border border-purple-400/40' : 'bg-blue-500/30 text-blue-300 border border-blue-400/40'"
-                                                      x-text="String(t.stt_group).toUpperCase().startsWith('PL') ? 'PL' : 'RN'"></span>
-                                                <span class="px-2 py-0.5 rounded text-[10px] font-black"
-                                                      :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-emerald-500/30 text-emerald-300 border border-emerald-400/40')"
-                                                      x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count) : (getTicketAgeText(t) || 'Mới')"></span>
-                                            </div>
-
-                                            <button @click="tagTicketActivity(t.ticket_id, '')" title="Hủy nhãn"
-                                                    class="text-[10px] text-gray-400 hover:text-white underline">
-                                                Hủy nhãn
-                                            </button>
-                                        </div>
-
-                                        <div class="text-xs space-y-1">
-                                            <div class="flex items-center justify-between text-[11px] text-gray-300">
-                                                <span>👑 Chủ Fam: <strong class="font-mono text-amber-200 select-all" x-text="t.owner_email || 'Chưa rõ'"></strong></span>
-                                                <button @click="copyText(t.owner_email)" x-show="t.owner_email" class="text-amber-400 hover:text-white text-[10px] underline">Copy</button>
-                                            </div>
-                                            <div class="text-[11px] text-emerald-200 font-medium">
-                                                👤 Khách báo: <span class="font-mono font-bold text-white" x-text="t.reported_emails && t.reported_emails.length ? t.reported_emails.join(', ') : 'Chưa có email'"></span>
-                                            </div>
-                                        </div>
-
-                                        <!-- HÀNH ĐỘNG CHO NHÓM ĐANG HOẠT ĐỘNG: ĐỔI MAIL PHỤ / CẤP TK TẠM -->
-                                        <div class="grid grid-cols-2 gap-2 pt-1 border-t border-white/10">
-                                            <button @click="resolveTicketWithType(t, 'Đổi mail phụ')" :disabled="t.saving"
-                                                    class="py-2 px-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer">
-                                                <i data-lucide="mail-plus" class="w-3.5 h-3.5"></i>
-                                                <span>✉️ Đổi Mail Phụ</span>
-                                            </button>
-                                            <button @click="resolveTicketWithType(t, 'Dùng TK bảo hành')" :disabled="t.saving"
-                                                    class="py-2 px-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-sm transition-all flex items-center justify-center gap-1 cursor-pointer">
-                                                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-                                                <span>🛡️ Cấp TK Tạm</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-
-                        <!-- 3. KHỐI KHÔNG HOẠT ĐỘNG — MẤT PREMIUM -->
-                        <div class="bg-rose-950/30 border border-rose-500/40 rounded-2xl p-4 space-y-3">
-                            <div class="flex items-center justify-between border-b border-rose-500/20 pb-2">
-                                <div class="flex items-center gap-2">
-                                    <span class="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                                    <h4 class="text-xs font-black uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
-                                        <span>🔴 3. KHÔNG HOẠT ĐỘNG — MẤT PREMIUM</span>
-                                        <span class="bg-rose-600/40 text-rose-200 text-[10px] px-2 py-0.2 rounded-full font-mono font-bold" x-text="inactiveTickets.length"></span>
-                                    </h4>
-                                </div>
-                                <span class="text-[10px] text-rose-200/70 font-medium">Mời nhóm mới · Bấm Fix Xong</span>
-                            </div>
-
-                            <!-- List Items Inactive -->
-                            <div class="space-y-2.5 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
-                                <template x-if="inactiveTickets.length === 0">
-                                    <div class="p-6 text-center text-xs text-gray-400 italic bg-white/5 rounded-xl border border-white/5">
-                                        🎉 Không có nhóm không hoạt động nào cần xử lý.
-                                    </div>
-                                </template>
-
-                                <template x-for="t in inactiveTickets" :key="t.ticket_id">
-                                    <div class="bg-white/10 hover:bg-white/15 border border-rose-500/30 rounded-xl p-3.5 space-y-2.5 transition-all">
-                                        <div class="flex items-center justify-between gap-2">
-                                            <div class="flex items-center gap-2">
-                                                <span class="font-mono font-black text-rose-300 text-base" x-text="t.stt_group"></span>
-                                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
-                                                      :class="String(t.stt_group).toUpperCase().startsWith('PL') ? 'bg-purple-500/30 text-purple-300 border border-purple-400/40' : 'bg-blue-500/30 text-blue-300 border border-blue-400/40'"
-                                                      x-text="String(t.stt_group).toUpperCase().startsWith('PL') ? 'PL' : 'RN'"></span>
-                                                <span class="px-2 py-0.5 rounded text-[10px] font-black"
-                                                      :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-rose-500/30 text-rose-300 border border-rose-400/40')"
-                                                      x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count) : (getTicketAgeText(t) || 'Mới')"></span>
-                                            </div>
-
-                                            <button @click="tagTicketActivity(t.ticket_id, '')" title="Đổi nhãn"
-                                                    class="text-[10px] text-gray-400 hover:text-white underline">
-                                                Đổi nhãn
-                                            </button>
-                                        </div>
-
-                                        <div class="text-xs space-y-1">
-                                            <div class="flex items-center justify-between text-[11px] text-gray-300">
-                                                <span>👑 Chủ Fam: <strong class="font-mono text-amber-200 select-all" x-text="t.owner_email || 'Chưa rõ'"></strong></span>
-                                                <button @click="copyText(t.owner_email)" x-show="t.owner_email" class="text-amber-400 hover:text-white text-[10px] underline">Copy</button>
-                                            </div>
-                                            <div class="text-[11px] text-rose-200 font-medium">
-                                                👤 Khách báo: <span class="font-mono font-bold text-white" x-text="t.reported_emails && t.reported_emails.length ? t.reported_emails.join(', ') : 'Chưa có email'"></span>
-                                            </div>
-                                        </div>
-
-                                        <!-- HÀNH ĐỘNG CHO NHÓM KHÔNG HOẠT ĐỘNG: FIX XONG (MỜI NHÓM MỚI) -->
-                                        <div class="pt-1 border-t border-white/10">
-                                            <button @click="resolveTicketWithType(t, 'Fix thường')" :disabled="t.saving"
-                                                    class="w-full py-2.5 px-3 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-                                                <i data-lucide="check-circle-2" class="w-4 h-4 text-gray-950"></i>
-                                                <span>✅ Fix Xong (Đã Mời Nhóm Mới)</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-
-                </div> <!-- END TAB 2 (OVERVIEW) -->
+                </div> <!-- END TAB TICKETS -->
 
 
 
@@ -1351,7 +1335,7 @@
                 setAdminTab(tabName) {
                     this.activeAdminTab = tabName;
                     if (window.history && window.history.replaceState) {
-                        const newUrl = tabName === 'overview' ? '#overview' : (tabName === 'mailphu' ? '#mailphu' : (tabName === 'phanloai' ? '#phanloai' : '#all'));
+                        const newUrl = tabName === 'tickets' ? '#tickets' : (tabName === 'mailphu' ? '#mailphu' : (tabName === 'phanloai' ? '#phanloai' : '#all'));
                         window.history.replaceState(null, '', newUrl);
                     }
                     this.$nextTick(() => lucide.createIcons());
@@ -1364,8 +1348,8 @@
 
                     if (hash === '#phanloai' || path.includes('/phanloai') || searchTab === 'phanloai') {
                         this.activeAdminTab = 'phanloai';
-                    } else if (hash === '#overview' || searchTab === 'overview') {
-                        this.activeAdminTab = 'overview';
+                    } else if (hash === '#tickets' || searchTab === 'tickets') {
+                        this.activeAdminTab = 'tickets';
                     } else if (hash === '#mailphu' || path.includes('/mailphu') || searchTab === 'mailphu') {
                         this.activeAdminTab = 'mailphu';
                     } else {
