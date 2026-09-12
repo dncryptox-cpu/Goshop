@@ -897,7 +897,7 @@
                                     <template x-if="cell.data">
                                         <div class="mt-auto text-center">
                                             <div class="text-[10px] sm:text-base font-black font-mono tracking-tight" 
-                                                 x-text="(cell.data.pnl > 0 ? '+' : '') + formatCurrency(cell.data.pnl)"></div>
+                                                 x-text="(cell.data.rAchieved > 0 ? '+' : '') + Number(cell.data.rAchieved).toFixed(2) + 'R'"></div>
                                             <div class="text-[8px] sm:text-[10px] mt-0.5 opacity-70 flex justify-center gap-0.5 sm:gap-1">
                                                 <span x-show="cell.data.win > 0" x-text="`${cell.data.win}W`"></span>
                                                 <span x-show="cell.data.win > 0 && cell.data.loss > 0">|</span>
@@ -3395,10 +3395,12 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         const dObj = new Date(dStr);
                         if (dObj.getFullYear() === year && dObj.getMonth() === month) {
                             if (!tradesByDate[dStr]) {
-                                tradesByDate[dStr] = { pnl: 0, win: 0, loss: 0, count: 0 };
+                                tradesByDate[dStr] = { pnl: 0, rAchieved: 0, win: 0, loss: 0, count: 0 };
                             }
                             const pnl = Number(t.pnl) || 0;
+                            const rAchieved = Number(t.rAchieved) || 0;
                             tradesByDate[dStr].pnl += pnl;
+                            tradesByDate[dStr].rAchieved += rAchieved;
                             tradesByDate[dStr].count++;
                             if (t.status === 'WIN') tradesByDate[dStr].win++;
                             if (t.status === 'LOSS') tradesByDate[dStr].loss++;
@@ -3419,9 +3421,9 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         
                         let colorClass = 'bg-slate-800/30 text-slate-500 border-white/5 hover:border-white/10';
                         if (data) {
-                            if (data.pnl > 0) {
+                            if (data.rAchieved > 0 || data.pnl > 0) {
                                 colorClass = 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-[inset_0_0_15px_rgba(16,185,129,0.1)]';
-                            } else if (data.pnl < 0) {
+                            } else if (data.rAchieved < 0 || data.pnl < 0) {
                                 if (data.loss >= 2) {
                                     colorClass = 'bg-rose-600/40 text-rose-300 border-rose-500/50 font-bold shadow-[inset_0_0_20px_rgba(225,29,72,0.2)]';
                                 } else {
@@ -3672,11 +3674,14 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 openModal(type) {
                     if (type === 'NEW') {
+                        const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+                        const localToday = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
+                        
                         this.formTrade = {
                             id: '',
                             pair: 'ETHUSDT',
                             direction: 'LONG',
-                            date: new Date().toISOString().split('T')[0],
+                            date: localToday,
                             entryPrice: '',
                             stopLoss: '',
                             takeProfit: '',
