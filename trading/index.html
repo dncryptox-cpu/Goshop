@@ -2097,6 +2097,31 @@
 
     <!-- JS LOGIC -->
     <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'Outfit', 'sans-serif'],
+                        outfit: ['Outfit', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        obsidian: '#070B14',
+                        panel: '#0D1322',
+                        card: '#131C31',
+                        border: 'rgba(255, 255, 255, 0.08)',
+                        accent: '#2E90FA',
+                        win: '#10B981',
+                        loss: '#F43F5E',
+                        warning: '#F59E0B'
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+</html>    <script>
         function tradingApp() {
             return {
                 isLocked: true,
@@ -2128,8 +2153,8 @@
                 signalText: '',
 
                 currentView: 'JOURNAL',
-                
-                
+                backtestSubTab: 'JOURNAL', // 'JOURNAL', 'ANALYTICS', 'SETTINGS'
+                tradingMode: 'LIVE',
                 totalCapital: 10000,
                 currency: 'USD',
                 riskPercent: 5,
@@ -2223,12 +2248,28 @@
                     const rp = localStorage.getItem(`dnc_risk_pct_${u}`);
                     if (rp) this.riskPercent = Number(rp);
 
-                    
+                    const savedMode = localStorage.getItem(`dnc_mode_${u}`) || 'LIVE';
+                    this.tradingMode = savedMode;
 
-                    
+                    if (savedMode === 'BACKTEST') {
+                        const cap = localStorage.getItem(`dnc_backtest_capital_${u}`);
+                        this.totalCapital = cap ? Number(cap) : 10000;
+                        const tradesKey = `dnc_backtest_trades_${u}`;
+                        const savedTrades = localStorage.getItem(tradesKey);
+                        if (savedTrades) {
+                            try {
+                                const parsed = JSON.parse(savedTrades);
+                                this.trades = (Array.isArray(parsed) ? parsed : []).map(t => this.sanitizeTradeData({
+                                    ...t,
+                                    imgHtf: this.formatDriveImgUrl(t.imgHtf),
+                                    imgMtf: this.formatDriveImgUrl(t.imgMtf),
+                                    imgLtf: this.formatDriveImgUrl(t.imgLtf)
+                                }));
+                            } catch(e) { this.trades = []; }
+                        } else {
                             this.trades = [];
                             this.saveTradesToStorage();
-                        
+                        }
                         this.$nextTick(() => lucide.createIcons());
                         return; // Không pull từ Google Sheet khi đang ở chế độ Backtest
                     }
@@ -2389,7 +2430,7 @@
                 },
 
                 async syncSettingsToCloud() {
-                    
+                    if (this.tradingMode === 'BACKTEST') return;
                     const payload = {
                         action: 'saveSettings',
                         username: this.traderUsername || 'Anonymous',
@@ -2537,7 +2578,7 @@
                 },
 
                 async pullTradesFromCloud() {
-                    if (!this.traderUsername) return;
+                    if (!this.traderUsername || this.tradingMode === 'BACKTEST') return;
                     this.cloudSyncing = true;
                     const u = this.traderUsername;
 
@@ -2658,7 +2699,7 @@
                 },
 
                 async syncToGoogleSheet(trade) {
-                    
+                    if (this.tradingMode === 'BACKTEST') return;
                     const targetUrl = this.sheetWebhookUrl;
                     if (!targetUrl) return;
                     try {
@@ -3515,9 +3556,67 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 saveCapital() {
                     const u = this.traderUsername || 'default';
-                    
+                    if (this.tradingMode === 'BACKTEST') {
+                        localStorage.setItem(`dnc_backtest_capital_${u}`, this.totalCapital);
+                        localStorage.setItem(`dnc_currency_${u}`, this.currency);
+                        localStorage.setItem('dnc_trading_currency', this.currency);
+                        return;
+                    }
+                    localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
+                    localStorage.setItem(`dnc_currency_${u}`, this.currency);
+                    localStorage.setItem('dnc_trading_currency', this.currency);
+                    this.syncSettingsToCloud();
+                    // Sync lên cloud (fire-and-forget)
+                    const targetUrl = this.sheetWebhookUrl || this.authWebhookUrl;
+                    if (targetUrl && this.traderUsername) {
+                        fetch(targetUrl, {
+                            method: 'POST',
+                            mode: 'no-cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({
+                                action: 'saveCapital',
+                                username: this.traderUsername,
+                                capital: this.totalCapital,
+                                currency: this.currency
+                            })
+                        }).catch(() => {});
+                    }
+                },
+
+                saveTradesToStorage() {
+                    const u = this.traderUsername || 'default';
+                    const storageKey = this.tradingMode === 'BACKTEST' ? `dnc_backtest_trades_${u}` : `dnc_trades_${u}`;
+                    try {
+                        localStorage.setItem(storageKey, JSON.stringify(this.trades));
+                    } catch(e) {
+                        // localStorage đầy (thường do ảnh base64 quá lớn)
+                        console.warn('localStorage đầy, thử xoá ảnh cũ:', e.message);
+                        const lightTrades = this.trades.map(t => ({ ...t, imgHtf: t.imgHtf ? '[img]' : '', imgMtf: t.imgMtf ? '[img]' : '', imgLtf: t.imgLtf ? '[img]' : '' }));
+                        localStorage.setItem(storageKey, JSON.stringify(lightTrades));
+                    }
+                    this.$nextTick(() => { try { lucide.createIcons(); } catch(e) {} });
+                },
+
+                // Calculator math
+                calcStopLossDistance() {
+                    const dist = Math.abs(this.calcForm.entry - this.calcForm.sl);
+                    return isNaN(dist) ? 0 : dist;
+                },
+
+                calcRecommendedLot() {
+                    const dist = this.calcStopLossDistance();
+                    if (dist <= 0) return '0.00';
+                    const lot = (this.riskAmount5Percent / (dist * 100)).toFixed(2);
+                    return lot > 0 ? lot : (this.riskAmount5Percent / dist).toFixed(2);
+                },
+
+                calcTargetTp(rr) {
+                    const dist = this.calcStopLossDistance();
+                    if (this.calcForm.direction === 'LONG') {
+                        return (Number(this.calcForm.entry) + dist * rr).toFixed(2);
+                    } else {
                         return (Number(this.calcForm.entry) - dist * rr).toFixed(2);
-                    
+                    }
                 },
 
                 calcTargetTp2R() {
@@ -3613,7 +3712,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         this.trades = this.trades.filter(t => t.id !== id);
                         this.saveTradesToStorage();
                         this.saveCapital();
-                        
+                        if (this.tradingMode === 'BACKTEST') return;
                         // Xoá trên Google Sheet Cloud của riêng khách
                         const targetUrl = this.sheetWebhookUrl;
                         if (targetUrl) {
@@ -3637,10 +3736,62 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 switchView(viewName) {
-                     else {
-                        
+                    if (viewName === 'BACKTEST') {
+                        this.switchTradingMode('BACKTEST');
+                        this.currentView = 'BACKTEST';
+                    } else {
+                        if (this.tradingMode === 'BACKTEST') {
+                            this.switchTradingMode('LIVE');
+                        }
+                        this.currentView = viewName;
+                        if (viewName === 'ANALYTICS') {
+                            setTimeout(() => this.renderAnalyticsChart(), 100);
+                        }
+                        if (viewName === 'SETTINGS') {
+                            this.fetchCloudViewLinks();
+                        }
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                resetBacktestAccount() {
+                    if (confirm('🧪 Bạn có chắc chắn muốn đặt lại Vốn Backtest về mặc định (10,000) và xoá toàn bộ lịch sử lệnh thử nghiệm không?')) {
+                        const u = this.traderUsername || 'default';
+                        this.totalCapital = 10000;
+                        this.trades = [];
+                        localStorage.setItem(`dnc_backtest_capital_${u}`, 10000);
+                        localStorage.setItem(`dnc_backtest_trades_${u}`, JSON.stringify([]));
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                duplicateTrade(t) {
+                    const copy = JSON.parse(JSON.stringify(t));
+                    delete copy.id;
+                    copy.date = new Date().toISOString().split('T')[0];
+                    copy.status = 'PENDING';
+                    copy.pnl = 0;
+                    copy.rAchieved = 0;
+                    copy.mindset = t.mindset || 'EQUANIMITY';
+                    this.formTrade = copy;
+                    this.initialFormTradeSnapshot = JSON.stringify(this.formTrade);
+                    this.modalOpen = true;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                applyFormTP(rr) {
+                    const e = Number(this.formTrade.entryPrice);
+                    const s = Number(this.formTrade.stopLoss);
+                    if (!e || !s || e === s) {
+                        alert('Vui lòng nhập Giá Entry và Stop Loss trước!');
+                        return;
+                    }
+                    const dist = Math.abs(e - s);
+                    if (this.formTrade.direction === 'LONG') {
+                        this.formTrade.takeProfit = Number((e + dist * rr).toFixed(2));
+                    } else {
                         this.formTrade.takeProfit = Number((e - dist * rr).toFixed(2));
-                    
+                    }
                     this.recalcFormVolume();
                 },
 
