@@ -8,3 +8,10 @@
 ## 2. Strict Adherence to Scope & Layout Directives
 - Do NOT introduce unrequested overview or summary tabs (e.g., "Thống kê tổng quan") unless explicitly instructed by the user.
 - When asked to move specific components (e.g., "Tất cả ticket") to a dedicated tab while keeping the rest unchanged ("còn lại giữ nguyên"), preserve the original main dashboard layout (`all`) intact without stripping core elements unless requested.
+
+## 3. Mandatory Git Synchronization Before Edits
+- Always check `git status` or pull the latest changes before starting large refactors to avoid overwriting code that has been updated externally or in another session.
+
+## 4. Mandatory Post-Edit Integrity Checks
+- When using tools to edit files (especially replacing large HTML chunks), you MUST carefully read the `git diff` output to guarantee that no orphaned HTML classes or broken unclosed tags were left behind. 
+- Do not blindly assume automated replacements were 100% accurate without a diff review.
