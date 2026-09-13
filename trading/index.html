@@ -1765,20 +1765,39 @@
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-amber-400 mb-1.5">Rủi Ro Lệnh Này ($ Risk • Mặc định <span x-text="riskPercent + '%'"></span>)</label>
-                    <input type="number" step="any" x-model.number="formTrade.riskUsd" @input="recalcFormVolume()"
-                        placeholder="Số tiền $ rủi ro tùy chỉnh"
-                        class="w-full bg-amber-500/10 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-amber-400">
+                    <div class="flex items-center justify-between mb-1.5 mt-0.5">
+                        <label class="block text-[11px] font-bold text-amber-400">Rủi Ro ($ Risk • <span x-text="riskPercent + '%'"></span>)</label>
+                        <button type="button" @click="isCustomRiskLot = !isCustomRiskLot" class="text-[9px] bg-white/5 hover:bg-white/10 px-1.5 py-0.5 rounded text-slate-400">
+                            ✏️ Tùy chỉnh
+                        </button>
+                    </div>
+                    <template x-if="!isCustomRiskLot">
+                        <div class="w-full bg-amber-500/5 border border-amber-500/20 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-amber-400/80 cursor-not-allowed">
+                            <span x-text="formTrade.riskUsd"></span>
+                        </div>
+                    </template>
+                    <template x-if="isCustomRiskLot">
+                        <input type="number" step="any" x-model.number="formTrade.riskUsd" @input="recalcFormVolume()"
+                            placeholder="Số tiền $ rủi ro tùy chỉnh"
+                            class="w-full bg-amber-500/10 border border-amber-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-amber-400">
+                    </template>
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-cyan-300 mb-1.5">Khối Lượng (Lots / Units)</label>
-                    <input type="number" step="any" x-model.number="formTrade.volume" @input="formTrade.volumeUsd = Number((formTrade.volume * (formTrade.entryPrice || 1)).toFixed(2))"
-                        class="w-full bg-cyan-500/10 border border-cyan-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono font-extrabold text-cyan-400">
+                    <label class="block text-[11px] font-bold text-cyan-300 mb-1.5 mt-1">Khối Lượng (Lots / Units)</label>
+                    <template x-if="!isCustomRiskLot">
+                        <div class="w-full bg-cyan-500/5 border border-cyan-500/20 rounded-xl px-3.5 py-2.5 text-xs font-mono font-extrabold text-cyan-400/80 cursor-not-allowed">
+                            <span x-text="formTrade.volume"></span>
+                        </div>
+                    </template>
+                    <template x-if="isCustomRiskLot">
+                        <input type="number" step="any" x-model.number="formTrade.volume" @input="formTrade.volumeUsd = Number((formTrade.volume * (formTrade.entryPrice || 1)).toFixed(2))"
+                            class="w-full bg-cyan-500/10 border border-cyan-500/40 rounded-xl px-3.5 py-2.5 text-xs font-mono font-extrabold text-cyan-400">
+                    </template>
                 </div>
 
-                <div>
-                    <label class="block text-xs font-bold text-cyan-300 mb-1.5">Khối Lượng theo Tiền ($ Value)</label>
+                <div x-show="isCustomRiskLot">
+                    <label class="block text-[11px] font-bold text-cyan-300 mb-1.5 mt-1">Khối Lượng theo Tiền ($ Value)</label>
                     <input type="number" step="any" x-model.number="formTrade.volumeUsd" @input="formTrade.volume = Number((formTrade.volumeUsd / (formTrade.entryPrice || 1)).toFixed(4))"
                         placeholder="Giá trị USD lệnh"
                         class="w-full bg-card border border-white/10 rounded-xl px-3.5 py-2.5 text-xs font-mono font-bold text-white">
@@ -2154,6 +2173,7 @@
                 loginLoading: false,
                 cloudSyncing: false,
                 lastSyncTime: '',
+                isCustomRiskLot: false,
                 cloudSummary: null,
                 // Đổi mật khẩu
                 pwOld: '', pwNew: '', pwConfirm: '',
@@ -2321,6 +2341,14 @@
                 },
 
                 init() {
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.visibilityState === 'visible' && !this.isLocked && this.currentView === 'JOURNAL') {
+                            const now = Date.now();
+                            if (!this._lastPullTime || now - this._lastPullTime > 30000) {
+                                this.pullTradesFromCloud();
+                            }
+                        }
+                    });
                     const savedPin = localStorage.getItem('dnc_trading_pin');
                     if (savedPin) this.passcode = savedPin;
 
@@ -2712,6 +2740,8 @@
                             localStorage.setItem(`dnc_capital_${u}`, this.totalCapital);
                             localStorage.setItem(`dnc_currency_${u}`, this.currency);
                             this.saveTradesToStorage();
+                            const n = new Date();
+                            this.lastSyncTime = String(n.getHours()).padStart(2, '0') + ':' + String(n.getMinutes()).padStart(2, '0') + ':' + String(n.getSeconds()).padStart(2, '0');
                             console.log('✅ Cloud sync: ' + (result.trades || []).length + ' lệnh, vốn: ' + this.totalCapital);
                         }
                     } catch (err) {
@@ -2820,7 +2850,7 @@
                     setTimeout(() => {
                         this.cloudSyncing = false;
                         const now = new Date();
-                        this.lastSyncTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+                        this.lastSyncTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
                         
                         const stillUnsynced = this.trades.filter(t => t.synced === false).length;
                         const syncedCount = unsynced.length - stillUnsynced;
@@ -3686,8 +3716,8 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 calcRecommendedLot() {
                     const dist = this.calcStopLossDistance();
                     if (dist <= 0) return '0.00';
-                    const lot = (this.riskAmount5Percent / (dist * 100)).toFixed(2);
-                    return lot > 0 ? lot : (this.riskAmount5Percent / dist).toFixed(2);
+                    const lot = (this.riskAmount5Percent / dist).toFixed(4);
+                    return Number(lot) > 0 ? lot : '0.01';
                 },
 
                 calcTargetTp(rr) {
@@ -3751,6 +3781,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 openModal(type) {
+                    this.isCustomRiskLot = false;
                     if (type === 'NEW') {
                         const tzOffset = (new Date()).getTimezoneOffset() * 60000;
                         const localToday = (new Date(Date.now() - tzOffset)).toISOString().split('T')[0];
