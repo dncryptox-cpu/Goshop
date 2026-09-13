@@ -2601,6 +2601,7 @@
                 async pullTradesFromCloud() {
                     if (!this.traderUsername || this.tradingMode === 'BACKTEST') return;
                     this.cloudSyncing = true;
+                    this._lastPullTime = Date.now();
                     const u = this.traderUsername;
 
                     // 1. Đồng bộ Vốn và Cài đặt cá nhân từ sheet Nguoidung / Setting Master về máy mới
@@ -3827,6 +3828,12 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                             this.switchTradingMode('LIVE');
                         }
                         this.currentView = viewName;
+                        if (viewName === 'JOURNAL') {
+                            const now = Date.now();
+                            if (!this._lastPullTime || now - this._lastPullTime > 120000) {
+                                this.pullTradesFromCloud();
+                            }
+                        }
                         if (viewName === 'ANALYTICS') {
                             setTimeout(() => this.renderAnalyticsChart(), 100);
                         }
@@ -3980,6 +3987,17 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         this.formTrade.rAchieved = Number((this.formTrade.pnl / risk).toFixed(2));
                     } else {
                         this.formTrade.rAchieved = 0;
+                    }
+
+                    // Chặn lưu dữ liệu rác (theo yêu cầu)
+                    const cap = Number(this.totalCapital) || 10000;
+                    const v = Number(this.formTrade.volume) || Number(this.formTrade.lots) || 0;
+                    const dV = Number(this.formTrade.dollarValue) || 0;
+                    const p = Number(this.formTrade.pnl) || 0;
+
+                    if (v > cap * 1000 || dV > cap * 1000 || Math.abs(p) > cap * 50) {
+                        alert('Khối lượng bất thường, kiểm tra lại Entry/SL/Risk trước khi lưu!');
+                        return;
                     }
 
                     if (this.formTrade.id) {
