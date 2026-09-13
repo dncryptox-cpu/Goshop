@@ -3708,8 +3708,17 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 // Calculator math
+                parseLocalNum(val) {
+                    if (val === undefined || val === null || val === '') return 0;
+                    if (typeof val === 'number') return val;
+                    return Number(String(val).replace(',', '.')) || 0;
+                },
+
+                // Calculator math
                 calcStopLossDistance() {
-                    const dist = Math.abs(this.calcForm.entry - this.calcForm.sl);
+                    const e = this.parseLocalNum(this.calcForm.entry);
+                    const s = this.parseLocalNum(this.calcForm.sl);
+                    const dist = Math.abs(e - s);
                     return isNaN(dist) ? 0 : dist;
                 },
 
@@ -3722,10 +3731,11 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 calcTargetTp(rr) {
                     const dist = this.calcStopLossDistance();
+                    const e = this.parseLocalNum(this.calcForm.entry);
                     if (this.calcForm.direction === 'LONG') {
-                        return (Number(this.calcForm.entry) + dist * rr).toFixed(2);
+                        return (e + dist * rr).toFixed(2);
                     } else {
-                        return (Number(this.calcForm.entry) - dist * rr).toFixed(2);
+                        return (e - dist * rr).toFixed(2);
                     }
                 },
 
@@ -3901,8 +3911,8 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 applyFormTP(rr) {
-                    const e = Number(this.formTrade.entryPrice);
-                    const s = Number(this.formTrade.stopLoss);
+                    const e = this.parseLocalNum(this.formTrade.entryPrice);
+                    const s = this.parseLocalNum(this.formTrade.stopLoss);
                     if (!e || !s || e === s) {
                         alert('Vui lòng nhập Giá Entry và Stop Loss trước!');
                         return;
@@ -3917,12 +3927,13 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 },
 
                 recalcFormVolume() {
-                    const e = Number(this.formTrade.entryPrice);
-                    const s = Number(this.formTrade.stopLoss);
-                    const tp = Number(this.formTrade.takeProfit);
+                    if (this.isCustomRiskLot) return; // Không tính đè nếu người dùng đang tùy chỉnh tay
+                    const e = this.parseLocalNum(this.formTrade.entryPrice);
+                    const s = this.parseLocalNum(this.formTrade.stopLoss);
+                    const tp = this.parseLocalNum(this.formTrade.takeProfit);
                     if (e && s && e !== s) {
                         const dist = Math.abs(e - s);
-                        const riskToUse = Number(this.formTrade.riskUsd) > 0 ? Number(this.formTrade.riskUsd) : this.riskAmount5Percent;
+                        const riskToUse = this.parseLocalNum(this.formTrade.riskUsd) > 0 ? this.parseLocalNum(this.formTrade.riskUsd) : this.riskAmount5Percent;
                         const units = (riskToUse / dist).toFixed(4);
                         this.formTrade.volume = Number(units) > 0 ? Number(units) : 0.01;
                         this.formTrade.volumeUsd = Number((this.formTrade.volume * e).toFixed(2));
@@ -3934,17 +3945,17 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 autoFillFormPnL() {
                     const st = this.formTrade.status;
-                    const risk = Number(this.formTrade.riskUsd) || this.riskAmount5Percent || 500;
-                    const entry = Number(this.formTrade.entryPrice) || 0;
-                    const sl = Number(this.formTrade.stopLoss) || 0;
-                    const tp = Number(this.formTrade.takeProfit) || 0;
-                    const lots = Number(this.formTrade.volume) || 0;
+                    const risk = this.parseLocalNum(this.formTrade.riskUsd) || this.riskAmount5Percent || 500;
+                    const entry = this.parseLocalNum(this.formTrade.entryPrice) || 0;
+                    const sl = this.parseLocalNum(this.formTrade.stopLoss) || 0;
+                    const tp = this.parseLocalNum(this.formTrade.takeProfit) || 0;
+                    const lots = this.parseLocalNum(this.formTrade.volume) || 0;
 
                     if (st === 'WIN') {
                         if (entry && tp && lots) {
                             this.formTrade.pnl = Number((Math.abs(tp - entry) * lots).toFixed(2));
                         } else {
-                            const rr = Number(this.formTrade.rrRatio || this.formRRRatio || 2);
+                            const rr = this.parseLocalNum(this.formTrade.rrRatio || this.formRRRatio || 2);
                             this.formTrade.pnl = Number((risk * rr).toFixed(2));
                         }
                     } else if (st === 'LOSS') {
@@ -3960,17 +3971,17 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 quickUpdateTradeStatus(trade, newStatus) {
                     trade.status = newStatus;
-                    const risk = Number(trade.riskUsd) || this.riskAmount5Percent || 500;
-                    const entry = Number(trade.entryPrice) || 0;
-                    const sl = Number(trade.stopLoss) || 0;
-                    const tp = Number(trade.takeProfit) || 0;
-                    const lots = Number(trade.volume) || 0;
+                    const risk = this.parseLocalNum(trade.riskUsd) || this.riskAmount5Percent || 500;
+                    const entry = this.parseLocalNum(trade.entryPrice) || 0;
+                    const sl = this.parseLocalNum(trade.stopLoss) || 0;
+                    const tp = this.parseLocalNum(trade.takeProfit) || 0;
+                    const lots = this.parseLocalNum(trade.volume) || 0;
 
                     if (newStatus === 'WIN') {
                         if (entry && tp && lots) {
                             trade.pnl = Number((Math.abs(tp - entry) * lots).toFixed(2));
                         } else {
-                            const rr = Number(trade.rrRatio || 2);
+                            const rr = this.parseLocalNum(trade.rrRatio || 2);
                             trade.pnl = Number((risk * rr).toFixed(2));
                         }
                         trade.rAchieved = Number((trade.pnl / risk).toFixed(2));
