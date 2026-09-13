@@ -32,6 +32,9 @@ function doGet(e) {
   if (params.action === 'getSettings') {
     return handleGetSettings({ username: params.username });
   }
+  if (params.action === 'saveTrade') {
+    return handleSaveTrade(params);
+  }
 
   // Health check
   return jsonResponse({ status: '✅ DNC Trading OS Auth API is running' });

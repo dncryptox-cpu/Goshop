@@ -200,6 +200,23 @@
                     </div>
                 </div>
 
+                <!-- Tổng R tháng này -->
+                <div class="hidden sm:flex flex-col justify-center bg-card/80 border border-white/10 rounded-xl px-3.5 py-1.5 min-w-[100px]">
+                    <span class="text-[10px] uppercase font-bold text-slate-400">Tháng này</span>
+                    <div class="font-mono font-black text-sm"
+                         :class="currentMonthR >= 0 ? 'text-emerald-400' : 'text-rose-400'"
+                         x-text="(currentMonthR > 0 ? '+' : '') + currentMonthR + 'R'"></div>
+                </div>
+
+                <!-- Sync Button -->
+                <div class="hidden sm:flex flex-col justify-center items-end ml-1">
+                    <button @click="syncAllUnsynced()" class="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 text-slate-300 px-3 py-1.5 rounded-lg border border-white/10 transition-colors text-xs font-bold">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="cloudSyncing ? 'animate-spin text-blue-400' : ''"></i>
+                        Đồng Bộ
+                    </button>
+                    <span class="text-[8px] text-slate-500 mt-1" x-text="`Đồng bộ: ${lastSyncTime || '--:--'}`"></span>
+                </div>
+
 
 
                 <!-- Lock btn -->
@@ -479,7 +496,10 @@
                                 </span>
 
                                 <!-- Pair Name -->
-                                <span class="text-lg font-outfit font-black text-white" x-text="trade.pair"></span>
+                                <span class="text-lg font-outfit font-black text-white flex items-center gap-1.5">
+                                    <span x-text="trade.pair"></span>
+                                    <span x-show="trade.synced === false" class="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" title="Chưa đồng bộ lên Cloud"></span>
+                                </span>
 
                                 <!-- R:R Badge -->
                                 <span class="px-2.5 py-0.5 rounded-lg text-[11px] font-mono font-extrabold border"
@@ -2133,6 +2153,7 @@
                 loginErrorMsg: '',
                 loginLoading: false,
                 cloudSyncing: false,
+                lastSyncTime: '',
                 cloudSummary: null,
                 // Đổi mật khẩu
                 pwOld: '', pwNew: '', pwConfirm: '',
@@ -2675,6 +2696,7 @@
                                     return {
                                         ...t,
                                         id: tid,
+                                        synced: true,
                                         imgHtf: this.formatDriveImgUrl(t.imgHtf),
                                         imgMtf: this.formatDriveImgUrl(t.imgMtf),
                                         imgLtf: this.formatDriveImgUrl(t.imgLtf)
@@ -2756,10 +2778,53 @@
                         }).toString();
                         fetch(`${targetUrl}?${getParams}`).catch(() => {});
 
+                        // Kiểm tra trạng thái đồng bộ sau 1.5s
+                        setTimeout(async () => {
+                            try {
+                                const checkUrl = targetUrl + '?action=getTrades&username=' + encodeURIComponent(this.traderUsername);
+                                const res = await fetch(checkUrl);
+                                const result = await res.json();
+                                if (result.success && result.trades) {
+                                    const isSynced = result.trades.some(t => t.id === trade.id);
+                                    if (isSynced) {
+                                        const idx = this.trades.findIndex(t => t.id === trade.id);
+                                        if (idx !== -1) {
+                                            this.trades[idx].synced = true;
+                                            this.saveTradesToStorage();
+                                        }
+                                    }
+                                }
+                            } catch (e) {}
+                        }, 1500);
+
                         console.log('✅ Đã sync lên Google Sheet + Drive (POST + GET Fallback)');
                     } catch (err) {
                         console.warn('⚠️ Sheet sync lỗi:', err.message);
                     }
+                },
+
+                async syncAllUnsynced() {
+                    if (this.cloudSyncing) return;
+                    this.cloudSyncing = true;
+                    
+                    const unsynced = this.trades.filter(t => t.synced === false);
+                    if (unsynced.length > 0 && this.sheetWebhookUrl) {
+                        for (const t of unsynced) {
+                            this.syncToGoogleSheet(t);
+                        }
+                    }
+                    
+                    await this.pullTradesFromCloud();
+                    
+                    setTimeout(() => {
+                        this.cloudSyncing = false;
+                        const now = new Date();
+                        this.lastSyncTime = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+                        
+                        const stillUnsynced = this.trades.filter(t => t.synced === false).length;
+                        const syncedCount = unsynced.length - stillUnsynced;
+                        alert(`Đã đồng bộ ${syncedCount} lệnh — ${stillUnsynced} lệnh còn lỗi`);
+                    }, 2000);
                 },
 
                 changePasscode() {
@@ -3378,6 +3443,18 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     this.calendarYear = y;
                 },
 
+                get currentMonthR() {
+                    const now = new Date();
+                    const m = now.getMonth();
+                    const y = now.getFullYear();
+                    
+                    return this.trades.filter(t => {
+                        if (!t.date) return false;
+                        const d = new Date(t.date);
+                        return d.getMonth() === m && d.getFullYear() === y;
+                    }).reduce((sum, t) => sum + this.calcTradeRAchieved(t), 0).toFixed(2);
+                },
+
                 get calendarGrid() {
                     const year = this.calendarYear;
                     const month = this.calendarMonth;
@@ -3679,6 +3756,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         
                         this.formTrade = {
                             id: '',
+                            synced: false,
                             pair: 'ETHUSDT',
                             direction: 'LONG',
                             date: localToday,
