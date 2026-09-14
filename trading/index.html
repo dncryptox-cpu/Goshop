@@ -2929,14 +2929,10 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         const cleanKey = (this.googleApiKey || '').trim();
 
                         // Bước 1: Lấy danh sách model thực tế khả dụng với API key này
-                        // Danh sách model ưu tiên ổn định nhất cho Vision hiện nay
                         let availableModels = [
                             'gemini-1.5-flash',
                             'gemini-2.0-flash',
-                            'gemini-1.5-flash-latest',
-                            'gemini-1.5-flash-8b',
-                            'gemini-1.5-pro',
-                            'gemini-1.5-pro-latest'
+                            'gemini-1.5-pro'
                         ];
 
                         try {
@@ -2954,8 +2950,8 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                                     })
                                     .map(m => m.name.replace('models/', ''));
                                 if (fetchedModels.length > 0) {
-                                    // Gộp và loại bỏ trùng lặp, đưa model API key hỗ trợ lên đầu
-                                    availableModels = [...new Set([...fetchedModels, ...availableModels])];
+                                    // CHỈ dùng các model được API trả về, không append thêm hardcode
+                                    availableModels = fetchedModels;
                                 }
                             }
                         } catch(e) { /* fallback dùng availableModels mặc định */ }
@@ -3161,17 +3157,20 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 sanitizeTradeData(trade) {
                     if (!trade) return trade;
-                    const cap = Number(this.totalCapital) || 10000;
+                    
                     let lots = Number(trade.lots !== undefined ? trade.lots : trade.volume) || 0;
                     const entry = Number(trade.entryPrice) || 0;
                     const sl = Number(trade.stopLoss) || 0;
                     const tp = Number(trade.takeProfit) || 0;
-                    const risk = Number(trade.riskUsd) || (cap * (Number(this.riskPercent) || 5) / 100);
+                    
+                    // TUYỆT ĐỐI KHÔNG dùng totalCapital hiện tại để tự điền risk cho lệnh cũ
+                    const risk = Number(trade.riskUsd) || 0;
+                    
                     const rr = Number(trade.rrRatio) || 0;
                     let pnl = Number(trade.pnl) || 0;
                     const status = String(trade.status || '').toUpperCase();
 
-                    if (Math.abs(pnl) > 100000 && Math.abs(pnl) > cap * 50) {
+                    if (Math.abs(pnl) > 100000) {
                         let actualLots = lots;
                         if (actualLots > 100 && (entry > 100 || sl > 100 || tp > 100)) {
                             actualLots = actualLots / 1000;
@@ -3202,6 +3201,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     trade.lots = lots;
                     trade.volume = lots;
                     trade.pnl = pnl;
+                    trade.riskUsd = risk;
                     trade.status = status || 'RUNNING';
                     trade.direction = String(trade.direction || 'LONG').toUpperCase();
                     trade.pair = String(trade.pair || 'UNKNOWN').toUpperCase();
@@ -3933,9 +3933,14 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     const tp = this.parseLocalNum(this.formTrade.takeProfit);
                     if (e && s && e !== s) {
                         const dist = Math.abs(e - s);
-                        const riskToUse = this.parseLocalNum(this.formTrade.riskUsd) > 0 ? this.parseLocalNum(this.formTrade.riskUsd) : this.riskAmount5Percent;
-                        const units = (riskToUse / dist).toFixed(4);
-                        this.formTrade.volume = Number(units) > 0 ? Number(units) : 0.01;
+                        let riskToUse = this.parseLocalNum(this.formTrade.riskUsd);
+                        // Chỉ lấy default 5% vốn nếu là lệnh đang TẠO MỚI (chưa có id)
+                        if (riskToUse <= 0 && !this.formTrade.id) {
+                            riskToUse = this.riskAmount5Percent;
+                        }
+                        // Nếu lệnh cũ mà risk trống (0) thì risk = 0, units = 0 (bảo toàn số liệu cũ)
+                        const units = riskToUse > 0 ? (riskToUse / dist).toFixed(4) : 0;
+                        this.formTrade.volume = Number(units) > 0 ? Number(units) : (this.formTrade.id ? 0 : 0.01);
                         this.formTrade.volumeUsd = Number((this.formTrade.volume * e).toFixed(2));
                     }
                     if (e && s && tp && e !== s) {
@@ -3945,7 +3950,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 autoFillFormPnL() {
                     const st = this.formTrade.status;
-                    const risk = this.parseLocalNum(this.formTrade.riskUsd) || this.riskAmount5Percent || 500;
+                    const risk = this.parseLocalNum(this.formTrade.riskUsd) || (this.formTrade.id ? 0 : this.riskAmount5Percent);
                     const entry = this.parseLocalNum(this.formTrade.entryPrice) || 0;
                     const sl = this.parseLocalNum(this.formTrade.stopLoss) || 0;
                     const tp = this.parseLocalNum(this.formTrade.takeProfit) || 0;
@@ -3971,7 +3976,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
                 quickUpdateTradeStatus(trade, newStatus) {
                     trade.status = newStatus;
-                    const risk = this.parseLocalNum(trade.riskUsd) || this.riskAmount5Percent || 500;
+                    const risk = this.parseLocalNum(trade.riskUsd) || 0; // Đã qua sanitize nên không mượn tạm riskAmount5Percent
                     const entry = this.parseLocalNum(trade.entryPrice) || 0;
                     const sl = this.parseLocalNum(trade.stopLoss) || 0;
                     const tp = this.parseLocalNum(trade.takeProfit) || 0;
@@ -3984,7 +3989,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                             const rr = this.parseLocalNum(trade.rrRatio || 2);
                             trade.pnl = Number((risk * rr).toFixed(2));
                         }
-                        trade.rAchieved = Number((trade.pnl / risk).toFixed(2));
+                        trade.rAchieved = risk > 0 ? Number((trade.pnl / risk).toFixed(2)) : 0;
                     } else if (newStatus === 'LOSS') {
                         if (entry && sl && lots) {
                             trade.pnl = -Number((Math.abs(entry - sl) * lots).toFixed(2));
@@ -4031,14 +4036,13 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         this.formTrade.rAchieved = 0;
                     }
 
-                    // Chặn lưu dữ liệu rác (theo yêu cầu)
-                    const cap = Number(this.totalCapital) || 10000;
+                    // Chặn lưu dữ liệu rác (theo yêu cầu tuyệt đối)
                     const v = Number(this.formTrade.volume) || Number(this.formTrade.lots) || 0;
                     const dV = Number(this.formTrade.dollarValue) || 0;
                     const p = Number(this.formTrade.pnl) || 0;
 
-                    if (v > cap * 1000 || dV > cap * 1000 || Math.abs(p) > cap * 50) {
-                        alert('Khối lượng bất thường, kiểm tra lại Entry/SL/Risk trước khi lưu!');
+                    if (v > 100000 || dV > 100000 || Math.abs(p) > 100000) {
+                        alert('Khối lượng bất thường — kiểm tra lại Entry/SL/Risk');
                         return;
                     }
 
