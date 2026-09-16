@@ -351,7 +351,10 @@ function handleRequest(e) {
         result = autoClassifyPlusTickets();
         break;
       case 'getRenewToolData':
-        result = listTickets('All');
+        result = getRenewToolData();
+        break;
+      case 'resolveTicketWithFixProfile':
+        result = resolveTicketWithFixProfile(params);
         break;
       default:
         result = { success: false, message: 'Action không hợp lệ: ' + action };
@@ -2752,6 +2755,197 @@ function listTickets(filterStatus) {
     warranty_assigned_emails: Array.from(warrantyCustomerEmails),
     cache_info: cacheHealth
   };
+}
+
+/**
+ * API CHO RENEWTOOL: getRenewToolData()
+ * Trả về danh sách tickets kèm thông tin live_snapshot đọc SỐNG từ tab STOCK & DATA trong Kho TK.
+ */
+function getRenewToolData() {
+  const result = listTickets('All');
+  if (result && result.success && result.tickets) {
+    const stockMap = {};
+    try {
+      const khoSs = SpreadsheetApp.openById(KHO_TK_ID);
+      const stockSheet = khoSs.getSheetByName('STOCK') || khoSs.getSheetByName('Stock') || khoSs.getSheetByName('stock');
+      if (stockSheet && stockSheet.getLastRow() > 1) {
+        const sData = stockSheet.getDataRange().getValues();
+        let sHeaderRowIdx = -1;
+        for (let r = 0; r < Math.min(10, sData.length); r++) {
+          for (let c = 0; c < sData[r].length; c++) {
+            const cellStr = String(sData[r][c] || '').trim().toLowerCase();
+            if (cellStr === 'stt' || cellStr === 'mã' || cellStr.includes('stt')) {
+              sHeaderRowIdx = r;
+              break;
+            }
+          }
+          if (sHeaderRowIdx !== -1) break;
+        }
+        const sStart = sHeaderRowIdx !== -1 ? sHeaderRowIdx + 1 : 1;
+        for (let r = sStart; r < sData.length; r++) {
+          const stt = String(sData[r][1] || sData[r][0] || '').trim().toUpperCase();
+          if (stt) {
+            let dateRenewStr = '';
+            if (sData[r][7]) {
+              const rd = sData[r][7];
+              if (rd instanceof Date && !isNaN(rd.getTime())) {
+                dateRenewStr = Utilities.formatDate(rd, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
+              } else {
+                dateRenewStr = String(rd).trim();
+              }
+            }
+            stockMap[stt] = {
+              status: String(sData[r][2] || '').trim(),
+              owner_email: String(sData[r][3] || '').trim(),
+              owner_pass: String(sData[r][4] || '').trim(),
+              owner_mkp: String(sData[r][5] || '').trim(),
+              owner_2fa: String(sData[r][6] || '').trim(),
+              date_renew: dateRenewStr
+            };
+          }
+        }
+      }
+    } catch (eStock) {
+      Logger.log('Warning reading STOCK in getRenewToolData: ' + eStock.toString());
+    }
+
+    const dataEmailsMap = {};
+    try {
+      const khoData = getKhoTKDataCached();
+      if (khoData && khoData.length > 1) {
+        let currentGroup = '';
+        let rowCnt = 0;
+        for (let r = 1; r < khoData.length; r++) {
+          const row = khoData[r];
+          const sttRaw = row[0];
+          const sttStr = sttRaw ? String(sttRaw).trim().toUpperCase() : '';
+          if (sttStr) {
+            currentGroup = sttStr;
+            rowCnt = 1;
+          } else {
+            rowCnt++;
+            if (rowCnt > 5) currentGroup = '';
+          }
+          if (currentGroup) {
+            if (!dataEmailsMap[currentGroup]) dataEmailsMap[currentGroup] = [];
+            const em = row[10] ? String(row[10]).trim().toLowerCase() : '';
+            if (em && em.includes('@') && dataEmailsMap[currentGroup].indexOf(em) === -1) {
+              dataEmailsMap[currentGroup].push(em);
+            }
+          }
+        }
+      }
+    } catch (eData) {
+      Logger.log('Warning reading DATA in getRenewToolData: ' + eData.toString());
+    }
+
+    result.tickets.forEach(ticket => {
+      const stt = String(ticket.stt_group || '').trim().toUpperCase();
+      const liveStock = stockMap[stt] || {
+        status: 'N/A', owner_email: '', owner_pass: '', owner_mkp: '', owner_2fa: '', date_renew: ''
+      };
+      const liveEmails = dataEmailsMap[stt] || [];
+
+      ticket.live_snapshot = {
+        status: liveStock.status,
+        date_renew: liveStock.date_renew,
+        owner_email: liveStock.owner_email,
+        owner_pass: liveStock.owner_pass,
+        owner_mkp: liveStock.owner_mkp,
+        owner_2fa: liveStock.owner_2fa,
+        group_emails: liveEmails
+      };
+    });
+  }
+  return result;
+}
+
+/**
+ * API CHO RENEWTOOL: resolveTicketWithFixProfile(params)
+ * Ghi 6 trường hồ sơ fix vào tab REPORTS và chuyển ticket thành 'Đã xử lý' + tự động gửi email báo khách.
+ * TUYỆT ĐỐI KHÔNG GHI VÀO TAB STOCK CỦA KHO TK.
+ */
+function resolveTicketWithFixProfile(params) {
+  const ticketId = params.ticket_id || params.ticketId;
+  if (!ticketId) {
+    return { success: false, message: 'Thiếu ticket_id.' };
+  }
+
+  const resolvedBy = params.resolvedBy || params.resolved_by || 'Staff';
+  const note = params.note || 'Đã xử lý và cấp hồ sơ mới trên RenewTool';
+  const resolutionType = params.resolutionType || params.resolution_type || 'Fix RenewTool';
+  const sendEmail = params.send_email !== false && params.send_email !== 'false' && params.sendEmail !== false && params.sendEmail !== 'false';
+
+  const statusSnapshot = String(params.status_snapshot || params.status || '').trim();
+  const dateRenewSnapshot = String(params.date_renew_snapshot || params.date_renew || '').trim();
+  const ownerEmailSnap = String(params.owner_email || '').trim();
+  const ownerPassSnap = String(params.owner_pass || '').trim();
+  const ownerMkpSnap = String(params.owner_mkp || '').trim();
+  const owner2faSnap = String(params.owner_2fa || '').trim();
+  const groupEmailsSnap = Array.isArray(params.group_emails) ? params.group_emails.join('\n') : String(params.group_emails || '').trim();
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) {
+    return { success: false, message: 'Hệ thống đang bận, vui lòng thử lại sau ít giây.' };
+  }
+
+  try {
+    const ss = getSpreadsheetCached();
+    const reportsSheet = ss.getSheetByName('REPORTS');
+    setupDatabase();
+
+    if (reportsSheet) {
+      const rData = reportsSheet.getDataRange().getValues();
+      let updatedCount = 0;
+
+      for (let r = rData.length - 1; r >= 1; r--) {
+        const rowTicketId = String(rData[r][1] || '').trim();
+        if (rowTicketId === String(ticketId).trim()) {
+          const rowIdx = r + 1;
+          reportsSheet.getRange(rowIdx, 7, 1, 7).setValues([[
+            statusSnapshot,
+            dateRenewSnapshot,
+            ownerEmailSnap,
+            ownerPassSnap,
+            ownerMkpSnap,
+            owner2faSnap,
+            groupEmailsSnap
+          ]]);
+          updatedCount++;
+        }
+      }
+
+      if (updatedCount === 0) {
+        const newReportId = 'RPT-FIX-' + Date.now();
+        const nowIso = new Date().toISOString();
+        appendRowFast('REPORTS', [
+          newReportId,
+          ticketId,
+          ownerEmailSnap || 'N/A',
+          nowIso,
+          'Hồ sơ xử lý cấp từ RenewTool',
+          resolvedBy,
+          statusSnapshot,
+          dateRenewSnapshot,
+          ownerEmailSnap,
+          ownerPassSnap,
+          ownerMkpSnap,
+          owner2faSnap,
+          groupEmailsSnap
+        ]);
+      }
+
+      delete _REQUEST_CACHE.sheetValues['REPORTS'];
+      delete _REQUEST_CACHE.sheetObjects['REPORTS'];
+    }
+  } catch (rErr) {
+    Logger.log('Lỗi ghi hồ sơ fix vào REPORTS: ' + rErr.toString());
+  } finally {
+    lock.releaseLock();
+  }
+
+  // Call updateTicketStatus to update status to 'Đã xử lý' and send email notification to customer
+  return updateTicketStatus(ticketId, 'Đã xử lý', resolvedBy, note, resolutionType, sendEmail);
 }
 
 /**
