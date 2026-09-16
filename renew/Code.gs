@@ -395,20 +395,30 @@ function setupDatabase() {
     }
   }
 
-  // Tab REPORTS
+  // Tab REPORTS (Columns: report_id, ticket_id, customer_email, reported_at, message, submitted_by, status_snapshot, date_renew_snapshot, group_emails)
   let reportsSheet = ss.getSheetByName('REPORTS');
   if (!reportsSheet) {
     reportsSheet = ss.insertSheet('REPORTS');
   }
   if (reportsSheet.getLastRow() === 0) {
     reportsSheet.appendRow([
-      'report_id', 'ticket_id', 'customer_email', 'reported_at', 'message', 'submitted_by'
+      'report_id', 'ticket_id', 'customer_email', 'reported_at', 'message', 'submitted_by',
+      'status_snapshot', 'date_renew_snapshot', 'group_emails'
     ]);
-    reportsSheet.getRange(1, 1, 1, 6).setFontWeight('bold');
+    reportsSheet.getRange(1, 1, 1, 9).setFontWeight('bold');
   } else {
-    const headers = reportsSheet.getRange(1, 1, 1, Math.max(6, reportsSheet.getLastColumn())).getValues()[0];
+    const headers = reportsSheet.getRange(1, 1, 1, Math.max(9, reportsSheet.getLastColumn())).getValues()[0];
     if (!headers[5] || String(headers[5]).trim() !== 'submitted_by') {
       reportsSheet.getRange(1, 6).setValue('submitted_by').setFontWeight('bold');
+    }
+    if (!headers[6] || String(headers[6]).trim() !== 'status_snapshot') {
+      reportsSheet.getRange(1, 7).setValue('status_snapshot').setFontWeight('bold');
+    }
+    if (!headers[7] || String(headers[7]).trim() !== 'date_renew_snapshot') {
+      reportsSheet.getRange(1, 8).setValue('date_renew_snapshot').setFontWeight('bold');
+    }
+    if (!headers[8] || String(headers[8]).trim() !== 'group_emails') {
+      reportsSheet.getRange(1, 9).setValue('group_emails').setFontWeight('bold');
     }
   }
 
@@ -974,9 +984,152 @@ function sendTelegramNotification(message) {
 }
 
 /**
+ * Tra cứu bổ sung từ Kho TK tab DATA theo sttGroup (Status, Date Renew, TOÀN BỘ Email trong block)
+ */
+function getGroupSnapshotFromKhoTK(sttGroup) {
+  if (!sttGroup) return { status: 'N/A', date_renew: 'N/A', group_emails: [] };
+  const targetGroup = String(sttGroup).trim().toUpperCase();
+
+  let groupStatus = '';
+  let dateRenew = '';
+  const groupEmails = [];
+
+  try {
+    const khoData = getKhoTKDataCached();
+    if (khoData && khoData.length > 1) {
+      let currentSttGroup = '';
+      let groupRowCount = 0;
+      let foundMatchingGroup = false;
+
+      for (let r = 1; r < khoData.length; r++) {
+        const row = khoData[r];
+        const sttRaw = row[0]; // Cột A (STT nhóm)
+        const sttStr = sttRaw ? String(sttRaw).trim().toUpperCase() : '';
+
+        if (sttStr) {
+          currentSttGroup = sttStr;
+          groupRowCount = 1;
+        } else {
+          groupRowCount++;
+          if (groupRowCount > 5) {
+            currentSttGroup = '';
+          }
+        }
+
+        if (currentSttGroup === targetGroup) {
+          foundMatchingGroup = true;
+
+          // Cột C (Index 2): Trạng thái hiện tại
+          if (!groupStatus && row[2]) {
+            groupStatus = String(row[2]).trim();
+          }
+
+          // Cột H (Index 7): Date Renew
+          if (!dateRenew && row[7]) {
+            const rawDate = row[7];
+            if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+              dateRenew = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
+            } else {
+              dateRenew = String(rawDate).trim();
+            }
+          }
+
+          // Cột K (Index 10): Email khách
+          const emailRaw = row[10];
+          const emailClean = emailRaw ? String(emailRaw).trim().toLowerCase() : '';
+          if (emailClean && emailClean.includes('@') && groupEmails.indexOf(emailClean) === -1) {
+            groupEmails.push(emailClean);
+          }
+        } else if (foundMatchingGroup && currentSttGroup !== targetGroup) {
+          break; // Đã xong block của nhóm
+        }
+      }
+    }
+  } catch (err) {
+    Logger.log('Lỗi getGroupSnapshotFromKhoTK: ' + err.toString());
+  }
+
+  // Fallback nếu thiếu email: Tra cứu EMAIL_LOOKUP_CACHE
+  if (groupEmails.length === 0) {
+    try {
+      const cacheObjects = readSheetAsObjects('EMAIL_LOOKUP_CACHE');
+      for (let i = 0; i < cacheObjects.length; i++) {
+        const obj = cacheObjects[i];
+        if (String(obj['stt_group'] || '').trim().toUpperCase() === targetGroup) {
+          const em = String(obj['email'] || '').trim().toLowerCase();
+          if (em && em.includes('@') && groupEmails.indexOf(em) === -1) {
+            groupEmails.push(em);
+          }
+          if (!dateRenew && obj['ngay_het_han']) {
+            dateRenew = String(obj['ngay_het_han']).trim();
+          }
+        }
+      }
+    } catch (eCache) {}
+  }
+
+  return {
+    status: groupStatus || 'Không xác định',
+    date_renew: dateRenew || 'Không xác định',
+    group_emails: groupEmails
+  };
+}
+
+/**
+  * Ghi snapshot (status_snapshot, date_renew_snapshot, group_emails) vào tab REPORTS
+  */
+function saveReportSnapshot(reportIdOrEmail, snapshot) {
+  if (!reportIdOrEmail || !snapshot) return;
+  try {
+    const ss = getSpreadsheetCached();
+    const reportsSheet = ss.getSheetByName('REPORTS');
+    if (!reportsSheet || reportsSheet.getLastRow() <= 1) return;
+
+    // Đảm bảo tiêu đề cột 7, 8, 9 có đủ
+    const headers = reportsSheet.getRange(1, 1, 1, Math.max(9, reportsSheet.getLastColumn())).getValues()[0];
+    if (!headers[6] || String(headers[6]).trim() !== 'status_snapshot') {
+      reportsSheet.getRange(1, 7).setValue('status_snapshot').setFontWeight('bold');
+    }
+    if (!headers[7] || String(headers[7]).trim() !== 'date_renew_snapshot') {
+      reportsSheet.getRange(1, 8).setValue('date_renew_snapshot').setFontWeight('bold');
+    }
+    if (!headers[8] || String(headers[8]).trim() !== 'group_emails') {
+      reportsSheet.getRange(1, 9).setValue('group_emails').setFontWeight('bold');
+    }
+
+    const data = reportsSheet.getDataRange().getValues();
+    let targetRow = -1;
+    const searchKey = String(reportIdOrEmail).trim().toLowerCase();
+
+    for (let r = data.length - 1; r >= 1; r--) {
+      const rowId = String(data[r][0] || '').trim().toLowerCase();
+      const rowEmail = String(data[r][2] || '').trim().toLowerCase();
+      if (rowId === searchKey || rowEmail === searchKey) {
+        targetRow = r + 1;
+        break;
+      }
+    }
+
+    if (targetRow !== -1) {
+      const groupEmailsStr = Array.isArray(snapshot.group_emails) ? snapshot.group_emails.join('\n') : String(snapshot.group_emails || '');
+      reportsSheet.getRange(targetRow, 7, 1, 3).setValues([[
+        snapshot.status || '',
+        snapshot.date_renew || '',
+        groupEmailsStr
+      ]]);
+      delete _REQUEST_CACHE.sheetValues['REPORTS'];
+      delete _REQUEST_CACHE.sheetObjects['REPORTS'];
+      Logger.log('[REPORT_SNAPSHOT_SAVED] Đã ghi snapshot vào REPORTS cho ' + reportIdOrEmail + ' ở dòng ' + targetRow);
+    }
+  } catch (err) {
+    Logger.log('[REPORT_SNAPSHOT_ERROR] Lỗi saveReportSnapshot: ' + err.toString());
+  }
+}
+
+/**
  * GỬI THÔNG BÁO BÁO LỖI MỚI TỪ KHÁCH VỀ TELEGRAM BOT
  */
-function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName) {
+function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName, reportId) {
   const _s = new Date().getTime();
   Logger.log('sendReportTelegramAlert - START: ' + _s);
   try {
@@ -998,12 +1151,24 @@ function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName
       msg += `\n🏷️ <b>CTV:</b> ${String(ctvName).trim()}`;
     }
 
+    // Tra cứu bổ sung từ Kho TK tab DATA (Status, Date Renew, TOÀN BỘ Email trong block)
+    const snapshot = getGroupSnapshotFromKhoTK(sttGroup);
+    if (snapshot) {
+      msg += `\n\n📋 <b>Trạng thái:</b> ${snapshot.status || 'Không xác định'}\n` +
+             `📅 <b>Date Renew:</b> ${snapshot.date_renew || 'Không xác định'}\n` +
+             `👥 <b>Danh sách email mời lại:</b>\n` +
+             (snapshot.group_emails && snapshot.group_emails.length > 0 ? snapshot.group_emails.join('\n') : (email || 'N/A'));
+    }
+
     Logger.log('[REPORT_TELEGRAM_MSG]\n' + msg);
     const _s1 = new Date().getTime();
     Logger.log('sendReportTelegramAlert -> sendTelegramNotification - START: ' + _s1);
     const result = sendTelegramNotification(msg);
     const _e1 = new Date().getTime();
     Logger.log('sendReportTelegramAlert -> sendTelegramNotification - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
+    // Lưu snapshot vào tab REPORTS
+    saveReportSnapshot(reportId || email, snapshot);
     
     const _e = new Date().getTime();
     Logger.log('sendReportTelegramAlert - END: ' + _e + ' | Duration: ' + (_e - _s) + 'ms');
@@ -1017,41 +1182,24 @@ function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName
 }
 
 /**
- * Tab TELEGRAM_QUEUE (Cột: queue_id, stt_group, email, zalo_phone, ctv, status, created_at, sent_at)
+ * Tab TELEGRAM_QUEUE (Cột: queue_id, stt_group, email, zalo_phone, ctv, status, created_at, sent_at, report_id)
  */
-function enqueueTelegramNotification(sttGroup, email, zaloPhone, ctvName) {
+function enqueueTelegramNotification(sttGroup, email, zaloPhone, ctvName, reportId) {
   const _s = new Date().getTime();
   Logger.log('enqueueTelegramNotification - START: ' + _s);
   try {
-    const _s1 = new Date().getTime();
-    Logger.log('enqueueTelegramNotification -> getSpreadsheetCached - START: ' + _s1);
     const ss = getSpreadsheetCached();
-    const _e1 = new Date().getTime();
-    Logger.log('enqueueTelegramNotification -> getSpreadsheetCached - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
-
-    const _s2 = new Date().getTime();
-    Logger.log('enqueueTelegramNotification -> ss.getSheetByName(TELEGRAM_QUEUE) - START: ' + _s2);
     let qSheet = ss.getSheetByName('TELEGRAM_QUEUE');
-    const _e2 = new Date().getTime();
-    Logger.log('enqueueTelegramNotification -> ss.getSheetByName(TELEGRAM_QUEUE) - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
 
     if (!qSheet) {
-      const _s3 = new Date().getTime();
-      Logger.log('enqueueTelegramNotification -> ss.insertSheet(TELEGRAM_QUEUE) - START: ' + _s3);
       qSheet = ss.insertSheet('TELEGRAM_QUEUE');
-      qSheet.appendRow(['queue_id', 'stt_group', 'email', 'zalo_phone', 'ctv', 'status', 'created_at', 'sent_at']);
-      qSheet.getRange(1, 1, 1, 8).setFontWeight('bold');
-      const _e3 = new Date().getTime();
-      Logger.log('enqueueTelegramNotification -> ss.insertSheet(TELEGRAM_QUEUE) - END: ' + _e3 + ' | Duration: ' + (_e3 - _s3) + 'ms');
+      qSheet.appendRow(['queue_id', 'stt_group', 'email', 'zalo_phone', 'ctv', 'status', 'created_at', 'sent_at', 'report_id']);
+      qSheet.getRange(1, 1, 1, 9).setFontWeight('bold');
     }
     const qId = 'TQ-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
     const nowIso = new Date().toISOString();
     
-    const _s4 = new Date().getTime();
-    Logger.log('enqueueTelegramNotification -> qSheet.appendRow - START: ' + _s4);
-    qSheet.appendRow([qId, sttGroup || '', email || '', zaloPhone || '', ctvName || '', 'PENDING', nowIso, '']);
-    const _e4 = new Date().getTime();
-    Logger.log('enqueueTelegramNotification -> qSheet.appendRow - END: ' + _e4 + ' | Duration: ' + (_e4 - _s4) + 'ms');
+    qSheet.appendRow([qId, sttGroup || '', email || '', zaloPhone || '', ctvName || '', 'PENDING', nowIso, '', reportId || '']);
     
     Logger.log('[TELEGRAM_QUEUE_ENQUEUE] Đã thêm báo lỗi vào Telegram Queue: ' + qId + ' | Email: ' + email);
     const _e = new Date().getTime();
@@ -1091,9 +1239,10 @@ function processTelegramQueue() {
         const zaloPhone = row[3];
         const ctv = row[4];
         const createdAt = row[6];
+        const reportId = row[8] || '';
 
         Logger.log('[PROCESS_TELEGRAM_QUEUE_ITEM] Đang gửi tin nhắn Telegram cho item ' + qId + ' | Email: ' + email);
-        const success = sendReportTelegramAlert(sttGroup, email, zaloPhone, createdAt, ctv);
+        const success = sendReportTelegramAlert(sttGroup, email, zaloPhone, createdAt, ctv, reportId);
 
         if (success) {
           qSheet.getRange(r + 1, 6).setValue('SENT');
@@ -1497,7 +1646,7 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
 
     const _s6 = new Date().getTime();
     Logger.log('submitReport -> enqueueTelegramNotification - START: ' + _s6);
-    enqueueTelegramNotification(sttGroup, emailClean, zPhone, ctvVal);
+    enqueueTelegramNotification(sttGroup, emailClean, zPhone, ctvVal, reportId);
     const _e6 = new Date().getTime();
     Logger.log('submitReport -> enqueueTelegramNotification - END: ' + _e6 + ' | Duration: ' + (_e6 - _s6) + 'ms');
 
@@ -1508,7 +1657,7 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
     const _s7 = new Date().getTime();
     Logger.log('submitReport -> sendReportTelegramAlert - START: ' + _s7);
     try {
-      const telSuccess = sendReportTelegramAlert(sttGroup, emailClean, zPhone, now, ctvVal);
+      const telSuccess = sendReportTelegramAlert(sttGroup, emailClean, zPhone, now, ctvVal, reportId);
       const _e7 = new Date().getTime();
       Logger.log('submitReport -> sendReportTelegramAlert - END: ' + _e7 + ' | Duration: ' + (_e7 - _s7) + 'ms | Success: ' + telSuccess);
     } catch (telErr) {
