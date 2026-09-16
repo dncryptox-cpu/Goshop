@@ -1659,6 +1659,53 @@ function submitReport(emailRaw, message, submittedBy, zaloPhoneRaw, reportTypeRa
     const _e2 = new Date().getTime();
     Logger.log('submitReport -> findOrCreateTicketForGroup - END: ' + _e2 + ' | Duration: ' + (_e2 - _s2) + 'ms');
 
+    // 🛡️ IDEMPOTENCY CHECK (CHỐNG TRÙNG LẶP BÁO LỖI trong 5 PHÚT)
+    // Nếu email này đã gửi report cho cùng ticket_id đang mở trong vòng 5 phút gần nhất:
+    // -> Bỏ qua tạo report mới, bỏ qua Telegram, trả về kết quả thành công ngay lập tức!
+    const DEDUP_WINDOW_MS = 5 * 60 * 1000; // 5 phút
+    try {
+      const existingReports = readSheetAsObjects('REPORTS');
+      if (existingReports && existingReports.length > 0) {
+        for (let i = existingReports.length - 1; i >= 0; i--) {
+          const rObj = existingReports[i];
+          const rEmail = String(rObj['customer_email'] || '').trim().toLowerCase();
+          const rTicketId = String(rObj['ticket_id'] || '').trim();
+          const rTimeStr = rObj['reported_at'];
+          
+          if (rEmail === emailClean && rTicketId === ticketInfo.ticket_id) {
+            const rDate = parseDateHelper(rTimeStr);
+            if (rDate && (now.getTime() - rDate.getTime() < DEDUP_WINDOW_MS)) {
+              Logger.log('[SUBMIT_REPORT_IDEMPOTENT_DUPLICATE] 🛡️ Đã chặn báo lỗi trùng lặp cho ' + emailClean + ' (Ticket: ' + rTicketId + ') trong vòng 5 phút!');
+              if (lockAcquired) {
+                try { lock.releaseLock(); lockAcquired = false; } catch (lErr) {}
+              }
+              const cacheHealth = checkCacheHealth();
+              const _subEnd = new Date().getTime();
+              Logger.log('submitReport OVERALL (IDEMPOTENT DUPLICATE RETURN) - END: ' + _subEnd + ' | Duration: ' + (_subEnd - _subStart) + 'ms');
+              return {
+                success: true,
+                is_duplicate: true,
+                stt_group: sttGroup,
+                ticket_id: ticketInfo.ticket_id,
+                status: ticketInfo.status,
+                activity_status: ticketInfo.activity_status || actStatus,
+                is_recurring: ticketInfo.is_recurring,
+                recur_count: ticketInfo.recur_count,
+                created_at: ticketInfo.created_at,
+                resolved_at: ticketInfo.resolved_at,
+                is_existing_open: true,
+                cache_stale: cacheHealth.cache_stale,
+                stale_hours: cacheHealth.stale_hours,
+                message: 'Báo lỗi đã được ghi nhận trước đó. Fam ' + sttGroup + ' đang được kỹ thuật xử lý.'
+              };
+            }
+          }
+        }
+      }
+    } catch (dedupErr) {
+      Logger.log('[IDEMPOTENCY_CHECK_WARN] Lỗi kiểm tra trùng lặp: ' + dedupErr.toString());
+    }
+
     const _s3 = new Date().getTime();
     Logger.log('submitReport -> getSpreadsheetCached & getSheetByName(REPORTS) - START: ' + _s3);
     const ss = getSpreadsheetCached();
