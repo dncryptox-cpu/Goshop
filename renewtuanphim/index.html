@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tra Cứu Trạng Thái Fam Subscription - Go DNC</title>
+    <meta name="description" content="Hệ thống tra cứu trạng thái xử lý và lịch sử khắc phục sự cố nhóm tài khoản Fam (RN) tự động cho khách hàng Go DNC.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            color: #0f172a;
+        }
+        [x-cloak] { display: none !important; }
+        .card-shadow {
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+        }
+    </style>
+
+    <script>
+        function base32ToBuf(str) {
+            if (!str) return new Uint8Array(0);
+            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+            let clean = str.toUpperCase().replace(/[^A-Z2-7]/g, '');
+            let bits = 0, value = 0, output = [];
+            for (let i = 0; i < clean.length; i++) {
+                value = (value << 5) | alphabet.indexOf(clean[i]);
+                bits += 5;
+                if (bits >= 8) {
+                    output.push((value >>> (bits - 8)) & 255);
+                    bits -= 8;
+                }
+            }
+            return new Uint8Array(output);
+        }
+
+        async function generateTOTP(secretBase32) {
+            try {
+                if (!secretBase32 || !secretBase32.trim()) return { code: '------', secondsRemaining: 30 };
+                const keyBytes = base32ToBuf(secretBase32.trim());
+                if (keyBytes.length === 0) return { code: '------', secondsRemaining: 30 };
+
+                const epoch = Math.floor(Date.now() / 1000);
+                const timeStep = 30;
+                const counter = Math.floor(epoch / timeStep);
+                const secondsRemaining = timeStep - (epoch % timeStep);
+
+                const buffer = new ArrayBuffer(8);
+                const view = new DataView(buffer);
+                view.setUint32(4, counter, false);
+
+                const cryptoKey = await window.crypto.subtle.importKey(
+                    'raw', keyBytes, { name: 'HMAC', hash: { name: 'SHA-1' } }, false, ['sign']
+                );
+                const signature = await window.crypto.subtle.sign('HMAC', cryptoKey, buffer);
+                const sigBytes = new Uint8Array(signature);
+
+                const offset = sigBytes[sigBytes.length - 1] & 0x0f;
+                const binary =
+                    ((sigBytes[offset] & 0x7f) << 24) |
+                    ((sigBytes[offset + 1] & 0xff) << 16) |
+                    ((sigBytes[offset + 2] & 0xff) << 8) |
+                    (sigBytes[offset + 3] & 0xff);
+
+                const otp = (binary % 1000000).toString().padStart(6, '0');
+                return { code: otp, secondsRemaining };
+            } catch (e) {
+                return { code: '------', secondsRemaining: 30 };
+            }
+        }
+
+        function customerStatusApp() {
+            return {
+                webAppUrl: (typeof localStorage !== 'undefined' ? localStorage.getItem('FAM_TRACKER_WEBAPP_URL') : null) || 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec',
+                statusEmail: '',
+                errorMessage: '',
+                statusResult: null,
+                loading: false,
+                familyCheckState: '',
+
+                showReportForm: false,
+                reportMessage: '',
+                zaloPhone: '',
+                submittingReport: false,
+
+                directEmail: '',
+                directZalo: '',
+                directMessage: '',
+                submittingDirectReport: false,
+
+                // STATE CHO CẤP TK BẢO HÀNH TẠM
+                warrantyCustomerEmail: '',
+                isAssigningWarranty: false,
+                warrantyError: '',
+                assignedWarranty: null,
+                totpTab: 'code',
+                totpCode: '------',
+                totpTimer: 30,
+                totpIntervalId: null,
+
+                // STATE CHO ĐỔI SANG MAIL PHỤ
+                mailPhuPrimaryEmail: '',
+                mailPhuSecondaryEmail: '',
+                isSubmittingMailPhu: false,
+                mailPhuError: '',
+                mailPhuSuccessResult: null,
+                existingMailPhuInfo: null,
+                isCheckingExistingMailPhu: false,
+
+                async checkExistingMailPhuRequest() {
+                    const email = String(this.mailPhuPrimaryEmail || '').trim().toLowerCase();
+                    if (!email || !email.includes('@')) {
+                        this.existingMailPhuInfo = null;
+                        return;
+                    }
+                    this.isCheckingExistingMailPhu = true;
+                    try {
+                        const res = await this.callApi('checkMailPhuStatus', { primaryEmail: email });
+                        if (res && res.success && res.has_existing) {
+                            this.existingMailPhuInfo = res;
+                        } else {
+                            this.existingMailPhuInfo = null;
+                        }
+                    } catch (err) {
+                        console.error('Lỗi kiểm tra mail phụ:', err);
+                    } finally {
+                        this.isCheckingExistingMailPhu = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async submitMailPhuRequest() {
+                    if (!this.mailPhuPrimaryEmail || !this.mailPhuPrimaryEmail.trim() || !this.mailPhuSecondaryEmail || !this.mailPhuSecondaryEmail.trim()) {
+                        this.mailPhuError = 'Vui lòng nhập đầy đủ Email hiện tại và Email phụ.';
+                        return;
+                    }
+
+                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                    if (!emailRegex.test(this.mailPhuSecondaryEmail.trim())) {
+                        this.mailPhuError = 'Email phụ không hợp lệ (cần chứa ký tự @ và tên miền domain).';
+                        return;
+                    }
+
+                    this.isSubmittingMailPhu = true;
+                    this.mailPhuError = '';
+                    this.mailPhuSuccessResult = null;
+
+                    try {
+                        const res = await this.callApi('submitMailPhuRequest', {
+                            primaryEmail: this.mailPhuPrimaryEmail.trim(),
+                            mailPhu: this.mailPhuSecondaryEmail.trim()
+                        });
+
+                        if (res && res.success) {
+                            this.mailPhuSuccessResult = res;
+                            await this.checkExistingMailPhuRequest();
+                        } else {
+                            this.mailPhuError = res ? (res.message || 'Không thể xử lý yêu cầu.') : 'Lỗi kết nối server.';
+                        }
+                    } catch (err) {
+                        this.mailPhuError = 'Lỗi gửi yêu cầu: ' + err.message;
+                    } finally {
+                        this.isSubmittingMailPhu = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async submitAssignWarranty() {
+                    if (!this.warrantyCustomerEmail || !this.warrantyCustomerEmail.trim()) return;
+
+                    this.isAssigningWarranty = true;
+                    this.warrantyError = '';
+                    this.assignedWarranty = null;
+
+                    try {
+                        const payload = {
+                            customerEmail: this.warrantyCustomerEmail.trim(),
+                            ctvName: 'Khách trực tiếp (godnc.com/renewtuanphim)'
+                        };
+                        const res = await this.callApi('assignWarrantyAccount', payload);
+
+                        if (res && res.success) {
+                            this.assignedWarranty = res;
+                            this.totpCode = res.totpCode || '------';
+                            this.totpTimer = res.secondsRemaining || 30;
+                            
+                            this.startTOTPTimer();
+                        } else {
+                            this.warrantyError = res.message || 'Không thể cấp tài khoản bảo hành tạm.';
+                        }
+                    } catch (err) {
+                        this.warrantyError = 'Lỗi kết nối máy chủ: ' + (err.message || err);
+                    } finally {
+                        this.isAssigningWarranty = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                startTOTPTimer() {
+                    if (this.totpIntervalId) {
+                        clearInterval(this.totpIntervalId);
+                    }
+                    this.refreshTOTPCode();
+                    this.totpIntervalId = setInterval(() => {
+                        if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) {
+                            clearInterval(this.totpIntervalId);
+                            return;
+                        }
+                        this.refreshTOTPCode();
+                    }, 1000);
+                },
+
+                async refreshTOTPCode() {
+                    if (!this.assignedWarranty || !this.assignedWarranty.secret2fa) {
+                        this.totpCode = '------';
+                        this.totpTimer = 30;
+                        return;
+                    }
+                    try {
+                        const res = await generateTOTP(this.assignedWarranty.secret2fa);
+                        this.totpCode = res.code || '------';
+                        this.totpTimer = res.secondsRemaining || 30;
+                    } catch (e) {
+                        this.totpTimer = 30;
+                    }
+                },
+
+                copyFullCustomerWarrantyText(w) {
+                    if (!w) return;
+                    let lines = [];
+                    lines.push(`Mail: ${w.email}`);
+                    lines.push(`Pass: ${w.pass}`);
+                    if (w.mkp && w.mkp.trim() && w.mkp.trim() !== '---') {
+                        lines.push(`Mail khôi phục: ${w.mkp.trim()}`);
+                    }
+                    lines.push(`2FA: ${w.secret2fa}`);
+                    lines.push(`Note: Hướng dẫn lấy mã 2FA`);
+                    lines.push(`Truy cập https://2fa.live/`);
+                    lines.push(`Nhập chuỗi mã ở trên, bấm Submit -> ra code 6 số`);
+                    lines.push(`⚠️ LƯU Ý: Đây là tài khoản cấp tạm, TUYỆT ĐỐI KHÔNG ĐỔI PASS hay bất kỳ thông tin nào của tài khoản!`);
+
+                    const fullText = lines.join('\n');
+                    this.copyText(fullText);
+                },
+
+                copyText(text) {
+                    if (!text) return;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            alert('Đã sao chép: ' + text);
+                        }).catch(err => {
+                            this.fallbackCopyText(text);
+                        });
+                    } else {
+                        this.fallbackCopyText(text);
+                    }
+                },
+
+                fallbackCopyText(text) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        alert('Đã sao chép: ' + text);
+                    } catch (e) {}
+                    document.body.removeChild(textarea);
+                },
+
+                async submitDirectReport() {
+                    if (!this.directEmail || !this.directEmail.trim()) return;
+
+                    this.submittingDirectReport = true;
+                    try {
+                        const payload = {
+                            email: this.directEmail.trim().toLowerCase(),
+                            message: this.directMessage.trim(),
+                            zalo_phone: this.directZalo ? this.directZalo.trim() : '',
+                            zaloPhone: this.directZalo ? this.directZalo.trim() : '',
+                            submitted_by: 'Khách lẻ (Trực tiếp)'
+                        };
+
+                        const res = await this.callApi('submitReport', payload);
+
+                        if (res.success) {
+                            alert('🎉 ' + (res.message || 'Đã gửi báo lỗi & đăng ký nhận tin Zalo thành công! Kỹ thuật viên sẽ kiểm tra khắc phục ngay.'));
+                            this.statusEmail = this.directEmail.trim().toLowerCase();
+                            this.directZalo = '';
+                            this.directMessage = '';
+                            this.checkStatus();
+                        } else {
+                            alert('❌ ' + (res.message || 'Không thể gửi báo lỗi.'));
+                        }
+                    } catch (err) {
+                        alert('❌ Lỗi kết nối: ' + err.message);
+                    } finally {
+                        this.submittingDirectReport = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                init() {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const emailParam = urlParams.get('email');
+                    if (emailParam) {
+                        this.statusEmail = emailParam.trim();
+                        this.checkStatus();
+                    }
+                    setTimeout(() => lucide.createIcons(), 50);
+                },
+
+                formatDateOnly(rawStr) {
+                    if (!rawStr) return '';
+                    const str = String(rawStr).trim();
+                    if (!str) return '';
+
+                    if (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(str)) {
+                        return str;
+                    }
+
+                    try {
+                        const d = new Date(str);
+                        if (isNaN(d.getTime())) return str;
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const year = d.getFullYear();
+                        return `${day}/${month}/${year}`;
+                    } catch (e) {
+                        return str;
+                    }
+                },
+
+                formatDate(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
+                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                    } catch (e) { return isoStr; }
+                },
+
+                formatRelativeTime(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        const now = Date.now();
+                        const diffMs = now - d.getTime();
+                        if (diffMs < 0) return 'Vừa xong';
+                        const diffMins = Math.floor(diffMs / 60000);
+                        if (diffMins < 1) return 'Vừa xong';
+                        if (diffMins < 60) return `${diffMins} phút trước`;
+                        const diffHours = Math.floor(diffMins / 60);
+                        if (diffHours < 24) return `${diffHours} giờ trước`;
+                        const diffDays = Math.floor(diffHours / 24);
+                        return `${diffDays} ngày trước`;
+                    } catch (e) { return isoStr; }
+                },
+
+                calcDuration(startIso, endIso) {
+                    if (!startIso || !endIso) return '';
+                    try {
+                        const s = new Date(startIso).getTime();
+                        const e = new Date(endIso).getTime();
+                        if (isNaN(s) || isNaN(e) || e <= s) return '';
+                        const diffMins = Math.round((e - s) / 60000);
+                        if (diffMins < 60) return ` (sau ${diffMins} phút)`;
+                        const hrs = Math.floor(diffMins / 60);
+                        const mins = diffMins % 60;
+                        return ` (sau ${hrs}h ${mins}m)`;
+                    } catch (err) { return ''; }
+                },
+
+                getStatusBadgeClass(status) {
+                    switch (status) {
+                        case 'Mới': return 'bg-amber-100 text-amber-800 border-amber-300';
+                        case 'Đang xử lý': return 'bg-blue-100 text-blue-800 border-blue-300';
+                        case 'Đã xử lý': return 'bg-green-100 text-green-800 border-green-300';
+                        default: return 'bg-gray-100 text-gray-700 border-gray-300';
+                    }
+                },
+
+                getStatusDotClass(status) {
+                    switch (status) {
+                        case 'Mới': return 'bg-amber-500';
+                        case 'Đang xử lý': return 'bg-blue-600 animate-pulse';
+                        case 'Đã xử lý': return 'bg-green-600';
+                        default: return 'bg-gray-400';
+                    }
+                },
+
+                async checkStatus() {
+                    if (!this.statusEmail || !this.statusEmail.trim()) {
+                        this.errorMessage = 'Vui lòng nhập email đăng ký để tra cứu.';
+                        return;
+                    }
+
+                    this.loading = true;
+                    this.errorMessage = '';
+                    this.statusResult = null;
+                    this.showReportForm = false;
+
+                    try {
+                        const payload = { email: this.statusEmail.trim().toLowerCase() };
+                        const res = await this.callApi('checkStatus', payload);
+
+                        if (res.success) {
+                            this.statusResult = res;
+                        } else {
+                            this.errorMessage = res.message || 'Không tìm thấy dữ liệu nhóm Fam cho email này.';
+                        }
+                    } catch (err) {
+                        this.errorMessage = 'Lỗi kết nối máy chủ: ' + err.message;
+                    } finally {
+                        this.loading = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async submitFixRequest() {
+                    if (!this.statusEmail || !this.statusEmail.trim()) return;
+
+                    this.submittingReport = true;
+                    try {
+                        const payload = {
+                            email: this.statusEmail.trim().toLowerCase(),
+                            message: this.reportMessage.trim(),
+                            zalo_phone: this.zaloPhone ? this.zaloPhone.trim() : '',
+                            zaloPhone: this.zaloPhone ? this.zaloPhone.trim() : '',
+                            submitted_by: 'Khách lẻ'
+                        };
+
+                        const res = await this.callApi('submitReport', payload);
+
+                        if (res.success) {
+                            alert('🎉 ' + (res.message || 'Đã gửi yêu cầu fix lỗi thành công! Kỹ thuật viên sẽ kiểm tra khắc phục ngay.'));
+                            this.showReportForm = false;
+                            this.reportMessage = '';
+                            this.zaloPhone = '';
+                            this.checkStatus();
+                        } else {
+                            alert('❌ ' + (res.message || 'Không thể gửi yêu cầu fix lỗi.'));
+                        }
+                    } catch (err) {
+                        alert('❌ Lỗi kết nối: ' + err.message);
+                    } finally {
+                        this.submittingReport = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async callApi(action, payload, timeoutMs = 60000) {
+                    const url = new URL(this.webAppUrl);
+                    url.searchParams.append('action', action);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        const text = await response.text();
+                        try {
+                            return JSON.parse(text);
+                        } catch (jsonErr) {
+                            throw new Error('Máy chủ Apps Script chưa được triển khai bản mới (Deploy New Version). Vui lòng cập nhật WebApp.');
+                        }
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        if (err.name === 'AbortError' || (err.message && err.message.toLowerCase().includes('aborted'))) {
+                            throw new Error('Yêu cầu đang được xử lý, có thể mất chút thời gian. Vui lòng ĐỢI THÊM thay vì bấm gửi lại — bấm lại có thể tạo trùng báo cáo.');
+                        }
+                        throw err;
+                    }
+                }
+            };
+        }
+    </script>
+    <!-- Alpine.js CDN (Placed AFTER component logic for 100% reliable initialization) -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body x-data="customerStatusApp()" class="antialiased min-h-screen flex flex-col justify-between relative">
+
+    <!-- Top Accent Line -->
+    <div class="h-1.5 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600"></div>
+
+    <!-- Header -->
+    <header class="bg-white/90 backdrop-blur-md border-b border-gray-200 py-2.5 px-4 shadow-sm z-10 sticky top-0">
+        <div class="max-w-2xl mx-auto w-full flex items-center justify-between">
+            <a href="https://godnc.com/" class="flex items-center gap-2.5 group">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform">
+                    <span class="font-black text-white text-xs tracking-wider">DNC</span>
+                </div>
+                <div>
+                    <div class="font-extrabold text-gray-900 text-sm md:text-base tracking-tight flex items-center gap-1.5">
+                        Fam Issue Tracker
+                        <span class="text-[9px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.2 rounded-full">RN System</span>
+                    </div>
+                    <p class="text-[11px] text-gray-500">Hỗ trợ & Tra cứu tiến độ sự cố nhóm Fam</p>
+                </div>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-2xl mx-auto w-full px-3 py-4 sm:px-4 sm:py-6 space-y-4">
+        
+        <div class="space-y-4">
+
+            <div class="bg-white border border-gray-200 rounded-2xl card-shadow p-3.5 sm:p-5 relative overflow-hidden space-y-3">
+                
+                <div class="text-center mb-2">
+                    <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center mx-auto mb-1.5">
+                        <i data-lucide="search" class="w-4 h-4 sm:w-5 sm:h-5"></i>
+                    </div>
+                    <h1 class="text-lg sm:text-xl font-black text-gray-900 tracking-tight">Tra Cứu Trạng Thái Fam</h1>
+                    <p class="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                        Nhập email đăng ký để kiểm tra trạng thái gia hạn và tiến độ xử lý.
+                    </p>
+                </div>
+
+                <!-- Form Search Email -->
+                <form @submit.prevent="checkStatus()" class="space-y-2">
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <div class="relative flex-grow">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                                <i data-lucide="mail" class="w-4 h-4"></i>
+                            </div>
+                            <input type="email" x-model="statusEmail" required placeholder="Nhập email của bạn..."
+                                   class="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-gray-900 focus:bg-white focus:border-blue-600 focus:outline-none transition-all text-xs font-semibold placeholder-gray-400">
+                        </div>
+                        <button type="submit" :disabled="loading"
+                                class="bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-2 px-5 rounded-xl shadow-md shadow-blue-600/20 transition-all flex items-center justify-center gap-1.5 text-xs whitespace-nowrap disabled:opacity-50">
+                            <template x-if="!loading">
+                                <div class="flex items-center gap-1.5">
+                                    <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                                    <span>Tra Cứu</span>
+                                </div>
+                            </template>
+                            <template x-if="loading">
+                                <div class="flex items-center gap-1.5">
+                                    <svg class="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    <span>Đang kiểm tra...</span>
+                                </div>
+                            </template>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Error Alert Message -->
+                <div x-show="errorMessage" x-transition x-cloak class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-start gap-2.5">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 flex-shrink-0 mt-0.5 text-rose-600"></i>
+                    <span x-text="errorMessage"></span>
+                </div>
+
+                <!-- KẾT QUẢ TRA CỨU TRẠNG THÁI -->
+                <div x-show="statusResult" x-transition x-cloak class="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
+                    
+                    <!-- THANH NÚT RELOAD / LÀM MỚI KẾT QUẢ NGAY -->
+                    <div class="flex items-center justify-between bg-blue-50/80 border border-blue-200 rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5 shadow-2xs">
+                        <div class="flex items-center gap-2 text-xs truncate mr-2">
+                            <span class="w-2 h-2 rounded-full bg-blue-600 animate-ping flex-shrink-0"></span>
+                            <span class="text-gray-600 font-medium hidden sm:inline">Đang xem kết quả:</span>
+                            <strong class="text-blue-700 font-mono font-bold truncate text-xs" x-text="statusEmail"></strong>
+                        </div>
+                        
+                        <button @click="checkStatus()" :disabled="loading"
+                                class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-extrabold rounded-xl text-xs shadow-sm shadow-blue-600/20 transition-all flex items-center gap-1.5 flex-shrink-0 disabled:opacity-50">
+                            <i data-lucide="rotate-cw" class="w-3.5 h-3.5" :class="loading ? 'animate-spin' : ''"></i>
+                            <span x-text="loading ? 'Đang tải...' : '🔄 Làm Mới'"></span>
+                        </button>
+                    </div>
+
+                    <!-- CASE A: CHƯA CÓ BÁO LỖI MỞ -->
+                    <template x-if="statusResult && !statusResult.has_ticket">
+                        <div class="p-4 sm:p-6 bg-blue-50/60 border border-blue-200 rounded-2xl space-y-4">
+                            <div class="flex items-center justify-between border-b border-blue-200/80 pb-3 gap-3">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold flex-shrink-0">
+                                        <i data-lucide="info" class="w-5 h-5"></i>
+                                    </div>
+                                    <div>
+                                        <span class="text-[11px] sm:text-xs text-gray-500 block font-medium">Mã nhóm Fam đối chiếu:</span>
+                                        <span class="text-xl sm:text-2xl font-black text-blue-600 font-mono tracking-tight" x-text="statusResult.stt_group"></span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="px-2.5 py-1 bg-gray-100 text-gray-700 border border-gray-300 rounded-full text-[11px] sm:text-xs font-bold">Chưa có sự cố mở</span>
+                                </div>
+                            </div>
+
+                            <div class="space-y-2 text-xs text-gray-700 font-medium leading-relaxed">
+                                <p>
+                                    Email của bạn thuộc nhóm Fam <strong class="text-blue-700 font-mono" x-text="statusResult.stt_group"></strong>. Dữ liệu hệ thống đối chiếu ghi nhận <strong>hiện tại không có báo lỗi sự cố nào đang mở</strong> cho nhóm này từ phía CTV hoặc Admin.
+                                </p>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- CASE B: ĐÃ CÓ TICKET TRONG HỆ THỐNG -->
+                    <template x-if="statusResult && statusResult.has_ticket">
+                        <div class="space-y-4 sm:space-y-5">
+                            
+                            <!-- Card Header Info -->
+                            <div class="bg-gray-50 border border-gray-200 rounded-2xl p-4 sm:p-5 space-y-3.5 sm:space-y-4">
+                                <div class="flex items-center justify-between border-b border-gray-200 pb-3">
+                                    <div>
+                                        <span class="text-xs text-gray-500 block font-medium">Mã nhóm Fam (5 người):</span>
+                                        <span class="text-2xl sm:text-3xl font-black text-blue-600 font-mono tracking-tight" x-text="statusResult.stt_group"></span>
+                                    </div>
+                                    <div class="text-right">
+                                        <span class="text-xs text-gray-500 block mb-1 font-medium">Trạng thái</span>
+                                        <span class="px-3 py-1.5 rounded-full text-xs font-bold border inline-flex items-center gap-1.5 shadow-xs"
+                                              :class="getStatusBadgeClass(statusResult.status)">
+                                            <span class="w-2 h-2 rounded-full" :class="getStatusDotClass(statusResult.status)"></span>
+                                            <span x-text="statusResult.status"></span>
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <!-- THÔNG BÁO HƯỚNG DẪN SỚM KHI TICKET ĐANG MỞ (ĐANG HOẠT ĐỘNG / KHÔNG HOẠT ĐỘNG) -->
+                                <template x-if="statusResult.status !== 'Đã xử lý' && statusResult.activity_status === 'Đang hoạt động'">
+                                    <div class="p-4 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-950 space-y-3 shadow-sm">
+                                        <div class="flex items-center gap-2 text-xs sm:text-sm font-black text-emerald-900 border-b border-emerald-200/80 pb-2">
+                                            <span class="text-base">🟢</span>
+                                            <span>NHÓM CỦA BẠN VẪN ĐÀNG HOẠT ĐỘNG BÌNH THƯỜNG</span>
+                                        </div>
+                                        <p class="text-xs text-emerald-900 font-medium leading-relaxed">
+                                            🟢 Nhóm của bạn vẫn đang hoạt động bình thường. <strong class="text-emerald-950 font-black underline">Không tự ý rời nhóm</strong> — theo chính sách Google, rời nhóm khi đang hoạt động có thể khiến bạn bị giới hạn 12 tháng không đổi được nhóm gia đình khác. Trong lúc chờ xử lý dứt điểm, bạn có thể chọn 1 trong 2 cách bên dưới:
+                                        </p>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                            <button @click="showWarrantyModal = true"
+                                                    class="px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 text-center cursor-pointer">
+                                                <i data-lucide="shield-check" class="w-4 h-4"></i>
+                                                <span>🛡️ Mượn tài khoản bảo hành tạm</span>
+                                            </button>
+                                            <button @click="activeTab = 'mailphu'"
+                                                    class="px-3.5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 text-center cursor-pointer">
+                                                <i data-lucide="mail-plus" class="w-4 h-4"></i>
+                                                <span>✉️ Đổi sang email phụ của tôi</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <template x-if="statusResult.status !== 'Đã xử lý' && statusResult.activity_status === 'Không hoạt động'">
+                                    <div class="p-4 bg-rose-50 border border-rose-300 rounded-2xl text-rose-950 space-y-2 shadow-sm">
+                                        <div class="flex items-center gap-2 text-xs sm:text-sm font-black text-rose-900 border-b border-rose-200/80 pb-2">
+                                            <span class="text-base">🔴</span>
+                                            <span>NHÓM CỦA BẠN HIỆN KHÔNG HOẠT ĐỘNG</span>
+                                        </div>
+                                        <p class="text-xs text-rose-900 font-medium leading-relaxed">
+                                            🔴 Nhóm của bạn hiện không hoạt động. Yêu cầu của bạn đã được ghi nhận, đội ngũ đang xử lý để mời bạn vào nhóm mới. Bạn sẽ thấy hướng dẫn tham gia nhóm mới ngay khi xử lý xong.
+                                        </p>
+                                    </div>
+                                </template>
+
+                                <!-- THÔNG BÁO HƯỚNG DẪN KHI ĐÃ ĐƯỢC FIX XONG (NẾU STATUS === 'Đã xử lý') -->
+                                <template x-if="statusResult.status === 'Đã xử lý'">
+                                    <div class="p-3.5 sm:p-4 bg-emerald-50 border border-emerald-300 rounded-2xl text-emerald-900 space-y-3 shadow-sm">
+                                        <div class="flex items-center gap-2 text-xs sm:text-sm font-black text-emerald-800">
+                                            <i data-lucide="check-circle-2" class="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 flex-shrink-0"></i>
+                                            <span>🎉 SỰ CỐ FAM ĐÃ ĐƯỢC KỸ THUẬT XỬ LÝ HOÀN TẤT!</span>
+                                        </div>
+                                        <p class="text-xs text-emerald-900 font-medium leading-relaxed">
+                                            Tài khoản Fam <strong><span x-text="statusResult.stt_group"></span></strong> đã được kỹ thuật khắc phục xong lúc <strong><span x-text="formatDate(statusResult.resolved_at)"></span></strong>.
+                                        </p>
+                                        
+                                        <!-- Hướng dẫn thao tác cho khách -->
+                                        <div class="p-3.5 sm:p-4 bg-white rounded-xl border border-emerald-200 text-xs text-emerald-950 space-y-3 font-medium shadow-2xs">
+                                            <strong class="text-emerald-800 font-bold block text-xs sm:text-sm flex items-center gap-1.5 border-b border-emerald-100 pb-2">
+                                                <i data-lucide="compass" class="w-4 h-4 text-emerald-600"></i>
+                                                <span>👉 HƯỚNG DẪN KIỂM TRA & THAM GIA LẠI NHÓM:</span>
+                                            </strong>
+
+                                            <div class="space-y-3 text-xs text-gray-800 leading-relaxed pt-0.5">
+                                                <!-- Bước 1: Kiểm tra -->
+                                                <div class="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-1.5">
+                                                    <p class="font-bold text-blue-950">
+                                                        📌 <strong>Bước 1:</strong> Truy cập đường dẫn kiểm tra nhóm gia đình Google của bạn:
+                                                    </p>
+                                                    <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener"
+                                                       class="text-blue-600 font-bold underline font-mono hover:text-blue-800 break-all inline-flex items-center gap-1">
+                                                        <span>https://myaccount.google.com/family/details</span>
+                                                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                                                    </a>
+                                                </div>
+
+                                                <!-- BƯỚC XÁC NHẬN BẮT BUỘC TRƯỚC KHI RỜI NHÓM -->
+                                                <div class="p-2.5 sm:p-3 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2 text-amber-950">
+                                                    <p class="font-bold text-[11px] sm:text-xs text-amber-950 flex items-center gap-1">
+                                                        <i data-lucide="help-circle" class="w-3.5 h-3.5 text-amber-600 shrink-0"></i>
+                                                        <span>❓ Màn hình Google Family của bạn đang giống hình nào dưới đây? (Bấm chọn):</span>
+                                                    </p>
+
+                                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                        <!-- LỰA CHỌN A: NHÓM ĐANG HOẠT ĐỘNG -->
+                                                        <div @click="familyCheckState = 'active'"
+                                                             :class="familyCheckState === 'active' ? 'border-2 border-rose-500 bg-rose-50/80 ring-1 ring-rose-300' : 'border border-gray-200 bg-white hover:border-rose-300'"
+                                                             class="rounded-lg p-2 cursor-pointer transition-all flex flex-col justify-between space-y-1.5 group">
+                                                            
+                                                            <div class="space-y-1.5">
+                                                                <div class="flex items-center justify-between border-b border-gray-100 pb-1">
+                                                                    <span class="text-[10px] sm:text-[11px] font-extrabold text-emerald-700 flex items-center gap-1">
+                                                                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                                                        🟢 ĐANG HOẠT ĐỘNG
+                                                                    </span>
+                                                                    <span class="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">Hình 1</span>
+                                                                </div>
+
+                                                                <!-- HÌNH MINH HỌA NHỎ GỌN 1 -->
+                                                                <div class="bg-slate-50 border border-gray-200 rounded-md p-1.5 space-y-1 font-sans text-[10px]">
+                                                                    <div class="font-bold text-gray-900 text-[10px] truncate">Gia đình của bạn trên Google</div>
+                                                                    <div class="p-1 bg-white rounded border border-gray-200 flex items-center justify-between">
+                                                                        <div class="flex items-center gap-1.5 min-w-0">
+                                                                            <span class="w-4 h-4 rounded-full bg-slate-700 text-white font-bold flex items-center justify-center text-[8px] shrink-0">DNC</span>
+                                                                            <span class="font-bold text-gray-900 truncate">DNC</span>
+                                                                        </div>
+                                                                        <span class="text-[8px] text-emerald-700 font-bold bg-emerald-50 px-1 rounded shrink-0">Người quản lý</span>
+                                                                    </div>
+                                                                    <div class="p-1 bg-white/70 rounded border border-gray-100 flex items-center gap-1.5">
+                                                                        <span class="w-4 h-4 rounded-full bg-amber-600 text-white font-bold flex items-center justify-center text-[8px] shrink-0">T</span>
+                                                                        <span class="text-gray-600 truncate text-[9px]">Tuấn Nguyễn · Thành viên</span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <p class="text-[10px] font-semibold text-gray-800 leading-tight">
+                                                                    Thấy tên <strong class="text-emerald-700">Người quản lý gia đình</strong>.
+                                                                </p>
+                                                            </div>
+
+                                                            <button type="button" 
+                                                                    :class="familyCheckState === 'active' ? 'bg-rose-600 text-white' : 'bg-gray-100 text-gray-700 group-hover:bg-rose-600 group-hover:text-white'"
+                                                                    class="w-full py-1 px-2 rounded text-[10px] font-bold transition-all text-center">
+                                                                <span x-text="familyCheckState === 'active' ? '✓ Đã Chọn: Đang Hoạt Động' : '👉 Chọn Tình Trạng Này'"></span>
+                                                            </button>
+                                                        </div>
+
+                                                        <!-- LỰA CHỌN B: NHÓM KHÔNG HOẠT ĐỘNG -->
+                                                        <div @click="familyCheckState = 'inactive'"
+                                                             :class="familyCheckState === 'inactive' ? 'border-2 border-emerald-500 bg-emerald-50/80 ring-1 ring-emerald-300' : 'border border-gray-200 bg-white hover:border-emerald-300'"
+                                                             class="rounded-lg p-2 cursor-pointer transition-all flex flex-col justify-between space-y-1.5 group">
+                                                            
+                                                            <div class="space-y-1.5">
+                                                                <div class="flex items-center justify-between border-b border-gray-100 pb-1">
+                                                                    <span class="text-[10px] sm:text-[11px] font-extrabold text-rose-600 flex items-center gap-1">
+                                                                        <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                                                                        🔴 KHÔNG HOẠT ĐỘNG
+                                                                    </span>
+                                                                    <span class="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.2 rounded">Hình 2</span>
+                                                                </div>
+
+                                                                <!-- HÌNH MINH HỌA NHỎ GỌN 2 -->
+                                                                <div class="bg-white border border-gray-200 rounded-md p-1.5 space-y-1 font-sans text-[10px]">
+                                                                    <div class="p-1.5 bg-gray-50 rounded border border-gray-200 space-y-0.5">
+                                                                        <div class="font-extrabold text-gray-900 text-[10px] leading-tight">Nhóm gia đình của bạn không hoạt động</div>
+                                                                        <div class="text-[8px] text-gray-500 line-clamp-2">Hiện tại bạn không thể truy cập vào sản phẩm...</div>
+                                                                        <div class="pt-0.5 border-t border-gray-200">
+                                                                            <span class="text-blue-600 font-bold text-[8px] underline">Rời khỏi nhóm gia đình</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                <p class="text-[10px] font-semibold text-gray-800 leading-tight">
+                                                                    Báo <strong class="text-rose-600">"Không hoạt động"</strong> & có nút rời nhóm.
+                                                                </p>
+                                                            </div>
+
+                                                            <button type="button" 
+                                                                    :class="familyCheckState === 'inactive' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700 group-hover:bg-emerald-600 group-hover:text-white'"
+                                                                    class="w-full py-1 px-2 rounded text-[10px] font-bold transition-all text-center">
+                                                                <span x-text="familyCheckState === 'inactive' ? '✓ Đã Chọn: Không Hoạt Động' : '👉 Chọn Tình Trạng Này'"></span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <!-- CASE A: Nhóm đang hoạt động -> Chặn không cho rời nhóm -->
+                                                <template x-if="familyCheckState === 'active'">
+                                                    <div class="p-4 bg-rose-50 border-2 border-rose-400 rounded-xl text-rose-950 space-y-2 shadow-xs">
+                                                        <div class="flex items-center gap-2 font-black text-rose-900 text-sm">
+                                                            <span>⛔ KHÔNG ĐƯỢC RỜI NHÓM NÀY!</span>
+                                                        </div>
+                                                        <p class="text-xs leading-relaxed font-semibold text-rose-900">
+                                                            Gia đình của bạn vẫn đang hoạt động bình thường. <strong>Tuyệt đối KHÔNG được tự ý rời nhóm</strong> vì sẽ bị Google khóa tham gia nhóm mới trong 12 tháng.
+                                                        </p>
+                                                        <p class="text-xs text-rose-800 font-medium">
+                                                            Vui lòng chờ đội ngũ hỗ trợ để kỹ thuật viên kiểm tra trực tiếp cho tài khoản của bạn.
+                                                        </p>
+                                                    </div>
+                                                </template>
+
+                                                <!-- CASE B: Nhóm không hoạt động -> Hiện Bước 2 & Bước 3 -->
+                                                <template x-if="familyCheckState === 'inactive'">
+                                                    <div class="space-y-2.5 pt-1 border-t border-emerald-100">
+                                                        <div class="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-2">
+                                                            <p>
+                                                                📌 <strong>Bước 2:</strong> Vì gia đình cũ không hoạt động ➔ Bạn tiến hành <strong>Rời nhóm gia đình cũ</strong>.
+                                                            </p>
+                                                            <p>
+                                                                📌 <strong>Bước 3:</strong> Đợi <strong>30 giây</strong> ➔ Mở lại link <a href="https://myaccount.google.com/family/details" target="_blank" class="underline font-bold text-blue-600">myaccount.google.com/family/details</a>. Bạn sẽ thấy <strong>Lời mời tham gia gia đình mới</strong> xuất hiện để bấm Tham gia.
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <!-- THÔNG BÁO KHI ĐANG XỬ LÝ -->
+                                <template x-if="statusResult.status !== 'Đã xử lý'">
+                                    <div class="p-3.5 sm:p-4 bg-amber-50 border border-amber-200 rounded-2xl text-amber-900 text-xs space-y-1">
+                                        <div class="flex items-center gap-2 font-bold text-amber-800">
+                                            <i data-lucide="clock" class="w-4 h-4 text-amber-600"></i>
+                                            <span>⏳ Kỹ thuật viên đang tiến hành kiểm tra & khắc phục cho nhóm Fam <strong x-text="statusResult.stt_group"></strong>.</span>
+                                        </div>
+                                        <p class="text-amber-800 text-[11px]">Vui lòng chờ trong ít phút, trạng thái sẽ tự động cập nhật ngay khi hoàn tất.</p>
+                                    </div>
+                                </template>
+
+                                <!-- Grid 2 thông tin thời gian -->
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3 text-xs">
+                                    <div class="bg-white p-3 rounded-xl border border-gray-200 space-y-1 shadow-2xs">
+                                        <span class="text-gray-500 block font-medium">📅 Thời gian báo lỗi</span>
+                                        <span class="text-gray-900 font-bold block" x-text="formatDate(statusResult.created_at || statusResult.updated_at)"></span>
+                                        <span class="text-[10px] text-blue-600 block font-bold" x-text="formatRelativeTime(statusResult.created_at || statusResult.updated_at)"></span>
+                                    </div>
+                                    <div class="bg-white p-3 rounded-xl border border-gray-200 space-y-1 shadow-2xs">
+                                        <span class="text-gray-500 block font-medium">🔄 Cập nhật gần nhất</span>
+                                        <span class="text-gray-900 font-bold block" x-text="formatDate(statusResult.updated_at)"></span>
+                                        <span class="text-[10px] text-gray-500 block flex items-center gap-1">
+                                            <i data-lucide="users" class="w-3.5 h-3.5 text-blue-600"></i>
+                                            <span class="font-bold text-gray-900" x-text="statusResult.report_count"></span> thành viên đã báo
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div x-show="statusResult.is_recurring" class="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs space-y-1">
+                                    <div class="flex items-center gap-2 font-bold text-rose-900">
+                                        <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-600"></i>
+                                        ⚡ Sự cố tái phát (Lần thứ <span x-text="statusResult.recur_count"></span> — Báo lại lúc <span x-text="formatDate(statusResult.updated_at)"></span>)
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </template>
+
+                    <!-- LỊCH SỬ FIX & BÁO LỖI (FIX HISTORY TIMELINE) -->
+                    <div x-show="statusResult && statusResult.history_tickets && statusResult.history_tickets.length > 0" class="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 space-y-3 card-shadow">
+                        <h3 class="text-xs font-extrabold text-gray-900 uppercase tracking-wider flex items-center gap-2 border-b border-gray-100 pb-3">
+                            <i data-lucide="history" class="w-4 h-4 text-blue-600"></i>
+                            <span>Lịch Sử Xử Lý & Khắc Phục Của Fam (<span x-text="statusResult ? statusResult.stt_group : ''"></span>)</span>
+                        </h3>
+
+                        <div class="space-y-2.5 pt-1">
+                            <template x-for="(ht, idx) in (statusResult ? statusResult.history_tickets : [])" :key="ht.ticket_id || idx">
+                                <div class="p-3 rounded-xl border text-xs space-y-1.5 transition-all"
+                                     :class="ht.status === 'Đã xử lý' ? 'bg-green-50/50 border-green-200' : 'bg-gray-50 border-gray-200'">
+                                    <div class="flex items-center justify-between font-bold">
+                                        <div class="flex items-center gap-2">
+                                            <span class="px-2 py-0.5 rounded text-[10px] uppercase font-bold border"
+                                                  :class="getStatusBadgeClass(ht.status)" x-text="ht.status"></span>
+                                            <span class="font-mono text-gray-700 text-[11px]" x-text="ht.ticket_id"></span>
+                                        </div>
+                                        <span class="text-[10px] text-gray-500" x-text="formatDate(ht.created_at)"></span>
+                                    </div>
+
+                                    <div class="text-[11px] text-gray-700 flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                                        <template x-if="ht.status === 'Đã xử lý'">
+                                            <div class="text-green-800 font-semibold flex items-center gap-1">
+                                                <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-green-600"></i>
+                                                <span>Xử lý xong lúc <strong x-text="formatDate(ht.resolved_at)"></strong> <span class="text-gray-500 font-normal" x-text="calcDuration(ht.created_at, ht.resolved_at)"></span></span>
+                                            </div>
+                                        </template>
+                                        <template x-if="ht.status !== 'Đã xử lý'">
+                                            <div class="text-amber-800 font-medium flex items-center gap-1">
+                                                <i data-lucide="clock" class="w-3.5 h-3.5 text-amber-600"></i>
+                                                <span>Đang xử lý...</span>
+                                            </div>
+                                        </template>
+
+                                        <template x-if="ht.note">
+                                            <div class="text-[10px] text-gray-600 font-mono bg-white px-2 py-0.5 rounded border border-gray-200">
+                                                Ghi chú: <span x-text="ht.note"></span>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- KHU CẤP TK BẢO HÀNH TẠM -->
+            <div class="bg-white border border-gray-200 rounded-2xl p-3.5 sm:p-5 card-shadow space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                    <div>
+                        <h2 class="text-sm sm:text-base font-extrabold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="shield-check" class="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600"></i>
+                            <span>Cấp TK Bảo Hành Tạm</span>
+                        </h2>
+                        <p class="text-[11px] text-gray-500 mt-0.5">
+                            Cấp tài khoản bảo hành tạm thời cho khách hàng mượn sử dụng trong lúc chờ xử lý sự cố Fam chính.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Form Cấp Tài Khoản -->
+                <div class="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                    <div class="relative flex-grow">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                            <i data-lucide="mail" class="w-4 h-4 text-indigo-500"></i>
+                        </div>
+                        <input type="email" x-model="warrantyCustomerEmail" @keydown.enter="submitAssignWarranty()"
+                               placeholder="Nhập email khách hàng cần cấp TK bảo hành tạm (vd: khach@gmail.com)..."
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-xs text-gray-900 font-bold focus:bg-white focus:border-indigo-600 focus:outline-none transition-all placeholder-gray-400">
+                    </div>
+
+                    <button @click="submitAssignWarranty()" :disabled="isAssigningWarranty || !warrantyCustomerEmail.trim()"
+                            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-indigo-600/20 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="shield-plus" class="w-4 h-4" :class="{'animate-spin': isAssigningWarranty}"></i>
+                        <span x-text="isAssigningWarranty ? 'Đang cấp...' : '🚀 Cấp Tài Khoản'"></span>
+                    </button>
+                </div>
+
+                <!-- Thông báo Lỗi Cấp (nếu có) -->
+                <template x-if="warrantyError">
+                    <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-900 text-xs shadow-xs">
+                        <i data-lucide="alert-circle" class="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5"></i>
+                        <div>
+                            <span class="font-bold block text-rose-950">Không thể cấp tài khoản bảo hành:</span>
+                            <span x-text="warrantyError"></span>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- KHỐI KẾT QUẢ KHI CẤP THÀNH CÔNG -->
+                <template x-if="assignedWarranty">
+                    <div class="bg-gradient-to-br from-indigo-950 via-slate-900 to-blue-950 border border-indigo-500/40 rounded-2xl p-3.5 sm:p-4 text-white shadow-xl space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="px-2.5 py-1 font-black text-xs rounded-lg uppercase tracking-wider shadow-sm flex items-center gap-1"
+                                      :class="assignedWarranty.isReassigned ? 'bg-amber-400 text-gray-950' : 'bg-emerald-500 text-gray-950'">
+                                    <span x-text="assignedWarranty.isReassigned ? '🔄 Triệu Hồi Đã Cấp' : '🎉 Cấp Thành Công'"></span>
+                                </span>
+                                <span class="text-xs text-indigo-200 font-bold">Khách: <strong class="text-amber-300 font-mono" x-text="assignedWarranty.customerEmail"></strong></span>
+                            </div>
+
+                            <div class="flex items-center gap-2 self-start sm:self-auto">
+                                <span class="text-[11px] text-gray-300 font-semibold hidden md:inline">
+                                    📅 Renew: <strong class="text-amber-300 font-mono" x-text="assignedWarranty.ngayRenew"></strong>
+                                </span>
+                                
+                                <!-- NÚT COPY TOÀN BỘ GỬI KHÁCH -->
+                                <button @click="copyFullCustomerWarrantyText(assignedWarranty)"
+                                        class="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95">
+                                    <i data-lucide="clipboard-copy" class="w-4 h-4"></i>
+                                    <span>📋 Copy toàn bộ gửi khách</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- BANNER LƯU Ý BẮT BUỘC KHÔNG ĐỔI THÔNG TIN TÀI KHOẢN -->
+                        <div class="bg-rose-950/80 border border-rose-500/50 rounded-xl p-3 text-xs text-rose-200 flex items-start gap-2.5 shadow-md">
+                            <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5 animate-pulse"></i>
+                            <div class="space-y-0.5">
+                                <div class="font-black text-rose-300 uppercase tracking-wider text-[11px] flex items-center gap-1">
+                                    <span>⚠️ LƯU Ý QUAN TRỌNG DÀNH CHO KHÁCH HÀNG:</span>
+                                </div>
+                                <p class="text-[11px] text-gray-200 leading-relaxed font-semibold">
+                                    Đây là tài khoản mượn tạm thời trong lúc chờ xử lý sự cố. 
+                                    <strong class="text-amber-300 font-extrabold underline">TUYỆT ĐỐI KHÔNG ĐỔI MẬT KHẨU, EMAIL KHÔI PHÚC HOẶC BẤT CỨ THÔNG TIN GÌ CỦA TÀI KHOẢN!</strong>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- 3 Dòng Thông Tin: Email, Pass, MKP -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                            <!-- Email -->
+                            <div @click="copyText(assignedWarranty.email)"
+                                 class="bg-white/10 hover:bg-white/20 border border-white/15 p-3 rounded-xl cursor-pointer transition-all space-y-1 group"
+                                 title="Bấm để sao chép Email">
+                                <div class="text-[10px] text-indigo-200 font-bold uppercase tracking-wider flex items-center justify-between">
+                                    <span>EMAIL TÀI KHOẢN:</span>
+                                    <i data-lucide="copy" class="w-3.5 h-3.5 text-gray-400 group-hover:text-amber-300"></i>
+                                </div>
+                                <div class="font-mono font-black text-white group-hover:text-amber-300 text-xs break-all" x-text="assignedWarranty.email"></div>
+                            </div>
+
+                            <!-- Pass -->
+                            <div @click="copyText(assignedWarranty.pass)"
+                                 class="bg-white/10 hover:bg-white/20 border border-white/15 p-3 rounded-xl cursor-pointer transition-all space-y-1 group"
+                                 title="Bấm để sao chép Mật khẩu">
+                                <div class="text-[10px] text-indigo-200 font-bold uppercase tracking-wider flex items-center justify-between">
+                                    <span>MẬT KHẨU (PASS):</span>
+                                    <i data-lucide="copy" class="w-3.5 h-3.5 text-gray-400 group-hover:text-amber-300"></i>
+                                </div>
+                                <div class="font-mono font-black text-white group-hover:text-amber-300 text-xs break-all" x-text="assignedWarranty.pass"></div>
+                            </div>
+
+                            <!-- MKP (Mail Khôi Phục) -->
+                            <template x-if="assignedWarranty.mkp">
+                                <div @click="copyText(assignedWarranty.mkp)"
+                                     class="bg-white/10 hover:bg-white/20 border border-white/15 p-3 rounded-xl cursor-pointer transition-all space-y-1 group"
+                                     title="Bấm để sao chép Mail khôi phục">
+                                    <div class="text-[10px] text-indigo-200 font-bold uppercase tracking-wider flex items-center justify-between">
+                                        <span>MAIL KHÔI PHÚC (MKP):</span>
+                                        <i data-lucide="copy" class="w-3.5 h-3.5 text-gray-400 group-hover:text-amber-300"></i>
+                                    </div>
+                                    <div class="font-mono font-bold text-gray-200 group-hover:text-amber-300 text-xs break-all" x-text="assignedWarranty.mkp"></div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- 2FA TAB DISPLAY (2 NÚT TAB TOGGLE) -->
+                        <div class="bg-black/30 border border-white/10 rounded-xl p-4 space-y-3">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2">
+                                <span class="text-xs font-bold text-indigo-200 uppercase tracking-wider">🔐 MÃ XÁC THỰC 2FA:</span>
+                                
+                                <div class="flex items-center gap-1 bg-white/10 p-1 rounded-lg self-start sm:self-auto">
+                                    <button @click="totpTab = 'code'"
+                                            :class="totpTab === 'code' ? 'bg-indigo-600 text-white font-extrabold shadow-sm' : 'text-gray-300 font-bold hover:text-white'"
+                                            class="px-3 py-1 rounded-md text-xs transition-all cursor-pointer">
+                                        Hiện mã 6 số
+                                    </button>
+                                    <button @click="totpTab = 'secret'"
+                                            :class="totpTab === 'secret' ? 'bg-indigo-600 text-white font-extrabold shadow-sm' : 'text-gray-300 font-bold hover:text-white'"
+                                            class="px-3 py-1 rounded-md text-xs transition-all cursor-pointer">
+                                        Hiện mã bí mật (secret)
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- TAB 1: HIỆN MÃ 6 SỐ TOTP -->
+                            <div x-show="totpTab === 'code'" class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                                <div @click="copyText(totpCode)"
+                                     class="flex items-center gap-3 bg-white/10 hover:bg-white/20 border border-emerald-400/40 px-5 py-2.5 rounded-xl cursor-pointer transition-all group"
+                                     title="Nhấn để sao chép mã 6 số">
+                                    <span class="font-mono font-black text-2xl text-emerald-400 tracking-widest group-hover:scale-105 transition-transform" x-text="totpCode"></span>
+                                    <i data-lucide="copy" class="w-4 h-4 text-emerald-400 group-hover:text-white"></i>
+                                </div>
+
+                                <div class="flex items-center gap-2 text-xs text-gray-300 font-medium bg-black/40 px-3 py-1.5 rounded-lg border border-white/10">
+                                    <i data-lucide="timer" class="w-4 h-4 text-amber-400"></i>
+                                    <span>Tự đổi mã sau: <strong class="text-amber-400 font-mono font-bold text-sm" x-text="totpTimer + 's'"></strong></span>
+                                </div>
+                            </div>
+
+                            <!-- TAB 2: HIỆN MÃ BÍ MẬT (SECRET) -->
+                            <div x-show="totpTab === 'secret'" class="space-y-1 pt-1">
+                                <div @click="copyText(assignedWarranty.secret2fa)"
+                                     class="bg-white/10 hover:bg-white/20 border border-white/15 p-3 rounded-xl cursor-pointer transition-all flex items-center justify-between gap-2 group"
+                                     title="Nhấn để sao chép chuỗi secret 2FA">
+                                    <span class="font-mono font-bold text-amber-300 text-xs break-all" x-text="assignedWarranty.secret2fa"></span>
+                                    <i data-lucide="copy" class="w-4 h-4 text-gray-400 group-hover:text-white flex-shrink-0"></i>
+                                </div>
+                                <p class="text-[10px] text-gray-400 italic">Khách hàng có thể copy chuỗi bí mật này dán vào app Google Authenticator / Authy để tự lưu mã 2FA.</p>
+                            </div>
+                        </div>
+
+                        <!-- HƯỚNG DẪN ĐĂNG NHẬP CHO KHÁCH HÀNG -->
+                        <div class="bg-indigo-900/60 border border-indigo-500/30 rounded-xl p-4 space-y-3 text-xs">
+                            <div class="flex items-center gap-2 font-bold text-amber-300 text-xs sm:text-sm border-b border-white/10 pb-2">
+                                <i data-lucide="book-open" class="w-4 h-4 text-amber-400"></i>
+                                <span>📖 HƯỚNG DẪN ĐĂNG NHẬP TÀI KHOẢN BẢO HÀNH TẠM:</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                                <!-- Bước 1 -->
+                                <div class="bg-white/5 p-3 rounded-lg border border-white/10 space-y-1">
+                                    <div class="font-extrabold text-emerald-400 flex items-center gap-1.5">
+                                        <span class="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 flex items-center justify-center text-[11px]">1</span>
+                                        <span>Nhập Email & Pass:</span>
+                                    </div>
+                                    <p class="text-[11px] text-gray-300 leading-relaxed">
+                                        Đăng nhập YouTube / Google bằng <strong>Email</strong> và <strong>Mật Khẩu (Pass)</strong> được cấp ở trên.
+                                    </p>
+                                </div>
+
+                                <!-- Bước 2 -->
+                                <div class="bg-white/5 p-3 rounded-lg border border-white/10 space-y-1">
+                                    <div class="font-extrabold text-amber-400 flex items-center gap-1.5">
+                                        <span class="w-5 h-5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center text-[11px]">2</span>
+                                        <span>Nhập Mã 2FA 6 Số:</span>
+                                    </div>
+                                    <p class="text-[11px] text-gray-300 leading-relaxed">
+                                        Khi Google hỏi mã 2FA ➔ Lấy <strong>mã 6 số đang nhảy đếm ngược</strong> ở ô trên dán vào.
+                                    </p>
+                                </div>
+
+                                <!-- Bước 3 -->
+                                <div class="bg-white/5 p-3 rounded-lg border border-white/10 space-y-1">
+                                    <div class="font-extrabold text-cyan-400 flex items-center gap-1.5">
+                                        <span class="w-5 h-5 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-300 flex items-center justify-center text-[11px]">3</span>
+                                        <span>Xác minh Mail Khôi Phục:</span>
+                                    </div>
+                                    <p class="text-[11px] text-gray-300 leading-relaxed">
+                                        Nếu Google hỏi ➔ Chọn <strong>"Xác minh bằng email khôi phục"</strong> rồi dán <strong>Mail Khôi Phục (MKP)</strong> ở trên. <em>(Không cần đăng nhập vào MKP)</em>.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- KHU ĐỔI SANG MAIL PHỤ -->
+            <div class="bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 card-shadow space-y-4">
+                <div class="flex items-center gap-3 border-b border-gray-100 pb-3">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                        <i data-lucide="mail-plus" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-sm sm:text-base font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                            <span>🔄 Đổi Sang Mail Phụ</span>
+                            <span class="text-[10px] bg-purple-100 text-purple-700 font-extrabold px-2 py-0.5 rounded-full border border-purple-200">Lựa chọn riêng</span>
+                        </h2>
+                        <p class="text-xs text-gray-500 font-medium">Không muốn dùng chung tài khoản bảo hành? Đổi sang email phụ của riêng bạn.</p>
+                    </div>
+                </div>
+
+                <!-- FORM ĐỔI MAIL PHỤ -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Email hiện tại (email gặp sự cố):</label>
+                        <input type="email" x-model="mailPhuPrimaryEmail" @input.debounce.400ms="checkExistingMailPhuRequest()" @change="checkExistingMailPhuRequest()" placeholder="vd: nguyenvanA@gmail.com"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:outline-none transition-all">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Email phụ muốn đổi sang:</label>
+                        <input type="email" x-model="mailPhuSecondaryEmail" placeholder="vd: emailphucuanhan@gmail.com"
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-gray-900 focus:bg-white focus:border-purple-600 focus:outline-none transition-all">
+                    </div>
+                </div>
+
+                <!-- THÔNG BÁO NẾU ĐÃ TỪNG GỬI YÊU CẦU ĐỔI MAIL PHỤ -->
+                <template x-if="existingMailPhuInfo">
+                    <div class="bg-amber-50 border border-amber-300/80 rounded-xl p-3.5 text-xs text-amber-950 space-y-1 font-medium card-shadow">
+                        <div class="flex items-center justify-between font-bold text-amber-900 border-b border-amber-200/80 pb-1.5">
+                            <span class="flex items-center gap-1.5">
+                                <i data-lucide="info" class="w-4 h-4 text-amber-600 flex-shrink-0"></i>
+                                <span>Email này đã có yêu cầu đổi sang Mail Phụ trước đó!</span>
+                            </span>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-amber-200/80 text-amber-900 border border-amber-400/60" x-text="existingMailPhuInfo.status"></span>
+                        </div>
+                        <div class="pt-1 text-gray-800">
+                            • Mail phụ hiện tại đã gửi: <strong class="font-mono text-purple-900 font-extrabold select-all" x-text="existingMailPhuInfo.mail_phu"></strong>
+                        </div>
+                        <div class="text-[11px] text-amber-800 italic pt-0.5">
+                            💡 Nếu bạn muốn đổi sang mail phụ khác, hãy điền email mới vào ô bên phải và bấm nút bên dưới để cập nhật lại cho Admin.
+                        </div>
+                    </div>
+                </template>
+
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <button @click="submitMailPhuRequest()"
+                            :disabled="isSubmittingMailPhu || !mailPhuPrimaryEmail.trim() || !mailPhuSecondaryEmail.trim()"
+                            class="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50">
+                        <template x-if="!isSubmittingMailPhu">
+                            <span class="flex items-center gap-2">
+                                <i data-lucide="send" class="w-4 h-4"></i>
+                                <span x-text="existingMailPhuInfo ? '🔄 Cập Nhật Sang Mail Phụ Mới' : '🚀 Gửi Yêu Cầu Đổi Mail Phụ'"></span>
+                            </span>
+                        </template>
+                        <template x-if="isSubmittingMailPhu">
+                            <span class="flex items-center gap-2">
+                                <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                <span>Đang gửi yêu cầu...</span>
+                            </span>
+                        </template>
+                    </button>
+                </div>
+
+                <!-- KHỐI KẾT QUẢ / PHẢN HỒI KHI THÀNH CÔNG -->
+                <template x-if="mailPhuSuccessResult">
+                    <div class="bg-gradient-to-br from-purple-950 via-slate-900 to-indigo-950 border border-purple-500/40 rounded-xl p-4 text-white space-y-2 text-xs shadow-lg">
+                        <div class="flex items-center gap-2 text-emerald-400 font-extrabold text-sm border-b border-white/10 pb-2">
+                            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+                            <span>🎉 ĐÃ GHI NHẬN YÊU CẦU ĐỔI MAIL PHỤ THÀNH CÔNG!</span>
+                        </div>
+                        <div class="space-y-1 text-gray-200">
+                            <div>• Email chính: <strong class="font-mono text-amber-300" x-text="mailPhuSuccessResult.primary_email"></strong> | Nhóm: <strong class="font-mono text-purple-300" x-text="mailPhuSuccessResult.stt_group"></strong></div>
+                            <div>• Hạn gia hạn (HSD): <strong class="font-mono font-bold" :class="mailPhuSuccessResult.ngay_het_han ? 'text-emerald-300 font-extrabold' : 'text-amber-300/90'" x-text="formatDateOnly(mailPhuSuccessResult.ngay_het_han) || 'Đang cập nhật HSD từ Kho TK...'"></strong></div>
+                            <div>• Email phụ cần đổi sang: <strong class="font-mono text-emerald-400 text-sm bg-white/10 px-2 py-0.5 rounded border border-emerald-400/30" x-text="mailPhuSuccessResult.mail_phu"></strong></div>
+                        </div>
+                        <p class="text-[11px] text-gray-300 italic pt-1 border-t border-white/10">
+                            💬 Đội ngũ kỹ thuật viên sẽ mời email phụ trên vào nhóm Fam trong thời gian sớm nhất.
+                        </p>
+                    </div>
+                </template>
+
+                <template x-if="mailPhuError">
+                    <div class="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl text-xs font-semibold flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-4 h-4 text-rose-500 flex-shrink-0"></i>
+                        <span x-text="mailPhuError"></span>
+                    </div>
+                </template>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 px-4 text-center border-t border-gray-200 text-xs text-gray-400 bg-white">
+        <p>© 2026 Go DNC — Fam Issue Tracker System. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>
