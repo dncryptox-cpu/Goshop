@@ -350,6 +350,9 @@ function handleRequest(e) {
       case 'autoClassifyPlusTickets':
         result = autoClassifyPlusTickets();
         break;
+      case 'getRenewToolData':
+        result = listTickets('All');
+        break;
       default:
         result = { success: false, message: 'Action không hợp lệ: ' + action };
     }
@@ -395,7 +398,7 @@ function setupDatabase() {
     }
   }
 
-  // Tab REPORTS (Columns: report_id, ticket_id, customer_email, reported_at, message, submitted_by, status_snapshot, date_renew_snapshot, group_emails)
+  // Tab REPORTS (13 Columns: report_id, ticket_id, customer_email, reported_at, message, submitted_by, status_snapshot, date_renew_snapshot, owner_email, owner_pass, owner_mkp, owner_2fa, group_emails)
   let reportsSheet = ss.getSheetByName('REPORTS');
   if (!reportsSheet) {
     reportsSheet = ss.insertSheet('REPORTS');
@@ -403,22 +406,20 @@ function setupDatabase() {
   if (reportsSheet.getLastRow() === 0) {
     reportsSheet.appendRow([
       'report_id', 'ticket_id', 'customer_email', 'reported_at', 'message', 'submitted_by',
-      'status_snapshot', 'date_renew_snapshot', 'group_emails'
+      'status_snapshot', 'date_renew_snapshot', 'owner_email', 'owner_pass', 'owner_mkp', 'owner_2fa', 'group_emails'
     ]);
-    reportsSheet.getRange(1, 1, 1, 9).setFontWeight('bold');
+    reportsSheet.getRange(1, 1, 1, 13).setFontWeight('bold');
   } else {
-    const headers = reportsSheet.getRange(1, 1, 1, Math.max(9, reportsSheet.getLastColumn())).getValues()[0];
-    if (!headers[5] || String(headers[5]).trim() !== 'submitted_by') {
-      reportsSheet.getRange(1, 6).setValue('submitted_by').setFontWeight('bold');
-    }
-    if (!headers[6] || String(headers[6]).trim() !== 'status_snapshot') {
-      reportsSheet.getRange(1, 7).setValue('status_snapshot').setFontWeight('bold');
-    }
-    if (!headers[7] || String(headers[7]).trim() !== 'date_renew_snapshot') {
-      reportsSheet.getRange(1, 8).setValue('date_renew_snapshot').setFontWeight('bold');
-    }
-    if (!headers[8] || String(headers[8]).trim() !== 'group_emails') {
-      reportsSheet.getRange(1, 9).setValue('group_emails').setFontWeight('bold');
+    const headers = reportsSheet.getRange(1, 1, 1, Math.max(13, reportsSheet.getLastColumn())).getValues()[0];
+    const reqHeaders = [
+      'submitted_by', 'status_snapshot', 'date_renew_snapshot',
+      'owner_email', 'owner_pass', 'owner_mkp', 'owner_2fa', 'group_emails'
+    ];
+    for (let h = 0; h < reqHeaders.length; h++) {
+      const targetColIdx = 6 + h;
+      if (!headers[targetColIdx - 1] || String(headers[targetColIdx - 1]).trim() !== reqHeaders[h]) {
+        reportsSheet.getRange(1, targetColIdx).setValue(reqHeaders[h]).setFontWeight('bold');
+      }
     }
   }
 
@@ -929,7 +930,7 @@ function sendTelegramNotification(message) {
 
     let chatId = props.getProperty('CHAT_ID') || props.getProperty('TELEGRAM_CHAT_ID');
     if (!chatId || !String(chatId).trim()) {
-      chatId = '1134598172';
+      chatId = '-1004437579168';
     } else {
       chatId = String(chatId).trim();
     }
@@ -984,16 +985,66 @@ function sendTelegramNotification(message) {
 }
 
 /**
- * Tra cứu bổ sung từ Kho TK tab DATA theo sttGroup (Status, Date Renew, TOÀN BỘ Email trong block)
+ * Tra cứu bổ sung từ Kho TK (Tab STOCK & DATA) theo sttGroup (Status, Date Renew, Owner Email/Pass/MKP/2FA, TOÀN BỘ Email trong block)
  */
 function getGroupSnapshotFromKhoTK(sttGroup) {
-  if (!sttGroup) return { status: 'N/A', date_renew: 'N/A', group_emails: [] };
+  if (!sttGroup) return { status: 'N/A', date_renew: 'N/A', owner_email: '', owner_pass: '', owner_mkp: '', owner_2fa: '', group_emails: [] };
   const targetGroup = String(sttGroup).trim().toUpperCase();
 
   let groupStatus = '';
   let dateRenew = '';
+  let ownerEmail = '';
+  let ownerPass = '';
+  let ownerMkp = '';
+  let owner2fa = '';
   const groupEmails = [];
 
+  // 1. Đọc tab STOCK từ Kho TK cho thông tin Chủ Fam (Status, Owner Email, Pass, MKP, 2FA, Renew)
+  try {
+    const khoSpreadsheet = SpreadsheetApp.openById(KHO_TK_ID);
+    const stockSheet = khoSpreadsheet.getSheetByName('STOCK') || khoSpreadsheet.getSheetByName('Stock');
+    if (stockSheet && stockSheet.getLastRow() > 1) {
+      const stockData = stockSheet.getDataRange().getValues();
+      let sHeaderRowIdx = -1;
+      for (let r = 0; r < Math.min(10, stockData.length); r++) {
+        const row = stockData[r];
+        for (let c = 0; c < row.length; c++) {
+          const cellStr = String(row[c] || '').trim().toLowerCase();
+          if (cellStr === 'stt' || cellStr === 'mã nhóm' || cellStr === 'mã') {
+            sHeaderRowIdx = r;
+            break;
+          }
+        }
+        if (sHeaderRowIdx !== -1) break;
+      }
+
+      const sStartRow = sHeaderRowIdx !== -1 ? sHeaderRowIdx + 1 : 1;
+      for (let r = sStartRow; r < stockData.length; r++) {
+        const row = stockData[r];
+        const sttVal = String(row[1] || row[0] || '').trim().toUpperCase();
+        if (sttVal === targetGroup) {
+          if (row[2]) groupStatus = String(row[2]).trim(); // Cột C
+          if (row[3]) ownerEmail = String(row[3]).trim();  // Cột D
+          if (row[4]) ownerPass = String(row[4]).trim();   // Cột E
+          if (row[5]) ownerMkp = String(row[5]).trim();    // Cột F
+          if (row[6]) owner2fa = String(row[6]).trim();    // Cột G
+          if (row[7]) {                                    // Cột H
+            const rawDate = row[7];
+            if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
+              dateRenew = Utilities.formatDate(rawDate, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
+            } else {
+              dateRenew = String(rawDate).trim();
+            }
+          }
+          break;
+        }
+      }
+    }
+  } catch (errStock) {
+    Logger.log('Lỗi đọc STOCK trong getGroupSnapshotFromKhoTK: ' + errStock.toString());
+  }
+
+  // 2. Đọc tab DATA từ Kho TK cho email thành viên (Cột K) & fallback status/dateRenew
   try {
     const khoData = getKhoTKDataCached();
     if (khoData && khoData.length > 1) {
@@ -1019,12 +1070,10 @@ function getGroupSnapshotFromKhoTK(sttGroup) {
         if (currentSttGroup === targetGroup) {
           foundMatchingGroup = true;
 
-          // Cột C (Index 2): Trạng thái hiện tại
           if (!groupStatus && row[2]) {
             groupStatus = String(row[2]).trim();
           }
 
-          // Cột H (Index 7): Date Renew
           if (!dateRenew && row[7]) {
             const rawDate = row[7];
             if (rawDate instanceof Date && !isNaN(rawDate.getTime())) {
@@ -1034,19 +1083,18 @@ function getGroupSnapshotFromKhoTK(sttGroup) {
             }
           }
 
-          // Cột K (Index 10): Email khách
-          const emailRaw = row[10];
+          const emailRaw = row[10]; // Cột K (Email khách)
           const emailClean = emailRaw ? String(emailRaw).trim().toLowerCase() : '';
           if (emailClean && emailClean.includes('@') && groupEmails.indexOf(emailClean) === -1) {
             groupEmails.push(emailClean);
           }
         } else if (foundMatchingGroup && currentSttGroup !== targetGroup) {
-          break; // Đã xong block của nhóm
+          break;
         }
       }
     }
-  } catch (err) {
-    Logger.log('Lỗi getGroupSnapshotFromKhoTK: ' + err.toString());
+  } catch (errData) {
+    Logger.log('Lỗi đọc DATA trong getGroupSnapshotFromKhoTK: ' + errData.toString());
   }
 
   // Fallback nếu thiếu email: Tra cứu EMAIL_LOOKUP_CACHE
@@ -1063,6 +1111,9 @@ function getGroupSnapshotFromKhoTK(sttGroup) {
           if (!dateRenew && obj['ngay_het_han']) {
             dateRenew = String(obj['ngay_het_han']).trim();
           }
+          if (!ownerEmail && obj['owner_email']) {
+            ownerEmail = String(obj['owner_email']).trim();
+          }
         }
       }
     } catch (eCache) {}
@@ -1071,12 +1122,16 @@ function getGroupSnapshotFromKhoTK(sttGroup) {
   return {
     status: groupStatus || 'Không xác định',
     date_renew: dateRenew || 'Không xác định',
+    owner_email: ownerEmail || '',
+    owner_pass: ownerPass || '',
+    owner_mkp: ownerMkp || '',
+    owner_2fa: owner2fa || '',
     group_emails: groupEmails
   };
 }
 
 /**
-  * Ghi snapshot (status_snapshot, date_renew_snapshot, group_emails) vào tab REPORTS
+  * Ghi snapshot (7 cột: status_snapshot, date_renew_snapshot, owner_email, owner_pass, owner_mkp, owner_2fa, group_emails) vào tab REPORTS
   */
 function saveReportSnapshot(reportIdOrEmail, snapshot) {
   if (!reportIdOrEmail || !snapshot) return;
@@ -1085,17 +1140,7 @@ function saveReportSnapshot(reportIdOrEmail, snapshot) {
     const reportsSheet = ss.getSheetByName('REPORTS');
     if (!reportsSheet || reportsSheet.getLastRow() <= 1) return;
 
-    // Đảm bảo tiêu đề cột 7, 8, 9 có đủ
-    const headers = reportsSheet.getRange(1, 1, 1, Math.max(9, reportsSheet.getLastColumn())).getValues()[0];
-    if (!headers[6] || String(headers[6]).trim() !== 'status_snapshot') {
-      reportsSheet.getRange(1, 7).setValue('status_snapshot').setFontWeight('bold');
-    }
-    if (!headers[7] || String(headers[7]).trim() !== 'date_renew_snapshot') {
-      reportsSheet.getRange(1, 8).setValue('date_renew_snapshot').setFontWeight('bold');
-    }
-    if (!headers[8] || String(headers[8]).trim() !== 'group_emails') {
-      reportsSheet.getRange(1, 9).setValue('group_emails').setFontWeight('bold');
-    }
+    setupDatabase(); // Đảm bảo cấu trúc cột
 
     const data = reportsSheet.getDataRange().getValues();
     let targetRow = -1;
@@ -1112,14 +1157,18 @@ function saveReportSnapshot(reportIdOrEmail, snapshot) {
 
     if (targetRow !== -1) {
       const groupEmailsStr = Array.isArray(snapshot.group_emails) ? snapshot.group_emails.join('\n') : String(snapshot.group_emails || '');
-      reportsSheet.getRange(targetRow, 7, 1, 3).setValues([[
+      reportsSheet.getRange(targetRow, 7, 1, 7).setValues([[
         snapshot.status || '',
         snapshot.date_renew || '',
+        snapshot.owner_email || '',
+        snapshot.owner_pass || '',
+        snapshot.owner_mkp || '',
+        snapshot.owner_2fa || '',
         groupEmailsStr
       ]]);
       delete _REQUEST_CACHE.sheetValues['REPORTS'];
       delete _REQUEST_CACHE.sheetObjects['REPORTS'];
-      Logger.log('[REPORT_SNAPSHOT_SAVED] Đã ghi snapshot vào REPORTS cho ' + reportIdOrEmail + ' ở dòng ' + targetRow);
+      Logger.log('[REPORT_SNAPSHOT_SAVED] Đã ghi snapshot full 7 cột vào REPORTS cho ' + reportIdOrEmail + ' ở dòng ' + targetRow);
     }
   } catch (err) {
     Logger.log('[REPORT_SNAPSHOT_ERROR] Lỗi saveReportSnapshot: ' + err.toString());
@@ -1151,12 +1200,21 @@ function sendReportTelegramAlert(sttGroup, email, zaloPhone, reportTime, ctvName
       msg += `\n🏷️ <b>CTV:</b> ${String(ctvName).trim()}`;
     }
 
-    // Tra cứu bổ sung từ Kho TK tab DATA (Status, Date Renew, TOÀN BỘ Email trong block)
+    // Tra cứu bổ sung từ Kho TK tab STOCK & DATA (Status, Date Renew, Owner Email/Pass/MKP/2FA, TOÀN BỘ Email trong block)
     const snapshot = getGroupSnapshotFromKhoTK(sttGroup);
     if (snapshot) {
       msg += `\n\n📋 <b>Trạng thái:</b> ${snapshot.status || 'Không xác định'}\n` +
-             `📅 <b>Date Renew:</b> ${snapshot.date_renew || 'Không xác định'}\n` +
-             `👥 <b>Danh sách email mời lại:</b>\n` +
+             `📅 <b>Ngày Renew:</b> ${snapshot.date_renew || 'Không xác định'}`;
+
+      if (snapshot.owner_email || snapshot.owner_pass || snapshot.owner_2fa) {
+        msg += `\n\n🔑 <b>TÀI KHOẢN CHỦ FAM:</b>\n` +
+               `📧 <b>Email:</b> <code>${snapshot.owner_email || 'N/A'}</code>\n` +
+               `🔒 <b>Pass:</b> <code>${snapshot.owner_pass || 'N/A'}</code>\n` +
+               `📮 <b>Mail KP:</b> <code>${snapshot.owner_mkp || 'N/A'}</code>\n` +
+               `🔐 <b>2FA:</b> <code>${snapshot.owner_2fa || 'N/A'}</code>`;
+      }
+
+      msg += `\n\n👥 <b>Danh sách email mời lại:</b>\n` +
              (snapshot.group_emails && snapshot.group_emails.length > 0 ? snapshot.group_emails.join('\n') : (email || 'N/A'));
     }
 
@@ -2517,6 +2575,13 @@ function listTickets(filterStatus) {
       const submittedBy = String(rData[i][5] || '');
       const zaloSentAt = rData[i][6] ? rData[i][6] : null;
       const isZaloSent = Boolean(zaloSentAt);
+      const statusSnapshot = String(rData[i][6] || '');
+      const dateRenewSnapshot = String(rData[i][7] || '');
+      const ownerEmailSnap = String(rData[i][8] || '');
+      const ownerPassSnap = String(rData[i][9] || '');
+      const ownerMkpSnap = String(rData[i][10] || '');
+      const owner2faSnap = String(rData[i][11] || '');
+      const groupEmailsSnap = String(rData[i][12] || '');
 
       if (!reportMap[ticketId]) {
         reportMap[ticketId] = { count: 0, emails: [], reports: [] };
@@ -2532,7 +2597,14 @@ function listTickets(filterStatus) {
         message: message,
         submitted_by: submittedBy,
         zalo_sent_at: zaloSentAt,
-        is_zalo_sent: isZaloSent
+        is_zalo_sent: isZaloSent,
+        status_snapshot: statusSnapshot,
+        date_renew_snapshot: dateRenewSnapshot,
+        owner_email: ownerEmailSnap,
+        owner_pass: ownerPassSnap,
+        owner_mkp: ownerMkpSnap,
+        owner_2fa: owner2faSnap,
+        group_emails: groupEmailsSnap
       });
     }
   }
