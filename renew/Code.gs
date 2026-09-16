@@ -356,6 +356,12 @@ function handleRequest(e) {
       case 'resolveTicketWithFixProfile':
         result = resolveTicketWithFixProfile(params);
         break;
+      case 'getTelegramBotStatus':
+        result = getTelegramBotStatus();
+        break;
+      case 'toggleTelegramBotStatus':
+        result = toggleTelegramBotStatus(params);
+        break;
       default:
         result = { success: false, message: 'Action không hợp lệ: ' + action };
     }
@@ -923,6 +929,12 @@ function sendTelegramNotification(message) {
     const props = PropertiesService.getScriptProperties();
     const _e1 = new Date().getTime();
     Logger.log('sendTelegramNotification -> PropertiesService.getScriptProperties - END: ' + _e1 + ' | Duration: ' + (_e1 - _s1) + 'ms');
+
+    const botEnabledProp = props.getProperty('TELEGRAM_BOT_ENABLED');
+    if (botEnabledProp === 'false' || botEnabledProp === '0' || botEnabledProp === 'off') {
+      Logger.log('[TELEGRAM_DISABLED] Bot Telegram tự động gửi tin nhắn nhóm đang TẮT. Bỏ qua gửi tin nhắn.');
+      return false;
+    }
 
     let botToken = props.getProperty('BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
     if (!botToken || !String(botToken).trim()) {
@@ -2963,8 +2975,41 @@ function getRenewToolData() {
 
   return {
     success: true,
-    tickets: tickets
+    tickets: tickets,
+    telegram_bot_enabled: getTelegramBotStatus().enabled
   };
+}
+
+/**
+ * Lấy trạng thái Bật/Tắt của Bot Telegram gửi tin nhắn nhóm
+ */
+function getTelegramBotStatus() {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const enabledStr = props.getProperty('TELEGRAM_BOT_ENABLED');
+    const enabled = enabledStr !== 'false' && enabledStr !== '0' && enabledStr !== 'off';
+    return { success: true, enabled: enabled };
+  } catch (err) {
+    return { success: false, enabled: true, message: err.toString() };
+  }
+}
+
+/**
+ * Bật/Tắt Bot Telegram tự động gửi tin nhắn nhóm
+ */
+function toggleTelegramBotStatus(params) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const targetState = (params.enabled === true || params.enabled === 'true' || params.status === 'on' || params.status === true);
+    props.setProperty('TELEGRAM_BOT_ENABLED', targetState ? 'true' : 'false');
+    return {
+      success: true,
+      enabled: targetState,
+      message: targetState ? '🤖 Đã BẬT Bot Telegram tự động gửi về group!' : '⏸️ Đã TẮT Bot Telegram tự động gửi về group!'
+    };
+  } catch (err) {
+    return { success: false, message: 'Lỗi cập nhật trạng thái Bot: ' + err.toString() };
+  }
 }
 
 /**

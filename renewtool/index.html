@@ -87,6 +87,16 @@
                 </div>
 
                 <div class="flex items-center gap-2 sm:gap-3">
+                    <!-- BOT TELEGRAM TOGGLE BUTTON -->
+                    <button @click="toggleTelegramBot()" :disabled="togglingBot"
+                            :class="telegramBotEnabled ? 'bg-emerald-600/20 hover:bg-emerald-600/30 border-emerald-500/40 text-emerald-300' : 'bg-rose-600/20 hover:bg-rose-600/30 border-rose-500/40 text-rose-300'"
+                            class="px-3.5 py-2 rounded-xl border text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm">
+                        <i data-lucide="bot" class="w-4 h-4" :class="togglingBot ? 'animate-spin' : ''"></i>
+                        <span class="hidden sm:inline" x-text="telegramBotEnabled ? 'Bot Telegram: BẬT' : 'Bot Telegram: TẮT'"></span>
+                        <span class="sm:hidden" x-text="telegramBotEnabled ? 'Bot: BẬT' : 'Bot: TẮT'"></span>
+                        <span class="w-2.5 h-2.5 rounded-full" :class="telegramBotEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'"></span>
+                    </button>
+
                     <button @click="loadData(true)" :disabled="loading"
                             class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-all flex items-center gap-1.5 cursor-pointer">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="loading ? 'animate-spin' : ''"></i>
@@ -503,6 +513,8 @@
                 searchQuery: '',
                 expandedTickets: {},
                 fixForms: {},
+                telegramBotEnabled: true,
+                togglingBot: false,
                 submittingTicketId: null,
                 toast: { show: false, message: '' },
 
@@ -552,6 +564,9 @@
                         const data = await res.json();
                         if (data.success && data.tickets) {
                             this.tickets = data.tickets;
+                            if (data.telegram_bot_enabled !== undefined) {
+                                this.telegramBotEnabled = Boolean(data.telegram_bot_enabled);
+                            }
                             if (isRefresh) this.showToast('Đã làm mới dữ liệu Ticket & Kho TK!');
                         }
                     } catch (e) {
@@ -559,6 +574,27 @@
                         this.showToast('Không thể kết nối máy chủ API Kho TK');
                     } finally {
                         this.loading = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async toggleTelegramBot() {
+                    this.togglingBot = true;
+                    try {
+                        const targetState = !this.telegramBotEnabled;
+                        const res = await fetch(`${API_URL}?action=toggleTelegramBotStatus&enabled=${targetState}`);
+                        const data = await res.json();
+                        if (data.success) {
+                            this.telegramBotEnabled = data.enabled;
+                            this.showToast(data.message || (data.enabled ? '🤖 Đã BẬT Bot Telegram gửi nhóm!' : '⏸️ Đã TẮT Bot Telegram gửi nhóm!'));
+                        } else {
+                            alert('❌ Lỗi khi đổi trạng thái Bot Telegram: ' + (data.message || 'Chưa rõ'));
+                        }
+                    } catch (e) {
+                        console.error('Toggle bot error:', e);
+                        alert('❌ Lỗi kết nối API!');
+                    } finally {
+                        this.togglingBot = false;
                         this.$nextTick(() => lucide.createIcons());
                     }
                 },
