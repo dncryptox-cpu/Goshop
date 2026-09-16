@@ -2806,105 +2806,165 @@ function listTickets(filterStatus) {
 
 /**
  * API CHO RENEWTOOL: getRenewToolData()
- * Trả về danh sách tickets kèm thông tin live_snapshot đọc SỐNG từ tab STOCK & DATA trong Kho TK.
+ * KHÔNG đọc STOCK / DATA từ Kho TK (không gọi openById(KHO_TK_ID) - loại bỏ hoàn toàn nguyên nhân gây lag).
+ * Đọc TRỰC TIẾP snapshot 7 cột đã được lưu sẵn trong tab REPORTS (lấy từ report mới nhất theo reported_at).
  */
 function getRenewToolData() {
-  const result = listTickets('All');
-  if (result && result.success && result.tickets) {
-    const stockMap = {};
-    try {
-      const khoSs = SpreadsheetApp.openById(KHO_TK_ID);
-      const stockSheet = khoSs.getSheetByName('STOCK') || khoSs.getSheetByName('Stock') || khoSs.getSheetByName('stock');
-      if (stockSheet && stockSheet.getLastRow() > 1) {
-        const sData = stockSheet.getDataRange().getValues();
-        let sHeaderRowIdx = -1;
-        for (let r = 0; r < Math.min(10, sData.length); r++) {
-          for (let c = 0; c < sData[r].length; c++) {
-            const cellStr = String(sData[r][c] || '').trim().toLowerCase();
-            if (cellStr === 'stt' || cellStr === 'mã' || cellStr.includes('stt')) {
-              sHeaderRowIdx = r;
-              break;
-            }
-          }
-          if (sHeaderRowIdx !== -1) break;
-        }
-        const sStart = sHeaderRowIdx !== -1 ? sHeaderRowIdx + 1 : 1;
-        for (let r = sStart; r < sData.length; r++) {
-          const stt = String(sData[r][1] || sData[r][0] || '').trim().toUpperCase();
-          if (stt) {
-            let dateRenewStr = '';
-            if (sData[r][7]) {
-              const rd = sData[r][7];
-              if (rd instanceof Date && !isNaN(rd.getTime())) {
-                dateRenewStr = Utilities.formatDate(rd, Session.getScriptTimeZone() || 'GMT+7', 'dd/MM/yyyy');
-              } else {
-                dateRenewStr = String(rd).trim();
-              }
-            }
-            stockMap[stt] = {
-              status: String(sData[r][2] || '').trim(),
-              owner_email: String(sData[r][3] || '').trim(),
-              owner_pass: String(sData[r][4] || '').trim(),
-              owner_mkp: String(sData[r][5] || '').trim(),
-              owner_2fa: String(sData[r][6] || '').trim(),
-              date_renew: dateRenewStr
-            };
-          }
+  const ss = getSpreadsheetCached();
+  const ticketsSheet = ss.getSheetByName('TICKETS');
+  const reportsSheet = ss.getSheetByName('REPORTS');
+  const cacheSheet = ss.getSheetByName('EMAIL_LOOKUP_CACHE');
+
+  if (!ticketsSheet || ticketsSheet.getLastRow() <= 1) {
+    return { success: true, tickets: [] };
+  }
+
+  // 1. Map CTV & Members from EMAIL_LOOKUP_CACHE
+  const sttMembersMap = {};
+  if (cacheSheet && cacheSheet.getLastRow() > 1) {
+    const cData = cacheSheet.getDataRange().getValues();
+    for (let i = 1; i < cData.length; i++) {
+      const em = String(cData[i][0] || '').trim().toLowerCase();
+      const stt = String(cData[i][1] || '').trim().toUpperCase();
+      const ctv = cData[i][4] ? String(cData[i][4]).trim() : '';
+      if (em && stt) {
+        if (!sttMembersMap[stt]) sttMembersMap[stt] = [];
+        if (sttMembersMap[stt].findIndex(m => m.email === em) === -1) {
+          sttMembersMap[stt].push({ email: em, ctv: ctv });
         }
       }
-    } catch (eStock) {
-      Logger.log('Warning reading STOCK in getRenewToolData: ' + eStock.toString());
     }
+  }
 
-    const dataEmailsMap = {};
-    try {
-      const khoData = getKhoTKDataCached();
-      if (khoData && khoData.length > 1) {
-        let currentGroup = '';
-        let rowCnt = 0;
-        for (let r = 1; r < khoData.length; r++) {
-          const row = khoData[r];
-          const sttRaw = row[0];
-          const sttStr = sttRaw ? String(sttRaw).trim().toUpperCase() : '';
-          if (sttStr) {
-            currentGroup = sttStr;
-            rowCnt = 1;
-          } else {
-            rowCnt++;
-            if (rowCnt > 5) currentGroup = '';
-          }
-          if (currentGroup) {
-            if (!dataEmailsMap[currentGroup]) dataEmailsMap[currentGroup] = [];
-            const em = row[10] ? String(row[10]).trim().toLowerCase() : '';
-            if (em && em.includes('@') && dataEmailsMap[currentGroup].indexOf(em) === -1) {
-              dataEmailsMap[currentGroup].push(em);
-            }
-          }
-        }
+  // 2. Read REPORTS and group by ticket_id
+  const reportMap = {};
+  if (reportsSheet && reportsSheet.getLastRow() > 1) {
+    const rData = reportsSheet.getDataRange().getValues();
+    for (let i = 1; i < rData.length; i++) {
+      const reportId = String(rData[i][0] || '').trim();
+      const ticketId = String(rData[i][1] || '').trim();
+      const email = String(rData[i][2] || '').trim();
+      const reportedAt = rData[i][3];
+      const message = String(rData[i][4] || '');
+      const submittedBy = String(rData[i][5] || '');
+      const zaloSentAt = rData[i][6] ? rData[i][6] : null;
+
+      const statusSnapshot = String(rData[i][6] || '');
+      const dateRenewSnapshot = String(rData[i][7] || '');
+      const ownerEmailSnap = String(rData[i][8] || '');
+      const ownerPassSnap = String(rData[i][9] || '');
+      const ownerMkpSnap = String(rData[i][10] || '');
+      const owner2faSnap = String(rData[i][11] || '');
+      const groupEmailsSnap = String(rData[i][12] || '');
+
+      if (!ticketId) continue;
+
+      if (!reportMap[ticketId]) {
+        reportMap[ticketId] = { count: 0, emails: [], reports: [] };
       }
-    } catch (eData) {
-      Logger.log('Warning reading DATA in getRenewToolData: ' + eData.toString());
+      reportMap[ticketId].count++;
+      if (email && reportMap[ticketId].emails.indexOf(email) === -1) {
+        reportMap[ticketId].emails.push(email);
+      }
+      reportMap[ticketId].reports.push({
+        report_id: reportId,
+        ticket_id: ticketId,
+        customer_email: email,
+        reported_at: reportedAt,
+        message: message,
+        submitted_by: submittedBy,
+        zalo_sent_at: zaloSentAt,
+        is_zalo_sent: Boolean(zaloSentAt),
+        status_snapshot: statusSnapshot,
+        date_renew_snapshot: dateRenewSnapshot,
+        owner_email: ownerEmailSnap,
+        owner_pass: ownerPassSnap,
+        owner_mkp: ownerMkpSnap,
+        owner_2fa: owner2faSnap,
+        group_emails: groupEmailsSnap
+      });
+    }
+  }
+
+  // 3. Read TICKETS
+  const tData = ticketsSheet.getDataRange().getValues();
+  const tickets = [];
+
+  for (let i = 1; i < tData.length; i++) {
+    const row = tData[i];
+    const ticketId = String(row[0] || '').trim();
+    if (!ticketId) continue;
+
+    const sttGroup = String(row[1] || '').trim().toUpperCase();
+    const status = String(row[2] || '').trim();
+    const reportInfo = reportMap[ticketId] || { count: 0, emails: [], reports: [] };
+    const allMembers = sttMembersMap[sttGroup] || [];
+
+    // Lấy snapshot từ report GẦN NHẤT (mới nhất theo reported_at)
+    let latestReport = null;
+    if (reportInfo.reports && reportInfo.reports.length > 0) {
+      const sortedReports = [...reportInfo.reports].sort((a, b) => {
+        const timeA = a.reported_at ? new Date(a.reported_at).getTime() : 0;
+        const timeB = b.reported_at ? new Date(b.reported_at).getTime() : 0;
+        return timeB - timeA;
+      });
+      latestReport = sortedReports[0];
     }
 
-    result.tickets.forEach(ticket => {
-      const stt = String(ticket.stt_group || '').trim().toUpperCase();
-      const liveStock = stockMap[stt] || {
-        status: 'N/A', owner_email: '', owner_pass: '', owner_mkp: '', owner_2fa: '', date_renew: ''
-      };
-      const liveEmails = dataEmailsMap[stt] || [];
+    // Parse group_emails array from snapshot
+    let memberEmails = [];
+    if (latestReport && latestReport.group_emails) {
+      memberEmails = latestReport.group_emails.split('\n').map(e => e.trim()).filter(e => e && e.includes('@'));
+    }
+    if (memberEmails.length === 0 && allMembers.length > 0) {
+      memberEmails = allMembers.map(m => m.email);
+    }
 
-      ticket.live_snapshot = {
-        status: liveStock.status,
-        date_renew: liveStock.date_renew,
-        owner_email: liveStock.owner_email,
-        owner_pass: liveStock.owner_pass,
-        owner_mkp: liveStock.owner_mkp,
-        owner_2fa: liveStock.owner_2fa,
-        group_emails: liveEmails
-      };
+    const liveSnapshot = {
+      status: latestReport?.status_snapshot || 'N/A',
+      date_renew: latestReport?.date_renew_snapshot || 'N/A',
+      owner_email: latestReport?.owner_email || (reportInfo.emails[0] || ''),
+      owner_pass: latestReport?.owner_pass || '',
+      owner_mkp: latestReport?.owner_mkp || '',
+      owner_2fa: latestReport?.owner_2fa || '',
+      group_emails: memberEmails
+    };
+
+    tickets.push({
+      ticket_id: ticketId,
+      stt_group: sttGroup,
+      owner_email: liveSnapshot.owner_email,
+      status: status,
+      created_at: row[3],
+      updated_at: row[4],
+      resolved_at: row[5],
+      resolved_by: row[6],
+      is_recurring: Boolean(row[7]),
+      recur_count: Number(row[8] || 0),
+      note: row[9] || '',
+      notified_at: row[10] || '',
+      resolution_type: row[11] ? String(row[11]).trim() : '',
+      activity_status: row[12] ? String(row[12]).trim() : '',
+      report_count: reportInfo.count,
+      reported_emails: reportInfo.emails,
+      reports: reportInfo.reports || [],
+      fam_all_members: allMembers,
+      live_snapshot: liveSnapshot
     });
   }
-  return result;
+
+  // Sort: pending tickets first, then resolved, inside pending sort oldest first
+  tickets.sort((a, b) => {
+    const aClosed = (a.status === 'Đã xử lý') ? 1 : 0;
+    const bClosed = (b.status === 'Đã xử lý') ? 1 : 0;
+    if (aClosed !== bClosed) return aClosed - bClosed;
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  });
+
+  return {
+    success: true,
+    tickets: tickets
+  };
 }
 
 /**
