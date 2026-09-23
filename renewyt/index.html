@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Renew YouTube Premium — CTV Portal Go DNC</title>
+    <meta name="description" content="Trang CTV xem danh sách gia hạn YouTube Premium và xác nhận đã nhắn khách.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f3f4f6;
+        }
+        [x-cloak] { display: none !important; }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0f19;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 9999px;
+        }
+        .glow-indigo {
+            box-shadow: 0 0 25px -5px rgba(99, 102, 241, 0.25);
+        }
+    </style>
+</head>
+<body x-data="ctvRenewApp()" x-init="initApp()" class="antialiased min-h-screen flex flex-col justify-between relative overflow-x-hidden"
+      style="background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.12), transparent 50%), radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.08), transparent 50%), #0b0f19;">
+
+    <!-- Top Accent Line -->
+    <div class="h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+
+    <!-- MÀN HÌNH ĐĂNG NHẬP -->
+    <div x-show="!isLoggedIn" x-cloak class="min-h-[90vh] flex flex-col items-center justify-center p-4">
+        <div class="w-full max-w-md bg-gray-900/80 border border-white/10 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden space-y-6">
+            <div class="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="text-center space-y-2">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/30">
+                    <i data-lucide="shield-check" class="w-7 h-7 text-white"></i>
+                </div>
+                <h1 class="text-xl sm:text-2xl font-black text-white tracking-tight">CTV Đăng Nhập</h1>
+                <p class="text-xs text-gray-400">Danh sách gia hạn YouTube Premium - Go DNC</p>
+            </div>
+
+            <!-- Form Đăng Nhập -->
+            <form @submit.prevent="submitLogin()" class="space-y-4">
+                <!-- Thông báo lỗi đăng nhập -->
+                <div x-show="loginError" x-cloak class="bg-red-500/15 text-red-400 border border-red-500/30 p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2.5">
+                    <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+                    <span x-text="loginError"></span>
+                </div>
+
+                <!-- Dropdown Chọn CTV -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">Chọn CTV</label>
+                    <select x-model="loginForm.ctv" required
+                            class="w-full bg-gray-950/80 border border-white/10 rounded-xl py-3 px-4 text-sm font-medium text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
+                        <template x-for="c in ctvList" :key="c">
+                            <option :value="c" x-text="c"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- Ô nhập Mật khẩu -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">Mật khẩu</label>
+                    <input type="password" x-model="loginForm.pass" required placeholder="Nhập mật khẩu CTV..."
+                           class="w-full bg-gray-950/80 border border-white/10 rounded-xl py-3 px-4 text-sm font-medium text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
+                </div>
+
+                <!-- Nút Đăng nhập -->
+                <button type="submit" :disabled="loggingIn"
+                        class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50">
+                    <template x-if="!loggingIn">
+                        <span class="flex items-center gap-2">
+                            <span>Đăng Nhập</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </span>
+                    </template>
+                    <template x-if="loggingIn">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                            <span>Đang xác thực...</span>
+                        </span>
+                    </template>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MÀN HÌNH CHÍNH (SAU KHI ĐĂNG NHẬP) -->
+    <div x-show="isLoggedIn" x-cloak class="min-h-screen flex flex-col justify-between">
+        
+        <!-- Header Top Bar -->
+        <header class="bg-gray-900/90 border-b border-white/10 backdrop-blur-md sticky top-0 z-40">
+            <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-md flex-shrink-0">
+                        <i data-lucide="youtube" class="w-5 h-5"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h1 class="font-extrabold text-sm sm:text-base text-white tracking-tight flex items-center gap-2 truncate">
+                            <span>Renew YouTube</span>
+                            <span class="text-[10px] uppercase font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">CTV Portal</span>
+                        </h1>
+                        <p class="text-xs text-gray-400 truncate">CTV: <strong class="text-amber-300 font-semibold" x-text="loggedInCtv"></strong></p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button @click="loadData()" title="Tải lại dữ liệu"
+                            class="p-2 text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-800 rounded-xl border border-white/5 transition-all">
+                        <i data-lucide="refresh-cw" class="w-4 h-4" :class="loading ? 'animate-spin text-indigo-400' : ''"></i>
+                    </button>
+
+                    <button @click="logout()"
+                            class="px-3 py-2 text-xs font-bold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl transition-all flex items-center gap-1.5">
+                        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                        <span class="hidden sm:inline">Đăng Xuất</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <main class="flex-grow max-w-6xl mx-auto w-full px-4 py-6 space-y-6">
+
+            <!-- Stat Cards Summary -->
+            <div class="grid grid-cols-3 gap-3 sm:gap-4">
+                <div class="bg-gray-900/60 border border-white/10 rounded-2xl p-3.5 sm:p-4 text-center">
+                    <p class="text-[10px] sm:text-xs font-semibold text-gray-400 uppercase tracking-wider">Tổng Số Khách</p>
+                    <p class="text-lg sm:text-2xl font-black text-white mt-1" x-text="customers.length"></p>
+                </div>
+                <div class="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3.5 sm:p-4 text-center">
+                    <p class="text-[10px] sm:text-xs font-semibold text-amber-400 uppercase tracking-wider">Chưa Nhắn</p>
+                    <p class="text-lg sm:text-2xl font-black text-amber-300 mt-1" x-text="countUnnotified"></p>
+                </div>
+                <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3.5 sm:p-4 text-center">
+                    <p class="text-[10px] sm:text-xs font-semibold text-emerald-400 uppercase tracking-wider">Đã Nhắn</p>
+                    <p class="text-lg sm:text-2xl font-black text-emerald-300 mt-1" x-text="countNotified"></p>
+                </div>
+            </div>
+
+            <!-- Filter & Search Controls -->
+            <div class="bg-gray-900/70 border border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                
+                <!-- Filter Status (Giữ lại chưa nhắn / đã nhắn, ĐÃ ẨN FILTER TẤT CẢ CTV) -->
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-gray-400 whitespace-nowrap">Lọc:</span>
+                    <div class="flex bg-gray-950 p-1 rounded-xl border border-white/10 text-xs font-medium w-full sm:w-auto">
+                        <button @click="filterStatus = 'all'"
+                                :class="filterStatus === 'all' ? 'bg-indigo-600 text-white font-bold' : 'text-gray-400 hover:text-white'"
+                                class="px-3 py-1.5 rounded-lg transition-all flex-1 sm:flex-initial text-center">
+                            Tất cả (<span x-text="customers.length"></span>)
+                        </button>
+                        <button @click="filterStatus = 'chua_nhan'"
+                                :class="filterStatus === 'chua_nhan' ? 'bg-amber-600 text-white font-bold' : 'text-gray-400 hover:text-white'"
+                                class="px-3 py-1.5 rounded-lg transition-all flex-1 sm:flex-initial text-center">
+                            Chưa nhắn (<span x-text="countUnnotified"></span>)
+                        </button>
+                        <button @click="filterStatus = 'da_nhan'"
+                                :class="filterStatus === 'da_nhan' ? 'bg-emerald-600 text-white font-bold' : 'text-gray-400 hover:text-white'"
+                                class="px-3 py-1.5 rounded-lg transition-all flex-1 sm:flex-initial text-center">
+                            Đã nhắn (<span x-text="countNotified"></span>)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search Input -->
+                <div class="relative w-full sm:w-64">
+                    <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                    <input type="text" x-model="searchQuery" placeholder="Tìm theo email..."
+                           class="w-full bg-gray-950 border border-white/10 rounded-xl py-2 pl-9 pr-3 text-xs font-medium text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-all">
+                </div>
+            </div>
+
+            <!-- Global Toast / Alert -->
+            <div x-show="toast.message" x-cloak
+                 :class="toast.type === 'error' ? 'bg-red-500/20 text-red-300 border-red-500/40' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'"
+                 class="border p-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 transition-all">
+                <div class="flex items-center gap-2">
+                    <i :data-lucide="toast.type === 'error' ? 'alert-circle' : 'check-circle'" class="w-4 h-4"></i>
+                    <span x-text="toast.message"></span>
+                </div>
+                <button @click="toast.message = ''" class="text-gray-400 hover:text-white">&times;</button>
+            </div>
+
+            <!-- Loading State -->
+            <div x-show="loading" class="py-12 text-center space-y-3">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-indigo-500 mx-auto"></i>
+                <p class="text-xs text-gray-400 font-medium">Đang tải danh sách gia hạn của bạn...</p>
+            </div>
+
+            <!-- Empty State -->
+            <div x-show="!loading && filteredCustomers.length === 0" class="py-12 text-center space-y-3 bg-gray-900/40 border border-white/5 rounded-3xl">
+                <div class="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center mx-auto text-gray-500">
+                    <i data-lucide="inbox" class="w-6 h-6"></i>
+                </div>
+                <p class="text-sm font-semibold text-gray-300">Không tìm thấy khách hàng nào</p>
+                <p class="text-xs text-gray-500" x-text="searchQuery ? 'Thử thay đổi từ khóa tìm kiếm' : 'Hiện chưa có dữ liệu gia hạn cho CTV này'"></p>
+            </div>
+
+            <!-- Customer Table / List (Desktop & Mobile) -->
+            <div x-show="!loading && filteredCustomers.length > 0" class="bg-gray-900/70 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                
+                <!-- Table View (Desktop) -->
+                <div class="hidden md:block overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-gray-950/80 text-gray-400 uppercase tracking-wider font-bold border-b border-white/10">
+                                <th class="py-3.5 px-4 w-12 text-center">STT</th>
+                                <th class="py-3.5 px-4">Email Khách</th>
+                                <th class="py-3.5 px-4">Mail Phụ</th>
+                                <th class="py-3.5 px-4">Ngày Mua / HSD</th>
+                                <th class="py-3.5 px-4 text-center">Số Tháng</th>
+                                <th class="py-3.5 px-4 text-center">Đã Nhắn Khách</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5 font-medium">
+                            <template x-for="(item, index) in filteredCustomers" :key="item.row">
+                                <tr :class="item.daNhanKhach ? 'bg-emerald-950/10 hover:bg-emerald-950/20' : 'hover:bg-white/[0.02]'" class="transition-colors">
+                                    <td class="py-3.5 px-4 text-center text-gray-500" x-text="index + 1"></td>
+                                    
+                                    <td class="py-3.5 px-4">
+                                        <span class="font-bold text-white block" x-text="item.emailKhach"></span>
+                                        <span x-show="item.ngayMoi" class="text-[10px] text-gray-400">Mời: <span x-text="item.ngayMoi"></span></span>
+                                    </td>
+                                    
+                                    <td class="py-3.5 px-4 text-gray-300" x-text="item.mailPhu || '-'"></td>
+                                    
+                                    <td class="py-3.5 px-4">
+                                        <div class="text-gray-300" x-text="item.ngayMua || '-'"></div>
+                                        <div class="text-[10px] text-indigo-400 font-semibold" x-text="'HSD: ' + (item.hsd || '-')"></div>
+                                    </td>
+
+                                    <td class="py-3.5 px-4 text-center">
+                                        <span class="px-2 py-0.5 rounded-md bg-gray-800 text-gray-300 text-[11px] font-bold" x-text="item.soThang ? item.soThang + 'T' : '-'"></span>
+                                    </td>
+
+                                    <!-- Interactive Checkbox -->
+                                    <td class="py-3.5 px-4 text-center">
+                                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                                            <input type="checkbox"
+                                                   :checked="item.daNhanKhach"
+                                                   :disabled="item.updating"
+                                                   @change="toggleNhanKhach(item)"
+                                                   class="w-4 h-4 rounded text-indigo-600 bg-gray-950 border-gray-700 focus:ring-indigo-500 focus:ring-offset-gray-900 cursor-pointer disabled:opacity-50">
+                                            <span x-show="item.updating" class="text-[10px] text-indigo-400 animate-pulse">Lưu...</span>
+                                            <span x-show="!item.updating"
+                                                  :class="item.daNhanKhach ? 'text-emerald-400 font-bold' : 'text-gray-500'"
+                                                  class="text-[11px]"
+                                                  x-text="item.daNhanKhach ? 'Đã nhắn' : 'Chưa nhắn'"></span>
+                                        </label>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Card List View (Mobile) -->
+                <div class="block md:hidden divide-y divide-white/5">
+                    <template x-for="(item, index) in filteredCustomers" :key="item.row">
+                        <div class="p-4 space-y-3" :class="item.daNhanKhach ? 'bg-emerald-950/10' : ''">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[10px] font-bold text-gray-500" x-text="'#' + (index + 1)"></span>
+                                        <span class="font-bold text-white text-xs truncate" x-text="item.emailKhach"></span>
+                                    </div>
+                                    <p x-show="item.mailPhu" class="text-[11px] text-gray-400 mt-0.5 truncate" x-text="'Mail phụ: ' + item.mailPhu"></p>
+                                </div>
+                                <span class="px-2 py-0.5 rounded-md bg-gray-800 text-gray-300 text-[10px] font-bold flex-shrink-0" x-text="item.soThang ? item.soThang + ' Tháng' : ''"></span>
+                            </div>
+
+                            <div class="flex items-center justify-between text-[11px] text-gray-400 border-t border-white/5 pt-2">
+                                <div>
+                                    <span>Ngày mua: <strong class="text-gray-300" x-text="item.ngayMua || '-'"></strong></span>
+                                    <span class="mx-1">•</span>
+                                    <span>HSD: <strong class="text-indigo-400" x-text="item.hsd || '-'"></strong></span>
+                                </div>
+
+                                <label class="inline-flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox"
+                                           :checked="item.daNhanKhach"
+                                           :disabled="item.updating"
+                                           @change="toggleNhanKhach(item)"
+                                           class="w-4 h-4 rounded text-indigo-600 bg-gray-950 border-gray-700 focus:ring-indigo-500 cursor-pointer disabled:opacity-50">
+                                    <span :class="item.daNhanKhach ? 'text-emerald-400 font-bold' : 'text-gray-400'"
+                                          class="text-xs"
+                                          x-text="item.daNhanKhach ? 'Đã nhắn' : 'Chưa nhắn'"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="py-4 text-center text-xs text-gray-500 border-t border-white/5">
+            Go DNC Subscription System &copy; 2026. All rights reserved.
+        </footer>
+    </div>
+
+    <script>
+        function ctvRenewApp() {
+            return {
+                // Config URL Web App Apps Script
+                webAppUrl: 'https://script.google.com/macros/s/AKfycbxdo7fbmW5MYHTD4XRes7wvSs4BpDjnOe76IPHZ1uyjvtutU247FTbR5Y4r65ZyS-XqfQ/exec',
+                
+                // Form Đăng nhập
+                ctvList: ['Dnc', 'Tuan', 'Vuong', 'Loc'],
+                loginForm: {
+                    ctv: 'Dnc',
+                    pass: ''
+                },
+                loggingIn: false,
+                loginError: '',
+
+                // Trạng thái đã Đăng nhập
+                isLoggedIn: false,
+                loggedInCtv: '',
+                loggedInPass: '',
+
+                // Dữ liệu danh sách
+                customers: [],
+                loading: false,
+                filterStatus: 'all', // 'all', 'chua_nhan', 'da_nhan'
+                searchQuery: '',
+
+                toast: {
+                    message: '',
+                    type: 'success'
+                },
+
+                initApp() {
+                    this.$nextTick(() => {
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    });
+                },
+
+                showToast(msg, type = 'success') {
+                    this.toast.message = msg;
+                    this.toast.type = type;
+                    setTimeout(() => {
+                        if (this.toast.message === msg) this.toast.message = '';
+                    }, 4000);
+                },
+
+                // 1. ĐĂNG NHẬP
+                async submitLogin() {
+                    this.loginError = '';
+                    if (!this.loginForm.ctv || !this.loginForm.pass) {
+                        this.loginError = 'Vui lòng nhập đầy đủ tên CTV và mật khẩu';
+                        return;
+                    }
+
+                    this.loggingIn = true;
+                    try {
+                        const url = `${this.webAppUrl}?ctv=${encodeURIComponent(this.loginForm.ctv)}&pass=${encodeURIComponent(this.loginForm.pass)}`;
+                        const res = await fetch(url).then(r => r.json());
+
+                        if (!res || !res.ok) {
+                            this.loginError = (res && res.error) ? res.error : 'Sai mật khẩu hoặc lỗi kết nối!';
+                            this.loggingIn = false;
+                            return;
+                        }
+
+                        // Đăng nhập thành công -> Lưu ctv + pass trong RAM
+                        this.loggedInCtv = this.loginForm.ctv;
+                        this.loggedInPass = this.loginForm.pass;
+                        this.isLoggedIn = true;
+                        this.customers = (res.data || []).map(item => ({ ...item, updating: false }));
+                        this.loginForm.pass = ''; // Clear input field
+
+                        this.$nextTick(() => {
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        });
+
+                    } catch (err) {
+                        this.loginError = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra đường truyền!';
+                    } finally {
+                        this.loggingIn = false;
+                    }
+                },
+
+                // 2. ĐĂNG XUẤT
+                logout() {
+                    this.isLoggedIn = false;
+                    this.loggedInCtv = '';
+                    this.loggedInPass = '';
+                    this.customers = [];
+                    this.loginError = '';
+                    this.loginForm.pass = '';
+                    this.$nextTick(() => {
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    });
+                },
+
+                // 3. TẢI LẠI DỮ LIỆU
+                async loadData() {
+                    if (!this.isLoggedIn) return;
+                    this.loading = true;
+                    try {
+                        const url = `${this.webAppUrl}?ctv=${encodeURIComponent(this.loggedInCtv)}&pass=${encodeURIComponent(this.loggedInPass)}`;
+                        const res = await fetch(url).then(r => r.json());
+
+                        if (res && res.ok) {
+                            this.customers = (res.data || []).map(item => ({ ...item, updating: false }));
+                            this.showToast('Đã cập nhật danh sách mới nhất');
+                        } else {
+                            this.showToast(res.error || 'Lỗi tải dữ liệu', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('Lỗi kết nối máy chủ', 'error');
+                    } finally {
+                        this.loading = false;
+                        this.$nextTick(() => {
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        });
+                    }
+                },
+
+                // 4. TOGGLE ĐÃ NHẮN KHÁCH
+                async toggleNhanKhach(item) {
+                    const nextVal = !item.daNhanKhach;
+                    item.updating = true;
+
+                    try {
+                        const payload = {
+                            ctv: this.loggedInCtv,
+                            pass: this.loggedInPass,
+                            row: item.row,
+                            daNhanKhach: nextVal
+                        };
+
+                        const res = await fetch(this.webAppUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload)
+                        }).then(r => r.json());
+
+                        if (res && res.ok) {
+                            item.daNhanKhach = nextVal;
+                            this.showToast(`Đã ${nextVal ? 'tích Đã nhắn' : 'bỏ tích'} cho ${item.emailKhach}`);
+                        } else {
+                            this.showToast(res.error || 'Cập nhật thất bại!', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('Lỗi kết nối khi lưu trạng thái', 'error');
+                    } finally {
+                        item.updating = false;
+                    }
+                },
+
+                // GETTERS FILTER
+                get countUnnotified() {
+                    return this.customers.filter(c => !c.daNhanKhach).length;
+                },
+
+                get countNotified() {
+                    return this.customers.filter(c => c.daNhanKhach).length;
+                },
+
+                get filteredCustomers() {
+                    return this.customers.filter(item => {
+                        // Filter theo trạng thái nhắn
+                        if (this.filterStatus === 'chua_nhan' && item.daNhanKhach) return false;
+                        if (this.filterStatus === 'da_nhan' && !item.daNhanKhach) return false;
+
+                        // Filter theo ô search email
+                        if (this.searchQuery.trim()) {
+                            const q = this.searchQuery.trim().toLowerCase();
+                            const em = (item.emailKhach || '').toLowerCase();
+                            const mp = (item.mailPhu || '').toLowerCase();
+                            return em.includes(q) || mp.includes(q);
+                        }
+                        return true;
+                    });
+                }
+            };
+        }
+    </script>
+</body>
+</html>
