@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Khách đã chuyển fam</title>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<style>
+  :root{--bg:#f6f6f3;--card:#fff;--ink:#1b1b18;--mute:#6d6d66;--line:#e4e3dc;--ok:#1f6f4a;--bad:#b42318;--chip:#efeee8}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141413;--card:#1d1d1b;--ink:#ecebe4;--mute:#9b9a92;--line:#2f2f2b;--ok:#57c08a;--bad:#ef6b5e;--chip:#262623}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:720px;margin:0 auto;padding:16px}
+  h1{font-size:20px;margin:0 0 2px}
+  .mute{color:var(--mute)}
+  .btn{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:4px 10px;font-size:13px}
+  .chips{display:flex;gap:6px;margin:14px 0}
+  .chip{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:16px;padding:4px 12px;font-size:13px}
+  .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .day{font-size:13px;color:var(--mute);margin:16px 0 6px;font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+  .grow{flex:1;min-width:0}
+  .mono{cursor:pointer}
+  .mono:hover{text-decoration:underline dotted}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--chip);white-space:nowrap}
+  .badge.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+  .err{background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad);border-radius:8px;padding:10px 12px;margin-top:16px}
+  .empty{text-align:center;color:var(--mute);padding:40px 0}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px}
+</style>
+</head>
+<body x-data="ctvApp()" x-init="init()">
+<div class="wrap">
+  <h1>Khách đã chuyển fam</h1>
+  <div class="mute" x-text="ctv ? 'CTV ' + ctv : ''"></div>
+
+  <div class="err" x-show="error" x-text="error"></div>
+
+  <template x-if="!error">
+    <div>
+      <div class="chips">
+        <button class="chip" :class="days===3 && 'on'" @click="days=3; load()">3 ngày</button>
+        <button class="chip" :class="days===7 && 'on'" @click="days=7; load()">7 ngày</button>
+        <button class="chip" :class="days===14 && 'on'" @click="days=14; load()">14 ngày</button>
+      </div>
+      <template x-if="loading"><div class="empty">Đang tải…</div></template>
+      <template x-if="!loading && rows.length===0"><div class="empty">Không có khách nào được chuyển fam trong khoảng này.</div></template>
+      <template x-for="g in groups()" :key="g.day">
+        <div>
+          <div class="day" x-text="g.day + ' · ' + g.items.length + ' khách'"></div>
+          <template x-for="(r,i) in g.items" :key="g.day + i">
+            <div class="card">
+              <div class="grow">
+                <div class="mono" x-text="r.email"></div>
+                <div class="mute" style="font-size:12px"><span x-text="r.rn"></span><span x-show="r.hsd"> · HSD <span x-text="r.hsd"></span></span></div>
+              </div>
+              <span class="badge" :class="r.invited && 'ok'" x-text="r.invited ? 'Đã mời' : 'Chưa mời'"></span>
+              <button class="btn" @click="copy(msg(r))" x-show="r.invited">Copy tin nhắn</button>
+            </div>
+          </template>
+        </div>
+      </template>
+    </div>
+  </template>
+</div>
+<div class="toast" x-show="toast" x-text="toast"></div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
+
+function ctvApp() {
+  const q = new URLSearchParams(location.search);
+  return {
+    ctv: q.get('ctv') || '', key: q.get('k') || '',
+    days: 3, rows: [], loading: false, error: '', toast: '',
+    init() {
+      document.addEventListener('click', e => {
+        const t = e.target;
+        if (!t || t.closest('button, a')) return;
+        const txt = (t.textContent || '').trim();
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(txt) && t.children.length === 0) this.copy(txt);
+      });
+      this.load();
+    },
+    async load() {
+      if (!this.ctv || !this.key) { this.error = 'Link thiếu thông tin CTV. Hỏi admin để lấy link đúng.'; return; }
+      this.loading = true;
+      try {
+        const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'ctvLog', ctv: this.ctv, key: this.key, days: this.days }) });
+        const d = await res.json();
+        if (!d.ok) throw new Error(d.error);
+        this.ctv = d.ctv; this.rows = d.log; this.error = '';
+      } catch (e) { this.error = e.message; }
+      this.loading = false;
+    },
+    groups() {
+      const m = {};
+      this.rows.forEach(r => { const day = r.time.split(' ')[0]; (m[day] = m[day] || []).push(r); });
+      return Object.keys(m).map(day => ({ day, items: m[day] }));
+    },
+    msg(r) {
+      return 'Chào bạn, nhóm gia đình YouTube Premium của bạn (' + r.email + ') vừa được chuyển sang nhóm mới.\n'
+        + 'Bạn mở Gmail, tìm thư mời "Tham gia nhóm gia đình" từ YouTube/Google và bấm Chấp nhận là dùng tiếp được ngay nhé.'
+        + (r.hsd ? '\nHạn sử dụng của bạn vẫn giữ nguyên: ' + r.hsd + '.' : '');
+    },
+    async copy(t) {
+      try { await navigator.clipboard.writeText(t); }
+      catch (e) { const x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); }
+      this.toast = 'Đã copy'; setTimeout(() => this.toast = '', 1200);
+    },
+  };
+}
+</script>
+</body>
+</html>
