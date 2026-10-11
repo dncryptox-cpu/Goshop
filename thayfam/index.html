@@ -139,6 +139,7 @@
         <button class="tab" x-show="me.role !== 'outsource'" :class="tab==='renew' && 'on'" @click="tab='renew'">Nhắc gia hạn<span class="n" x-text="renewals.length"></span></button>
         <button class="tab" x-show="can('review')" :class="tab==='sync' && 'on'" @click="tab='sync'; loadReview()">Đồng bộ<span class="n" x-text="review.length"></span></button>
         <button class="tab" :class="tab==='log' && 'on'" @click="tab='log'; loadLog()">Lịch sử</button>
+        <button class="tab" x-show="can('users')" :class="tab==='users' && 'on'" @click="tab='users'; loadUsers()">Tài khoản</button>
       </nav>
 
       <!-- TAB ĐẾN HẠN -->
@@ -276,6 +277,51 @@
             <div class="mute" style="font-size:12px;margin-top:6px" x-show="it.skippedFr">2FA của FR đã ghi thẳng vào FamRenew lúc thay fam, không cần đồng bộ.</div>
           </div>
         </template>
+      </section>
+
+      <!-- TAB TÀI KHOẢN (admin) -->
+      <section x-show="tab==='users' && !searchOn()">
+        <div class="card">
+          <b>Thêm tài khoản</b>
+          <div class="row" style="margin-top:8px">
+            <input type="text" x-model="newUser.name" placeholder="Tên (vd: Hùng)" style="flex:1;min-width:140px" @keydown.enter="userOp('add', newUser)">
+            <select x-model="newUser.role">
+              <option value="outsource">Outsource</option>
+              <option value="nhanvien">Nhân viên</option>
+            </select>
+            <button class="btn pri sm" @click="userOp('add', newUser)" :disabled="usersBusy || !newUser.name.trim()">Thêm</button>
+          </div>
+          <template x-if="newKeyMsg">
+            <div class="okbox row" style="margin:10px 0 0">
+              <span class="grow mono" style="white-space:pre-wrap" x-text="newKeyMsg"></span>
+              <button class="btn sm" @click="copy(newKeyMsg, 'Đã copy, gửi cho người đó')">Copy</button>
+            </div>
+          </template>
+        </div>
+
+        <div class="card row">
+          <div class="grow"><b>Giới hạn outsource</b><div class="mute" style="font-size:13px">Số lần thay fam tối đa mỗi ngày cho mỗi outsource</div></div>
+          <input type="text" inputmode="numeric" x-model="limitInput" style="width:70px;text-align:center">
+          <button class="btn sm" @click="userOp('limit', { limit: limitInput })" :disabled="usersBusy || String(limitInput)===String(usersLimit)">Lưu</button>
+        </div>
+
+        <template x-if="!usersLoading && users.length===0"><div class="empty">Chưa có tài khoản nhân viên / outsource nào.</div></template>
+        <template x-for="u in users" :key="u.name">
+          <div class="card row">
+            <div class="grow">
+              <div><b x-text="u.name"></b> <span class="mute" style="font-size:13px" x-text="'· hôm nay ' + u.today + ' lần' + (u.role==='outsource' ? '/' + usersLimit : '')"></span></div>
+              <div class="mute mono" style="font-size:12px" x-text="u.key.slice(0, 3) + '••••••' + u.key.slice(-4)"></div>
+            </div>
+            <select :value="u.role" @change="userOp('role', { name: u.name, role: $event.target.value })" :disabled="usersBusy">
+              <option value="outsource">Outsource</option>
+              <option value="nhanvien">Nhân viên</option>
+            </select>
+            <button class="btn sm" @click="copy(loginMsg(u), 'Đã copy key của ' + u.name)">Copy key</button>
+            <button class="btn sm" @click="askUser('reset', u)" :disabled="usersBusy" x-text="userConfirm==='reset:'+u.name ? 'Bấm lần nữa' : 'Đổi key'"></button>
+            <button class="btn sm" style="color:var(--bad)" @click="askUser('delete', u)" :disabled="usersBusy" x-text="userConfirm==='delete:'+u.name ? 'Bấm lần nữa để xoá' : 'Xoá'"></button>
+          </div>
+        </template>
+        <div class="mute" style="font-size:12px;margin-top:8px">Xoá hoặc Đổi key: key cũ hết hiệu lực ngay, người đó phải đăng nhập lại bằng key mới.</div>
       </section>
 
       <!-- TAB LỊCH SỬ -->
@@ -429,6 +475,8 @@ function app() {
     review: [], reviewLoading: false, syncConfirm: '', openRows: [],
     q: '', results: [], searching: false, searchTotal: 0,
     me: { name: '', role: '', perms: [] },
+    users: [], usersLoading: false, usersBusy: false, usersLimit: 10, limitInput: 10,
+    newUser: { name: '', role: 'outsource' }, newKeyMsg: '', userConfirm: '',
     pull: null, pulling: false, pullConfirm: false, lastPull: '',
     swap: null, swapError: '', confirming: false, saving: false,
     otp: { old: '', fr: '' }, otpPct: 100, toast: '',
@@ -508,6 +556,30 @@ function app() {
       this.swap.fr = this.frs[0] || null;
       this.swap.newTwofa = '';
       this.tickOtp();
+    },
+    async loadUsers() {
+      this.usersLoading = true;
+      try { this.setUsers(await this.api({ action: 'users', op: 'list' })); } catch (e) { this.error = e.message; }
+      this.usersLoading = false;
+    },
+    setUsers(d) { this.users = d.users; this.usersLimit = d.limit; this.limitInput = d.limit; },
+    loginMsg(u) { return 'Trang: ' + (location.protocol === 'file:' ? 'https://godnc.com/thayfam/' : location.href.split('?')[0].split('#')[0]) + '\nTên: ' + u.name + '\nKey đăng nhập: ' + u.key; },
+    askUser(op, u) {
+      const k = op + ':' + u.name;
+      if (this.userConfirm !== k) { this.userConfirm = k; clearTimeout(this._uc); this._uc = setTimeout(() => this.userConfirm = '', 4000); return; }
+      this.userConfirm = ''; this.userOp(op, { name: u.name });
+    },
+    async userOp(op, data) {
+      this.usersBusy = true; this.error = ''; this.newKeyMsg = '';
+      try {
+        const d = await this.api(Object.assign({ action: 'users', op }, data));
+        this.setUsers(d);
+        const u = d.users.find(x => x.name === (data.name || '').trim());
+        if (op === 'add' && u) { this.newKeyMsg = this.loginMsg(u); this.newUser = { name: '', role: this.newUser.role }; }
+        if (op === 'reset' && u) this.newKeyMsg = this.loginMsg(u);
+        if (op === 'limit') { this.toast = 'Đã lưu giới hạn ' + d.limit + '/ngày'; setTimeout(() => this.toast = '', 1500); }
+      } catch (e) { this.error = e.message; }
+      this.usersBusy = false;
     },
     can(a) { return (this.me.perms || []).includes(a); },
     roleName() { return { admin: 'Admin', nhanvien: 'Nhân viên', outsource: 'Outsource' }[this.me.role] || this.me.role; },
