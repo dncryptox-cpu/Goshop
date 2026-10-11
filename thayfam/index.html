@@ -212,7 +212,35 @@
 
       <!-- TAB ĐỒNG BỘ -->
       <section x-show="tab==='sync' && !searchOn()">
-        <div class="mute" style="font-size:13px;margin-bottom:12px">Bản sao (webapp sửa) ↔ Kho TK | new - ytbdnc (data gốc). Chỉ những ô mà webapp đã ghi. Duyệt thì chép sang data gốc.</div>
+        <div class="card">
+          <div class="row">
+            <div class="grow">
+              <b>Kéo từ data gốc → bản sao</b>
+              <div class="mute" style="font-size:13px">Cập nhật thông tin khách (Email, Ngày mua, Số tháng, Mail phụ, CTV) và RN mới từ gốc. HSD tự tính lại.<span x-show="lastPull" x-text="' Lần kéo gần nhất: ' + lastPull"></span></div>
+            </div>
+            <button class="btn sm" @click="pullCheck()" :disabled="pulling" x-text="pulling && !pull ? 'Đang so…' : 'Kiểm tra'"></button>
+          </div>
+          <template x-if="pull">
+            <div style="margin-top:10px">
+              <div class="row">
+                <span class="grow" style="font-size:13px" x-text="(pull.total || pull.newRns.length) ? (pull.total + ' ô khác' + (pull.newRns.length ? ', ' + pull.newRns.length + ' RN mới (' + pull.newRns.join(', ') + ')' : '') + (pull.total > pull.changes.length ? ' (hiện ' + pull.changes.length + ')' : '')) : 'Bản sao đã giống gốc.'"></span>
+                <button class="btn pri sm" x-show="pull.total || pull.newRns.length" @click="askPull()" :disabled="pulling" x-text="pulling ? 'Đang cập nhật…' : (pullConfirm ? 'Bấm lần nữa để ghi vào bản sao' : 'Cập nhật bản sao')"></button>
+              </div>
+              <div style="overflow-x:auto;margin-top:8px" x-show="pull.changes.length">
+                <table>
+                  <thead><tr><th>RN</th><th>Khách</th><th>Cột</th><th>Bản sao</th><th>Gốc (sẽ lấy)</th></tr></thead>
+                  <tbody>
+                    <template x-for="c in pull.changes" :key="c.row + c.field">
+                      <tr><td x-text="c.rn"></td><td class="mono" x-text="c.email || '(trống)'"></td><td x-text="c.field"></td><td class="mono" x-text="c.sao || '(trống)'"></td><td class="mono" x-text="c.goc || '(trống)'"></td></tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="mute" style="font-size:13px;margin:16px 0 12px"><b>Đẩy bản sao → data gốc:</b> chỉ những ô mà webapp đã ghi. Duyệt thì chép sang data gốc.</div>
         <template x-if="reviewLoading"><div class="empty">Đang đối chiếu…</div></template>
         <template x-if="!reviewLoading && review.length===0"><div class="empty">Không có thay đổi nào chờ đồng bộ.<br>Sau mỗi lần Thay fam → Hoàn tất, thay đổi hiện ở đây để bạn đối chiếu và bấm <b>Duyệt & đồng bộ</b> sang data gốc.</div></template>
         <template x-for="it in review" :key="it.id">
@@ -398,6 +426,7 @@ function app() {
     lastActionId: '', undoConfirm: '', undoBusy: '', undoConflict: null,
     review: [], reviewLoading: false, syncConfirm: '', openRows: [],
     q: '', results: [], searching: false, searchTotal: 0,
+    pull: null, pulling: false, pullConfirm: false, lastPull: '',
     swap: null, swapError: '', confirming: false, saving: false,
     otp: { old: '', fr: '' }, otpPct: 100, toast: '',
 
@@ -507,8 +536,27 @@ function app() {
     },
     async loadReview() {
       this.reviewLoading = true;
-      try { this.review = (await this.api({ action: 'review' })).items; } catch (e) { this.error = e.message; }
+      try { const d = await this.api({ action: 'review' }); this.review = d.items; this.lastPull = d.lastPull || ''; } catch (e) { this.error = e.message; }
       this.reviewLoading = false;
+    },
+    async pullCheck() {
+      this.pulling = true; this.pull = null; this.pullConfirm = false; this.error = '';
+      try { this.pull = await this.api({ action: 'pull' }); } catch (e) { this.error = e.message; }
+      this.pulling = false;
+    },
+    askPull() {
+      if (!this.pullConfirm) { this.pullConfirm = true; clearTimeout(this._p); this._p = setTimeout(() => this.pullConfirm = false, 4000); return; }
+      this.pullConfirm = false; this.doPull();
+    },
+    async doPull() {
+      this.pulling = true; this.error = '';
+      try {
+        const r = await this.api({ action: 'pull', apply: true });
+        this.lastDone = '✓ Đã cập nhật bản sao từ gốc: ' + r.total + ' ô' + (r.newRns.length ? ', thêm ' + r.newRns.length + ' RN mới' : '') + '.';
+        this.lastPull = r.lastPull || ''; this.pull = null;
+        await this.load();
+      } catch (e) { this.error = e.message; }
+      this.pulling = false;
     },
     askSync(id) {
       if (this.syncConfirm !== id) { this.syncConfirm = id; clearTimeout(this._s); this._s = setTimeout(() => this.syncConfirm = '', 4000); return; }
