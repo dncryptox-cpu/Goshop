@@ -152,7 +152,7 @@
         <template x-for="f in (searchOn() ? results : due)" :key="f.rn">
           <div class="card" style="padding:0">
             <div class="row" style="padding:12px 14px">
-              <button class="btn sm xp" @click="toggleOpen(f.rn)" :aria-expanded="isOpen(f.rn)" x-text="isOpen(f.rn) ? '▾' : '▸'" title="Xem nhanh"></button>
+              <button class="btn sm xp" @click="toggleOpen(f.rn)" :aria-expanded="isOpen(f.rn)" x-text="expanded(f) ? '▾' : '▸'" title="Xem nhanh"></button>
               <div class="rn" x-text="f.rn"></div>
               <div class="grow">
                 <div class="mono ellip" x-text="f.email"></div>
@@ -163,7 +163,7 @@
               <span class="badge" :class="f.daysToRenew<0 ? 'bad' : (f.daysToRenew===0 ? 'warn' : '')" x-text="f.daysToRenew===null ? f.status : renewLabel(f.daysToRenew)"></span>
               <button class="btn pri sm" @click="openSwap(f)" :disabled="!frs.length">Thay fam</button>
             </div>
-            <template x-if="isOpen(f.rn) || (searchOn() && f.hit && f.hit.length)">
+            <template x-if="expanded(f)">
               <div class="peek">
                 <div class="peek-own mute">
                   Pass <span class="mono" x-text="f.pass || '—'"></span> · MKP <span class="mono" x-text="f.mkp || '—'"></span> · 2FA <span x-text="f.twofa ? 'có' : 'không'"></span>
@@ -368,7 +368,7 @@
           <div style="flex:1">
             <div style="font-size:13px;margin-bottom:8px">
               Ghi <b x-text="swap.fr.email"></b> vào <b x-text="swap.f.rn"></b> (Bản sao Kho TK), Renew = hôm nay + 30,
-              đánh dấu đã mời <b x-text="swap.sel.length"></b> khách.<span x-show="!swap.fr.twofa"> Ghi 2FA vào FamRenew H của <b x-text="swap.fr.fr"></b>.</span>
+              đánh dấu đã mời <b x-text="swap.sel.length"></b> khách. Trạng thái → <b x-text="swap.sel.length >= 5 ? 'FULL' : 'Còn slot'"></b>.<span x-show="!swap.fr.twofa"> Ghi 2FA vào FamRenew H của <b x-text="swap.fr.fr"></b>.</span>
             </div>
             <div class="row">
               <button class="btn" @click="confirming=false" :disabled="saving">Huỷ</button>
@@ -484,6 +484,8 @@ function app() {
     },
     toggleOpen(rn) { this.openRows = this.openRows.includes(rn) ? this.openRows.filter(x => x !== rn) : [...this.openRows, rn]; },
     isOpen(rn) { return this.openRows.includes(rn); },
+    // Kết quả tìm có thành viên khớp thì tự mở; bấm ▾ để đóng lại
+    expanded(f) { const auto = this.searchOn() && f.hit && f.hit.length; return auto ? !this.openRows.includes(f.rn) : this.openRows.includes(f.rn); },
     askUndo(id) {
       if (this.undoConfirm !== id) { this.undoConfirm = id; clearTimeout(this._u); this._u = setTimeout(() => this.undoConfirm = '', 4000); return; }
       this.undoConfirm = ''; this.doUndo(id, false);
@@ -538,7 +540,7 @@ function app() {
           action: 'complete', rn: s.f.rn, stockRow: s.f.stockRow, oldEmail: s.f.email,
           fr: s.fr.fr, frRow: s.fr.row, frEmail: s.fr.email, invited: s.sel, twofa: s.fr.twofa ? '' : s.newTwofa,
         });
-        this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách.'
+        this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách, trạng thái ' + r.status + '.'
 ;
         this.lastActionId = r.actionId || '';
         this.loadReview();
