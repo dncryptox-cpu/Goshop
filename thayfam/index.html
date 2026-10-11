@@ -33,6 +33,7 @@
   .tab{white-space:nowrap}
   .tab{border:0;background:none;padding:9px 12px;color:var(--mute);border-bottom:2px solid transparent;margin-bottom:-1px}
   .tab.on{color:var(--ink);border-color:var(--ink);font-weight:600}
+  .tab .n.hot{background:var(--warn);color:#fff}
   .tab .n{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--chip);font-size:12px;margin-left:4px}
   .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
@@ -41,7 +42,7 @@
   .mono:hover{text-decoration:underline dotted}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
   .mute{color:var(--mute)}
-  .badge{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--chip);white-space:nowrap}
+  .badge{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--chip);white-space:nowrap;align-self:center;line-height:1.5}
   .badge.bad{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
   .badge.warn{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
   .badge.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
@@ -139,6 +140,7 @@
         <button class="tab" x-show="me.role !== 'outsource'" :class="tab==='renew' && 'on'" @click="tab='renew'">Nhắc gia hạn<span class="n" x-text="renewals.length"></span></button>
         <button class="tab" x-show="can('review')" :class="tab==='sync' && 'on'" @click="tab='sync'; loadReview()">Đồng bộ<span class="n" x-text="review.length"></span></button>
         <button class="tab" :class="tab==='log' && 'on'" @click="tab='log'; loadLog()">Lịch sử</button>
+        <button class="tab" x-show="me.role==='admin'" :class="tab==='notes' && 'on'" @click="tab='notes'; loadNotes()">Cần xử lý<span class="n" :class="openNotes && 'hot'" x-text="openNotes"></span></button>
         <button class="tab" x-show="me.role==='admin'" :class="tab==='users' && 'on'" @click="tab='users'; loadUsers()">Tài khoản</button>
       </nav>
 
@@ -163,8 +165,15 @@
                 </div>
               </div>
               <span class="badge" :class="f.daysToRenew<0 ? 'bad' : (f.daysToRenew===0 ? 'warn' : '')" x-text="f.daysToRenew===null ? f.status : renewLabel(f.daysToRenew)"></span>
+              <button class="btn sm" @click="noteFor = noteFor===f.rn ? '' : f.rn; noteText=''" title="Ghi chú cho admin">Ghi chú</button>
               <button class="btn pri sm" @click="openSwap(f)" :disabled="!frs.length">Thay fam</button>
             </div>
+            <template x-if="noteFor===f.rn">
+              <div class="peek row">
+                <input type="text" class="grow" x-model="noteText" placeholder="Ghi chú cho admin, vd: khách báo lỗi, còn slot, cần kiểm tra…" @keydown.enter="sendNote(f.rn)" x-init="$el.focus()">
+                <button class="btn pri sm" @click="sendNote(f.rn)" :disabled="!noteText.trim() || noteBusy">Gửi</button>
+              </div>
+            </template>
             <template x-if="expanded(f)">
               <div class="peek">
                 <div class="peek-own mute">
@@ -275,6 +284,25 @@
             </div>
             <div class="warn" x-show="!it.banned">Không tìm thấy email cũ trong FamRenew KHO_RENEW, nên sẽ không đánh Banned được.</div>
             <div class="mute" style="font-size:12px;margin-top:6px" x-show="it.skippedFr">2FA của FR đã ghi thẳng vào FamRenew lúc thay fam, không cần đồng bộ.</div>
+          </div>
+        </template>
+      </section>
+
+      <!-- TAB CẦN XỬ LÝ (admin) -->
+      <section x-show="tab==='notes' && !searchOn()">
+        <div class="mute" style="font-size:13px;margin-bottom:12px">Fam còn slot trống sau khi thay (tự báo) và ghi chú của nhân viên / outsource. Xử lý xong bấm <b>Đã xử lý</b>.</div>
+        <template x-if="notesLoading"><div class="empty">Đang tải…</div></template>
+        <template x-if="!notesLoading && notes.length===0"><div class="empty">Không có gì cần xử lý.</div></template>
+        <template x-for="n in notes" :key="n.id">
+          <div class="card" :style="n.status!=='Mở' && 'opacity:.55'">
+            <div class="row">
+              <button class="btn sm" @click="q = n.rn; doSearch()" title="Mở fam này" x-text="n.rn || '—'" style="font-weight:700"></button>
+              <span class="badge" :class="n.type==='Dư slot' ? 'warn' : ''" x-text="n.type"></span>
+              <span class="grow mute" style="font-size:13px" x-text="n.time + ' · ' + n.by + (n.status!=='Mở' ? ' · ' + n.status + (n.doneBy ? ' bởi ' + n.doneBy + ' ' + n.doneAt : '') : '')"></span>
+              <button class="btn sm" x-show="n.status==='Mở'" @click="noteOp('done', n.id)" :disabled="noteBusy">Đã xử lý</button>
+              <button class="btn sm" x-show="n.status==='Đã xử lý'" @click="noteOp('reopen', n.id)" :disabled="noteBusy">Mở lại</button>
+            </div>
+            <div style="margin-top:6px;font-size:14px;white-space:pre-wrap" x-text="n.text"></div>
           </div>
         </template>
       </section>
@@ -436,6 +464,12 @@
         </template>
       </div>
 
+      <div class="step">
+        <h3><span class="num">4</span>Ghi chú cho admin <span class="mute" style="font-weight:400;font-size:13px">(không bắt buộc)</span></h3>
+        <input type="text" x-model="swap.note" placeholder="vd: khách X báo đổi mail, FR này hơi lag…" style="width:100%">
+        <div class="mute" style="font-size:12px;margin-top:6px" x-show="swap.sel.length < 5" x-text="'Mời ' + swap.sel.length + '/5 → còn ' + (5 - swap.sel.length) + ' slot trống. Webapp sẽ tự báo admin để xếp khách vào.'"></div>
+      </div>
+
       <div class="foot">
         <template x-if="!confirming">
           <button class="btn pri" style="flex:1" @click="confirming=true" :disabled="!swap.fr || saving || (!swap.fr.twofa && !twofaOk())">Hoàn tất</button>
@@ -475,6 +509,7 @@ function app() {
     review: [], reviewLoading: false, syncConfirm: '', openRows: [],
     q: '', results: [], searching: false, searchTotal: 0,
     me: { name: '', role: '', perms: [] },
+    notes: [], notesLoading: false, openNotes: 0, noteBusy: false, noteFor: '', noteText: '',
     users: [], usersLoading: false, usersBusy: false, usersLimit: 10, limitInput: 10,
     newUser: { name: '', role: 'outsource' }, newKeyMsg: '', userConfirm: '',
     pull: null, pulling: false, pullConfirm: false, lastPull: '',
@@ -509,6 +544,7 @@ function app() {
         const d = await this.api({ action: 'dashboard', ahead: this.ahead });
         this.today = d.today; this.due = d.due; this.renewals = d.renewals;
         this.me = d.me || { name: 'Admin', role: 'admin', perms: [] };
+        if (d.openNotes !== null && d.openNotes !== undefined) this.openNotes = d.openNotes;
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
         if (this.can('review') && !this._reviewed) { this._reviewed = true; this.loadReview(); }
@@ -541,7 +577,7 @@ function app() {
     openSwap(f) {
       this.swapError = ''; this.confirming = false; this.lastDone = '';
       this.swap = {
-        f, fr: this.frs[0] || null, copied: [], newTwofa: '',
+        f, fr: this.frs[0] || null, copied: [], newTwofa: '', note: '',
         sel: f.customers.filter(c => c.daysLeft === null || c.daysLeft >= 0).map(c => c.email),
       };
       this.tickOtp();
@@ -556,6 +592,28 @@ function app() {
       this.swap.fr = this.frs[0] || null;
       this.swap.newTwofa = '';
       this.tickOtp();
+    },
+    async loadNotes() {
+      this.notesLoading = true;
+      try { const d = await this.api({ action: 'notes', op: 'list' }); this.notes = d.items; this.openNotes = d.open; }
+      catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script đang chạy bản cũ. Dán lại Code.gs mới rồi Deploy → New version.' : e.message; }
+      this.notesLoading = false;
+    },
+    async noteOp(op, id) {
+      this.noteBusy = true;
+      try { const d = await this.api({ action: 'notes', op, id }); this.notes = d.items; this.openNotes = d.open; } catch (e) { this.error = e.message; }
+      this.noteBusy = false;
+    },
+    async sendNote(rn) {
+      if (!this.noteText.trim()) return;
+      this.noteBusy = true;
+      try {
+        await this.api({ action: 'note', rn, text: this.noteText.trim() });
+        this.noteFor = ''; this.noteText = '';
+        this.toast = 'Đã gửi ghi chú cho admin'; setTimeout(() => this.toast = '', 1500);
+        if (this.me.role === 'admin') this.openNotes++;
+      } catch (e) { this.error = e.message; }
+      this.noteBusy = false;
     },
     async loadUsers() {
       this.usersLoading = true;
@@ -668,11 +726,12 @@ function app() {
       try {
         const r = await this.api({
           action: 'complete', rn: s.f.rn, stockRow: s.f.stockRow, oldEmail: s.f.email,
-          fr: s.fr.fr, frRow: s.fr.row, frEmail: s.fr.email, invited: s.sel, twofa: s.fr.twofa ? '' : s.newTwofa,
+          fr: s.fr.fr, frRow: s.fr.row, frEmail: s.fr.email, invited: s.sel, twofa: s.fr.twofa ? '' : s.newTwofa, note: s.note,
         });
         this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách, trạng thái ' + r.status + '.'
 ;
         this.lastActionId = r.actionId || '';
+        if (this.me.role === 'admin') this.openNotes += (r.invited < 5 ? 1 : 0) + (s.note && s.note.trim() ? 1 : 0);
         if (this.me.limit) this.me.usedToday++;
         this.loadReview();
         this.due = this.due.filter(x => x.rn !== s.f.rn);
