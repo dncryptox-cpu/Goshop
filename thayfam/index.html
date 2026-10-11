@@ -93,7 +93,7 @@
   <template x-if="!pass">
     <form class="login" @submit.prevent="login()">
       <h1 style="margin:0">Thay Fam</h1>
-      <input type="password" x-model="passInput" placeholder="Mật khẩu admin" autofocus>
+      <input type="password" x-model="passInput" placeholder="Mật khẩu hoặc key" autofocus>
       <button class="btn pri">Vào</button>
       <div class="err" x-show="error" x-text="error"></div>
     </form>
@@ -105,6 +105,7 @@
         <div>
           <h1>Thay Fam</h1>
           <div class="sub" x-text="today ? 'Hôm nay ' + today + ' · ' + frs.length + ' FR sẵn sàng' : 'Đang tải…'"></div>
+          <div class="sub" x-show="me.name"><b x-text="me.name"></b> · <span x-text="roleName()"></span><span x-show="me.limit" x-text="' · đã thay ' + me.usedToday + '/' + me.limit + ' hôm nay'"></span></div>
         </div>
         <div class="sp"></div>
         <button class="btn sm" @click="load()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
@@ -128,15 +129,15 @@
         </div>
       </template>
 
-      <div class="search">
+      <div class="search" x-show="can('search')">
         <input type="search" x-model="q" @input.debounce.400ms="doSearch()" @keydown.escape="q=''; results=[]" placeholder="Tìm nhanh: RN, email chủ fam, email thành viên, mail phụ…">
         <span class="mute" style="font-size:12px" x-show="searchOn()" x-text="searching ? 'Đang tìm…' : (searchTotal + ' fam' + (searchTotal>results.length ? ' (hiện ' + results.length + ')' : ''))"></span>
       </div>
 
       <nav class="tabs" x-show="!searchOn()">
         <button class="tab" :class="tab==='due' && 'on'" @click="tab='due'">Đến hạn<span class="n" x-text="due.length"></span></button>
-        <button class="tab" :class="tab==='renew' && 'on'" @click="tab='renew'">Nhắc gia hạn<span class="n" x-text="renewals.length"></span></button>
-        <button class="tab" :class="tab==='sync' && 'on'" @click="tab='sync'; loadReview()">Đồng bộ<span class="n" x-text="review.length"></span></button>
+        <button class="tab" x-show="me.role !== 'outsource'" :class="tab==='renew' && 'on'" @click="tab='renew'">Nhắc gia hạn<span class="n" x-text="renewals.length"></span></button>
+        <button class="tab" x-show="can('review')" :class="tab==='sync' && 'on'" @click="tab='sync'; loadReview()">Đồng bộ<span class="n" x-text="review.length"></span></button>
         <button class="tab" :class="tab==='log' && 'on'" @click="tab='log'; loadLog()">Lịch sử</button>
       </nav>
 
@@ -170,7 +171,7 @@
                 </div>
                 <template x-if="f.customers.length===0"><div class="mute" style="font-size:13px">Không có email khách.</div></template>
                 <table x-show="f.customers.length">
-                  <thead><tr><th>Thành viên</th><th>CTV</th><th>HSD</th><th>Còn</th><th class="hide-sm">Mail phụ</th></tr></thead>
+                  <thead><tr><th>Thành viên</th><th>CTV</th><th>HSD</th><th>Còn</th><th class="hide-sm" x-show="me.role !== 'outsource'">Mail phụ</th></tr></thead>
                   <tbody>
                     <template x-for="c in f.customers" :key="c.row">
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
@@ -178,7 +179,7 @@
                         <td x-text="c.ctv || '—'"></td>
                         <td x-text="c.hsd || '—'"></td>
                         <td :style="c.daysLeft!==null && c.daysLeft<0 ? 'color:var(--bad)' : (c.daysLeft!==null && c.daysLeft<=10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft===null ? '—' : (c.daysLeft<0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + ' ngày')"></td>
-                        <td class="hide-sm mono" x-text="c.mailPhu || '—'"></td>
+                        <td class="hide-sm mono" x-show="me.role !== 'outsource'" x-text="c.mailPhu || '—'"></td>
                       </tr>
                     </template>
                   </tbody>
@@ -286,9 +287,9 @@
             <div class="rn" x-text="a.rn"></div>
             <div class="grow">
               <div class="mono ellip"><span x-text="a.oldEmail"></span> → <span x-text="a.newEmail"></span></div>
-              <div class="mute" style="font-size:13px"><span x-text="a.time"></span> · <span x-text="a.fr"></span> · <span x-text="a.status"></span></div>
+              <div class="mute" style="font-size:13px"><span x-text="a.time"></span> · <span x-text="a.fr"></span> · <span x-text="a.status"></span><span x-show="me.role==='admin'" x-text="' · ' + a.by"></span></div>
             </div>
-            <template x-if="a.status==='Đã ghi' || a.status.indexOf('Đã đồng bộ')===0">
+            <template x-if="a.status==='Đã ghi' || (me.role==='admin' && a.status.indexOf('Đã đồng bộ')===0)">
               <button class="btn sm" @click="askUndo(a.id)" :disabled="!!undoBusy" x-text="undoBusy===a.id ? 'Đang hoàn tác…' : (undoConfirm===a.id ? 'Bấm lần nữa để hoàn tác' : 'Hoàn tác')"></button>
             </template>
           </div>
@@ -296,10 +297,10 @@
         <template x-if="log.length">
           <div class="card" style="padding:4px 6px;overflow-x:auto">
             <table>
-              <thead><tr><th>Thời gian</th><th>RN</th><th>FR</th><th>Khách</th><th>CTV</th><th class="hide-sm">HSD</th><th>Mời</th></tr></thead>
+              <thead><tr><th>Thời gian</th><th>RN</th><th>FR</th><th>Khách</th><th>CTV</th><th class="hide-sm">HSD</th><th>Mời</th><th x-show="me.role==='admin'">Người làm</th></tr></thead>
               <tbody>
                 <template x-for="(l,i) in log" :key="i">
-                  <tr><td x-text="l.time"></td><td x-text="l.rn"></td><td x-text="l.fr"></td><td class="mono" x-text="l.email"></td><td x-text="l.ctv"></td><td class="hide-sm" x-text="l.hsd"></td><td x-text="l.invited ? '✓' : '—'"></td></tr>
+                  <tr><td x-text="l.time"></td><td x-text="l.rn"></td><td x-text="l.fr"></td><td class="mono" x-text="l.email"></td><td x-text="l.ctv"></td><td class="hide-sm" x-text="l.hsd"></td><td x-text="l.invited ? '✓' : '—'"></td><td x-show="me.role==='admin'" x-text="l.by"></td></tr>
                 </template>
               </tbody>
             </table>
@@ -427,6 +428,7 @@ function app() {
     lastActionId: '', undoConfirm: '', undoBusy: '', undoConflict: null,
     review: [], reviewLoading: false, syncConfirm: '', openRows: [],
     q: '', results: [], searching: false, searchTotal: 0,
+    me: { name: '', role: '', perms: [] },
     pull: null, pulling: false, pullConfirm: false, lastPull: '',
     swap: null, swapError: '', confirming: false, saving: false,
     otp: { old: '', fr: '' }, otpPct: 100, toast: '',
@@ -442,7 +444,7 @@ function app() {
           if (this.swap && this.swap.f.customers.some(c => c.email === txt) && !this.swap.copied.includes(txt)) this.swap.copied.push(txt);
         }
       });
-      if (this.pass) { this.load(); this.loadReview(); } setInterval(() => this.tickOtp(), 1000); },
+      if (this.pass) this.load(); setInterval(() => this.tickOtp(), 1000); },
 
     async api(body) {
       const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) });
@@ -451,13 +453,17 @@ function app() {
       return data;
     },
     async login() { this.pass = this.passInput; this.error = ''; await this.load(); if (this.pass) lsSet('thayfam_pass', this.pass); },
-    logout() { this.pass = ''; lsSet('thayfam_pass', ''); },
+    logout() { this.pass = ''; lsSet('thayfam_pass', ''); this.me = { name: '', role: '', perms: [] }; this._reviewed = false; this.review = []; this.tab = 'due'; },
 
     async load() {
       this.loading = true; this.error = '';
       try {
         const d = await this.api({ action: 'dashboard', ahead: this.ahead });
         this.today = d.today; this.due = d.due; this.renewals = d.renewals;
+        this.me = d.me || { name: 'Admin', role: 'admin', perms: [] };
+        if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
+        if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
+        if (this.can('review') && !this._reviewed) { this._reviewed = true; this.loadReview(); }
         this.frs = d.frs.filter(x => !this.skipped.includes(x.row));
       } catch (e) {
         this.error = e.message;
@@ -503,7 +509,9 @@ function app() {
       this.swap.newTwofa = '';
       this.tickOtp();
     },
-    searchOn() { return this.q.trim().length >= 2; },
+    can(a) { return (this.me.perms || []).includes(a); },
+    roleName() { return { admin: 'Admin', nhanvien: 'Nhân viên', outsource: 'Outsource' }[this.me.role] || this.me.role; },
+    searchOn() { return this.can('search') && this.q.trim().length >= 2; },
     async doSearch() {
       const q = this.q.trim();
       if (q.length < 2) { this.results = []; return; }
@@ -592,6 +600,7 @@ function app() {
         this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách, trạng thái ' + r.status + '.'
 ;
         this.lastActionId = r.actionId || '';
+        if (this.me.limit) this.me.usedToday++;
         this.loadReview();
         this.due = this.due.filter(x => x.rn !== s.f.rn);
         this.frs = this.frs.filter(x => x.row !== s.fr.row);
