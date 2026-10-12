@@ -460,9 +460,15 @@
         <div class="mute" style="font-size:13px;margin:16px 0 12px"><b>Đẩy bản sao → data gốc:</b> chỉ những ô mà webapp đã ghi. Duyệt thì chép sang data gốc.</div>
         <template x-if="reviewLoading"><div class="empty">Đang đối chiếu…</div></template>
         <template x-if="!reviewLoading && review.length===0"><div class="empty">Không có thay đổi nào chờ đồng bộ.<br>Sau mỗi lần Thay fam → Hoàn tất, thay đổi hiện ở đây để bạn đối chiếu và bấm <b>Duyệt & đồng bộ</b> sang data gốc.</div></template>
+        <div class="row" x-show="review.length > 1" style="margin-bottom:10px">
+          <label class="grow" style="font-size:14px"><input type="checkbox" :checked="syncSel.length && syncSel.length === review.filter(x => !x.rowMismatch).length" @change="syncSel = $event.target.checked ? review.filter(x => !x.rowMismatch).map(x => x.id) : []"> Chọn tất cả (<span x-text="syncSel.length"></span>/<span x-text="review.filter(x => !x.rowMismatch).length"></span>)</label>
+          <button class="btn pri sm" @click="batchSync()" :disabled="!syncSel.length || !!undoBusy" x-text="batchBusy ? 'Đang đồng bộ ' + batchBusy : (batchConfirm ? 'Bấm lần nữa: ghi ' + syncSel.length + ' mục vào gốc' : 'Duyệt ' + syncSel.length + ' mục đã chọn')"></button>
+        </div>
+        <div class="warn" x-show="batchReport" x-text="batchReport"></div>
         <template x-for="it in review" :key="it.id">
           <div class="card">
             <div class="row">
+              <input type="checkbox" x-show="!it.rowMismatch" :checked="syncSel.includes(it.id)" @change="syncSel = $event.target.checked ? [...syncSel, it.id] : syncSel.filter(x => x !== it.id)">
               <div class="rn" x-text="it.rn"></div>
               <div class="grow">
                 <div class="mono ellip"><span x-text="it.oldEmail"></span> → <span x-text="it.newEmail"></span></div>
@@ -487,7 +493,7 @@
               → Trạng thái <b>Banned</b><span class="mute" x-text="it.banned && it.banned.curStatus ? ' (hiện: ' + it.banned.curStatus + ')' : ''"></span>,
               ghi chú "<span x-text="it.banned && it.banned.note"></span>"
             </div>
-            <div class="warn" x-show="!it.banned">Không tìm thấy email cũ trong FamRenew KHO_RENEW, nên sẽ không đánh Banned được.</div>
+            <div class="warn" x-show="!it.banned && it.id.indexOf('TF') === 0">Không tìm thấy email cũ trong FamRenew KHO_RENEW, nên sẽ không đánh Banned được.</div>
             <div class="mute" style="font-size:12px;margin-top:6px" x-show="it.skippedFr">2FA của FR đã ghi thẳng vào FamRenew lúc thay fam, không cần đồng bộ.</div>
           </div>
         </template>
@@ -709,7 +715,7 @@ function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
-    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {},
+    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, syncSel: [], batchBusy: '', batchConfirm: false, batchReport: '',
     blocks: [], blocksLoading: false, blocksBusy: '', blocksOpen: 0, blocksDue: 0, blockWait: 5,
     today: '', due: [], reported: [], renewals: [], frs: [], skipped: [],
     ctvFilter: '', log: [], logLoading: false, actions: [],
@@ -1031,6 +1037,27 @@ function app() {
         await this.load();
       } catch (e) { this.error = e.message; }
       this.pulling = false;
+    },
+    async batchSync() {
+      if (!this.batchConfirm) { this.batchConfirm = true; clearTimeout(this._bc); this._bc = setTimeout(() => this.batchConfirm = false, 4000); return; }
+      this.batchConfirm = false; this.batchReport = ''; this.error = ''; this.lastDone = '';
+      const ids = this.review.filter(x => this.syncSel.includes(x.id)).map(x => x.id);
+      let ok = 0; const conflicts = [], errors = [];
+      for (let k = 0; k < ids.length; k++) {
+        const id = ids[k], it = this.review.find(x => x.id === id);
+        this.batchBusy = (k + 1) + '/' + ids.length; this.undoBusy = id;
+        try {
+          const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'sync', id, force: false, pass: this.pass }) });
+          const r = await res.json();
+          if (r.conflict) conflicts.push(it.rn);
+          else if (!r.ok) errors.push(it.rn + ': ' + r.error);
+          else ok++;
+        } catch (e) { errors.push(it.rn + ': ' + e.message); }
+      }
+      this.batchBusy = ''; this.undoBusy = ''; this.syncSel = [];
+      this.lastDone = '✓ Đã đồng bộ ' + ok + '/' + ids.length + ' mục sang data gốc.';
+      if (conflicts.length || errors.length) this.batchReport = (conflicts.length ? 'Chưa đồng bộ vì data gốc đã bị sửa (xem từng mục, duyệt riêng nếu muốn ghi đè): ' + conflicts.join(', ') + '. ' : '') + (errors.length ? 'Lỗi: ' + errors.join('; ') : '');
+      await this.loadReview();
     },
     askSync(id) {
       if (this.syncConfirm !== id) { this.syncConfirm = id; clearTimeout(this._s); this._s = setTimeout(() => this.syncConfirm = '', 4000); return; }
