@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Admin · GO INTELLIGENCE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<link rel="stylesheet" href="app.css">
+<style>
+#app{padding-bottom:24px}
+@media(min-width:1024px){#app{display:block;max-width:1240px}.views{padding:8px 24px 48px}}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 16px 16px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.kpi small{display:block;font-size:12px;color:var(--mute)}.kpi b{font-size:22px}
+.kpi.bad{border-color:#B91C1C;background:#2A1416}
+td .inp{padding:7px 9px;font-size:13px;max-width:130px}
+.row-act{display:flex;gap:6px;flex-wrap:wrap}
+.rc{font-size:44px;font-weight:800}
+</style>
+</head>
+<body>
+<div id="app"><div class="views">
+  <header class="top"><div class="brand"><i>GI</i>Admin</div><div id="who" style="font-size:13px;color:var(--mute)"></div></header>
+  <div id="gate"></div>
+  <div id="main" style="display:none">
+    <div class="kpis" id="kpis"></div>
+    <div class="chips" id="atabs"></div>
+    <div id="abody"></div>
+  </div>
+</div></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="icons.js"></script>
+<script src="common.js"></script>
+<script>
+const A = { user: null, me: null, tab: 'todo', products: [], orders: [], txs: [], rc: null, kp: null, kv: null, stock: [], cust: [], custSel: null, custLedger: [], wz: null };
+const COLORS = ['#10A37F', '#1D4ED8', '#7C3AED', '#B91C1C', '#C2410C', '#0E7490', '#2B2B2B', '#3A2418'];
+const vById = id => { for (const p of A.products) { const v = (p.variants || []).find(x => x.id === id); if (v) return { p, v }; } return {}; };
+const call = async (fn, args) => { const { data, error } = await sb.rpc(fn, args); if (error) { toast(errText(error)); throw error; } return data; };
+
+// ---------- tải dữ liệu ----------
+async function loadTodo() {
+  const [o, t, r] = await Promise.all([
+    sb.from('orders').select('*').in('status', ['processing', 'unpaid']).order('created_at', { ascending: true }).limit(200),
+    sb.from('bank_tx').select('*').eq('matched', 'none').order('created_at', { ascending: false }).limit(100),
+    sb.rpc('admin_reconcile')]);
+  A.orders = o.data || []; A.txs = t.data || []; A.rc = r.data;
+}
+async function loadProducts() { A.products = (await call('admin_products')) || []; }
+async function refresh() { try { await Promise.all([loadTodo(), loadProducts()]); } catch (e) { console.error(e); } render(); }
+
+// ---------- khung ----------
+function render() {
+  const rc = A.rc || {}, proc = A.orders.filter(o => o.status === 'processing').length;
+  $('#kpis').innerHTML = `
+    <div class="kpi ${proc ? 'bad' : ''}"><small>Cần giao tay</small><b class="mono">${proc}</b></div>
+    <div class="kpi ${A.txs.length ? 'bad' : ''}"><small>Tiền chưa khớp</small><b class="mono">${A.txs.length}</b></div>
+    <div class="kpi"><small>Đơn QR chờ tiền</small><b class="mono">${A.orders.filter(o => o.status === 'unpaid').length}</b></div>
+    <div class="kpi ${Number(rc.diff) ? 'bad' : ''}"><small>Đối soát ví (phải = 0)</small><b class="mono">${vnd(rc.diff || 0)}</b></div>
+    <div class="kpi"><small>Tổng số dư khách</small><b class="mono">${vnd(rc.sum_balance || 0)}</b></div>`;
+  const todo = proc + A.txs.length;
+  const tabs = [['todo', 'Việc cần làm', todo], ['products', 'Sản phẩm'], ['stock', 'Kho'], ['new', '+ Thêm sản phẩm'], ['customers', 'Khách'], ['orders', 'Tra đơn']];
+  $('#atabs').innerHTML = tabs.map(([k, l, n]) => `<button class="chip ${A.tab === k ? 'on' : ''}" onclick="tab('${k}')">${l}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('');
+  $('#abody').innerHTML = ({ todo: vTodo, products: vProducts, stock: vStock, new: vWizard, customers: vCustomers, orders: vOrders })[A.tab]();
+  if (A.tab === 'new') wzMarginAll();
+}
+function tab(k) { A.tab = k; if (k === 'new' && !A.wz) wzReset(); if (k === 'stock') loadStock().then(render); else render(); }
+
+// ---------- 1. Việc cần làm ----------
+function vTodo() {
+  const pr = A.orders.filter(o => o.status === 'processing'), un = A.orders.filter(o => o.status === 'unpaid');
+  let h = '';
+  h += `<div class="h2" style="margin-top:4px">Đơn cần giao tay <small>${pr.length}</small></div>`;
+  h += pr.map(o => { const { v } = vById(o.variant_id); const kind = v ? v.kind : 'manual';
+    return `<div class="acard"><div class="hd"><div><b>${esc(o.product_name)} · ${esc(o.variant_label)}</b><br><small class="mono">${esc(o.code)} · ${vnd(o.amount)} · ${o.pay_method === 'wallet' ? 'ví' : 'QR'} · ${ftime(o.paid_at)}${o.customer_email ? ' · <b style="color:var(--ink)">' + esc(o.customer_email) + '</b>' : ''}</small></div><span class="tag ${kind}">${KIND[kind].short}</span></div>
+    ${o.customer_email ? `<div class="act"><span style="font-size:13px;color:var(--mute);flex:1">Nâng / mời email khách xong thì bấm:</span><button class="btn sm" onclick="deliver(${o.id},true)">Đã xử lý xong</button>`
+      : `<div class="act"><input class="inp" id="dl-${o.id}" placeholder="Tài khoản" autocomplete="off"><input class="inp" id="dp-${o.id}" placeholder="Mật khẩu" autocomplete="off">${kind === 'fixed' ? `<input class="inp" id="de-${o.id}" type="date" aria-label="HSD">` : ''}<button class="btn sm" onclick="deliver(${o.id},false)">Giao</button>`}
+      <button class="btn sm ghost" onclick="cancelOrder(${o.id})">Huỷ & hoàn ví</button></div></div>`; }).join('') || '<p class="sub">Không có đơn chờ giao.</p>';
+  h += `<div class="h2">Tiền chưa khớp <small>${A.txs.length} · khách ghi sai nội dung</small></div>`;
+  h += A.txs.map(t => `<div class="acard"><div class="hd"><div><b class="mono">${vnd(t.amount)}</b><br><small>"${esc(t.content)}" · ${ftime(t.received_at || t.created_at)} · ref ${esc(t.bank_ref)}</small></div></div>
+    <div class="act"><input class="inp" id="to-${t.id}" placeholder="Mã đơn GI… hoặc email khách" autocomplete="off"><button class="btn sm" onclick="assignTx(${t.id},${t.amount})">Gán</button></div></div>`).join('') || '<p class="sub">Không có.</p>';
+  h += `<div class="h2">Đơn QR chờ tiền <small>${un.length} · webhook tự xử lý, chỉ bấm khi webhook lỗi</small></div>`;
+  h += un.map(o => `<div class="acard"><div class="hd"><div><b>${esc(o.product_name)} · ${esc(o.variant_label)}</b><br><small class="mono">${esc(o.code)} · ${vnd(o.amount)} · tạo ${ftime(o.created_at)}</small></div><button class="btn sm gold" onclick="markPaid(${o.id})">Xác nhận đã nhận tiền</button></div></div>`).join('') || '<p class="sub">Không có.</p>';
+  return h;
+}
+async function deliver(id, isEmail) {
+  const args = { p_order: id };
+  if (!isEmail) {
+    args.p_login = $('#dl-' + id).value.trim(); args.p_password = $('#dp-' + id).value.trim();
+    const e = $('#de-' + id); if (e) args.p_expires = e.value || null;
+  }
+  await call('admin_deliver', args); toast('Đã giao · khách thấy ngay ở mục Đơn'); refresh();
+}
+async function cancelOrder(id) { const note = prompt('Lý do huỷ (khách sẽ thấy):', 'Hết hàng nguồn, đã hoàn tiền vào ví'); if (!note) return; await call('admin_cancel_order', { p_order: id, p_note: note }); toast('Đã huỷ, hoàn ví'); refresh(); }
+async function markPaid(id, txId) { if (!txId && !confirm('Chắc chắn đã nhận đủ tiền cho đơn này?')) return; await call('admin_mark_paid', { p_order: id, p_bank_tx: txId || null }); toast('Đã xác nhận'); refresh(); }
+async function assignTx(txId, amount) {
+  const v = $('#to-' + txId).value.trim(); if (!v) return toast('Nhập mã đơn hoặc email');
+  if (/^GI\d{6}$/i.test(v)) {
+    const { data: o } = await sb.from('orders').select('*').eq('code', v.toUpperCase()).single();
+    if (!o) return toast('Không thấy đơn ' + v);
+    if (Number(amount) < Number(o.amount)) return toast(`Tiền ${vnd(amount)} < đơn ${vnd(o.amount)}: hãy cộng vào ví khách bằng email`);
+    await markPaid(o.id, txId);
+    if (Number(amount) > Number(o.amount)) { await call('admin_adjust_balance', { p_user: o.user_id, p_delta: Number(amount) - Number(o.amount), p_note: 'Chuyển dư cho đơn ' + o.code, p_bank_tx: null }); }
+  } else {
+    const { data: u } = await sb.from('profiles').select('id,email').ilike('email', v).maybeSingle();
+    if (!u) return toast('Không thấy khách ' + v);
+    await call('admin_adjust_balance', { p_user: u.id, p_delta: Number(amount), p_note: 'Nạp ví (gán tay giao dịch)', p_bank_tx: txId });
+    toast('Đã cộng ' + vnd(amount) + ' vào ví ' + u.email); refresh();
+  }
+}
+
+// ---------- 2. Sản phẩm ----------
+function vProducts() {
+  return `<p class="sub">Luồng giao: <span class="tag auto">Giao ngay</span> <span class="tag fixed">HSD cố định</span> <span class="tag manual">Xử lý tay</span>. Sửa giá rồi bấm Lưu. Ẩn = khách không thấy.</p>
+  <div class="tw"><table><thead><tr><th>Sản phẩm / gói</th><th>Luồng</th><th>Giá nhập</th><th>Giá bán</th><th>Lãi</th><th>Kho sẵn</th><th>Lô gần nhất</th><th></th></tr></thead><tbody>
+  ${A.products.map(p => `<tr style="background:#15181D"><td colspan="7"><div style="display:flex;gap:10px;align-items:center">${logo(p, 'sm')}<b>${esc(p.name)}</b><small style="color:var(--dim)">${esc(p.category)}</small></div></td>
+    <td><button class="sw-btn ${p.is_active ? 'on' : ''}" onclick="toggleProduct('${p.id}',${!p.is_active})">${p.is_active ? 'Đang bán' : 'Đã ẩn'}</button></td></tr>
+    ${(p.variants || []).map(v => `<tr style="${v.is_active ? '' : 'opacity:.5'}"><td style="padding-left:48px">${esc(v.label)} <small style="color:var(--dim)">${v.days} ngày${v.require_email ? ' · cần email' : ''}</small></td>
+      <td><span class="tag ${v.kind}">${KIND[v.kind].short}</span></td>
+      <td><input class="inp mono" type="number" step="1000" id="c-${v.id}" value="${v.cost}" aria-label="Giá nhập"></td>
+      <td><input class="inp mono" type="number" step="1000" id="p-${v.id}" value="${v.price}" aria-label="Giá bán"></td>
+      <td class="mono" style="color:${v.margin > 0 ? 'var(--accent-text)' : '#FDBA8C'}">${vnd(v.margin)}</td>
+      <td class="mono">${v.kind === 'manual' ? '—' : v.stock_avail}${v.stock_hold ? ` <small style="color:var(--gold)">(+${v.stock_hold} giữ)</small>` : ''}</td>
+      <td class="mono">${v.next_expiry ? fds(v.next_expiry) + ' · ' + daysLeft(v.next_expiry) + 'n' : '—'}</td>
+      <td><div class="row-act"><button class="btn sm" onclick="saveVariant('${v.id}')">Lưu</button><button class="sw-btn ${v.is_active ? 'on' : ''}" onclick="toggleVariant('${v.id}',${!v.is_active})">${v.is_active ? 'Bán' : 'Ẩn'}</button></div></td></tr>`).join('')}`).join('')}
+  </tbody></table></div>`;
+}
+async function toggleProduct(id, on) { const { error } = await sb.from('products').update({ is_active: on }).eq('id', id); if (error) return toast(errText(error)); await loadProducts(); render(); }
+async function toggleVariant(id, on) { const { error } = await sb.from('variants').update({ is_active: on }).eq('id', id); if (error) return toast(errText(error)); await loadProducts(); render(); }
+async function saveVariant(id) {
+  const cost = Number($('#c-' + id).value), price = Number($('#p-' + id).value);
+  if (!(price > 0) || cost < 0) return toast('Giá không hợp lệ');
+  const { error } = await sb.from('variants').update({ cost, price }).eq('id', id); if (error) return toast(errText(error));
+  toast('Đã lưu giá'); await loadProducts(); render();
+}
+
+// ---------- 3. Kho ----------
+const stockable = () => A.products.filter(p => (p.variants || []).some(v => v.kind !== 'manual'));
+async function loadStock() {
+  const ps = stockable(); if (!ps.length) { A.stock = []; return; }
+  if (!ps.find(p => p.id === A.kp)) A.kp = ps[0].id;
+  const p = ps.find(x => x.id === A.kp), vs = p.variants.filter(v => v.kind !== 'manual');
+  if (!vs.find(v => v.id === A.kv)) A.kv = vs[0].id;
+  const { data, error } = await sb.from('stock').select('*').in('variant_id', vs.map(v => v.id)).order('status').order('expires_at', { ascending: true }).limit(500);
+  if (error) toast(errText(error)); A.stock = data || [];
+}
+function vStock() {
+  const ps = stockable(); if (!ps.length) return '<p class="sub">Chưa có gói nào cần nhập kho.</p>';
+  const p = ps.find(x => x.id === A.kp), vs = p.variants.filter(v => v.kind !== 'manual'), v = vs.find(x => x.id === A.kv);
+  const ST = { avail: 'Sẵn', hold: 'Đang giữ', sold: 'Đã bán', void: 'Huỷ' };
+  return `<div class="chips">${ps.map(x => `<button class="chip ${x.id === A.kp ? 'on' : ''}" onclick="A.kp='${x.id}';A.kv=null;loadStock().then(render)">${esc(x.name)}</button>`).join('')}</div>
+   <div class="h2" style="margin-top:4px">Nhập thêm hàng</div>
+   <div class="form">
+     <div class="chips" style="padding:0">${vs.map(x => `<button class="chip ${x.id === A.kv ? 'on' : ''}" onclick="A.kv='${x.id}';render()">${esc(x.label)} <span class="tag ${x.kind}" style="margin-left:4px">${KIND[x.kind].short}</span></button>`).join('')}</div>
+     <label class="fl">Dán danh sách, mỗi dòng 1 tài khoản<small>${v.kind === 'fixed' ? 'Định dạng: <span class="mono">tài_khoản|mật_khẩu|HSD dd/mm/yyyy</span> — bắt buộc có HSD' : 'Định dạng: <span class="mono">tài_khoản|mật_khẩu</span>'}</small>
+       <textarea class="inp" id="imp" rows="5" placeholder="${v.kind === 'fixed' ? 'team01@mail.com|Pass123|08/11/2026' : 'acc01@mail.com|Pass123'}"></textarea></label>
+     <button class="btn" style="max-width:240px" onclick="importStock('${v.id}')">Nhập kho vào "${esc(v.label)}"</button>
+   </div>
+   <div class="h2">Tồn kho ${esc(p.name)} <small>${A.stock.filter(s => s.status === 'avail').length} sẵn</small></div>
+   <div class="tw"><table><thead><tr><th>Tài khoản</th><th>Gói</th><th>HSD</th><th>Còn</th><th>Trạng thái</th><th>Đơn</th></tr></thead><tbody>
+   ${A.stock.map(s => { const vv = p.variants.find(x => x.id === s.variant_id) || {}; const dl = daysLeft(s.expires_at);
+     return `<tr style="${s.status !== 'avail' ? 'opacity:.5' : ''}"><td class="mono">${esc(s.login)}</td><td>${esc(vv.label)}</td><td class="mono">${s.expires_at ? fd(s.expires_at) : '<span style="color:var(--dim)">từ lúc bán</span>'}</td>
+     <td class="mono" style="${dl !== null && dl <= 0 ? 'color:#FDBA8C' : ''}">${dl !== null ? dl + '/' + vv.days : '—'}</td><td>${ST[s.status]}</td><td class="mono">${s.order_id || ''}</td></tr>`; }).join('') || '<tr><td colspan="6" style="color:var(--dim)">Chưa có hàng</td></tr>'}
+   </tbody></table></div>`;
+}
+async function importStock(vid) {
+  const r = await call('admin_import_stock', { p_variant: vid, p_lines: $('#imp').value });
+  toast(`Đã nhập ${r.imported}${r.rejected.length ? ` · loại ${r.rejected.length} dòng sai/hết hạn` : ''}`);
+  if (r.rejected.length) setTimeout(() => alert('Các dòng bị loại:\n' + r.rejected.join('\n')), 300);
+  await Promise.all([loadProducts(), loadStock()]); render();
+}
+
+// ---------- 4. Thêm sản phẩm (wizard) ----------
+function wzReset() { A.wz = { step: 1, name: '', cat: 'Chat AI', desc: '', mono: '', icon: '', bg: COLORS[2], v: [{ label: '1 tháng', days: 30, cost: '', price: '', kind: 'auto', email: false }], stock: {} }; }
+function vWizard() {
+  const w = A.wz, st = ['Thông tin', 'Gói & luồng giao', 'Nhập kho'];
+  let h = `<div class="steps">${st.map((t, i) => `<div class="${w.step === i + 1 ? 'on' : w.step > i + 1 ? 'ok' : ''}"><b>${i + 1}. ${t}</b>${['Tên, danh mục, logo', 'Giá nhập/bán, kiểu giao', 'Dán tài khoản (nếu có)'][i]}</div>`).join('')}</div>`;
+  if (w.step === 1) {
+    const cats = [...new Set([...A.products.map(p => p.category), 'Chat AI', 'Video', 'Lập trình', 'Học tập', 'Giải trí', 'Khác'])];
+    h += `<div class="form">
+      <div class="two"><label class="fl">Tên sản phẩm<input class="inp" value="${esc(w.name)}" placeholder="VD: Midjourney" oninput="A.wz.name=this.value"></label>
+      <label class="fl">Danh mục<input class="inp" list="cats" value="${esc(w.cat)}" oninput="A.wz.cat=this.value"><datalist id="cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label></div>
+      <label class="fl">Mô tả ngắn hiện trên shop<input class="inp" value="${esc(w.desc)}" placeholder="VD: Tài khoản riêng, tạo ảnh không giới hạn" oninput="A.wz.desc=this.value"></label>
+      <div class="two"><label class="fl">Logo: chữ (tối đa 3 ký tự)<input class="inp" maxlength="3" value="${esc(w.mono)}" placeholder="MJ" oninput="A.wz.mono=this.value.toUpperCase()"></label>
+      <label class="fl">Hoặc logo hãng có sẵn<select class="inp" onchange="A.wz.icon=this.value"><option value="">— dùng chữ —</option>${Object.keys(window.GI_ICONS || {}).map(k => `<option ${k === w.icon ? 'selected' : ''}>${k}</option>`).join('')}</select></label></div>
+      <div class="fl">Màu nền logo<div class="swatches">${COLORS.map(c => `<button class="sw ${c === w.bg ? 'on' : ''}" style="background:${c}" aria-label="Màu ${c}" onclick="A.wz.bg='${c}';render()"></button>`).join('')}</div></div>
+      <button class="btn" style="max-width:240px" onclick="wzNext()">Tiếp: tạo gói</button></div>`;
+  }
+  if (w.step === 2) {
+    h += `<div class="flow">${Object.entries(KIND).map(([k, x]) => `<div class="info ${k}" style="margin:0;display:block"><b>${x.t}</b>${x.d}</div>`).join('')}</div>
+    <div class="form">${w.v.map((v, i) => `<div class="vrow">
+      ${w.v.length > 1 ? `<button class="x" aria-label="Xoá gói" onclick="A.wz.v.splice(${i},1);render()">×</button>` : ''}
+      <label class="fl full">Tên gói<input class="inp" value="${esc(v.label)}" placeholder="1 tháng" oninput="A.wz.v[${i}].label=this.value"></label>
+      <label class="fl">Số ngày<input class="inp mono" type="number" min="1" value="${esc(v.days)}" oninput="A.wz.v[${i}].days=+this.value"></label>
+      <label class="fl">Giá nhập<input class="inp mono" type="number" min="0" step="1000" value="${esc(v.cost)}" placeholder="39000" oninput="A.wz.v[${i}].cost=+this.value;wzMargin(${i})"></label>
+      <label class="fl">Giá bán<input class="inp mono" type="number" min="0" step="1000" value="${esc(v.price)}" placeholder="49000" oninput="A.wz.v[${i}].price=+this.value;wzMargin(${i})"></label>
+      <label class="fl full">Luồng giao<select class="inp" onchange="A.wz.v[${i}].kind=this.value;render()">${Object.entries(KIND).map(([k, x]) => `<option value="${k}" ${k === v.kind ? 'selected' : ''}>${x.t}</option>`).join('')}</select></label>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;grid-column:1/-1">
+        ${v.kind === 'manual' ? `<label class="chk"><input type="checkbox" ${v.email ? 'checked' : ''} onchange="A.wz.v[${i}].email=this.checked"> Bắt khách nhập email (nâng chính chủ / mời family)</label>` : '<span></span>'}
+        <span class="margin" id="mg-${i}"></span></div>
+    </div>`).join('')}
+    <button class="btn ghost" style="max-width:240px" onclick="A.wz.v.push({label:'',days:30,cost:'',price:'',kind:'auto',email:false});render()">+ Thêm gói</button>
+    <div style="display:flex;gap:10px;max-width:480px"><button class="btn ghost" onclick="A.wz.step=1;render()">Quay lại</button><button class="btn" onclick="wzNext()">Tiếp: nhập kho</button></div></div>`;
+  }
+  if (w.step === 3) {
+    const sv = w.v.map((v, i) => ({ v, i })).filter(x => x.v.kind !== 'manual');
+    h += `<div class="form">${sv.length ? sv.map(({ v, i }) => `<label class="fl">${esc(v.label)} <span class="tag ${v.kind}" style="align-self:flex-start">${KIND[v.kind].short}</span>
+      <small>${v.kind === 'fixed' ? 'Mỗi dòng: <span class="mono">tài_khoản|mật_khẩu|HSD dd/mm/yyyy</span>' : 'Mỗi dòng: <span class="mono">tài_khoản|mật_khẩu</span>'} · có thể bỏ trống, khách vẫn đặt được và đơn vào "cần giao tay"</small>
+      <textarea class="inp" rows="3" oninput="A.wz.stock[${i}]=this.value" placeholder="${v.kind === 'fixed' ? 'acc01@mail.com|Pass123|08/11/2026' : 'acc01@mail.com|Pass123'}">${esc(w.stock[i] || '')}</textarea></label>`).join('')
+      : `<div class="info manual" style="margin:0">Tất cả gói đều "Shop xử lý", không cần nhập kho.</div>`}
+      <div class="box" style="margin:0"><b>Xem lại</b><div class="r"><span style="color:var(--mute)">${esc(w.name)} · ${esc(w.cat)}</span><span>${w.v.length} gói</span></div>
+      ${w.v.map(v => `<div class="r"><span>${esc(v.label)} <span class="tag ${v.kind}">${KIND[v.kind].short}</span></span><span class="mono">${vnd(v.price)} <span style="color:var(--accent-text)">(lãi ${vnd(v.price - (v.cost || 0))})</span></span></div>`).join('')}</div>
+      <div style="display:flex;gap:10px;max-width:480px"><button class="btn ghost" onclick="A.wz.step=2;render()">Quay lại</button><button class="btn" id="wzGo" onclick="wzFinish()">Bật bán ngay</button></div></div>`;
+  }
+  return h;
+}
+function wzMargin(i) { const v = A.wz.v[i], e = $('#mg-' + i); if (!e) return; if (v.price && v.cost !== '') { const m = v.price - v.cost; e.textContent = `Lãi ${vnd(m)}/đơn (${Math.round(m / v.price * 100)}%)`; e.style.color = m > 0 ? '' : '#FDBA8C'; } else e.textContent = ''; }
+function wzMarginAll() { if (A.wz && A.wz.step === 2) A.wz.v.forEach((_, i) => wzMargin(i)); }
+function wzNext() {
+  const w = A.wz;
+  if (w.step === 1) { if (!w.name.trim()) return toast('Nhập tên sản phẩm'); if (!w.cat.trim()) return toast('Nhập danh mục'); w.step = 2; }
+  else if (w.step === 2) { const bad = w.v.findIndex(v => !String(v.label).trim() || !(v.days > 0) || !(v.price > 0)); if (bad >= 0) return toast(`Gói ${bad + 1}: cần tên, số ngày, giá bán`); w.step = 3; }
+  render(); window.scrollTo(0, 0);
+}
+async function wzFinish() {
+  const w = A.wz, btn = $('#wzGo'); btn.disabled = true; btn.textContent = 'Đang tạo…';
+  try {
+    const { data: p, error: e1 } = await sb.from('products').insert({ name: w.name.trim(), category: w.cat.trim(), description: w.desc.trim(),
+      logo_text: w.mono || null, icon_key: w.icon || null, logo_color: w.bg, sort: 50 }).select('id').single();
+    if (e1) throw e1;
+    const rows = w.v.map((v, i) => ({ id: crypto.randomUUID(), product_id: p.id, label: String(v.label).trim(), days: +v.days, cost: +v.cost || 0, price: +v.price, kind: v.kind, require_email: v.kind === 'manual' && !!v.email, sort: i + 1 }));
+    const { error: e2 } = await sb.from('variants').insert(rows);
+    if (e2) { await sb.from('products').delete().eq('id', p.id); throw e2; }
+    let n = 0, bad = 0;
+    for (let i = 0; i < rows.length; i++) {
+      if (rows[i].kind === 'manual' || !(w.stock[i] || '').trim()) continue;
+      const r = await call('admin_import_stock', { p_variant: rows[i].id, p_lines: w.stock[i] }); n += r.imported; bad += r.rejected.length;
+    }
+    toast(`Đã bật bán ${w.name}${n ? ` · ${n} tài khoản vào kho` : ''}${bad ? ` · loại ${bad} dòng lỗi` : ''}`);
+    A.wz = null; A.tab = 'products'; await loadProducts(); render();
+  } catch (e) { toast(errText(e)); btn.disabled = false; btn.textContent = 'Bật bán ngay'; }
+}
+
+// ---------- 5. Khách ----------
+function vCustomers() {
+  const c = A.custSel;
+  return `<div class="form"><div class="act" style="display:flex;gap:8px"><input class="inp" id="cq" placeholder="Tìm email khách" onkeydown="if(event.key==='Enter')findCust()"><button class="btn sm" onclick="findCust()">Tìm</button></div></div>
+  <div style="margin-top:12px">${A.cust.map(u => `<button class="orow" onclick="selCust('${u.id}')"><div class="x"><b>${esc(u.email)}</b><small class="mono">${esc(u.pay_code)} · số dư ${vnd(u.balance)} · chi ${vnd(u.spent)}${u.zalo ? ' · Zalo ' + esc(u.zalo) : ''}</small></div></button>`).join('')}</div>
+  ${c ? `<div class="acard"><div class="hd"><div><b>${esc(c.email)}</b><br><small>Số dư <b class="mono" style="color:var(--ink)">${vnd(c.balance)}</b> · tổng chi ${vnd(c.spent)} · mã nạp ${esc(c.pay_code)}</small></div></div>
+    <div class="act"><input class="inp" id="adj" type="number" step="1000" placeholder="+50000 hoặc -20000"><input class="inp" id="adjn" placeholder="Lý do (bắt buộc)"><button class="btn sm" onclick="adjust('${c.id}')">Điều chỉnh ví</button></div>
+    <div class="hist" style="padding:0">${A.custLedger.map(h => `<div class="hrow"><div>${esc(h.note || h.kind)}<small>${ftime(h.created_at)} · ${esc(h.ref || '')}</small></div><div class="mono ${h.delta > 0 ? 'plus-amt' : 'minus-amt'}">${h.delta > 0 ? '+' : '−'}${vnd(Math.abs(h.delta))}</div></div>`).join('') || '<p class="sub">Chưa có giao dịch</p>'}</div></div>` : ''}`;
+}
+async function findCust() { const q = $('#cq').value.trim(); const { data } = await sb.from('profiles').select('*').ilike('email', `%${q}%`).limit(20); A.cust = data || []; A.custSel = null; render(); $('#cq').value = q; }
+async function selCust(id) { A.custSel = A.cust.find(u => u.id === id); const { data } = await sb.from('wallet_ledger').select('*').eq('user_id', id).order('created_at', { ascending: false }).limit(30); A.custLedger = data || []; render(); }
+async function adjust(id) {
+  const d = Number($('#adj').value), n = $('#adjn').value.trim(); if (!d) return toast('Nhập số tiền'); if (!n) return toast(GI_ERR.NOTE_REQUIRED);
+  if (!confirm(`${d > 0 ? 'Cộng' : 'Trừ'} ${vnd(Math.abs(d))} ví khách?`)) return;
+  await call('admin_adjust_balance', { p_user: id, p_delta: d, p_note: n, p_bank_tx: null });
+  const { data } = await sb.from('profiles').select('*').eq('id', id).single(); A.cust = A.cust.map(u => u.id === id ? data : u); await selCust(id); refresh();
+}
+
+// ---------- 6. Tra đơn ----------
+function vOrders() {
+  return `<div class="form"><div style="display:flex;gap:8px"><input class="inp" id="oq" placeholder="Mã đơn GI… hoặc email nâng cấp" onkeydown="if(event.key==='Enter')findOrder()"><button class="btn sm" onclick="findOrder()">Tìm</button></div></div><div id="ores" style="margin-top:12px"></div>`;
+}
+async function findOrder() {
+  const q = $('#oq').value.trim(); if (!q) return;
+  let r = sb.from('orders').select('*').order('created_at', { ascending: false }).limit(30);
+  r = /^GI\d+$/i.test(q) ? r.eq('code', q.toUpperCase()) : r.ilike('customer_email', `%${q}%`);
+  const { data } = await r;
+  $('#ores').innerHTML = (data || []).map(o => `<div class="acard"><div class="hd"><div><b>${esc(o.code)} · ${esc(o.product_name)} · ${esc(o.variant_label)}</b><br><small class="mono">${vnd(o.amount)} · ${o.pay_method} · ${o.status} · tạo ${ftime(o.created_at)}${o.expires_at ? ' · HSD ' + fd(o.expires_at) : ''}</small></div></div>
+    ${o.cred_login ? `<small class="mono">${esc(o.cred_login)} / ${esc(o.cred_password)}</small>` : ''}${o.admin_note ? `<small>Ghi chú: ${esc(o.admin_note)}</small>` : ''}</div>`).join('') || '<p class="sub">Không thấy.</p>';
+}
+
+// ---------- khởi động ----------
+async function init() {
+  if (GI_INIT_ERROR) return fatal(GI_INIT_ERROR.message);
+  const { data } = await sb.auth.getSession(); A.user = data && data.session ? data.session.user : null;
+  if (!A.user) { $('#gate').innerHTML = `<div class="empty">Đăng nhập bằng Gmail admin.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.href}})">Đăng nhập Google</button></div>`; return; }
+  const { data: me } = await sb.from('profiles').select('*').eq('id', A.user.id).single(); A.me = me;
+  $('#who').innerHTML = `${esc(A.user.email)} · <a href="#" onclick="sb.auth.signOut().then(()=>location.reload());return false">Đăng xuất</a>`;
+  if (!me || me.role !== 'admin') { $('#gate').innerHTML = `<div class="empty">Tài khoản ${esc(A.user.email)} không có quyền admin.</div>`; return; }
+  $('#main').style.display = ''; await refresh();
+  setInterval(() => { if (A.tab === 'todo' && !document.activeElement.matches('input,textarea')) refresh(); }, 30000);
+}
+init().catch(e => { console.error(e); fatal(errText(e)); });
+</script>
+</body>
+</html>

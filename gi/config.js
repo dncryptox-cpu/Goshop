@@ -1,0 +1,8 @@
+// Cấu hình GO INTELLIGENCE. Chỉ chứa khoá CÔNG KHAI (publishable) của Supabase — an toàn để lộ trên web vì dữ liệu được RLS bảo vệ.
+// TUYỆT ĐỐI không dán secret key / service_role key vào đây.
+window.GI_CONFIG = {
+  SUPABASE_URL: 'https://zmhvuudpqwvnbwzcegap.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_2rYunBCifMDQalBLzw3_Tg_uz-WCXVL',
+  SUPPORT_URL: '',            // link Zalo/Messenger hỗ trợ, vd 'https://zalo.me/09xxxxxxxx'
+  BRAND: 'GO INTELLIGENCE'
+};
