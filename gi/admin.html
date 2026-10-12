@@ -37,32 +37,38 @@ td .inp{padding:7px 9px;font-size:13px;max-width:130px}
 <script src="icons.js"></script>
 <script src="common.js"></script>
 <script>
-const A = { user: null, me: null, tab: 'todo', products: [], orders: [], txs: [], rc: null, kp: null, kv: null, stock: [], cust: [], custSel: null, custLedger: [], wz: null };
+const A = { user: null, me: null, tab: 'todo', topups: [], users: {}, products: [], orders: [], txs: [], rc: null, kp: null, kv: null, stock: [], cust: [], custSel: null, custLedger: [], wz: null };
 const COLORS = ['#10A37F', '#1D4ED8', '#7C3AED', '#B91C1C', '#C2410C', '#0E7490', '#2B2B2B', '#3A2418'];
 const vById = id => { for (const p of A.products) { const v = (p.variants || []).find(x => x.id === id); if (v) return { p, v }; } return {}; };
 const call = async (fn, args) => { const { data, error } = await sb.rpc(fn, args); if (error) { toast(errText(error)); throw error; } return data; };
 
 // ---------- tải dữ liệu ----------
 async function loadTodo() {
-  const [o, t, r] = await Promise.all([
-    sb.from('orders').select('*').in('status', ['processing', 'unpaid']).order('created_at', { ascending: true }).limit(200),
+  const [o, t, r, tp] = await Promise.all([
+    sb.from('orders').select('*').in('status', ['processing', 'unpaid', 'expired']).order('created_at', { ascending: true }).limit(300),
     sb.from('bank_tx').select('*').eq('matched', 'none').order('created_at', { ascending: false }).limit(100),
-    sb.rpc('admin_reconcile')]);
-  A.orders = o.data || []; A.txs = t.data || []; A.rc = r.data;
+    sb.rpc('admin_reconcile'),
+    sb.from('topup_requests').select('*').eq('status', 'pending').order('created_at', { ascending: true }).limit(100)]);
+  // Đơn hết giờ giữ hàng chỉ hiện trong 2 ngày gần nhất (khách có thể đã chuyển muộn)
+  A.orders = (o.data || []).filter(x => x.status !== 'expired' || Date.now() - toDate(x.created_at) < 2 * DAY);
+  A.txs = t.data || []; A.rc = r.data; A.topups = tp.data || [];
+  const ids = [...new Set([...A.topups.map(x => x.user_id), ...A.orders.map(x => x.user_id)])];
+  if (ids.length) { const { data: us } = await sb.from('profiles').select('id,email,zalo,pay_code').in('id', ids); A.users = Object.fromEntries((us || []).map(u => [u.id, u])); }
+  document.title = (todoN() ? `(${todoN()}) ` : '') + 'Admin · GO INTELLIGENCE';
 }
 async function loadProducts() { A.products = (await call('admin_products')) || []; }
 async function refresh() { try { await Promise.all([loadTodo(), loadProducts()]); } catch (e) { console.error(e); } render(); }
 
 // ---------- khung ----------
 function render() {
-  const rc = A.rc || {}, proc = A.orders.filter(o => o.status === 'processing').length;
+  const rc = A.rc || {}, proc = A.orders.filter(o => o.status === 'processing').length, unpaid = A.orders.filter(o => o.status === 'unpaid').length;
   $('#kpis').innerHTML = `
+    <div class="kpi ${unpaid ? 'bad' : ''}"><small>Đơn chờ xác nhận tiền</small><b class="mono">${unpaid}</b></div>
+    <div class="kpi ${A.topups.length ? 'bad' : ''}"><small>Nạp ví chờ duyệt</small><b class="mono">${A.topups.length}</b></div>
     <div class="kpi ${proc ? 'bad' : ''}"><small>Cần giao tay</small><b class="mono">${proc}</b></div>
-    <div class="kpi ${A.txs.length ? 'bad' : ''}"><small>Tiền chưa khớp</small><b class="mono">${A.txs.length}</b></div>
-    <div class="kpi"><small>Đơn QR chờ tiền</small><b class="mono">${A.orders.filter(o => o.status === 'unpaid').length}</b></div>
     <div class="kpi ${Number(rc.diff) ? 'bad' : ''}"><small>Đối soát ví (phải = 0)</small><b class="mono">${vnd(rc.diff || 0)}</b></div>
     <div class="kpi"><small>Tổng số dư khách</small><b class="mono">${vnd(rc.sum_balance || 0)}</b></div>`;
-  const todo = proc + A.txs.length;
+  const todo = todoN();
   const tabs = [['todo', 'Việc cần làm', todo], ['products', 'Sản phẩm'], ['stock', 'Kho'], ['new', '+ Thêm sản phẩm'], ['customers', 'Khách'], ['orders', 'Tra đơn']];
   $('#atabs').innerHTML = tabs.map(([k, l, n]) => `<button class="chip ${A.tab === k ? 'on' : ''}" onclick="tab('${k}')">${l}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('');
   $('#abody').innerHTML = ({ todo: vTodo, products: vProducts, stock: vStock, new: vWizard, customers: vCustomers, orders: vOrders })[A.tab]();
@@ -71,20 +77,30 @@ function render() {
 function tab(k) { A.tab = k; if (k === 'new' && !A.wz) wzReset(); if (k === 'stock') loadStock().then(render); else render(); }
 
 // ---------- 1. Việc cần làm ----------
+const todoN = () => A.orders.filter(o => o.status === 'processing' || o.status === 'unpaid').length + (A.topups || []).length + A.txs.length;
+const who = id => { const u = (A.users || {})[id]; return u ? esc(u.email) + (u.zalo ? ' · Zalo ' + esc(u.zalo) : '') : ''; };
 function vTodo() {
-  const pr = A.orders.filter(o => o.status === 'processing'), un = A.orders.filter(o => o.status === 'unpaid');
+  const pr = A.orders.filter(o => o.status === 'processing'), un = A.orders.filter(o => o.status === 'unpaid' || o.status === 'expired');
   let h = '';
-  h += `<div class="h2" style="margin-top:4px">Đơn cần giao tay <small>${pr.length}</small></div>`;
+  h += `<div class="h2" style="margin-top:4px">Đơn chờ xác nhận tiền <small>${un.length} · mở app ngân hàng, thấy tiền có nội dung = mã đơn thì bấm</small></div>`;
+  h += un.map(o => `<div class="acard"><div class="hd"><div><b class="mono" style="font-size:17px">${esc(o.code)}</b> · <b class="mono">${vnd(o.amount)}</b>${o.status === 'expired' ? ' <span class="tag fixed">quá giờ giữ hàng</span>' : ''}<br><small>${esc(o.product_name)} · ${esc(o.variant_label)} · tạo ${ftime(o.created_at)} · ${who(o.user_id)}</small></div>
+    <div class="row-act"><button class="btn sm gold" onclick="markPaid(${o.id})">Đã nhận tiền</button><button class="btn sm ghost" onclick="cancelOrder(${o.id})">Huỷ</button></div></div></div>`).join('') || '<p class="sub">Không có.</p>';
+  h += `<div class="h2">Nạp ví chờ duyệt <small>${A.topups.length} · nội dung CK = mã nạp của khách</small></div>`;
+  h += A.topups.map(t => { const u = (A.users || {})[t.user_id] || {};
+    return `<div class="acard"><div class="hd"><div><b class="mono" style="font-size:17px">${esc(u.pay_code || '')}</b> · khách báo <b class="mono">${vnd(t.amount)}</b><br><small>${who(t.user_id)} · ${ftime(t.created_at)}</small></div></div>
+    <div class="act"><label style="font-size:13px;color:var(--mute)">Thực nhận</label><input class="inp mono" id="ta-${t.id}" type="number" step="1000" value="${t.amount}"><button class="btn sm" onclick="approveTopup(${t.id})">Duyệt & cộng ví</button><button class="btn sm ghost" onclick="rejectTopup(${t.id})">Không thấy tiền</button></div></div>`; }).join('') || '<p class="sub">Không có.</p>';
+  h += `<div class="h2">Đơn cần giao tay <small>${pr.length}</small></div>`;
   h += pr.map(o => { const { v } = vById(o.variant_id); const kind = v ? v.kind : 'manual';
     return `<div class="acard"><div class="hd"><div><b>${esc(o.product_name)} · ${esc(o.variant_label)}</b><br><small class="mono">${esc(o.code)} · ${vnd(o.amount)} · ${o.pay_method === 'wallet' ? 'ví' : 'QR'} · ${ftime(o.paid_at)}${o.customer_email ? ' · <b style="color:var(--ink)">' + esc(o.customer_email) + '</b>' : ''}</small></div><span class="tag ${kind}">${KIND[kind].short}</span></div>
     ${o.customer_email ? `<div class="act"><span style="font-size:13px;color:var(--mute);flex:1">Nâng / mời email khách xong thì bấm:</span><button class="btn sm" onclick="deliver(${o.id},true)">Đã xử lý xong</button>`
       : `<div class="act"><input class="inp" id="dl-${o.id}" placeholder="Tài khoản" autocomplete="off"><input class="inp" id="dp-${o.id}" placeholder="Mật khẩu" autocomplete="off">${kind === 'fixed' ? `<input class="inp" id="de-${o.id}" type="date" aria-label="HSD">` : ''}<button class="btn sm" onclick="deliver(${o.id},false)">Giao</button>`}
       <button class="btn sm ghost" onclick="cancelOrder(${o.id})">Huỷ & hoàn ví</button></div></div>`; }).join('') || '<p class="sub">Không có đơn chờ giao.</p>';
-  h += `<div class="h2">Tiền chưa khớp <small>${A.txs.length} · khách ghi sai nội dung</small></div>`;
-  h += A.txs.map(t => `<div class="acard"><div class="hd"><div><b class="mono">${vnd(t.amount)}</b><br><small>"${esc(t.content)}" · ${ftime(t.received_at || t.created_at)} · ref ${esc(t.bank_ref)}</small></div></div>
-    <div class="act"><input class="inp" id="to-${t.id}" placeholder="Mã đơn GI… hoặc email khách" autocomplete="off"><button class="btn sm" onclick="assignTx(${t.id},${t.amount})">Gán</button></div></div>`).join('') || '<p class="sub">Không có.</p>';
-  h += `<div class="h2">Đơn QR chờ tiền <small>${un.length} · webhook tự xử lý, chỉ bấm khi webhook lỗi</small></div>`;
-  h += un.map(o => `<div class="acard"><div class="hd"><div><b>${esc(o.product_name)} · ${esc(o.variant_label)}</b><br><small class="mono">${esc(o.code)} · ${vnd(o.amount)} · tạo ${ftime(o.created_at)}</small></div><button class="btn sm gold" onclick="markPaid(${o.id})">Xác nhận đã nhận tiền</button></div></div>`).join('') || '<p class="sub">Không có.</p>';
+  if (A.txs.length) {
+    h += `<div class="h2">Tiền chưa khớp <small>${A.txs.length} · khách ghi sai nội dung</small></div>`;
+    h += A.txs.map(t => `<div class="acard"><div class="hd"><div><b class="mono">${vnd(t.amount)}</b><br><small>"${esc(t.content)}" · ${ftime(t.received_at || t.created_at)} · ref ${esc(t.bank_ref)}</small></div></div>
+      <div class="act"><input class="inp" id="to-${t.id}" placeholder="Mã đơn GI… hoặc email khách" autocomplete="off"><button class="btn sm" onclick="assignTx(${t.id},${t.amount})">Gán</button></div></div>`).join('');
+  }
+  h += `<p class="sub" style="margin-top:20px">Khách chuyển tiền nhưng không bấm/không ghi mã? Vào tab <b>Khách</b> → tìm email → "Điều chỉnh ví" để cộng tay.</p>`;
   return h;
 }
 async function deliver(id, isEmail) {
@@ -95,6 +111,11 @@ async function deliver(id, isEmail) {
   }
   await call('admin_deliver', args); toast('Đã giao · khách thấy ngay ở mục Đơn'); refresh();
 }
+async function approveTopup(id) {
+  const amt = Math.round(Number($('#ta-' + id).value)); if (!(amt > 0)) return toast('Số tiền không hợp lệ');
+  const r = await call('admin_approve_topup', { p_id: id, p_amount: amt }); toast(`Đã cộng ${vnd(r.credited)} (gồm thưởng)`); refresh();
+}
+async function rejectTopup(id) { const note = prompt('Lý do (khách sẽ thấy):', 'Chưa thấy tiền về, vui lòng liên hệ hỗ trợ'); if (!note) return; await call('admin_reject_topup', { p_id: id, p_note: note }); toast('Đã từ chối'); refresh(); }
 async function cancelOrder(id) { const note = prompt('Lý do huỷ (khách sẽ thấy):', 'Hết hàng nguồn, đã hoàn tiền vào ví'); if (!note) return; await call('admin_cancel_order', { p_order: id, p_note: note }); toast('Đã huỷ, hoàn ví'); refresh(); }
 async function markPaid(id, txId) { if (!txId && !confirm('Chắc chắn đã nhận đủ tiền cho đơn này?')) return; await call('admin_mark_paid', { p_order: id, p_bank_tx: txId || null }); toast('Đã xác nhận'); refresh(); }
 async function assignTx(txId, amount) {

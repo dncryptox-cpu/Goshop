@@ -141,14 +141,16 @@ async function loadCatalog() {
   if (S.cur) S.cur = S.cat.products.find(p => p.id === S.cur.id) || null;
 }
 async function loadMe() {
-  if (!S.user) { S.me = null; S.orders = []; S.ledger = []; return; }
-  const [p, o, l] = await Promise.all([
+  if (!S.user) { S.me = null; S.orders = []; S.ledger = []; S.topups = []; return; }
+  const [p, o, l, t] = await Promise.all([
     sb.from('profiles').select('*').eq('id', S.user.id).single(),
     sb.from('orders').select('*').order('created_at', { ascending: false }).limit(50),
-    sb.from('wallet_ledger').select('*').order('created_at', { ascending: false }).limit(50)
+    sb.from('wallet_ledger').select('*').order('created_at', { ascending: false }).limit(50),
+    sb.from('topup_requests').select('*').order('created_at', { ascending: false }).limit(10)
   ]);
   if (p.error) throw p.error;
-  S.me = p.data; S.orders = o.data || []; S.ledger = l.data || [];
+  S.me = p.data; S.orders = o.data || []; S.ledger = l.data || []; S.topups = t.data || [];
+  if (S.topups.some(x => x.status === 'pending')) startTopupPoll();
 }
 async function refreshAll() {
   try { await Promise.all([loadSettings(), loadCatalog(), loadMe()]); S.loaded = true; }
@@ -223,7 +225,7 @@ function renderHome() {
   $('#foot').innerHTML = `<div><b>GO INTELLIGENCE</b> · Tài khoản AI & tiện ích chính hãng, giá tốt.</div>
     <div><b>Bảo hành:</b> lỗi trong thời hạn sử dụng được đổi tài khoản mới miễn phí. Không bảo hành khi tự đổi mật khẩu hoặc chia sẻ thông tin đăng nhập.</div>
     <div><b>Ví GO:</b> số dư chỉ dùng để mua hàng tại GO INTELLIGENCE, không quy đổi thành tiền mặt. Đơn không giao được sẽ hoàn tiền vào ví.</div>
-    <div><b>Chuyển khoản:</b> ghi đúng nội dung (mã đơn hoặc mã nạp). Ghi sai vui lòng liên hệ hỗ trợ kèm ảnh giao dịch.</div>
+    <div><b>Thanh toán:</b> quét QR ngân hàng (đã có sẵn số tiền và nội dung) hoặc trừ ví. Shop xác nhận chuyển khoản trong vài phút (8h–23h). Ghi sai nội dung vui lòng liên hệ hỗ trợ kèm ảnh giao dịch.</div>
     ${C.SUPPORT_URL ? `<a href="${esc(C.SUPPORT_URL)}" target="_blank" rel="noopener" class="btn sm" style="text-decoration:none;align-self:flex-start">Liên hệ hỗ trợ</a>` : ''}`;
 }
 function banners() {
@@ -287,7 +289,7 @@ function checkout() {
       <span class="tx"><b>Trừ số dư ví</b><small>Số dư ${vnd(bal)}${enough ? ` · còn ${vnd(bal - v.pay)} sau mua` : ' · không đủ'}</small></span><span class="rd"></span></button>
     <button class="opt ${S.pay === 'qr' ? 'on' : ''}" onclick="S.pay='qr';checkout()">
       <span class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#E9B949" stroke-width="2" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM18 14h2M14 18v2"/></svg></span>
-      <span class="tx"><b>Quét QR chuyển khoản</b><small>QR có sẵn số tiền + mã đơn, tự xác nhận</small></span><span class="rd"></span></button>
+      <span class="tx"><b>Quét QR chuyển khoản</b><small>QR có sẵn số tiền + mã đơn, shop xác nhận trong vài phút</small></span><span class="rd"></span></button>
     ${enough ? '' : `<div class="warn">Ví thiếu ${vnd(v.pay - bal)}. Trả bằng QR, hoặc <a href="#" onclick="closeSheet();go('wallet');return false" style="color:var(--gold)">nạp thêm ví</a>.</div>`}
     <div style="display:flex;gap:10px"><button class="btn ghost" style="flex:1" onclick="closeSheet()">Huỷ</button>
     <button class="btn" id="confirmBtn" style="flex:2" onclick="placeOrder()">${S.pay === 'wallet' ? 'Xác nhận trừ ví' : 'Tạo mã QR'}</button></div>`;
@@ -313,11 +315,11 @@ function openPay(o) {
       stopPoll('order'); await Promise.all([loadMe(), loadCatalog()]).catch(console.error);
       if (S.view === 'pay') showDone(data); toast('Đã nhận ' + vnd(data.amount));
     }
-  }, 4000, 30 * 60 * 1000);
+  }, 5000, 75 * 60 * 1000);
 }
 function renderPay() {
   const o = S.payOrder; if (!o) return; const b = S.cat.bank || {};
-  $('#paybody').innerHTML = `<div style="text-align:center;margin:4px 16px 0"><span class="status"><i></i>Đang chờ thanh toán · <span class="cd" id="cd"></span></span></div>
+  $('#paybody').innerHTML = `<div style="text-align:center;margin:4px 16px 0"><span class="status"><i></i>Chờ shop xác nhận tiền · giữ hàng <span class="cd" id="cd"></span></span></div>
     <div class="payq">
       <img src="${qrUrl(o.amount, o.code)}" alt="Mã QR chuyển ${vnd(o.amount)} nội dung ${esc(o.code)}" width="220">
       <div class="rows">
@@ -327,10 +329,11 @@ function renderPay() {
         <div class="copyrow"><span style="color:var(--mute)">Số TK</span><span class="mono">${esc(b.acc)} <button onclick="copyText('${esc(b.acc)}')">Copy</button></span></div>
         <div class="copyrow"><span style="color:var(--mute)">Chủ TK</span><span>${esc(b.holder)}</span></div>
         <div class="copyrow hl" style="padding:9px 11px;border-radius:10px;background:#2A2310"><span style="color:var(--gold)">Nội dung CK</span><span><b class="mono" style="color:var(--gold)">${esc(o.code)}</b> <button onclick="copyText('${esc(o.code)}')">Copy</button></span></div>
+        ${b.momo ? `<div class="copyrow" style="font-size:13px"><span style="color:var(--mute)">Hoặc Momo</span><span class="mono">${esc(b.momo)} <button onclick="copyText('${esc(b.momo)}')">Copy</button></span></div>` : ''}
       </div>
     </div>
     <div class="pad" style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
-      <p class="note">Trang tự chuyển khi tiền về (thường dưới 1 phút). Ghi <b>đúng nội dung ${esc(o.code)}</b>.<br>Quá thời gian giữ hàng bạn vẫn chuyển được — shop vẫn nhận và giao tay.</p>
+      <p class="note">Quét QR là đã có sẵn số tiền và nội dung. Chuyển xong, shop xác nhận trong vài phút (8h–23h) và trang này <b>tự chuyển sang "Đã giao"</b>.<br>Chuyển Momo hoặc gõ tay thì ghi đúng nội dung <b>${esc(o.code)}</b>.</p>
       <button class="btn ghost" onclick="go('orders')">Xem đơn của tôi</button>
     </div>`;
   tickCountdown();
@@ -366,7 +369,8 @@ function renderWallet() {
     <div class="wal"><svg width="140" height="140" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="none" stroke="#2DD4BF" stroke-width="6" stroke-dasharray="8 10"/><circle cx="50" cy="50" r="28" fill="#2DD4BF" opacity=".25"/></svg>
       <div class="lbl">Số dư</div><div class="amt mono">${vnd(me.balance)}</div>
       <div class="lbl">Mã nạp cố định của bạn: <b class="mono" style="color:#F2F2F0">${esc(me.pay_code)}</b></div></div>
-    ${S.topupWatch ? `<div class="pending"><span>Đang chờ tiền về… trang tự cập nhật</span><span class="status" style="padding:4px 8px"><i></i></span></div>` : ''}
+    ${(S.topups || []).filter(t => t.status === 'pending').map(t => `<div class="pending"><span>Đã báo nạp <b class="mono">${vnd(t.amount)}</b> · chờ shop xác nhận</span><span class="status" style="padding:4px 8px"><i></i></span></div>`).join('')}
+    ${(S.topups || []).filter(t => t.status === 'rejected' && Date.now() - toDate(t.decided_at) < 3 * DAY).map(t => `<div class="pending" style="border-color:#FDBA8C;color:#FDBA8C"><span>Yêu cầu nạp ${vnd(t.amount)} không được duyệt${t.note ? ': ' + esc(t.note) : ''}</span></div>`).join('')}
     <div class="h2">Chọn mức nạp <small>${maxB ? 'thưởng tới ' + maxB + '%' : ''}</small></div>
     <div class="packs">${PACK_AMOUNTS.map((x, i) => { const b = bonusPct(x); return `<button class="pack ${i === S.pack ? 'on' : ''} ${b === maxB && b ? 'hot' : ''}" onclick="S.pack=${i};renderWallet()"><b class="mono">${x >= 1e6 ? (x / 1e6) + ' TRIỆU' : x / 1000 + 'K'}</b><span>${b ? '+' + b + '% thưởng' : 'Không thưởng'}</span></button>`; }).join('')}</div>
     <div class="qr" style="align-items:flex-start">
@@ -374,20 +378,36 @@ function renderWallet() {
       <div class="inf">Quét QR hoặc chuyển khoản với nội dung
         <span class="copyrow"><b class="mono y">${esc(me.pay_code)}</b><button class="sw-btn" onclick="copyText('${esc(me.pay_code)}')">Copy</button></span>
         Chuyển<b class="mono">${vnd(a)}</b>Nhận vào ví<b class="mono" style="color:#99F6E4">${vnd(a + r1k(a * bp / 100))}</b>
-        <small style="color:var(--dim)">Nạp số khác cũng được, thưởng tính theo mức tương ứng.</small></div>
+        <small style="color:var(--dim)">${esc(S.cat.bank && S.cat.bank.bank)} · ${esc(S.cat.bank && S.cat.bank.acc)} · ${esc(S.cat.bank && S.cat.bank.holder)}${S.cat.bank && S.cat.bank.momo ? '<br>Hoặc Momo ' + esc(S.cat.bank.momo) : ''}</small></div>
     </div>
-    <div class="pad" style="margin-top:12px"><button class="btn" onclick="watchTopup()" ${S.topupWatch ? 'disabled' : ''}>Tôi đã chuyển khoản</button></div>
+    <div class="pad" style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+      <label class="fl" for="tpamt">Số tiền bạn đã chuyển<input id="tpamt" class="inp mono" type="number" min="10000" step="1000" value="${a}"></label>
+      <button class="btn" id="tpBtn" onclick="requestTopup()">Tôi đã chuyển khoản</button>
+      <small class="note">Shop kiểm tra tài khoản rồi cộng tiền + thưởng vào ví trong vài phút (8h–23h).</small></div>
   </div><div class="wr"><div class="h2">Lịch sử ví</div><div class="hist">
     ${S.ledger.map(h => `<div class="hrow"><div>${esc(h.note || h.kind)}<small>${ftime(h.created_at)}${h.ref ? ' · ' + esc(h.ref) : ''}</small></div><div class="mono ${h.delta > 0 ? 'plus-amt' : 'minus-amt'}">${h.delta > 0 ? '+' : '−'}${vnd(Math.abs(h.delta))}</div></div>`).join('') || '<div class="empty">Chưa có giao dịch</div>'}
   </div></div></div>`;
 }
-function watchTopup() {
-  const start = Number(S.me.balance); S.topupWatch = true; renderWallet(); toast('Đang chờ tiền về, thường dưới 1 phút');
+async function requestTopup() {
+  const amt = Math.round(Number($('#tpamt').value)); const btn = $('#tpBtn');
+  btn.disabled = true;
+  const { error } = await sb.rpc('request_topup', { p_amount: amt });
+  if (error) { btn.disabled = false; return toast(errText(error)); }
+  toast('Đã báo shop, chờ xác nhận'); await loadMe(); render();
+}
+function startTopupPoll() {
+  if (POLLS.topup) return;
   startPoll('topup', async () => {
-    const { data } = await sb.from('profiles').select('balance').eq('id', S.user.id).single();
-    if (data && Number(data.balance) > start) { stopPoll('topup'); S.topupWatch = null; await loadMe(); toast('+' + vnd(Number(data.balance) - start) + ' vào ví'); render(); }
-  }, 4000, 10 * 60 * 1000);
-  setTimeout(() => { if (S.topupWatch) { S.topupWatch = null; render(); } }, 10 * 60 * 1000);
+    const { data } = await sb.from('topup_requests').select('*').order('created_at', { ascending: false }).limit(10);
+    if (!data) return;
+    const was = (S.topups || []).filter(t => t.status === 'pending').map(t => t.id);
+    const done = data.filter(t => was.includes(t.id) && t.status !== 'pending');
+    if (done.length) {
+      await loadMe(); render();
+      done.forEach(t => toast(t.status === 'approved' ? `+${vnd(t.credited)} vào ví` : `Yêu cầu nạp ${vnd(t.amount)} không được duyệt`));
+    }
+    if (!data.some(t => t.status === 'pending')) stopPoll('topup');
+  }, 8000, 60 * 60 * 1000);
 }
 
 // ======================= TIER / ORDERS =======================

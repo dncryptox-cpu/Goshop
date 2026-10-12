@@ -13,7 +13,10 @@ const GI_ERR = {
   CANNOT_CANCEL: 'Không huỷ được đơn này',
   VARIANT_NOT_STOCKABLE: 'Gói "Shop xử lý" không nhập kho',
   NOTE_REQUIRED: 'Cần ghi chú lý do',
-  USER_NOT_FOUND: 'Không tìm thấy khách'
+  USER_NOT_FOUND: 'Không tìm thấy khách',
+  BAD_AMOUNT: 'Số tiền không hợp lệ (tối thiểu 10.000đ)',
+  TOO_MANY_PENDING: 'Bạn đang có 3 yêu cầu nạp chờ duyệt, vui lòng đợi shop xác nhận',
+  TOPUP_NOT_PENDING: 'Yêu cầu nạp này đã được xử lý'
 };
 const errText = e => { const m = (e && (e.message || e.error_description)) || String(e); const k = Object.keys(GI_ERR).find(k => m.includes(k)); return k ? GI_ERR[k] : m; };
 
