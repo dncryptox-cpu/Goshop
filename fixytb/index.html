@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FixYTB · Go DNC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap">
+<style>
+/* Một cột cho điện thoại. Mỗi màn hình: 1 dòng trạng thái lớn + 1 việc cần làm + 1 nút chính. */
+:root{
+  --bg:#f3f5f4; --card:#ffffff; --sunk:#eef2f0; --ink:#111a17; --mute:#5b6a64; --line:#dce3e0;
+  --acc:#0b6b5f; --acc-ink:#ffffff; --acc-soft:#e1f1ee;
+  --ok:#137a3a; --ok-soft:#e3f4e9; --warn:#9a5300; --warn-soft:#fcf0dc; --bad:#b3123a; --bad-soft:#fde7ec; --info:#1d4fc0; --info-soft:#e6edfc;
+  --g-blue:#1a73e8; --g-red:#d93025;
+  --f:"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0d1311; --card:#151e1b; --sunk:#1b2622; --ink:#e7eeeb; --mute:#97a8a1; --line:#2a3632;
+  --acc:#35c6b3; --acc-ink:#04201b; --acc-soft:#123029;
+  --ok:#5fd38a; --ok-soft:#142a1d; --warn:#f2b45a; --warn-soft:#2d2312; --bad:#ff7d96; --bad-soft:#341720; --info:#93b4ff; --info-soft:#18223b;
+  --g-blue:#8ab4f8; --g-red:#f28b82; color-scheme:dark; }}
+:root[data-theme="dark"]{
+  --bg:#0d1311; --card:#151e1b; --sunk:#1b2622; --ink:#e7eeeb; --mute:#97a8a1; --line:#2a3632;
+  --acc:#35c6b3; --acc-ink:#04201b; --acc-soft:#123029;
+  --ok:#5fd38a; --ok-soft:#142a1d; --warn:#f2b45a; --warn-soft:#2d2312; --bad:#ff7d96; --bad-soft:#341720; --info:#93b4ff; --info-soft:#18223b;
+  --g-blue:#8ab4f8; --g-red:#f28b82; color-scheme:dark; }
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--f);font-size:17px;line-height:1.5;padding-inline:16px;padding-block:14px 48px;-webkit-text-size-adjust:100%}
+.wrap{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3,p{margin:0}
+h1,h2{text-wrap:balance;line-height:1.25}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:var(--acc)}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px;border-radius:8px}
+
+.top{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--mute);font-weight:600}
+.logo{width:26px;height:26px;border-radius:7px;background:var(--acc);color:var(--acc-ink);display:grid;place-items:center;font-size:10px;font-weight:800}
+
+.lookup{display:flex;flex-direction:column;gap:12px;padding-top:12px}
+.lookup h1{font-size:26px;font-weight:800}
+.lookup p{color:var(--mute)}
+input[type=email],input[type=text]{width:100%;min-width:0;font:inherit;font-size:18px;color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:14px;padding:14px 16px}
+input:focus{border-color:var(--acc);outline:none}
+.err{color:var(--bad);font-size:15px}
+
+.who{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 8px 8px 14px;font-size:15px}
+.who b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:14px;padding:16px;font-weight:700;font-size:17px;background:var(--acc);color:var(--acc-ink);text-decoration:none;min-height:56px}
+.btn:disabled{opacity:.6}
+.btn.ghost{background:var(--card);color:var(--ink);border:2px solid var(--line)}
+.btn.soft{background:var(--acc-soft);color:var(--acc)}
+.btn.ok{background:var(--ok);color:var(--card)}
+.btn.small{width:auto;min-height:0;padding:8px 12px;font-size:14px;border-radius:10px}
+.link{background:none;border:0;color:var(--acc);font-weight:600;padding:8px 0;text-align:center;font-size:15px}
+
+.hero{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:20px;border-radius:20px;background:var(--card);border:1px solid var(--line)}
+.hero .ic{width:52px;height:52px;border-radius:50%;display:grid;place-items:center}
+.hero .ic svg{width:28px;height:28px}
+.hero h2{font-size:23px;font-weight:800}
+.hero p{color:var(--mute);font-size:16px}
+.hero p b{color:var(--ink)}
+.t-ok .ic{background:var(--ok-soft);color:var(--ok)} .t-warn .ic{background:var(--warn-soft);color:var(--warn)}
+.t-bad .ic{background:var(--bad-soft);color:var(--bad)} .t-info .ic{background:var(--info-soft);color:var(--info)}
+.t-act .ic{background:var(--acc-soft);color:var(--acc)}
+.facts{display:flex;flex-wrap:wrap;gap:6px}
+.fact{font-size:13px;background:var(--sunk);border-radius:999px;padding:3px 10px;color:var(--mute)}
+.fact b{color:var(--ink);font-weight:600}
+
+.track{display:flex;flex-direction:column;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+.tr{display:grid;grid-template-columns:24px 1fr;gap:12px;position:relative;padding-bottom:16px}
+.tr:last-child{padding-bottom:0}
+.tr .dot{width:24px;height:24px;border-radius:50%;border:2px solid var(--line);background:var(--card);display:grid;place-items:center;font-size:12px;font-weight:800;color:var(--acc-ink)}
+.tr.done .dot{background:var(--acc);border-color:var(--acc)}
+.tr.now .dot{border-color:var(--warn);background:var(--warn-soft)}
+.tr:not(:last-child)::after{content:"";position:absolute;left:11px;top:26px;bottom:2px;width:2px;background:var(--line)}
+.tr.done:not(:last-child)::after{background:var(--acc)}
+.tr b{display:block;font-size:16px}
+.tr span{font-size:14px;color:var(--mute)}
+@media (prefers-reduced-motion:no-preference){ .tr.now .dot{animation:pulse 1.6s ease-in-out infinite} @keyframes pulse{50%{box-shadow:0 0 0 6px var(--warn-soft)}} }
+
+.alert{border-radius:14px;padding:14px 16px;font-size:15px;display:flex;gap:10px;align-items:flex-start;color:var(--ink)}
+.alert svg{flex:none;width:22px;height:22px;margin-top:1px}
+.alert.bad{background:var(--bad-soft)} .alert.bad svg{color:var(--bad)}
+.alert.warn{background:var(--warn-soft)} .alert.warn svg{color:var(--warn)}
+.alert.info{background:var(--info-soft)} .alert.info svg{color:var(--info)}
+
+.stepper{display:flex;gap:6px}
+.stepper i{flex:1;height:6px;border-radius:3px;background:var(--line)}
+.stepper i.on{background:var(--acc)}
+.step{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:18px;display:flex;flex-direction:column;gap:14px}
+.step .k{font-size:13px;font-weight:700;color:var(--acc);letter-spacing:.06em;text-transform:uppercase}
+.step h3{font-size:22px;font-weight:800;line-height:1.25}
+.step p{color:var(--mute);font-size:16px}
+.step p b{color:var(--ink)}
+
+.mock{border:1px solid var(--line);border-radius:14px;background:var(--sunk);padding:12px;display:flex;flex-direction:column;gap:8px;font-size:14px}
+.mock .bar{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mute)}
+.mock .bar i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.mock .scr{background:var(--card);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.mock .t{font-weight:700;font-size:15px}
+.mock .m{color:var(--mute);font-size:13px}
+.mock .gbtn{align-self:flex-start;border-radius:999px;padding:6px 14px;font-size:13px;font-weight:600;border:1px solid var(--line);color:var(--g-blue);background:var(--card)}
+.mock .gbtn.red{color:var(--g-red)}
+.mock .gbtn.fill{background:var(--g-blue);color:var(--card);border-color:var(--g-blue)}
+.mock .hl{box-shadow:0 0 0 3px var(--card),0 0 0 5px var(--acc)}
+.mock .cap{font-size:12px;color:var(--mute);text-align:center}
+.av{display:flex;align-items:center;gap:8px}
+.av span{width:26px;height:26px;border-radius:50%;background:var(--acc-soft);color:var(--acc);display:grid;place-items:center;font-size:12px;font-weight:700}
+.yt{display:flex;align-items:center;gap:6px;font-weight:800;font-size:16px}
+.yt svg{width:26px;height:18px}
+
+.choices{display:flex;flex-direction:column;gap:10px}
+.choice{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;background:var(--card);border:2px solid var(--line);border-radius:16px;padding:14px}
+.choice[aria-pressed="true"]{border-color:var(--acc);background:var(--acc-soft)}
+.choice .r{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--line);margin-top:2px;background:var(--card)}
+.choice[aria-pressed="true"] .r{border:7px solid var(--acc)}
+.choice b{display:block;font-size:16px}
+.choice span{font-size:14px;color:var(--mute)}
+
+.more{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.more>button{width:100%;display:flex;align-items:center;gap:12px;background:none;border:0;padding:14px 16px;text-align:left}
+.more>*+button{border-top:1px solid var(--line)}
+.more>button b{display:block;font-size:16px}
+.more>button span{font-size:14px;color:var(--mute)}
+.more>button .chev{margin-left:auto;color:var(--mute);transition:transform .15s;display:grid}
+.more>button[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.more .em{width:40px;height:40px;border-radius:12px;background:var(--sunk);display:grid;place-items:center;flex:none}
+.more .em svg{width:22px;height:22px;color:var(--acc)}
+.panel{padding:4px 16px 16px;display:flex;flex-direction:column;gap:10px}
+.cred{background:var(--sunk);border-radius:12px;padding:12px;display:grid;gap:6px;font-size:15px}
+.cred div{display:flex;justify-content:space-between;gap:10px}
+.cred span{color:var(--mute)}
+.cred b{font-weight:600;word-break:break-all;text-align:right}
+.otp{font-size:28px;font-weight:800;letter-spacing:.12em;text-align:center;font-variant-numeric:tabular-nums}
+.sec-title{font-size:14px;font-weight:700;color:var(--mute);margin-top:4px}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:12px 16px;border-radius:12px;font-size:15px;max-width:calc(100% - 32px);z-index:9}
+.dbg{font:12px/1.5 ui-monospace,Menlo,monospace;background:var(--sunk);border-radius:10px;padding:10px;color:var(--mute);word-break:break-all}
+.spin{width:18px;height:18px;border:2.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+footer{text-align:center;font-size:13px;color:var(--mute);padding-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div class="logo">DNC</div>Go DNC · YouTube Premium</div>
+  <main id="app" class="wrap" style="width:100%"></main>
+  <footer>© 2026 Go DNC</footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  const API = "https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec";
+  const FAMILY_URL = "https://myaccount.google.com/family/details";
+  const YT_URL = "https://www.youtube.com/";
+  const RECENT_DAYS = 7;
+  const SOURCE = "Khách (fixytb)";
+  const MIN = 60 * 1000;
+  const params = new URLSearchParams(location.search);
+  const DEBUG = params.get("debug") === "1";
+
+  let R = null, V = null, email = "", ui = {}, loading = false, lookErr = "", totpTimer = null;
+
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  const isEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim());
+  const T = v => { if (!v) return 0; const t = new Date(v).getTime(); return isNaN(t) ? 0 : t; };
+  const ago = t => { const m = Math.max(0, Math.round((Date.now()-t)/MIN)); if (m < 1) return "vừa xong"; if (m < 60) return m+" phút trước"; const h = Math.floor(m/60); if (h < 24) return h+" giờ trước"; return Math.floor(h/24)+" ngày trước"; };
+  const clock = t => { const d = new Date(t); return d.toLocaleTimeString("vi-VN",{hour:"2-digit",minute:"2-digit"})+" "+d.toLocaleDateString("vi-VN",{day:"2-digit",month:"2-digit"}); };
+  const dmy = v => { if (!v) return ""; const s = String(v).trim(); if (/^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}$/.test(s)) return s; const t = T(v); return t ? new Date(t).toLocaleDateString("vi-VN",{day:"2-digit",month:"2-digit",year:"numeric"}) : s; };
+  const mask = e => { const [u,d] = String(e).split("@"); return d ? u.slice(0,4)+"•••@"+d : e; };
+  const digits = v => String(v||"").replace(/\D+/g,"");
+  function toast(msg){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true,3000); }
+
+  const ICON = {
+    check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    arrow:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+    stop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M8 8l8 8"/></svg>',
+    warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17H2.5z"/><path d="M12 10v4M12 17.5v.01"/></svg>',
+    info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg>',
+    mail:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6l8.5 7 8.5-7"/></svg>',
+    key:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></svg>',
+    redo:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6M20 4v5h-5"/></svg>',
+    chev:'<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+    ext:'<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
+    yt:'<svg viewBox="0 0 28 20"><rect width="28" height="20" rx="5" fill="#ff0033"/><path d="M11 6l7 4-7 4z" fill="#fff"/></svg>',
+  };
+
+  async function api(action, payload, timeoutMs = 60000){
+    const url = new URL(API); url.searchParams.append("action", action);
+    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url.toString(), { method:"POST", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body: JSON.stringify(payload), signal: ctl.signal });
+      const text = await res.text();
+      try { return JSON.parse(text); } catch(e){ throw new Error("Hệ thống đang bảo trì, thử lại sau ít phút."); }
+    } catch(e){
+      if (e.name === "AbortError") throw new Error("Mạng chậm. Đợi một chút rồi thử lại, đừng bấm nhiều lần.");
+      throw e;
+    } finally { clearTimeout(to); }
+  }
+
+  /* ---------- suy ra trạng thái ---------- */
+  function resolve(r){
+    const tf = r.thayfam || null, rj = r.rejoin || null, fam = r.fam || null;
+    const open = r.has_ticket && r.status !== "Đã xử lý";
+    const ticketAt = T(r.created_at);
+    const rjAfter = t => rj && T(rj.created_at) >= t;
+    const base = { rn: r.stt_group, ctv: r.ctv || "", hsd: dmy(r.ngay_renew), act: r.activity_status || "" };
+    const fromRejoin = (extra) => {
+      if (rj.type === "da_vao") return { ...base, ...extra, kind:"joined", joinedAt:T(rj.created_at), why:"REJOIN da_vao" };
+      if (rj.status === "Đã mời lại") return { ...base, ...extra, kind:"invited", at:T(rj.handled_at)||T(rj.created_at), resent:true, why:"REJOIN Đã mời lại" };
+      return { ...base, ...extra, kind:"reinvite", reqAt:T(rj.created_at), reason:rj.reason||"Không thấy lời mời", why:"REJOIN moi_lai "+(rj.status||"Mới") };
+    };
+    if (fam && fam.due) return { ...base, kind:"pending", due:true, famRenew: fam.renew, act:"Không hoạt động", why:"STOCK đến hạn " + fam.renew };
+    if (tf){
+      const at = T(tf.at), extra = { at, newOwner: tf.new_owner, legacy:false };
+      if (open && ticketAt > at) return { ...base, kind:"pending", why:"Ticket mở mới hơn lần thay fam" };
+      if (!tf.invited){
+        // Chưa được mời: hết hạn thật → báo gia hạn; còn hạn (vd vừa gia hạn / vừa chuyển fam) → đang xếp nhóm
+        const m = String(tf.hsd || base.hsd || "").match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        const exp = m ? new Date(+m[3], +m[2]-1, +m[1], 23, 59).getTime() : 0;
+        if (exp && exp >= Date.now()) return { ...base, kind:"pending", act:"Không hoạt động", why:"THAYFAM_LOG chưa mời, HSD còn " + (tf.hsd||base.hsd) };
+        return { ...base, ...extra, kind:"expired", why:"THAYFAM_LOG chưa mời, hết hạn" };
+      }
+      if (rjAfter(at)) return fromRejoin(extra);
+      return { ...base, ...extra, kind:"invited", why:"THAYFAM_LOG đã mời" };
+    }
+    if (open) return { ...base, kind:"pending", why:"Ticket " + r.status };
+    const resolvedAt = T(r.resolved_at);
+    if (r.has_ticket && resolvedAt && Date.now() - resolvedAt < RECENT_DAYS*24*60*MIN){
+      const extra = { at: resolvedAt, newOwner:"", legacy:true };
+      if (rjAfter(resolvedAt)) return fromRejoin(extra);
+      return { ...base, ...extra, kind:"invited", why:"Ticket Đã xử lý gần đây" };
+    }
+    return { ...base, kind:"ok", why: r.has_ticket ? "Ticket cũ đã đóng" : "Chưa có ticket" };
+  }
+
+  /* ---------- tra cứu ---------- */
+  async function lookup(raw, quiet){
+    const em = String(raw||"").trim().toLowerCase();
+    lookErr = "";
+    if (!isEmail(em)){ lookErr = "Email chưa đúng. Ví dụ: tenban@gmail.com"; render(); return; }
+    if (!quiet){ loading = true; render(); }
+    try {
+      let res = await api("checkStatusV2", { email: em });
+      if (res && !res.success && /Action không hợp lệ/.test(res.message||"")) res = await api("checkStatus", { email: em });
+      if (!res || !res.success){ lookErr = (res && res.message) || "Không tìm thấy email này."; if (!quiet){ R = null; V = null; email = ""; } return; }
+      const prevKind = (email === em && V) ? V.kind : null;
+      if (email !== em) ui = { typed: em };
+      email = em; R = res; V = resolve(res);
+      if (prevKind && prevKind !== V.kind){ ui = {}; if (quiet) toast("Trạng thái đã thay đổi."); }
+      try { history.replaceState(null, "", location.pathname + "?email=" + encodeURIComponent(em) + (DEBUG ? "&debug=1" : "")); } catch(e){}
+    } catch(e){ lookErr = e.message; }
+    finally { loading = false; render(); }
+  }
+
+  /* ---------- khung ---------- */
+  function render(){
+    if (totpTimer){ clearInterval(totpTimer); totpTimer = null; }
+    const app = $("#app");
+    if (!V){ app.innerHTML = lookupView(); const i = $("#email"); if (i) i.value = ui.typed || ""; return; }
+    app.innerHTML = `<div class="who"><b>${esc(email)}</b><button class="btn ghost small" data-act="change">Đổi email</button></div>
+      ${({ invited, pending, reinvite, expired, joined, ok })[V.kind]()}
+      ${DEBUG ? `<div class="dbg">${esc(V.why)}<br>${esc(JSON.stringify({status:R.status,act:R.activity_status,fam:R.fam,thayfam:R.thayfam,rejoin:R.rejoin}))}</div>` : ""}`;
+    if (ui.bh && ui.bh.secret2fa) startTotp();
+  }
+
+  function lookupView(){
+    return `<form class="lookup" id="lookupForm" novalidate>
+      <h1>YouTube Premium của bạn có vấn đề?</h1>
+      <p>Nhập email bạn dùng để xem YouTube. Chúng tôi sẽ cho bạn biết cần làm gì.</p>
+      <input type="email" id="email" placeholder="tenban@gmail.com" autocomplete="email" inputmode="email" aria-label="Email">
+      ${lookErr ? `<p class="err">${esc(lookErr)}</p>` : ""}
+      <button class="btn" type="submit" ${loading?"disabled":""}>${loading?'<span class="spin"></span> Đang kiểm tra…':"Kiểm tra"}</button>
+    </form>`;
+  }
+
+  const hero = (tone, icon, title, sub, factHtml) => `<section class="hero t-${tone}"><div class="ic">${ICON[icon]}</div><h2>${title}</h2>${sub?`<p>${sub}</p>`:""}${factHtml?`<div class="facts">${factHtml}</div>`:""}</section>`;
+  const facts = (...items) => items.filter(Boolean).map(([k,v]) => `<span class="fact">${k} <b>${esc(v)}</b></span>`).join("");
+  const alertBox = (tone, icon, html) => `<div class="alert ${tone}">${ICON[icon]}<div>${html}</div></div>`;
+  const busy = k => ui.busy === k;
+  const spinOr = (k, label) => busy(k) ? '<span class="spin"></span> Đang gửi…' : label;
+
+  /* ---------- màn hình Google mô phỏng ---------- */
+  const mockLeave = () => `<div class="mock" aria-hidden="true"><div class="bar"><i></i><i></i><i></i> myaccount.google.com</div>
+    <div class="scr"><div class="t">Nhóm gia đình của bạn không hoạt động</div><div class="m">Hiện tại bạn không thể truy cập vào sản phẩm…</div><span class="gbtn red hl">Rời khỏi nhóm gia đình</span></div>
+    <div class="cap">Màn hình sẽ giống thế này</div></div>`;
+  const mockActive = () => `<div class="mock" aria-hidden="true"><div class="scr"><div class="t">Gia đình của bạn trên Google</div><div class="av"><span>Q</span><div><div>Người quản lý</div><div class="m">Quản lý gia đình</div></div></div><div class="av"><span>B</span><div><div>Bạn</div><div class="m">Thành viên</div></div></div></div></div>`;
+  const mockInvite = (owner) => `<div class="mock" aria-hidden="true"><div class="bar"><i></i><i></i><i></i> myaccount.google.com</div>
+    <div class="scr"><div class="t">Bạn được mời tham gia nhóm gia đình</div><div class="m">${owner ? "Từ " + esc(mask(owner)) : "Từ người quản lý nhóm mới"}</div><span class="gbtn fill hl">Tham gia</span></div>
+    <div class="cap">Lời mời cũng có trong Gmail của bạn</div></div>`;
+  const mockYT = () => `<div class="mock" aria-hidden="true"><div class="scr" style="align-items:center"><div class="yt">${ICON.yt} Premium</div><div class="m">Logo YouTube có chữ Premium là đã dùng được</div></div></div>`;
+
+  /* ---------- 1. Đã được mời: từng bước một ---------- */
+  function invited(){
+    if (ui.mode === "problem") return problemView();
+    const step = ui.step || 0;
+    const steps = [
+      { k:"Bước 1/3", t: V.legacy ? "Kiểm tra nhóm cũ" : "Rời nhóm cũ",
+        p: V.legacy ? "Mở trang Gia đình. Nếu báo <b>không hoạt động</b> thì bấm <b>Rời khỏi nhóm gia đình</b>. Nếu vẫn bình thường và YouTube có Premium thì bạn không cần làm gì."
+                    : "Mở trang Gia đình của Google, bấm <b>Rời khỏi nhóm gia đình</b>.",
+        mock: mockLeave(), open: FAMILY_URL, openLabel:"Mở trang Gia đình",
+        extra: alertBox("warn","warn","Nếu trang vẫn hiện <b>người quản lý và các thành viên bình thường</b> thì <b>đừng rời nhóm</b>. Google sẽ khoá đổi nhóm 12 tháng.") + `<button class="link" data-act="stillActive">Nhóm cũ của tôi vẫn hiện bình thường</button>` },
+      { k:"Bước 2/3", t:"Bấm Tham gia nhóm mới", p:"Đợi 30 giây rồi mở lại trang Gia đình. Bấm <b>Tham gia</b> ở lời mời.",
+        mock: mockInvite(V.newOwner), open: FAMILY_URL, openLabel:"Mở lại trang Gia đình" },
+      { k:"Bước 3/3", t:"Kiểm tra YouTube", p:"Mở YouTube, bấm ảnh đại diện. Thấy chữ <b>Premium</b> là xong.", mock: mockYT(), open: YT_URL, openLabel:"Mở YouTube" },
+    ];
+    const bar = `<div class="stepper" aria-label="Tiến độ">${[0,1,2,3].map(i => `<i class="${i<=step?"on":""}"></i>`).join("")}</div>`;
+    const top = hero("act","check", V.resent ? "Đã gửi lại lời mời cho bạn" : (V.legacy ? "Sự cố đã được xử lý" : "Nhóm mới đã sẵn sàng"),
+      V.legacy ? "Làm theo các bước dưới đây để dùng lại Premium." : "Làm 3 bước dưới đây, mất khoảng 1 phút.",
+      facts(["Nhóm", V.rn], [V.legacy ? "Xử lý" : "Mời", ago(V.at)]));
+    if (step >= 3) return top + bar + `<section class="step"><span class="k">Kết quả</span><h3>Bạn đã dùng được Premium chưa?</h3>
+        <button class="btn ok" data-act="joined" ${busy("joined")?"disabled":""}>${spinOr("joined","Rồi, đã dùng được")}</button>
+        <button class="btn ghost" data-act="problem">Chưa được</button>
+        <button class="link" data-act="back">← Xem lại các bước</button></section>`;
+    const s = steps[step];
+    return top + bar + `<section class="step"><span class="k">${s.k}</span><h3>${s.t}</h3><p>${s.p}</p>${s.mock}
+      <a class="btn soft" href="${s.open}" target="_blank" rel="noopener">${s.openLabel} ${ICON.ext}</a>
+      <button class="btn" data-act="next">Xong, bước tiếp ${ICON.arrow}</button>
+      ${s.extra || ""}
+      ${step>0?`<button class="link" data-act="back">← Bước trước</button>`:""}</section>`;
+  }
+
+  function problemView(){
+    const pick = ui.reason || "Không thấy lời mời";
+    const opt = (v, d) => `<button type="button" class="choice" data-act="reason" data-v="${esc(v)}" aria-pressed="${pick===v}"><span class="r"></span><div><b>${esc(v)}</b><span>${d}</span></div></button>`;
+    return hero("info","info","Bạn gặp chuyện gì?","Chọn đúng trường hợp để nhân viên mời lại cho bạn.") + `
+      <div class="choices">
+        ${opt("Không thấy lời mời","Đã rời nhóm cũ nhưng không thấy lời mời ở trang Gia đình và Gmail.")}
+        ${opt("Bấm tham gia bị lỗi","Ví dụ: “không thể tham gia”, “đã đổi nhóm trong 12 tháng”.")}
+        ${opt("Nhóm cũ vẫn hoạt động","Trang Gia đình vẫn thấy người quản lý cũ, nhưng YouTube mất Premium.")}
+      </div>
+      <input type="text" id="zalo" inputmode="tel" placeholder="Số Zalo (không bắt buộc)" value="${esc(ui.zalo||"")}">
+      <button class="btn" data-act="sendNF" ${busy("sendNF")?"disabled":""}>${spinOr("sendNF","Gửi yêu cầu mời lại")}</button>
+      <button class="link" data-act="cancelProblem">← Quay lại</button>`;
+  }
+
+  /* ---------- 2. Đang xử lý ---------- */
+  function pending(){
+    const active = !V.due && V.act === "Đang hoạt động";
+    const title = active ? "Nhóm của bạn đang được kiểm tra" : (V.due ? "Nhóm của bạn đang được thay mới" : "Nhóm của bạn đang được xử lý");
+    const sub = active ? "Kỹ thuật đang kiểm tra. Thường xong trong 15–60 phút." : "<b>Bạn chưa cần làm gì.</b> Khi xong, trang này tự hiện hướng dẫn vào nhóm mới.";
+    const tr = (cls, b, s) => `<div class="tr ${cls}"><span class="dot">${cls==="done"?"✓":""}</span><div><b>${b}</b><span>${s}</span></div></div>`;
+    const track = `<section class="track">
+      ${tr("done", V.due ? "Nhóm đến hạn" : "Đã nhận báo lỗi", V.due ? "Hạn nhóm hiện tại: " + esc(V.famRenew||"") : "Đội kỹ thuật đã biết")}
+      ${tr("now", active ? "Đang kiểm tra nhóm" : "Đang chuẩn bị nhóm mới", "Trang tự cập nhật, bạn cứ để mở")}
+      ${tr("", active ? "Khắc phục xong" : "Mời bạn vào nhóm mới", "Lời mời gửi vào Gmail của bạn")}
+    </section>`;
+    return hero("warn","clock", title, sub, facts(["Nhóm", V.rn], V.hsd && ["Hạn của bạn", V.hsd]))
+      + (active ? alertBox("bad","stop","<b>Đừng rời nhóm.</b> Nhóm của bạn vẫn đang chạy. Rời lúc này Google sẽ khoá đổi nhóm 12 tháng.") : "")
+      + track + whileWaiting();
+  }
+
+  function whileWaiting(){
+    const p = ui.panel;
+    return `<div class="sec-title">Cần dùng YouTube ngay?</div><div class="more">
+      <button data-act="panel" data-p="bh" aria-expanded="${p==="bh"}"><span class="em">${ICON.key}</span><div><b>Mượn tài khoản tạm</b><span>Dùng Premium ngay trong lúc chờ</span></div><span class="chev">${ICON.chev}</span></button>
+      ${p==="bh" ? bhPanel() : ""}
+      <button data-act="panel" data-p="mp" aria-expanded="${p==="mp"}"><span class="em">${ICON.mail}</span><div><b>Đổi sang email khác</b><span>Mời một email khác của bạn vào nhóm</span></div><span class="chev">${ICON.chev}</span></button>
+      ${p==="mp" ? mpPanel() : ""}
+    </div>`;
+  }
+
+  function bhPanel(){
+    const w = ui.bh;
+    if (!w) return `<div class="panel"><p style="font-size:15px;color:var(--mute)">Cấp 1 tài khoản Premium tạm cho bạn. Mở lại sẽ ra đúng tài khoản cũ.</p>
+      ${ui.bhErr ? `<p class="err">${esc(ui.bhErr)}</p>` : ""}
+      <button class="btn" data-act="getBH" ${busy("getBH")?"disabled":""}>${busy("getBH")?'<span class="spin"></span> Đang cấp…':"Lấy tài khoản tạm"}</button></div>`;
+    return `<div class="panel">
+      ${alertBox("bad","stop","<b>Không đổi mật khẩu</b> hay bất kỳ thông tin nào của tài khoản này.")}
+      <div class="cred"><div><span>Email</span><b>${esc(w.email)}</b></div><div><span>Mật khẩu</span><b>${esc(w.pass)}</b></div>${w.mkp?`<div><span>Mail khôi phục</span><b>${esc(w.mkp)}</b></div>`:""}</div>
+      ${w.secret2fa ? `<div class="cred"><span style="text-align:center">Mã xác minh · đổi sau <b id="totpSec">30</b>s</span><div class="otp" id="totpCode">--- ---</div></div>` : ""}
+      <p style="font-size:14px;color:var(--mute)">Đăng xuất YouTube, đăng nhập bằng email và mật khẩu trên. Google hỏi mã thì nhập mã 6 số đang hiện.</p>
+      <button class="btn ghost" data-act="copyBH">Sao chép thông tin</button></div>`;
+  }
+
+  function mpPanel(){
+    const ex = ui.mpExisting;
+    return `<div class="panel">
+      ${ex ? alertBox("info","info",`Bạn đã gửi yêu cầu đổi sang <b>${esc(ex.mail_phu)}</b> (${esc(ex.status)}).`) : ""}
+      ${ui.mpDone ? alertBox("info","check", esc(ui.mpDone)) : ""}
+      <input type="email" id="mpEmail" placeholder="Email khác của bạn" inputmode="email">
+      ${ui.mpErr ? `<p class="err">${esc(ui.mpErr)}</p>` : ""}
+      <button class="btn" data-act="sendMP" ${busy("sendMP")?"disabled":""}>${spinOr("sendMP","Gửi yêu cầu")}</button></div>`;
+  }
+
+  /* ---------- 3. Chờ mời lại ---------- */
+  function reinvite(){
+    return hero("info","redo","Đang gửi lại lời mời cho bạn", "Thường trong 15–30 phút. Trang tự cập nhật khi xong, bạn không cần báo lại.", facts(["Bạn báo", V.reason], ["Lúc", clock(V.reqAt)]))
+      + whileWaiting();
+  }
+
+  /* ---------- 4. Hết hạn ---------- */
+  function expired(){
+    return hero("bad","stop","Gói của bạn đã hết hạn", `Nhóm đã được thay mới nhưng gói của bạn hết hạn ngày <b>${esc(V.hsd||"?")}</b> nên chưa được mời.`)
+      + alertBox("info","info", `Nhắn ${V.ctv ? "<b>" + esc(V.ctv) + "</b>" : "người đã bán cho bạn"} để gia hạn. Gia hạn xong bạn sẽ được mời và trang này hiện hướng dẫn vào nhóm.`);
+  }
+
+  /* ---------- 5. Đã vào lại ---------- */
+  function joined(){
+    return hero("ok","check","Bạn đang dùng nhóm mới", "Mọi thứ đã ổn. Chúc bạn xem YouTube vui vẻ.", facts(["Nhóm", V.rn], V.hsd && ["Hạn của bạn", V.hsd]))
+      + `<button class="link" data-act="reportAgain">YouTube lại mất Premium? Báo lỗi</button>`;
+  }
+
+  /* ---------- 6. Bình thường / báo lỗi ---------- */
+  function ok(){
+    if (!ui.report) return hero("ok","check","Nhóm của bạn đang hoạt động bình thường", "Không có sự cố nào được ghi nhận.", facts(["Nhóm", V.rn], V.hsd && ["Hạn của bạn", V.hsd]))
+      + `<button class="btn ghost" data-act="openReport">YouTube vẫn mất Premium? Báo lỗi</button>`;
+    const pick = ui.sym || "";
+    const opt = (v, t, d, mock) => `<button type="button" class="choice" data-act="sym" data-v="${v}" aria-pressed="${pick===v}"><span class="r"></span><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:8px"><div><b>${t}</b><span>${d}</span></div>${mock}</div></button>`;
+    return hero("info","info","Trang Gia đình của bạn trông thế nào?", "Mở trang Gia đình của Google, rồi chọn hình giống màn hình của bạn.")
+      + `<a class="btn soft" href="${FAMILY_URL}" target="_blank" rel="noopener">Mở trang Gia đình ${ICON.ext}</a>
+      <div class="choices">
+        ${opt("Đang hoạt động","Vẫn thấy nhóm bình thường","Có người quản lý và các thành viên.", mockActive())}
+        ${opt("Không hoạt động","Báo “không hoạt động”","Có nút Rời khỏi nhóm gia đình.", mockLeave())}
+      </div>
+      <input type="text" id="zalo" inputmode="tel" placeholder="Số Zalo (không bắt buộc)" value="${esc(ui.zalo||"")}">
+      ${ui.reportErr ? `<p class="err">${esc(ui.reportErr)}</p>` : ""}
+      <button class="btn" data-act="report" ${(!pick||busy("report"))?"disabled":""}>${pick ? spinOr("report","Gửi báo lỗi") : "Chọn 1 hình ở trên"}</button>
+      <button class="link" data-act="closeReport">← Quay lại</button>`;
+  }
+
+  /* ---------- TOTP ---------- */
+  function b32(str){ const a="ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"; const c=String(str).toUpperCase().replace(/[^A-Z2-7]/g,""); let bits=0,val=0,out=[]; for(const ch of c){ val=(val<<5)|a.indexOf(ch); bits+=5; if(bits>=8){ out.push((val>>>(bits-8))&255); bits-=8; } } return new Uint8Array(out); }
+  async function totp(secret){
+    const key = await crypto.subtle.importKey("raw", b32(secret), {name:"HMAC", hash:"SHA-1"}, false, ["sign"]);
+    const stp = Math.floor(Date.now()/30000); const buf = new ArrayBuffer(8); new DataView(buf).setUint32(4, stp);
+    const h = new Uint8Array(await crypto.subtle.sign("HMAC", key, buf)); const o = h[h.length-1] & 15;
+    const n = ((h[o]&127)<<24 | h[o+1]<<16 | h[o+2]<<8 | h[o+3]) % 1e6;
+    return { code: String(n).padStart(6,"0"), left: 30 - Math.floor(Date.now()/1000) % 30 };
+  }
+  function startTotp(){
+    const tick = async () => { try { const r = await totp(ui.bh.secret2fa); const c=$("#totpCode"), s=$("#totpSec"); if(c) c.textContent = r.code.slice(0,3)+" "+r.code.slice(3); if(s) s.textContent = r.left; } catch(e){} };
+    tick(); totpTimer = setInterval(tick, 1000);
+  }
+  async function copy(text){
+    try { await navigator.clipboard.writeText(text); toast("Đã sao chép."); }
+    catch(e){ const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); try{ document.execCommand("copy"); toast("Đã sao chép."); }catch(_){} ta.remove(); }
+  }
+
+  /* ---------- hành động ---------- */
+  async function run(key, fn){ if (ui.busy) return; ui.busy = key; render(); try { await fn(); } catch(e){ toast(e.message); } finally { ui.busy = null; render(); } }
+  const toTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
+
+  document.addEventListener("submit", e => { if (e.target.id === "lookupForm"){ e.preventDefault(); ui.typed = $("#email").value; lookup($("#email").value); } });
+  document.addEventListener("input", e => { if (e.target.id === "zalo") ui.zalo = e.target.value; });
+
+  document.addEventListener("click", async e => {
+    const b = e.target.closest("[data-act]"); if (!b) return;
+    const a = b.dataset.act;
+
+    if (a === "change"){ V = null; R = null; ui = { typed: email }; email = ""; lookErr = ""; render(); try { history.replaceState(null, "", location.pathname + (DEBUG ? "?debug=1" : "")); } catch(_){} return; }
+    if (a === "next"){ ui.step = (ui.step||0) + 1; render(); toTop(); return; }
+    if (a === "back"){ ui.step = Math.max(0, (ui.step||0) - 1); render(); toTop(); return; }
+    if (a === "problem"){ ui.mode = "problem"; render(); toTop(); return; }
+    if (a === "stillActive"){ ui.mode = "problem"; ui.reason = "Nhóm cũ vẫn hoạt động"; render(); toTop(); return; }
+    if (a === "cancelProblem"){ ui.mode = null; render(); return; }
+    if (a === "reason"){ ui.reason = b.dataset.v; render(); return; }
+    if (a === "openReport"){ ui.report = true; render(); toTop(); return; }
+    if (a === "closeReport"){ ui.report = false; render(); return; }
+    if (a === "sym"){ ui.sym = b.dataset.v; render(); return; }
+    if (a === "reportAgain"){ V = { ...V, kind:"ok" }; ui = { report:true }; render(); toTop(); return; }
+
+    if (a === "joined") return run(a, async () => {
+      const r = await api("submitRejoin", { email, type:"da_vao" });
+      if (!r.success) throw new Error(r.message || "Không gửi được.");
+      toast("Cảm ơn bạn!"); await lookup(email, true);
+    });
+
+    if (a === "sendNF") return run(a, async () => {
+      const r = await api("submitRejoin", { email, type:"moi_lai", reason: ui.reason || "Không thấy lời mời", zalo: digits(ui.zalo) });
+      if (!r.success) throw new Error(r.message || "Không gửi được.");
+      ui.mode = null; toast("Đã gửi yêu cầu mời lại."); await lookup(email, true); toTop();
+    });
+
+    if (a === "report") return run(a, async () => {
+      ui.reportErr = null;
+      const act = ui.sym;
+      const r = await api("submitReport", { email, message:"[fixytb] " + (act === "Đang hoạt động" ? "Mất Premium, nhóm vẫn hiện bình thường" : "Nhóm báo không hoạt động"), submitted_by: SOURCE, zalo_phone: digits(ui.zalo), activity_status: act });
+      if (!r.success){ ui.reportErr = r.message || "Không gửi được báo lỗi."; return; }
+      toast(r.is_duplicate ? "Báo lỗi đã được ghi nhận trước đó." : "Đã gửi báo lỗi."); await lookup(email, true); toTop();
+    });
+
+    if (a === "panel"){
+      ui.panel = ui.panel === b.dataset.p ? null : b.dataset.p; render();
+      if (ui.panel === "mp" && ui.mpExisting === undefined){
+        try { const r = await api("checkMailPhuStatus", { primaryEmail: email }); ui.mpExisting = r && r.has_existing ? r : null; } catch(_){ ui.mpExisting = null; }
+        render();
+      }
+      return;
+    }
+
+    if (a === "getBH") return run(a, async () => {
+      ui.bhErr = null;
+      const r = await api("assignWarrantyAccount", { customerEmail: email, ctvName: SOURCE });
+      if (!r.success){ ui.bhErr = r.message || "Không cấp được tài khoản tạm."; return; }
+      ui.bh = r;
+    });
+
+    if (a === "copyBH"){
+      const w = ui.bh; let code = ""; try { if (w.secret2fa) code = (await totp(w.secret2fa)).code; } catch(_){}
+      copy(["Email: "+w.email, "Mật khẩu: "+w.pass, w.mkp ? "Mail khôi phục: "+w.mkp : "", w.secret2fa ? "Mã 2FA (secret): "+w.secret2fa : "", code ? "Mã hiện tại: "+code : "", "Tài khoản tạm, KHÔNG đổi mật khẩu hay bất kỳ thông tin nào."].filter(Boolean).join("\n"));
+      return;
+    }
+
+    if (a === "sendMP"){
+      const mp = (($("#mpEmail")||{}).value||"").trim();
+      if (!isEmail(mp)){ ui.mpErr = "Email chưa đúng. Ví dụ: emailkhac@gmail.com"; render(); return; }
+      if (mp.toLowerCase() === email){ ui.mpErr = "Email này phải khác email hiện tại."; render(); return; }
+      return run(a, async () => {
+        ui.mpErr = null;
+        const r = await api("submitMailPhuRequest", { primaryEmail: email, mailPhu: mp });
+        if (!r.success){ ui.mpErr = r.message || "Không gửi được yêu cầu."; return; }
+        ui.mpDone = r.message; ui.mpExisting = { mail_phu: r.mail_phu, status: "Mới" };
+      });
+    }
+  });
+
+  // Tự kiểm tra lại khi khách đang chờ
+  setInterval(() => {
+    if (document.hidden || !email || !V || ui.busy || ui.mode || ui.panel || ui.report) return;
+    if (V.kind === "pending" || V.kind === "reinvite") lookup(email, true);
+  }, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && email && V && (V.kind === "pending" || V.kind === "reinvite") && !ui.busy && !ui.panel) lookup(email, true);
+  });
+
+  render();
+  const q = params.get("email");
+  if (q){ ui.typed = q; render(); lookup(q); }
+})();
+</script>
+</body>
+</html>

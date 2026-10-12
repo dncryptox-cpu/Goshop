@@ -69,6 +69,17 @@
   .cus input{width:18px;height:18px}
   .search{display:flex;align-items:center;gap:10px;margin-bottom:12px}
   .search input{flex:1;min-width:0}
+  .rep{margin:0 14px 10px;padding:8px 10px;border-radius:8px;background:color-mix(in srgb,var(--bad) 9%,transparent);border-left:3px solid var(--bad);font-size:13px}
+  .rep b{color:var(--bad)}
+  .rep-list{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+  .st{font-size:12px;padding:2px 8px;border-radius:10px;white-space:nowrap;background:var(--chip)}
+  .st.free{background:color-mix(in srgb,var(--acc) 15%,transparent);color:var(--acc)}
+  .st.need{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+  .st.pending{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
+  .st.joined{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+  .slotrow td{vertical-align:middle}
+  .mv{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+  .mv input[type=text]{flex:1;min-width:180px}
   tr.hit td{background:color-mix(in srgb,var(--acc) 14%,transparent);font-weight:600}
   .xp{width:30px;padding:4px 0;text-align:center}
   .peek{border-top:1px solid var(--line);padding:8px 14px 12px;overflow-x:auto}
@@ -120,6 +131,22 @@
           <button class="btn sm" @click="askUndo(lastActionId)" :disabled="!!undoBusy" x-text="undoConfirm===lastActionId ? 'Bấm lần nữa để hoàn tác' : 'Hoàn tác'"></button>
         </template>
       </div>
+      <template x-if="notify">
+        <div class="card" style="padding:12px 14px">
+          <div class="row"><b class="grow" x-text="'Báo khách ' + notify.rn + ' (' + notify.sent.length + '/' + notify.items.length + ' đã copy)'"></b><button class="btn sm" @click="notify=null">Xong</button></div>
+          <div class="mute" style="font-size:13px;margin:4px 0 8px">Copy tin rồi gửi Zalo cho khách (hoặc gửi CTV). Khách có Zalo là khách đã điền khi báo lỗi.</div>
+          <template x-for="it in notify.items" :key="it.email">
+            <div class="row" style="padding:6px 0;border-top:1px solid var(--line)">
+              <div class="grow" style="min-width:0">
+                <div class="mono ellip" x-text="it.email"></div>
+                <div class="mute" style="font-size:12px" x-text="(it.ctv ? 'CTV ' + it.ctv : 'Không rõ CTV') + (it.zalo ? ' · Zalo ' + it.zalo : '')"></div>
+              </div>
+              <a class="btn sm" x-show="it.zalo" :href="'https://zalo.me/' + it.zalo" target="_blank" rel="noopener">Mở Zalo</a>
+              <button class="btn sm" :class="!notify.sent.includes(it.email) && 'pri'" @click="copyNotify(notify, it)" x-text="notify.sent.includes(it.email) ? '✓ Đã copy' : 'Copy tin'"></button>
+            </div>
+          </template>
+        </div>
+      </template>
       <template x-if="undoConflict">
         <div class="err">
           <div x-text="undoConflict.msg"></div>
@@ -137,6 +164,8 @@
 
       <nav class="tabs" x-show="!searchOn()">
         <button class="tab" :class="tab==='due' && 'on'" @click="tab='due'">Đến hạn<span class="n" x-text="due.length"></span></button>
+        <button class="tab" :class="tab==='report' && 'on'" @click="tab='report'">🚨 Khách báo lỗi<span class="n" x-text="reported.length"></span></button>
+        <button class="tab" x-show="can('slots')" :class="tab==='slots' && 'on'" @click="tab='slots'; loadSlots()">Còn slot<span class="n" x-text="slotsLoaded ? slots.length : '·'"></span></button>
         <button class="tab" x-show="me.role !== 'outsource'" :class="tab==='renew' && 'on'" @click="tab='renew'">Nhắc gia hạn<span class="n" x-text="renewals.length"></span></button>
         <button class="tab" x-show="can('review')" :class="tab==='sync' && 'on'" @click="tab='sync'; loadReview()">Đồng bộ<span class="n" x-text="review.length"></span></button>
         <button class="tab" :class="tab==='log' && 'on'" @click="tab='log'; loadLog()">Lịch sử</button>
@@ -145,15 +174,17 @@
       </nav>
 
       <!-- TAB ĐẾN HẠN -->
-      <section x-show="tab==='due' || searchOn()">
-        <div class="chips" x-show="!searchOn()">
+      <section x-show="tab==='due' || tab==='report' || searchOn()">
+        <div class="mute" style="font-size:13px;margin-bottom:10px" x-show="tab==='report' && !searchOn()">Fam có khách báo lỗi hoặc khách báo không thấy lời mời, chưa thay fam sau lần báo. Thay fam xong hoặc bấm "Đã mời lại" thì tự biến mất.</div>
+        <template x-if="tab==='report' && !searchOn() && !loading && reported.length===0"><div class="empty">Không có khách nào đang báo lỗi.</div></template>
+        <div class="chips" x-show="!searchOn() && tab==='due'">
           <button class="chip" :class="ahead===0 && 'on'" @click="ahead=0; load()">Hôm nay & quá hạn</button>
           <button class="chip" :class="ahead===3 && 'on'" @click="ahead=3; load()">+3 ngày tới</button>
           <button class="chip" :class="ahead===7 && 'on'" @click="ahead=7; load()">+7 ngày tới</button>
         </div>
-        <template x-if="!searchOn() && !loading && due.length===0"><div class="empty">Không có RN nào đến hạn.</div></template>
+        <template x-if="tab==='due' && !searchOn() && !loading && due.length===0"><div class="empty">Không có RN nào đến hạn.</div></template>
         <template x-if="searchOn() && !searching && results.length===0"><div class="empty">Không tìm thấy fam nào.</div></template>
-        <template x-for="f in (searchOn() ? results : due)" :key="f.rn">
+        <template x-for="f in (searchOn() ? results : (tab==='report' ? reported : due))" :key="f.rn">
           <div class="card" style="padding:0">
             <div class="row" style="padding:12px 14px">
               <button class="btn sm xp" @click="toggleOpen(f.rn)" :aria-expanded="isOpen(f.rn)" x-text="expanded(f) ? '▾' : '▸'" title="Xem nhanh"></button>
@@ -164,10 +195,35 @@
                   Renew <span x-text="f.renew"></span> · <span x-text="activeCount(f)"></span>/<span x-text="f.customers.length"></span> khách còn hạn · <span x-text="f.status"></span>
                 </div>
               </div>
+              <span class="badge bad" x-show="f.report && f.report.reporters.length" x-text="'🚨 ' + (f.report ? f.report.reporters.length : 0) + ' báo lỗi'"></span>
+              <span class="badge warn" x-show="f.report && f.report.reinvites.length" x-text="'🔁 ' + (f.report ? f.report.reinvites.length : 0) + ' cần mời lại'"></span>
               <span class="badge" :class="f.daysToRenew<0 ? 'bad' : (f.daysToRenew===0 ? 'warn' : '')" x-text="f.daysToRenew===null ? f.status : renewLabel(f.daysToRenew)"></span>
               <button class="btn sm" @click="noteFor = noteFor===f.rn ? '' : f.rn; noteText=''" title="Ghi chú cho admin">Ghi chú</button>
               <button class="btn pri sm" @click="openSwap(f)" :disabled="!frs.length">Thay fam</button>
             </div>
+            <template x-if="f.report">
+              <div class="rep">
+                <div><b>Khách báo lỗi</b> · từ <span x-text="f.report.createdAt"></span> · <span x-text="f.report.status"></span><span x-show="f.report.activity" x-text="' · nhóm ' + f.report.activity.toLowerCase()"></span></div>
+                <div class="rep-list">
+                  <template x-for="r in f.report.reporters" :key="r.email">
+                    <div><span class="mono" x-text="r.email"></span> <span class="mute" x-text="'· ' + r.at + (r.zalo ? ' · Zalo ' + r.zalo : '') + (r.by ? ' · ' + r.by : '')"></span></div>
+                  </template>
+                  <div class="mute" x-show="!f.report.reporters.length && !f.report.reinvites.length">Có ticket nhưng chưa có email báo.</div>
+                </div>
+                <template x-if="f.report.reinvites.length">
+                  <div style="margin-top:6px">
+                    <b>Cần mời lại</b>
+                    <template x-for="r in f.report.reinvites" :key="r.id">
+                      <div class="row" style="gap:8px;margin-top:4px">
+                        <div class="grow" style="min-width:0"><span class="mono" x-text="r.email"></span> <span class="mute" x-text="'· ' + r.reason + ' · ' + r.at + (r.zalo ? ' · Zalo ' + r.zalo : '')"></span></div>
+                        <a class="btn sm" x-show="r.zalo" :href="'https://zalo.me/' + r.zalo" target="_blank" rel="noopener">Mở Zalo</a>
+                        <button class="btn sm pri" @click="rejoinDone(f, r)" :disabled="r.busy" x-text="r.busy ? 'Đang lưu…' : 'Đã mời lại'"></button>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
             <template x-if="noteFor===f.rn">
               <div class="peek row">
                 <input type="text" class="grow" x-model="noteText" placeholder="Ghi chú cho admin, vd: khách báo lỗi, còn slot, cần kiểm tra…" @keydown.enter="sendNote(f.rn)" x-init="$el.focus()">
@@ -185,7 +241,7 @@
                   <tbody>
                     <template x-for="c in f.customers" :key="c.row">
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
-                        <td class="mono" x-text="c.email"></td>
+                        <td class="mono"><span x-text="c.email"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span></td>
                         <td x-text="c.ctv || '—'"></td>
                         <td x-text="c.hsd || '—'"></td>
                         <td :style="c.daysLeft!==null && c.daysLeft<0 ? 'color:var(--bad)' : (c.daysLeft!==null && c.daysLeft<=10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft===null ? '—' : (c.daysLeft<0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + ' ngày')"></td>
@@ -196,6 +252,77 @@
                 </table>
               </div>
             </template>
+          </div>
+        </template>
+      </section>
+
+      <!-- TAB CÒN SLOT -->
+      <section x-show="tab==='slots' && !searchOn()">
+        <div class="mute" style="font-size:13px;margin-bottom:10px">Fam đang chạy còn chỗ, có khách cần mời, hoặc đã mời mà chưa xác nhận vào. Fam còn nhiều ngày dùng xếp trước. Google chặn khi 1 fam mời quá ~<b x-text="slotLimit"></b> lời mời / 7 ngày.</div>
+        <div class="chips">
+          <button class="chip" :class="slotFilter==='' && 'on'" @click="slotFilter=''">Tất cả</button>
+          <button class="chip" :class="slotFilter==='free' && 'on'" @click="slotFilter='free'">Còn slot trống</button>
+          <button class="chip" :class="slotFilter==='need' && 'on'" @click="slotFilter='need'">Cần mời</button>
+          <button class="chip" :class="slotFilter==='late' && 'on'" @click="slotFilter='late'" x-text="'Mời ' + slotPendingH + 'h chưa vào'"></button>
+          <button class="btn sm" style="margin-left:auto" @click="loadSlots()" :disabled="slotsLoading" x-text="slotsLoading ? 'Đang tải…' : 'Tải lại'"></button>
+        </div>
+        <template x-if="slotsLoading && !slots.length"><div class="empty">Đang tải…</div></template>
+        <template x-if="slotsLoaded && !filteredSlots().length"><div class="empty">Không có fam nào.</div></template>
+        <template x-for="f in filteredSlots()" :key="f.rn">
+          <div class="card" style="padding:0">
+            <div class="row" style="padding:12px 14px">
+              <div class="rn" x-text="f.rn"></div>
+              <div class="grow">
+                <div class="mono ellip" x-text="f.email"></div>
+                <div class="mute" style="font-size:13px" x-text="'Renew ' + f.renew + ' · còn ' + f.days + ' ngày dùng · ' + (f.free ? f.free + ' slot trống' : 'hết slot')"></div>
+              </div>
+              <span class="badge" :class="f.used >= f.limit ? 'bad' : (f.used >= f.limit - 1 ? 'warn' : 'ok')" :title="'Lời mời đã gửi trong 7 ngày'" x-text="'Mời ' + f.used + '/' + f.limit + ' tuần'"></span>
+              <button class="btn sm" x-show="f.pend" @click="f.check = !f.check" x-text="f.check ? 'Đóng' : 'Kiểm tra fam'"></button>
+            </div>
+            <template x-if="f.check">
+              <div class="peek" style="border-top:1px solid var(--line)">
+                <div class="peek-own">Đăng nhập chủ fam, mở <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">trang Gia đình ↗</a>, tick những ai đã có trong nhóm rồi bấm Lưu.</div>
+                <div class="mute" style="font-size:13px">
+                  <span class="mono" x-text="f.email"></span> · Pass <span class="mono" x-text="f.pass || '—'"></span>
+                  <span x-show="f.twofa"> · 2FA <b class="mono" x-text="slotOtp[f.rn] || '······'"></b></span>
+                </div>
+              </div>
+            </template>
+            <div class="peek" style="padding-top:4px">
+              <table>
+                <tbody>
+                  <template x-for="r in f.rows" :key="r.row">
+                    <tr class="slotrow">
+                      <td style="width:1%">
+                        <input type="checkbox" x-show="f.check && r.state==='pending'" :checked="(f.sel||[]).includes(r.email)" @change="toggleSel(f, r.email)">
+                      </td>
+                      <td>
+                        <div class="mono" x-text="r.email || '(trống)'"></div>
+                        <div class="mute" style="font-size:12px" x-show="r.email" x-text="(r.ctv ? 'CTV ' + r.ctv + ' · ' : '') + (r.hsd ? 'HSD ' + r.hsd : '')"></div>
+                        <template x-if="mv.row === r.row">
+                          <div class="mv">
+                            <input type="text" x-model="mv.email" placeholder="Email khách cần chuyển vào (đang ở fam khác)" class="mono">
+                            <label class="mute" style="font-size:13px"><input type="checkbox" x-model="mv.invited"> Đã mời luôn</label>
+                            <button class="btn sm pri" @click="doMove(f, r)" :disabled="mv.busy" x-text="mv.busy ? 'Đang chuyển…' : (mv.confirm ? 'Bấm lần nữa để chuyển' : 'Chuyển vào')"></button>
+                            <button class="btn sm" @click="mv = {}">Huỷ</button>
+                            <div class="err" style="width:100%;margin:0" x-show="mv.error" x-text="mv.error"></div>
+                          </div>
+                        </template>
+                      </td>
+                      <td style="text-align:right;white-space:nowrap">
+                        <span class="st" x-show="stLabel(r)" :class="stClass(r)" x-text="stLabel(r)"></span>
+                        <button class="btn sm" x-show="['free','reuse','expiredIn'].includes(r.state) && mv.row !== r.row" @click="mv = { row: r.row, email: '', invited: false }">Chuyển khách vào</button>
+                        <button class="btn sm pri" x-show="r.state==='need'" @click="doInvite(f, r)" :disabled="r.busy" x-text="r.busy ? '…' : (r.confirm ? 'Bấm lần nữa' : 'Đã mời')"></button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div class="row" x-show="f.check" style="margin-top:8px">
+                <span class="grow mute" style="font-size:13px" x-text="'Đã chọn ' + (f.sel||[]).length + ' khách'"></span>
+                <button class="btn sm pri" @click="saveJoined(f)" :disabled="!(f.sel||[]).length || f.saving" x-text="f.saving ? 'Đang lưu…' : 'Lưu: đã vào nhóm'"></button>
+              </div>
+            </div>
           </div>
         </template>
       </section>
@@ -496,14 +623,16 @@
 <script>
 /* ========= ĐIỀN SAU KHI DEPLOY APPS SCRIPT ========= */
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
+const FIXYTB_URL = 'https://godnc.com/fixytb/';
 
 const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], ['12 tháng', '280k']];
 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
-    tab: 'due', ahead: 0, loading: false, error: '', lastDone: '',
-    today: '', due: [], renewals: [], frs: [], skipped: [],
+    tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
+    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {},
+    today: '', due: [], reported: [], renewals: [], frs: [], skipped: [],
     ctvFilter: '', log: [], logLoading: false, actions: [],
     lastActionId: '', undoConfirm: '', undoBusy: '', undoConflict: null,
     review: [], reviewLoading: false, syncConfirm: '', openRows: [],
@@ -542,7 +671,7 @@ function app() {
       this.loading = true; this.error = '';
       try {
         const d = await this.api({ action: 'dashboard', ahead: this.ahead });
-        this.today = d.today; this.due = d.due; this.renewals = d.renewals;
+        this.today = d.today; this.due = d.due; this.reported = d.reported || []; this.renewals = d.renewals;
         this.me = d.me || { name: 'Admin', role: 'admin', perms: [] };
         if (d.openNotes !== null && d.openNotes !== undefined) this.openNotes = d.openNotes;
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
@@ -561,6 +690,82 @@ function app() {
       this.logLoading = false;
     },
 
+    notifyMsg(n, it) {
+      return 'Chào bạn, nhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới.\n'
+        + 'Bạn làm theo 3 bước ở link này nhé (khoảng 1 phút): ' + n.url + '?email=' + encodeURIComponent(it.email);
+    },
+    copyNotify(n, it) { this.copy(this.notifyMsg(n, it), 'Đã copy tin cho ' + it.email); if (!n.sent.includes(it.email)) n.sent.push(it.email); },
+    async loadSlots() {
+      this.slotsLoading = true;
+      try {
+        const d = await this.api({ action: 'slots' });
+        this.slots = d.items.map(f => Object.assign(f, { check: false, sel: [], saving: false }));
+        this.slotLimit = d.limit; this.slotPendingH = d.pendingHours; this.slotsLoaded = true;
+      } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script đang chạy bản cũ, chưa có chức năng Còn slot. Dán lại Code.gs mới rồi Deploy → New version.' : e.message; }
+      this.slotsLoading = false;
+    },
+    filteredSlots() {
+      const k = this.slotFilter;
+      return this.slots.filter(f => !k || (k === 'free' ? f.free : k === 'need' ? f.need : f.late));
+    },
+    stLabel(r) {
+      return ({ free: 'Trống', reuse: 'Hết hạn, chưa mời · dùng lại được', need: 'Còn hạn, chưa mời', pending: 'Đã mời ' + r.hours + 'h, chưa vào',
+        joined: 'Đã vào ✓', expiredIn: 'Hết hạn (có thể còn trong nhóm)', ok: '' })[r.state] || '';
+    },
+    stClass(r) { return ({ free: 'free', reuse: 'free', need: 'need', pending: 'pending', joined: 'joined' })[r.state] || ''; },
+    toggleSel(f, email) { f.sel = f.sel.includes(email) ? f.sel.filter(x => x !== email) : [...f.sel, email]; },
+    async saveJoined(f) {
+      f.saving = true;
+      try {
+        await this.api({ action: 'markJoined', rn: f.rn, emails: f.sel });
+        f.rows.forEach(r => { if (f.sel.includes(r.email)) r.state = 'joined'; });
+        this.toast = 'Đã lưu ' + f.sel.length + ' khách đã vào ' + f.rn; setTimeout(() => this.toast = '', 1500);
+        f.sel = []; f.pend = f.rows.filter(r => r.state === 'pending').length; f.late = f.rows.filter(r => r.state === 'pending' && r.late).length;
+        if (!f.pend) f.check = false;
+      } catch (e) { this.error = e.message; }
+      f.saving = false;
+    },
+    async doInvite(f, r) {
+      if (!r.confirm) { r.confirm = true; setTimeout(() => r.confirm = false, 4000); return; }
+      r.busy = true; this.error = '';
+      try {
+        const body = { action: 'markInvited', row: r.row, email: r.email, force: !!r.force };
+        const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
+        if (res.limit) { this.error = res.error; r.force = this.me.role === 'admin'; }
+        else if (!res.ok) this.error = res.error;
+        else { r.state = 'pending'; r.hours = 0; f.need--; f.pend++; f.used++; this.lastActionId = res.actionId; this.lastDone = '✓ Đã ghi mời ' + r.email + ' (' + f.rn + '). Hoàn tác được ở tab Lịch sử.'; }
+      } catch (e) { this.error = e.message; }
+      r.busy = false; r.confirm = false;
+    },
+    async doMove(f, r) {
+      const m = this.mv;
+      m.error = '';
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(m.email || '').trim())) { m.error = 'Nhập email khách đúng định dạng.'; return; }
+      if (!m.confirm) { m.confirm = true; setTimeout(() => { if (this.mv === m) m.confirm = false; }, 4000); return; }
+      m.busy = true;
+      try {
+        const body = { action: 'move', email: m.email.trim(), toRow: r.row, invited: !!m.invited, force: !!m.force };
+        const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
+        if (res.limit) { m.error = res.error; m.force = this.me.role === 'admin'; }
+        else if (!res.ok) m.error = res.error;
+        else {
+          this.lastActionId = res.actionId;
+          this.lastDone = '✓ Đã chuyển ' + res.email + ': ' + res.from + ' → ' + res.to + (res.invited ? ' (đã mời)' : ' (chưa mời)') + (res.overwrote ? ', ghi đè khách hết hạn ' + res.overwrote : '') + '. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
+          this.mv = {}; this.loadReview(); await this.loadSlots();
+        }
+      } catch (e) { m.error = e.message; }
+      m.busy = false; m.confirm = false;
+    },
+    async rejoinDone(f, r) {
+      r.busy = true;
+      try {
+        await this.api({ action: 'rejoinDone', id: r.id });
+        f.report.reinvites = f.report.reinvites.filter(x => x.id !== r.id);
+        if (!f.report.reporters.length && !f.report.reinvites.length && !f.report.ticketId) this.reported = this.reported.filter(x => x.rn !== f.rn);
+        this.toast = 'Đã đánh dấu mời lại ' + r.email; setTimeout(() => this.toast = '', 1500);
+      } catch (e) { this.error = e.message; r.busy = false; }
+    },
+    isReporter(f, email) { return !!(f.report && f.report.reporters.some(r => r.email === String(email).toLowerCase())); },
     activeCount(f) { return f.customers.filter(c => c.daysLeft === null || c.daysLeft >= 0).length; },
     renewLabel(d) { return d < 0 ? 'Quá ' + (-d) + ' ngày' : (d === 0 ? 'Hôm nay' : 'Còn ' + d + ' ngày'); },
     ctvList() { return [...new Set(this.renewals.map(r => r.ctv).filter(Boolean))].sort(); },
@@ -728,13 +933,17 @@ function app() {
           action: 'complete', rn: s.f.rn, stockRow: s.f.stockRow, oldEmail: s.f.email,
           fr: s.fr.fr, frRow: s.fr.row, frEmail: s.fr.email, invited: s.sel, twofa: s.fr.twofa ? '' : s.newTwofa, note: s.note,
         });
-        this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách, trạng thái ' + r.status + '.'
+        this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách, trạng thái ' + r.status + '.' + (r.closedTickets ? ' Đã đóng ' + r.closedTickets + ' ticket báo lỗi.' : '')
 ;
         this.lastActionId = r.actionId || '';
+        const zaloOf = e => { const x = s.f.report && s.f.report.reporters.find(p => p.email === String(e).toLowerCase()); return x ? x.zalo : ''; };
+        this.notify = { rn: r.rn, url: r.fixUrl || FIXYTB_URL, sent: [], items: s.f.customers.filter(c => s.sel.includes(c.email)).map(c => ({ email: c.email, ctv: c.ctv, zalo: zaloOf(c.email) })) };
+        if (!this.notify.items.length) this.notify = null;
         if (this.me.role === 'admin') this.openNotes += (r.invited < 5 ? 1 : 0) + (s.note && s.note.trim() ? 1 : 0);
         if (this.me.limit) this.me.usedToday++;
         this.loadReview();
         this.due = this.due.filter(x => x.rn !== s.f.rn);
+        this.reported = this.reported.filter(x => x.rn !== s.f.rn);
         this.frs = this.frs.filter(x => x.row !== s.fr.row);
         this.swap = null;
       } catch (e) { this.swapError = e.message; }
@@ -744,6 +953,7 @@ function app() {
     async tickOtp() {
       const sec = Math.floor(Date.now() / 1000);
       this.otpPct = ((30 - (sec % 30)) / 30) * 100;
+      if (this.tab === 'slots') for (const f of this.slots) if (f.check && f.twofa) this.slotOtp = { ...this.slotOtp, [f.rn]: await totp(f.twofa) };
       if (!this.swap) return;
       this.otp.old = this.swap.f.twofa ? await totp(this.swap.f.twofa) : '';
       this.otp.fr = this.frSecret() ? await totp(this.frSecret()) : '';
