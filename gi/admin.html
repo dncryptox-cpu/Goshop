@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
+<meta name="robots" content="noindex, nofollow">
 <title>Admin · GO INTELLIGENCE</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
@@ -34,7 +34,6 @@ td .inp{padding:7px 9px;font-size:13px;max-width:130px}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
-<script src="icons.js"></script>
 <script src="common.js"></script>
 <script>
 const A = { user: null, me: null, tab: 'todo', topups: [], users: {}, products: [], orders: [], txs: [], rc: null, kp: null, kv: null, stock: [], cust: [], custSel: null, custLedger: [], wz: null };
@@ -206,8 +205,7 @@ function vWizard() {
       <div class="two"><label class="fl">Tên sản phẩm<input class="inp" value="${esc(w.name)}" placeholder="VD: Midjourney" oninput="A.wz.name=this.value"></label>
       <label class="fl">Danh mục<input class="inp" list="cats" value="${esc(w.cat)}" oninput="A.wz.cat=this.value"><datalist id="cats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist></label></div>
       <label class="fl">Mô tả ngắn hiện trên shop<input class="inp" value="${esc(w.desc)}" placeholder="VD: Tài khoản riêng, tạo ảnh không giới hạn" oninput="A.wz.desc=this.value"></label>
-      <div class="two"><label class="fl">Logo: chữ (tối đa 3 ký tự)<input class="inp" maxlength="3" value="${esc(w.mono)}" placeholder="MJ" oninput="A.wz.mono=this.value.toUpperCase()"></label>
-      <label class="fl">Hoặc logo hãng có sẵn<select class="inp" onchange="A.wz.icon=this.value"><option value="">— dùng chữ —</option>${Object.keys(window.GI_ICONS || {}).map(k => `<option ${k === w.icon ? 'selected' : ''}>${k}</option>`).join('')}</select></label></div>
+      <div class="two"><label class="fl">Logo: chữ (tối đa 3 ký tự)<input class="inp" maxlength="3" value="${esc(w.mono)}" placeholder="MJ" oninput="A.wz.mono=this.value.toUpperCase()"></label></div>
       <div class="fl">Màu nền logo<div class="swatches">${COLORS.map(c => `<button class="sw ${c === w.bg ? 'on' : ''}" style="background:${c}" aria-label="Màu ${c}" onclick="A.wz.bg='${c}';render()"></button>`).join('')}</div></div>
       <button class="btn" style="max-width:240px" onclick="wzNext()">Tiếp: tạo gói</button></div>`;
   }
@@ -251,7 +249,7 @@ async function wzFinish() {
   const w = A.wz, btn = $('#wzGo'); btn.disabled = true; btn.textContent = 'Đang tạo…';
   try {
     const { data: p, error: e1 } = await sb.from('products').insert({ name: w.name.trim(), category: w.cat.trim(), description: w.desc.trim(),
-      logo_text: w.mono || null, icon_key: w.icon || null, logo_color: w.bg, sort: 50 }).select('id').single();
+      logo_text: w.mono || null, icon_key: null, logo_color: w.bg, sort: 50 }).select('id').single();
     if (e1) throw e1;
     const rows = w.v.map((v, i) => ({ id: crypto.randomUUID(), product_id: p.id, label: String(v.label).trim(), days: +v.days, cost: +v.cost || 0, price: +v.price, kind: v.kind, require_email: v.kind === 'manual' && !!v.email, sort: i + 1 }));
     const { error: e2 } = await sb.from('variants').insert(rows);
@@ -298,10 +296,11 @@ async function findOrder() {
 }
 
 // ---------- khởi động ----------
+window.GI_onAuth = () => location.reload();
 async function init() {
   if (GI_INIT_ERROR) return fatal(GI_INIT_ERROR.message);
   const { data } = await sb.auth.getSession(); A.user = data && data.session ? data.session.user : null;
-  if (!A.user) { $('#gate').innerHTML = `<div class="empty">Đăng nhập bằng Gmail admin.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.href}})">Đăng nhập Google</button></div>`; return; }
+  if (!A.user) { $('#gate').innerHTML = `<div class="empty">Đăng nhập bằng tài khoản admin.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="openAuth('login')">Đăng nhập</button></div>`; return; }
   const { data: me } = await sb.from('profiles').select('*').eq('id', A.user.id).single(); A.me = me;
   $('#who').innerHTML = `${esc(A.user.email)} · <a href="#" onclick="sb.auth.signOut().then(()=>location.reload());return false">Đăng xuất</a>`;
   if (!me || me.role !== 'admin') { $('#gate').innerHTML = `<div class="empty">Tài khoản ${esc(A.user.email)} không có quyền admin.</div>`; return; }

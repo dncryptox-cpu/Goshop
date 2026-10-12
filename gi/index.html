@@ -2,6 +2,7 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
+<meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>GO INTELLIGENCE · Tài khoản AI chính hãng</title>
 <meta name="description" content="ChatGPT, Claude, Gemini, CapCut… giá tốt, giao ngay, bảo hành suốt thời hạn. Ví nạp sẵn, hạng thành viên giảm giá.">
@@ -120,7 +121,6 @@ nav.tab{grid-template-columns:repeat(4,1fr)}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
-<script src="icons.js"></script>
 <script src="common.js"></script>
 <script>
 // ======================= STATE =======================
@@ -128,7 +128,6 @@ const S = { user: null, me: null, cat: { tier: null, bank: null, products: [] },
   catName: 'Tất cả', q: '', cur: null, vid: null, pay: 'wallet', email: '', pack: 2, payOrder: null, view: 'home', loaded: false, topupWatch: null };
 const PACK_AMOUNTS = [100000, 200000, 500000, 1000000];
 const CHECK = c => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${c || '#2DD4BF'}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>`;
-const GOOGLE = `<svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>`;
 
 // ======================= DATA =======================
 async function loadSettings() {
@@ -158,11 +157,10 @@ async function refreshAll() {
   render();
 }
 async function login() {
-  const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + location.pathname } });
-  if (error) toast(errText(error));
+  openAuth('login');
 }
 async function logout() { await sb.auth.signOut(); S.user = null; await refreshAll(); go('home'); }
-const needLogin = () => { if (S.user) return false; toast('Đăng nhập Google để tiếp tục'); setTimeout(login, 600); return true; };
+const needLogin = () => { if (S.user) return false; toast('Đăng nhập hoặc đăng ký để tiếp tục'); openAuth('register'); return true; };
 
 // ======================= NAV =======================
 const VIEWS = ['home', 'product', 'pay', 'done', 'wallet', 'tier', 'orders'];
@@ -184,7 +182,7 @@ function renderShared() {
   const spent = S.me ? Number(S.me.spent) : 0, t = curTier(), nx = tiers().find(x => x.min > spent);
   const acct = S.user
     ? `<button class="pill" onclick="go('wallet')" aria-label="Ví và nạp tiền"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2DD4BF" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h15a3 3 0 013 3v7a3 3 0 01-3 3H6a3 3 0 01-3-3zM3 7l12-3v3M16 13.5h2"/></svg><span class="mono">${vnd(S.me ? S.me.balance : 0)}</span><span class="plus">+</span></button>`
-    : `<button class="login-btn" onclick="login()">${GOOGLE}Đăng nhập</button>`;
+    : `<button class="login-btn" onclick="login()">Đăng nhập</button>`;
   document.querySelectorAll('[data-acct]').forEach(e => e.innerHTML = acct);
   document.querySelectorAll('[data-tier-name]').forEach(e => e.textContent = t.name);
   document.querySelectorAll('[data-tier-off]').forEach(e => e.textContent = t.off ? '−' + t.off + '%' : '0%');
@@ -194,7 +192,7 @@ function renderShared() {
   document.querySelectorAll('[data-tier-next]').forEach(e => e.textContent = !S.user ? 'Đăng nhập để tích luỹ hạng' : nx ? `Còn ${vnd(nx.min - spent)} để lên ${nx.name}` : 'Bạn đang ở hạng cao nhất');
   $('#sidebal').innerHTML = S.user
     ? `<button class="side-bal" style="margin:0;width:100%" onclick="go('wallet')"><small>Số dư ví</small><b class="mono">${vnd(S.me ? S.me.balance : 0)}</b><small>Hạng ${esc(t.name)} · −${t.off}% mọi đơn</small><span class="n">+ Nạp tiền</span></button>`
-    : `<button class="side-bal" style="margin:0;width:100%" onclick="login()"><small>Chưa đăng nhập</small><b style="font-size:16px">Đăng nhập Google</b><small>để mua, nạp ví, tích hạng</small></button>`;
+    : `<button class="side-bal" style="margin:0;width:100%" onclick="login()"><small>Chưa đăng nhập</small><b style="font-size:16px">Đăng nhập / Đăng ký</b><small>đăng ký 5 giây để mua, nạp ví, tích hạng</small></button>`;
   const pend = S.orders.filter(o => o.status === 'unpaid' || o.status === 'processing').length;
   const nb = $('#nb'); nb.style.display = pend ? 'grid' : 'none'; nb.textContent = pend;
 }
@@ -364,7 +362,7 @@ function showDone(o) {
 // ======================= WALLET =======================
 const bonusPct = a => { const r = (S.settings.topup_bonus || []).filter(b => a >= b.min).sort((x, y) => y.min - x.min)[0]; return r ? r.pct : 0; };
 function renderWallet() {
-  if (!S.user) { $('#wbody').innerHTML = `<div class="empty">Đăng nhập để dùng ví.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="login()">Đăng nhập Google</button></div>`; return; }
+  if (!S.user) { $('#wbody').innerHTML = `<div class="empty">Đăng nhập để dùng ví.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="openAuth('register')">Đăng ký / Đăng nhập</button></div>`; return; }
   const me = S.me || {}, a = PACK_AMOUNTS[S.pack], bp = bonusPct(a), maxB = Math.max(0, ...(S.settings.topup_bonus || []).map(b => b.pct));
   $('#wbody').innerHTML = `<div class="wwrap"><div>
     <div class="wal"><svg width="140" height="140" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" fill="none" stroke="#2DD4BF" stroke-width="6" stroke-dasharray="8 10"/><circle cx="50" cy="50" r="28" fill="#2DD4BF" opacity=".25"/></svg>
@@ -421,7 +419,7 @@ function renderTier() {
 const STL = { unpaid: 'Chờ thanh toán', processing: 'Shop đang xử lý', done: 'Đã giao', expired: 'Hết hạn giữ hàng', cancelled: 'Đã huỷ' };
 const STC = { unpaid: 'unpaid', processing: 'processing', done: 'done', expired: 'unpaid', cancelled: 'processing' };
 function renderOrders() {
-  if (!S.user) { $('#obody').innerHTML = `<div class="empty">Đăng nhập để xem đơn.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="login()">Đăng nhập Google</button></div>`; return; }
+  if (!S.user) { $('#obody').innerHTML = `<div class="empty">Đăng nhập để xem đơn.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="openAuth('register')">Đăng ký / Đăng nhập</button></div>`; return; }
   const me = S.me || {};
   $('#obody').innerHTML = `<div class="acc"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><span>${esc(me.email)}</span><button class="sw-btn" onclick="logout()">Đăng xuất</button></div>
       <div class="row"><input class="inp" id="zalo" placeholder="Số Zalo để shop liên hệ khi cần" value="${esc(me.zalo)}" inputmode="tel" aria-label="Số Zalo"><button class="btn sm" onclick="saveZalo()">Lưu</button></div></div>
@@ -434,6 +432,7 @@ async function saveZalo() { const z = $('#zalo').value.trim(); const { error } =
 
 // ======================= BOOT =======================
 function render() { renderShared(); renderHome(); renderProduct(); renderPay(); renderWallet(); renderTier(); renderOrders(); }
+window.GI_onAuth = async () => { const { data } = await sb.auth.getSession(); S.user = data && data.session ? data.session.user : null; await refreshAll(); };
 async function init() {
   if (GI_INIT_ERROR) return fatal(GI_INIT_ERROR.message);
   banners();

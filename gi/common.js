@@ -18,6 +18,16 @@ const GI_ERR = {
   TOO_MANY_PENDING: 'Bạn đang có 3 yêu cầu nạp chờ duyệt, vui lòng đợi shop xác nhận',
   TOPUP_NOT_PENDING: 'Yêu cầu nạp này đã được xử lý'
 };
+Object.assign(GI_ERR, {
+  USERNAME_TAKEN: 'Tên đăng nhập đã có người dùng',
+  BAD_USERNAME: 'Tên đăng nhập 3–20 ký tự, chỉ gồm chữ thường không dấu, số, _ hoặc .',
+  'Invalid login credentials': 'Sai tên đăng nhập hoặc mật khẩu',
+  'User already registered': 'Email này đã đăng ký, hãy đăng nhập',
+  'Password should be at least': 'Mật khẩu tối thiểu 6 ký tự',
+  'Database error saving new user': 'Tên đăng nhập đã có người dùng hoặc không hợp lệ',
+  'Unable to validate email address': 'Email không hợp lệ',
+  'Email not confirmed': 'Tài khoản chưa xác nhận email'
+});
 const errText = e => { const m = (e && (e.message || e.error_description)) || String(e); const k = Object.keys(GI_ERR).find(k => m.includes(k)); return k ? GI_ERR[k] : m; };
 
 let sb = null, GI_INIT_ERROR = null;
@@ -75,3 +85,54 @@ function startPoll(name, fn, every, maxMs) {
   POLLS[name] = setInterval(async () => { if (Date.now() > until) return stopPoll(name); try { await fn(); } catch (e) { console.warn(e); } }, every);
 }
 function stopPoll(name) { if (POLLS[name]) { clearInterval(POLLS[name]); delete POLLS[name]; } }
+
+// ===== Đăng nhập / Đăng ký (tên đăng nhập + mật khẩu) =====
+function openAuth(mode = 'login') {
+  let m = document.getElementById('authModal');
+  if (!m) { m = document.createElement('div'); m.id = 'authModal'; m.className = 'scrim'; m.onclick = e => { if (e.target === m) closeAuth(); }; document.body.appendChild(m); }
+  const reg = mode === 'register';
+  m.innerHTML = `<form class="sheet" onsubmit="event.preventDefault();${reg ? 'doRegister()' : 'doLogin()'}" style="gap:12px">
+    <h3>${reg ? 'Tạo tài khoản' : 'Đăng nhập'}</h3>
+    ${reg ? `
+      <label class="fl">Tên đăng nhập<input class="inp" id="au_user" autocomplete="username" placeholder="vd: dinh.nguyen" required minlength="3" maxlength="20" autocapitalize="none"></label>
+      <label class="fl">Mật khẩu<input class="inp" id="au_pass" type="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự" required minlength="6"></label>
+      <label class="fl">Email<input class="inp" id="au_mail" type="email" autocomplete="email" placeholder="ban@gmail.com" required></label>
+      <label class="fl">Số điện thoại / Zalo<input class="inp" id="au_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="09xx xxx xxx" required minlength="9"></label>`
+    : `
+      <label class="fl">Tên đăng nhập hoặc email<input class="inp" id="au_user" autocomplete="username" required autocapitalize="none"></label>
+      <label class="fl">Mật khẩu<input class="inp" id="au_pass" type="password" autocomplete="current-password" required></label>`}
+    <div class="warn" id="au_err" style="display:none"></div>
+    <button class="btn" id="au_btn" type="submit">${reg ? 'Tạo tài khoản' : 'Đăng nhập'}</button>
+    <button class="btn ghost" type="button" onclick="openAuth('${reg ? 'login' : 'register'}')">${reg ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký (5 giây)'}</button>
+    ${reg ? '' : '<small class="note">Quên mật khẩu? Liên hệ hỗ trợ để được cấp lại.</small>'}
+  </form>`;
+  m.classList.add('on'); setTimeout(() => { const i = document.getElementById('au_user'); i && i.focus(); }, 50);
+}
+function closeAuth() { const m = document.getElementById('authModal'); if (m) m.classList.remove('on'); }
+function authErr(msg) { const e = document.getElementById('au_err'); e.textContent = msg; e.style.display = ''; const b = document.getElementById('au_btn'); b.disabled = false; }
+async function doLogin() {
+  const b = document.getElementById('au_btn'); b.disabled = true;
+  let id = document.getElementById('au_user').value.trim(); const pw = document.getElementById('au_pass').value;
+  if (!id.includes('@')) {
+    const { data } = await sb.rpc('login_email', { p_username: id });
+    if (!data) return authErr('Không tìm thấy tên đăng nhập này');
+    id = data;
+  }
+  const { error } = await sb.auth.signInWithPassword({ email: id, password: pw });
+  if (error) return authErr(errText(error));
+  closeAuth(); toast('Đã đăng nhập'); if (window.GI_onAuth) window.GI_onAuth();
+}
+async function doRegister() {
+  const b = document.getElementById('au_btn'); b.disabled = true;
+  const u = document.getElementById('au_user').value.trim().toLowerCase(), pw = document.getElementById('au_pass').value;
+  const mail = document.getElementById('au_mail').value.trim().toLowerCase(), ph = document.getElementById('au_phone').value.replace(/[^0-9+]/g, '');
+  if (!/^[a-z0-9_.]{3,20}$/.test(u)) return authErr(GI_ERR.BAD_USERNAME);
+  if (pw.length < 6) return authErr('Mật khẩu tối thiểu 6 ký tự');
+  if (ph.length < 9) return authErr('Số điện thoại không hợp lệ');
+  const { data: free } = await sb.rpc('username_available', { p_username: u });
+  if (free === false) return authErr(GI_ERR.USERNAME_TAKEN);
+  const { data, error } = await sb.auth.signUp({ email: mail, password: pw, options: { data: { username: u, phone: ph } } });
+  if (error) return authErr(errText(error));
+  if (!data.session) return authErr('Đã tạo tài khoản. Vui lòng kiểm tra email để xác nhận rồi đăng nhập.');
+  closeAuth(); toast('Tạo tài khoản thành công'); if (window.GI_onAuth) window.GI_onAuth();
+}
