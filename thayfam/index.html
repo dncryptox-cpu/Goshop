@@ -217,6 +217,7 @@
                       <div class="row" style="gap:8px;margin-top:4px">
                         <div class="grow" style="min-width:0"><span class="mono" x-text="r.email"></span> <span class="mute" x-text="'· ' + r.reason + ' · ' + r.at + (r.zalo ? ' · Zalo ' + r.zalo : '')"></span></div>
                         <a class="btn sm" x-show="r.zalo" :href="'https://zalo.me/' + r.zalo" target="_blank" rel="noopener">Mở Zalo</a>
+                        <button class="btn sm" @click="blockInvite(f, r.email)" :disabled="f.blocking" title="Google báo hết lượt mời" x-text="f.blockedUntil ? 'Chặn đến ' + f.blockedUntil : (f.blockConfirm ? 'Bấm lần nữa' : 'Google chặn mời')"></button>
                         <button class="btn sm pri" @click="rejoinDone(f, r)" :disabled="r.busy" x-text="r.busy ? 'Đang lưu…' : 'Đã mời lại'"></button>
                       </div>
                     </template>
@@ -277,6 +278,8 @@
                 <div class="mute" style="font-size:13px" x-text="'Renew ' + f.renew + ' · còn ' + f.days + ' ngày dùng · ' + (f.free ? f.free + ' slot trống' : 'hết slot')"></div>
               </div>
               <span class="badge" :class="f.used >= f.limit ? 'bad' : (f.used >= f.limit - 1 ? 'warn' : 'ok')" :title="'Lời mời đã gửi trong 7 ngày'" x-text="'Mời ' + f.used + '/' + f.limit + ' tuần'"></span>
+              <span class="badge bad" x-show="f.blockedUntil" x-text="'Google chặn mời đến ' + f.blockedUntil"></span>
+              <button class="btn sm" x-show="!f.blockedUntil" @click="blockInvite(f)" :disabled="f.blocking" :title="'Bấm khi Google báo: You\'ve reached the family invitation limit'" x-text="f.blocking ? '…' : (f.blockConfirm ? 'Bấm lần nữa' : 'Google chặn mời')"></button>
               <button class="btn sm" x-show="f.pend" @click="f.check = !f.check" x-text="f.check ? 'Đóng' : 'Kiểm tra fam'"></button>
             </div>
             <template x-if="f.check">
@@ -312,7 +315,7 @@
                       <td style="text-align:right;white-space:nowrap">
                         <span class="st" x-show="stLabel(r)" :class="stClass(r)" x-text="stLabel(r)"></span>
                         <button class="btn sm" x-show="['free','reuse','expiredIn'].includes(r.state) && mv.row !== r.row" @click="mv = { row: r.row, email: '', invited: false }">Chuyển khách vào</button>
-                        <button class="btn sm pri" x-show="r.state==='need'" @click="doInvite(f, r)" :disabled="r.busy" x-text="r.busy ? '…' : (r.confirm ? 'Bấm lần nữa' : 'Đã mời')"></button>
+                        <button class="btn sm pri" x-show="r.state==='need' && !f.blockedUntil" @click="doInvite(f, r)" :disabled="r.busy" x-text="r.busy ? '…' : (r.confirm ? 'Bấm lần nữa' : 'Đã mời')"></button>
                       </td>
                     </tr>
                   </template>
@@ -424,7 +427,7 @@
           <div class="card" :style="n.status!=='Mở' && 'opacity:.55'">
             <div class="row">
               <button class="btn sm" @click="q = n.rn; doSearch()" title="Mở fam này" x-text="n.rn || '—'" style="font-weight:700"></button>
-              <span class="badge" :class="n.type==='Dư slot' ? 'warn' : ''" x-text="n.type"></span>
+              <span class="badge" :class="n.type==='Dư slot' ? 'warn' : (n.type==='Chờ mời' ? (n.dueReached ? 'ok' : 'bad') : '')" x-text="n.type==='Chờ mời' && n.status==='Mở' ? (n.dueReached ? 'Đến ngày mời lại' : 'Chờ mời đến ' + n.due) : n.type"></span>
               <span class="grow mute" style="font-size:13px" x-text="n.time + ' · ' + n.by + (n.status!=='Mở' ? ' · ' + n.status + (n.doneBy ? ' bởi ' + n.doneBy + ' ' + n.doneAt : '') : '')"></span>
               <button class="btn sm" x-show="n.status==='Mở'" @click="noteOp('done', n.id)" :disabled="noteBusy">Đã xử lý</button>
               <button class="btn sm" x-show="n.status==='Đã xử lý'" @click="noteOp('reopen', n.id)" :disabled="noteBusy">Mở lại</button>
@@ -695,6 +698,19 @@ function app() {
         + 'Bạn làm theo 3 bước ở link này nhé (khoảng 1 phút): ' + n.url + '?email=' + encodeURIComponent(it.email);
     },
     copyNotify(n, it) { this.copy(this.notifyMsg(n, it), 'Đã copy tin cho ' + it.email); if (!n.sent.includes(it.email)) n.sent.push(it.email); },
+    async blockInvite(f, email) {
+      if (f.blockedUntil) return;
+      if (!f.blockConfirm) { f.blockConfirm = true; setTimeout(() => f.blockConfirm = false, 4000); return; }
+      f.blocking = true; f.blockConfirm = false;
+      const em = email || ((f.rows || []).find(r => r.state === 'need') || {}).email || '';
+      try {
+        const d = await this.api({ action: 'inviteBlocked', rn: f.rn, email: em });
+        f.blockedUntil = d.until;
+        if (this.me.role === 'admin') this.openNotes++;
+        this.toast = f.rn + ': hẹn mời lại từ ' + d.until; setTimeout(() => this.toast = '', 2000);
+      } catch (e) { this.error = e.message; }
+      f.blocking = false;
+    },
     async loadSlots() {
       this.slotsLoading = true;
       try {
