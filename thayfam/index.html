@@ -78,7 +78,8 @@
   .st.pending{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
   .st.joined{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
   .slotrow td{vertical-align:middle}
-  .mv{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px}
+  .mv{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;font-family:inherit}
+  td.mono .mv button,td.mono .mv label{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
   .mv input[type=text]{flex:1;min-width:180px}
   tr.hit td{background:color-mix(in srgb,var(--acc) 14%,transparent);font-weight:600}
   .xp{width:30px;padding:4px 0;text-align:center}
@@ -125,6 +126,10 @@
       </header>
 
       <div class="err" x-show="error" x-text="error"></div>
+      <div class="row" x-show="blocksDue && can('blocks') && tab!=='blocks'" style="background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <span class="grow" x-text="'⚠️ ' + blocksDue + ' fam đã đến hoặc sắp đến ngày mời lại (Google chặn mời trước đó).'"></span>
+        <button class="btn sm" @click="tab='blocks'; loadBlocks()">Xem</button>
+      </div>
       <div class="okbox row" x-show="lastDone">
         <span class="grow" x-text="lastDone"></span>
         <template x-if="lastActionId">
@@ -166,6 +171,7 @@
         <button class="tab" :class="tab==='due' && 'on'" @click="tab='due'">Đến hạn<span class="n" x-text="due.length"></span></button>
         <button class="tab" :class="tab==='report' && 'on'" @click="tab='report'">🚨 Khách báo lỗi<span class="n" x-text="reported.length"></span></button>
         <button class="tab" x-show="can('slots')" :class="tab==='slots' && 'on'" @click="tab='slots'; loadSlots()">Còn slot<span class="n" x-text="slotsLoaded ? slots.length : '·'"></span></button>
+        <button class="tab" x-show="can('blocks')" :class="tab==='blocks' && 'on'" @click="tab='blocks'; loadBlocks()">Chặn mời<span class="n" :class="blocksDue && 'hot'" x-text="blocksOpen"></span></button>
         <button class="tab" x-show="me.role !== 'outsource'" :class="tab==='renew' && 'on'" @click="tab='renew'">Nhắc gia hạn<span class="n" x-text="renewals.length"></span></button>
         <button class="tab" x-show="can('review')" :class="tab==='sync' && 'on'" @click="tab='sync'; loadReview()">Đồng bộ<span class="n" x-text="review.length"></span></button>
         <button class="tab" :class="tab==='log' && 'on'" @click="tab='log'; loadLog()">Lịch sử</button>
@@ -234,15 +240,24 @@
             <template x-if="expanded(f)">
               <div class="peek">
                 <div class="peek-own mute">
-                  Pass <span class="mono" x-text="f.pass || '—'"></span> · MKP <span class="mono" x-text="f.mkp || '—'"></span> · 2FA <span x-text="f.twofa ? 'có' : 'không'"></span>
+                  Pass <span class="mono" x-text="f.pass || '—'"></span> · MKP <span class="mono" x-text="f.mkp || '—'"></span> · 2FA <b class="mono" x-text="f.twofa ? (slotOtp['S' + f.rn] || '······') : 'không'"></b> · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
                 </div>
                 <template x-if="f.customers.length===0"><div class="mute" style="font-size:13px">Không có email khách.</div></template>
-                <table x-show="f.customers.length">
+                <table x-show="f.customers.length || (f.slots || []).some(x => !x.email)">
                   <thead><tr><th>Thành viên</th><th>CTV</th><th>HSD</th><th>Còn</th><th class="hide-sm" x-show="me.role !== 'outsource'">Mail phụ</th><th></th></tr></thead>
                   <tbody>
                     <template x-for="c in f.customers" :key="c.row">
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
                         <td class="mono"><span x-text="c.email"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span>
+                        <template x-if="c.daysLeft !== null && c.daysLeft < 0"><div><template x-if="mv.row === c.row">
+                          <div class="mv">
+                            <input type="text" x-model="mv.email" placeholder="Email khách cần chuyển vào (đang ở fam khác)" class="mono">
+                            <label class="mute" style="font-size:13px"><input type="checkbox" x-model="mv.invited"> Đã mời luôn</label>
+                            <button class="btn sm pri" @click="doMove(f, c)" :disabled="!!mv.busy" x-text="mv.busy ? 'Đang chuyển…' : (mv.confirm ? 'Bấm lần nữa để chuyển' : 'Chuyển vào')"></button>
+                            <button class="btn sm" @click="mv = {}">Huỷ</button>
+                            <div class="err" style="width:100%;margin:0" x-show="mv.error" x-text="mv.error"></div>
+                          </div>
+                        </template></div></template>
                         <template x-if="em.row === c.row">
                           <div class="mv">
                             <input type="text" x-model="em.newEmail" placeholder="Mail mới (mail phụ của khách)" class="mono">
@@ -257,13 +272,50 @@
                         <td x-text="c.hsd || '—'"></td>
                         <td :style="c.daysLeft!==null && c.daysLeft<0 ? 'color:var(--bad)' : (c.daysLeft!==null && c.daysLeft<=10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft===null ? '—' : (c.daysLeft<0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + ' ngày')"></td>
                         <td class="hide-sm mono" x-show="me.role !== 'outsource'" x-text="c.mailPhu || '—'"></td>
-                        <td style="text-align:right"><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: c.mailPhu || '', invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
+                        <td style="text-align:right;white-space:nowrap"><span x-show="c.daysLeft !== null && c.daysLeft < 0"><button class="btn sm" x-show="can('move') && mv.row !== c.row" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button></span><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: c.mailPhu || '', invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
+                      </tr>
+                    </template>
+                    <template x-for="sl in (f.slots || []).filter(x => !x.email)" :key="'e' + sl.row">
+                      <tr>
+                        <td class="mono"><span class="mute">(trống)</span>
+                        <template x-if="mv.row === sl.row">
+                          <div class="mv">
+                            <input type="text" x-model="mv.email" placeholder="Email khách cần chuyển vào (đang ở fam khác)" class="mono">
+                            <label class="mute" style="font-size:13px"><input type="checkbox" x-model="mv.invited"> Đã mời luôn</label>
+                            <button class="btn sm pri" @click="doMove(f, sl)" :disabled="!!mv.busy" x-text="mv.busy ? 'Đang chuyển…' : (mv.confirm ? 'Bấm lần nữa để chuyển' : 'Chuyển vào')"></button>
+                            <button class="btn sm" @click="mv = {}">Huỷ</button>
+                            <div class="err" style="width:100%;margin:0" x-show="mv.error" x-text="mv.error"></div>
+                          </div>
+                        </template></td>
+                        <td></td><td></td><td></td><td class="hide-sm" x-show="me.role !== 'outsource'"></td>
+                        <td style="text-align:right"><button class="btn sm" x-show="can('move') && mv.row !== sl.row" @click="mv = { row: sl.row, email: '', invited: false }">Chuyển khách vào</button></td>
                       </tr>
                     </template>
                   </tbody>
                 </table>
               </div>
             </template>
+          </div>
+        </template>
+      </section>
+
+      <!-- TAB CHẶN MỜI -->
+      <section x-show="tab==='blocks' && !searchOn()">
+        <div class="mute" style="font-size:13px;margin-bottom:10px">Fam bị Google báo hết lượt mời. Đến ngày thì đăng nhập chủ fam mời lại: mời được bấm <b>Đã mời được</b>, vẫn bị chặn bấm <b>Vẫn bị chặn</b> (hẹn thêm <span x-text="blockWait"></span> ngày).</div>
+        <template x-if="blocksLoading && !blocks.length"><div class="empty">Đang tải…</div></template>
+        <template x-if="!blocksLoading && !blocks.length"><div class="empty">Không có fam nào đang bị chặn mời.</div></template>
+        <template x-for="bk in blocks" :key="bk.id">
+          <div class="card row" :style="bk.daysLeft !== null && bk.daysLeft <= 0 ? 'border-color:var(--ok)' : ''">
+            <button class="btn sm" style="font-weight:700" @click="q = bk.rn; doSearch()" x-text="bk.rn" title="Mở fam"></button>
+            <div class="grow" style="min-width:0">
+              <div class="mono ellip" x-text="bk.email"></div>
+              <div class="mute" style="font-size:13px" x-show="bk.email">Pass <span class="mono" x-text="bk.pass || '—'"></span><span x-show="bk.twofa"> · 2FA <b class="mono" x-text="slotOtp['B' + bk.rn] || '······'"></b></span> · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a></div>
+              <div style="font-size:13px;margin-top:4px" x-text="bk.text"></div>
+              <div class="mute" style="font-size:12px" x-text="bk.time + ' · ' + bk.by"></div>
+            </div>
+            <span class="badge" :class="bk.daysLeft <= 0 ? 'ok' : (bk.daysLeft <= 1 ? 'warn' : 'bad')" x-text="bk.daysLeft <= 0 ? 'Đến ngày mời lại' : 'Mời lại từ ' + bk.due + ' (còn ' + bk.daysLeft + ' ngày)'"></span>
+            <button class="btn sm pri" @click="blockOp('done', bk.id)" :disabled="!!blocksBusy">Đã mời được</button>
+            <button class="btn sm" @click="blockOp('extend', bk.id)" :disabled="!!blocksBusy">Vẫn bị chặn</button>
           </div>
         </template>
       </section>
@@ -287,6 +339,7 @@
               <div class="grow">
                 <div class="mono ellip" x-text="f.email"></div>
                 <div class="mute" style="font-size:13px" x-text="'Renew ' + f.renew + ' · còn ' + f.days + ' ngày dùng · ' + (f.free ? f.free + ' slot trống' : 'hết slot')"></div>
+                <div class="mute" style="font-size:13px">Pass <span class="mono" x-text="f.pass || '—'"></span><span x-show="f.twofa"> · 2FA <b class="mono" x-text="slotOtp[f.rn] || '······'"></b></span> · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a></div>
               </div>
               <span class="badge" :class="f.used >= f.limit ? 'bad' : (f.used >= f.limit - 1 ? 'warn' : 'ok')" :title="'Lời mời đã gửi trong 7 ngày'" x-text="'Mời ' + f.used + '/' + f.limit + ' tuần'"></span>
               <span class="badge bad" x-show="f.blockedUntil" x-text="'Google chặn mời đến ' + f.blockedUntil"></span>
@@ -295,11 +348,7 @@
             </div>
             <template x-if="f.check">
               <div class="peek" style="border-top:1px solid var(--line)">
-                <div class="peek-own">Đăng nhập chủ fam, mở <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">trang Gia đình ↗</a>, tick những ai đã có trong nhóm rồi bấm Lưu.</div>
-                <div class="mute" style="font-size:13px">
-                  <span class="mono" x-text="f.email"></span> · Pass <span class="mono" x-text="f.pass || '—'"></span>
-                  <span x-show="f.twofa"> · 2FA <b class="mono" x-text="slotOtp[f.rn] || '······'"></b></span>
-                </div>
+                <div class="peek-own">Đăng nhập chủ fam (pass / 2FA ở trên), mở trang Gia đình, tick những ai đã có trong nhóm rồi bấm Lưu.</div>
               </div>
             </template>
             <div class="peek" style="padding-top:4px">
@@ -657,6 +706,7 @@ function app() {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
     slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {},
+    blocks: [], blocksLoading: false, blocksBusy: '', blocksOpen: 0, blocksDue: 0, blockWait: 5,
     today: '', due: [], reported: [], renewals: [], frs: [], skipped: [],
     ctvFilter: '', log: [], logLoading: false, actions: [],
     lastActionId: '', undoConfirm: '', undoBusy: '', undoConflict: null,
@@ -699,6 +749,7 @@ function app() {
         this.today = d.today; this.due = d.due; this.reported = d.reported || []; this.renewals = d.renewals;
         this.me = d.me || { name: 'Admin', role: 'admin', perms: [] };
         if (d.openNotes !== null && d.openNotes !== undefined) this.openNotes = d.openNotes;
+        this.blocksOpen = d.blocksOpen || 0; this.blocksDue = d.blocksDue || 0;
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
         if (this.can('review') && !this._reviewed) { this._reviewed = true; this.loadReview(); }
@@ -743,6 +794,17 @@ function app() {
       } catch (e) { m.error = e.message; }
       m.busy = false; m.confirm = false;
     },
+    async loadBlocks() { await this.blockOp('list'); },
+    async blockOp(op, id) {
+      if (op === 'list') this.blocksLoading = true; else this.blocksBusy = id;
+      try {
+        const d = await this.api({ action: 'blocks', op, id });
+        this.blocks = d.items; this.blockWait = d.waitDays;
+        this.blocksOpen = d.items.length; this.blocksDue = d.items.filter(x => x.daysLeft !== null && x.daysLeft <= 1).length;
+        if (op === 'done') { this.toast = 'Đã đóng'; setTimeout(() => this.toast = '', 1200); }
+      } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script đang chạy bản cũ, chưa có tab Chặn mời. Dán lại Code.gs mới rồi Deploy → New version.' : e.message; }
+      this.blocksLoading = false; this.blocksBusy = '';
+    },
     async blockInvite(f, email) {
       if (f.blockedUntil) return;
       if (!f.blockConfirm) { f.blockConfirm = true; setTimeout(() => f.blockConfirm = false, 4000); return; }
@@ -751,7 +813,7 @@ function app() {
       try {
         const d = await this.api({ action: 'inviteBlocked', rn: f.rn, email: em });
         f.blockedUntil = d.until;
-        if (this.me.role === 'admin') this.openNotes++;
+        this.blocksOpen++;
         this.toast = f.rn + ': hẹn mời lại từ ' + d.until; setTimeout(() => this.toast = '', 2000);
       } catch (e) { this.error = e.message; }
       f.blocking = false;
@@ -812,7 +874,9 @@ function app() {
         else {
           this.lastActionId = res.actionId;
           this.lastDone = '✓ Đã chuyển ' + res.email + ': ' + res.from + ' → ' + res.to + (res.invited ? ' (đã mời)' : ' (chưa mời)') + (res.overwrote ? ', ghi đè khách hết hạn ' + res.overwrote : '') + '. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
-          this.mv = {}; this.loadReview(); await this.loadSlots();
+          this.mv = {}; this.loadReview();
+          if (this.searchOn()) this.doSearch();
+          if (this.slotsLoaded) await this.loadSlots();
         }
       } catch (e) { m.error = e.message; }
       m.busy = false; m.confirm = false;
@@ -1014,7 +1078,21 @@ function app() {
     async tickOtp() {
       const sec = Math.floor(Date.now() / 1000);
       this.otpPct = ((30 - (sec % 30)) / 30) * 100;
-      if (this.tab === 'slots') for (const f of this.slots) if (f.check && f.twofa) this.slotOtp = { ...this.slotOtp, [f.rn]: await totp(f.twofa) };
+      if (this.tab === 'slots' && !this.searchOn()) {
+        const m = {};
+        for (const f of this.filteredSlots()) if (f.twofa) m[f.rn] = await totp(f.twofa);
+        this.slotOtp = { ...this.slotOtp, ...m };
+      }
+      if (this.searchOn() || this.tab === 'due' || this.tab === 'report') {
+        const m = {};
+        for (const f of (this.searchOn() ? this.results : (this.tab === 'report' ? this.reported : this.due))) if (f.twofa && this.expanded(f)) m['S' + f.rn] = await totp(f.twofa);
+        this.slotOtp = { ...this.slotOtp, ...m };
+      }
+      if (this.tab === 'blocks') {
+        const m = {};
+        for (const b of this.blocks) if (b.twofa) m['B' + b.rn] = await totp(b.twofa);
+        this.slotOtp = { ...this.slotOtp, ...m };
+      }
       if (!this.swap) return;
       this.otp.old = this.swap.f.twofa ? await totp(this.swap.f.twofa) : '';
       this.otp.fr = this.frSecret() ? await totp(this.frSecret()) : '';
