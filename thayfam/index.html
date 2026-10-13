@@ -211,7 +211,10 @@
             </div>
             <template x-if="f.report">
               <div class="rep">
-                <div><b>Khách báo lỗi</b> · từ <span x-text="f.report.createdAt"></span> · <span x-text="f.report.status"></span><span x-show="f.report.activity" x-text="' · nhóm ' + f.report.activity.toLowerCase()"></span></div>
+                <div class="row" style="gap:8px;align-items:center">
+                  <div class="grow"><b>Khách báo lỗi</b> · từ <span x-text="f.report.createdAt"></span> · <span x-text="f.report.status"></span><span x-show="f.report.activity" x-text="' · nhóm ' + f.report.activity.toLowerCase()"></span></div>
+                  <button class="btn sm pri" x-show="f.report.reporters.length || f.report.ticketId" @click="fixDone(f)" :disabled="!!f.fixing" title="Đã xử lý xong mà không cần thay fam: đóng báo lỗi, khách thấy 'Đã xử lý' trong app" x-text="f.fixing ? 'Đang lưu…' : (f.fixConfirm ? 'Bấm lần nữa' : 'Đã fix xong')"></button>
+                </div>
                 <div class="rep-list">
                   <template x-for="r in f.report.reporters" :key="r.email">
                     <div><span class="mono" x-text="r.email"></span> <span class="mute" x-text="'· ' + r.at + (r.zalo ? ' · Zalo ' + r.zalo : '') + (r.by ? ' · ' + r.by : '')"></span></div>
@@ -747,6 +750,7 @@
 
 <script>
 /* ========= ĐIỀN SAU KHI DEPLOY APPS SCRIPT ========= */
+const RENEW_API = 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec'; // hệ thống báo lỗi (renew)
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 const FIXYTB_URL = 'https://godnc.com/fixytb/';
 
@@ -960,6 +964,30 @@ function app() {
         }
       } catch (e) { m.error = e.message; }
       m.busy = false; m.confirm = false;
+    },
+    // Đã fix xong (không thay fam): đóng các ticket báo lỗi đang mở của fam trên hệ thống renew
+    async fixDone(f) {
+      if (!f.fixConfirm) { f.fixConfirm = true; setTimeout(() => { f.fixConfirm = false; }, 4000); return; }
+      f.fixConfirm = false; f.fixing = true;
+      const call = (action, body) => fetch(RENEW_API + '?action=' + action, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(x => x.json());
+      try {
+        const emails = [...f.report.reporters.map(r => r.email), ...f.customers.map(c => c.email)].filter(Boolean);
+        let st = null;
+        for (const em of emails.slice(0, 3)) { const d = await call('checkStatus', { email: em }); if (d && d.success && String(d.stt_group).toUpperCase() === String(f.rn).toUpperCase()) { st = d; break; } }
+        if (!st) throw new Error('Không tìm thấy báo lỗi của ' + f.rn + ' trên hệ thống renew');
+        const open = (st.history_tickets && st.history_tickets.length ? st.history_tickets : (st.has_ticket ? [st] : [])).filter(t => t.ticket_id && t.status !== 'Đã xử lý');
+        for (const t of open) {
+          const r = await call('resolveTicketWithType', { ticket_id: t.ticket_id, resolutionType: 'Fix thường', resolvedBy: this.me.name || 'Admin', note: 'Đã fix, không thay fam' });
+          if (r && r.success === false) throw new Error(r.message || 'Không đóng được ' + t.ticket_id);
+        }
+        const zalo = f.report.reporters.map(r => r.zalo).filter(Boolean);
+        const msg = 'Nhóm YouTube Premium của bạn đã được xử lý xong. Bạn mở lại YouTube kiểm tra giúp shop nhé, còn lỗi thì báo lại trong app.';
+        try { await navigator.clipboard.writeText(msg); } catch (e) {}
+        f.report.reporters = []; f.report.ticketId = '';
+        if (!f.report.reinvites.length) this.reported = this.reported.filter(x => x.rn !== f.rn);
+        this.lastDone = '✓ ' + f.rn + ': đã đóng ' + open.length + ' báo lỗi, khách thấy "Đã xử lý". Đã copy tin báo khách' + (zalo.length ? ' (Zalo ' + zalo.join(', ') + ')' : '') + '.';
+      } catch (e) { this.error = e.message; }
+      f.fixing = false;
     },
     async rejoinDone(f, r) {
       r.busy = true;
