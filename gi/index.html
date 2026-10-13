@@ -136,8 +136,9 @@ nav.tab{grid-template-columns:repeat(5,1fr)}
 <div class="toast" id="toast" role="status"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
-<script src="config.js?v=4"></script>
-<script src="common.js?v=4"></script>
+<script src="config.js?v=5"></script>
+<script src="common.js?v=5"></script>
+<script src="quick.js?v=5"></script>
 <script>
 // ======================= STATE =======================
 const S = { user: null, me: null, cat: { tier: null, bank: null, products: [] }, settings: {}, orders: [], ledger: [],
@@ -447,48 +448,160 @@ function renderOrders() {
 function openOrder(id) { const o = S.orders.find(x => x.id === id); if (!o) return; if (o.status === 'unpaid' || o.status === 'expired') openPay(o); else showDone(o); }
 async function saveZalo() { const z = $('#zalo').value.trim(); const { error } = await sb.rpc('set_contact', { p_full_name: S.me.full_name || '', p_zalo: z }); if (error) return toast(errText(error)); S.me.zalo = z; toast('Đã lưu'); }
 
-// ======================= GÓI (YouTube) =======================
-// Tài khoản tạo nhanh từ trang renew: nhắc đổi mật khẩu mặc định
+// ======================= GÓI (YouTube) — như trang members =======================
+// Dữ liệu gói/bảo hành/mail phụ đọc-ghi qua API Apps Script của trang renew (không chép dữ liệu).
 const quickWarn = () => GI_isQuick(S.user) ? `<div class="qwarn"><span>Mật khẩu đang là mặc định (phần trước @ email). Đổi để giữ an toàn ví.</span><button class="btn sm" onclick="openChangePass()">Đổi ngay</button></div>` : '';
 const TST = { 'Mới': 'unpaid', 'Đang xử lý': 'processing', 'Đã xử lý': 'done' };
 const dshort = x => { if (!x) return ''; const d = new Date(x); return isNaN(d) ? String(x) : d.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); };
+async function renewApi(action, payload, ms = 60000) {
+  const c = new AbortController(), t = setTimeout(() => c.abort(), ms);
+  try {
+    const r = await fetch(GI_CONFIG.RENEW_API + '?action=' + action, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(payload), signal: c.signal });
+    return JSON.parse(await r.text());
+  } finally { clearTimeout(t); }
+}
 async function loadPack(force) {
   if (!S.user || !S.me || !GI_CONFIG.RENEW_API) return;
   const mail = String(S.me.email || '').toLowerCase();
-  if (!force && S.pack && S.pack.mail === mail) return;
-  S.pack = { mail, loading: true }; renderPack();
+  if (!force && S.pack && S.pack.mail === mail && !S.pack.fail) return;
+  S.pack = { mail, loading: true, warranty: S.pack && S.pack.mail === mail ? S.pack.warranty : null }; renderPack();
   try {
-    const url = GI_CONFIG.RENEW_API + '?action=checkStatus';
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ email: mail }) });
-    S.pack = { mail, data: JSON.parse(await r.text()) };
+    const [d, mp] = await Promise.all([renewApi('checkStatus', { email: mail }), renewApi('checkMailPhuStatus', { primaryEmail: mail }).catch(() => null)]);
+    S.pack = { mail, data: d, mailphu: mp && mp.success && mp.has_existing ? mp : null, warranty: S.pack.warranty };
   } catch (e) { S.pack = { mail, fail: true }; }
   if (S.view === 'pack') renderPack();
 }
+// Chưa đăng nhập: nhập email đã mua gói → vào thẳng (mật khẩu mặc định = phần trước @)
+async function enterByEmail() {
+  const inp = $('#pkmail'), btn = $('#pkgo'), err = $('#pkerr');
+  const mail = String(inp.value || '').trim().toLowerCase();
+  err.style.display = 'none';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) { err.textContent = 'Email chưa đúng'; err.style.display = ''; return; }
+  btn.disabled = true; btn.textContent = 'Đang tra…';
+  try {
+    const d = await renewApi('checkStatus', { email: mail });
+    if (!d || !d.success) { err.textContent = 'Email này chưa có gói tại shop. Kiểm tra lại email bạn đã đăng ký.'; err.style.display = ''; return; }
+    const st = await GI_quickLogin(sb, mail);
+    if (st === 'own') { toast('Email này đã đặt mật khẩu riêng, hãy đăng nhập'); openAuth('login'); setTimeout(() => { const u = document.getElementById('au_user'); if (u) u.value = mail; }, 60); return; }
+    if (st !== 'in' && st !== 'new') { err.textContent = 'Chưa vào được, thử lại sau ít phút.'; err.style.display = ''; return; }
+    S.pack = { mail, data: d };
+    if (st === 'new') toast('Đã tạo tài khoản. Mật khẩu mặc định: ' + GI_quickPass(mail));
+    await window.GI_onAuth();
+    loadPack(true);
+  } catch (e) { err.textContent = 'Lỗi kết nối, thử lại.'; err.style.display = ''; }
+  finally { if (btn.isConnected) { btn.disabled = false; btn.textContent = 'Vào xem gói'; } }
+}
 function renderPack() {
   const el = $('#kbody'); if (!el) return;
-  if (!S.user) { el.innerHTML = `<div class="empty">Đăng nhập để xem gói YouTube và lịch sử bảo hành.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="openAuth('login')">Đăng nhập</button></div>`; return; }
+  if (!S.user) {
+    el.innerHTML = `<div class="pk"><b style="font-size:17px">Xem gói YouTube của bạn</b>
+      <small style="color:var(--mute)">Nhập email đã đăng ký gói. Vào thẳng, không cần mật khẩu lần đầu.</small>
+      <form onsubmit="event.preventDefault();enterByEmail()" style="display:flex;flex-direction:column;gap:10px">
+        <input class="inp" id="pkmail" type="email" inputmode="email" autocomplete="email" placeholder="email-cua-ban@gmail.com" required>
+        <div class="warn" id="pkerr" style="display:none"></div>
+        <button class="btn" id="pkgo" type="submit">Vào xem gói</button></form>
+      <button class="btn ghost" onclick="openAuth('login')">Đã có mật khẩu? Đăng nhập</button></div>`;
+    return;
+  }
   const k = S.pack, mail = S.me ? S.me.email : '';
-  const fix = `<a class="btn" style="text-decoration:none;text-align:center" target="_top" href="/renew/?email=${encodeURIComponent(mail || '')}">Báo lỗi / lấy TK bảo hành tạm</a>`;
   if (!k || k.loading) { el.innerHTML = quickWarn() + `<div class="skel" style="margin:0 16px"></div>`; return; }
   if (k.fail) { el.innerHTML = quickWarn() + `<div class="empty">Không tải được thông tin gói.<br><button class="btn" style="margin-top:14px;max-width:260px" onclick="loadPack(true)">Thử lại</button></div>`; return; }
   const d = k.data || {};
-  if (!d.success) { el.innerHTML = quickWarn() + `<div class="empty">Email ${esc(mail)} chưa có gói YouTube Premium tại shop.<br><small>Bạn dùng email khác? Đăng nhập bằng email đó.</small></div>`; return; }
+  if (!d.success) { el.innerHTML = quickWarn() + `<div class="empty">Email ${esc(mail)} chưa có gói YouTube Premium tại shop.<br><small>Bạn dùng email khác? Đăng xuất rồi nhập email đó.</small></div>`; return; }
   const hist = (d.history_tickets && d.history_tickets.length ? d.history_tickets : (d.has_ticket ? [d] : []));
+  const open = d.has_ticket && d.status !== 'Đã xử lý';
+  const w = k.warranty, mp = k.mailphu;
   el.innerHTML = quickWarn() + `<div class="pk">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:17px">YouTube Premium · Family</b>${d.has_ticket ? `<span class="st ${TST[d.status] || 'processing'}">${esc(d.status)}</span>` : '<span class="st done">Đang dùng</span>'}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:17px">YouTube Premium · Family</b>${open ? `<span class="st ${TST[d.status] || 'processing'}">${esc(d.status)}</span>` : '<span class="st done">Đang hoạt động</span>'}</div>
       <div class="kv">
         <div><small>Email dùng gói</small><b>${esc(d.email)}</b></div>
-        <div><small>Ngày hết hạn</small><b class="mono">${esc(d.ngay_renew || '—')}</b></div>
-        <div><small>Nhóm (fam)</small><b class="mono">${esc(d.stt_group || '—')}</b></div>
+        <div><small>Ngày renew</small><b class="mono">${esc(d.ngay_renew || '—')}</b></div>
+        <div><small>Nhóm hiện tại</small><b class="mono">${esc(d.stt_group || '—')}</b></div>
         <div><small>Số lần báo lỗi</small><b class="mono">${d.report_count || hist.length || 0}</b></div>
       </div>
-      ${fix}
-      <button class="btn ghost" onclick="loadPack(true)">Làm mới</button>
+      ${open ? `<div class="warn" style="background:#1E2A4A;color:#BFD0FF">Shop đang xử lý lỗi nhóm ${esc(d.stt_group)}. Không cần báo lại. Cần dùng ngay thì lấy TK bảo hành tạm bên dưới.</div>` : ''}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="btn" onclick="openReport()">Báo lỗi</button>
+        <button class="btn ghost" onclick="loadPack(true)">Làm mới</button>
+      </div>
     </div>
-    <div class="h2" style="margin-top:6px">Lịch sử fix</div>
+
+    <div class="pk"><b>TK bảo hành tạm</b>
+      ${w ? `<small style="color:var(--mute)">Dùng tạm trong lúc chờ xử lý. Đăng nhập YouTube bằng tài khoản này.</small>
+        <div class="copyrow"><span>Email: <b class="mono">${esc(w.email)}</b></span><button onclick="copyText('${esc(w.email)}')">Copy</button></div>
+        <div class="copyrow"><span>Mật khẩu: <b class="mono">${esc(w.pass)}</b></span><button onclick="copyText('${esc(w.pass)}')">Copy</button></div>
+        ${w.mkp ? `<div class="copyrow"><span>Mail khôi phục: <b class="mono">${esc(w.mkp)}</b></span><button onclick="copyText('${esc(w.mkp)}')">Copy</button></div>` : ''}
+        ${w.secret2fa ? `<div class="copyrow"><span>Mã 2FA: <b class="mono" id="totp" style="font-size:18px;letter-spacing:.1em">------</b> <small id="totpt" style="color:var(--dim)"></small></span><button onclick="copyText($('#totp').textContent)">Copy</button></div>` : ''}
+        <small style="color:var(--dim)">Google hỏi xác minh → chọn "Xác minh bằng email khôi phục" rồi dán mail khôi phục ở trên.</small>`
+      : `<small style="color:var(--mute)">YouTube lỗi, cần dùng ngay? Lấy tài khoản dùng tạm trong lúc shop xử lý.</small>
+        <button class="btn ghost" id="wbtn" onclick="getWarranty()">Lấy TK bảo hành tạm</button>`}
+    </div>
+
+    <div class="pk"><b>Đổi sang mail phụ</b>
+      <small style="color:var(--mute)">Không muốn dùng chung TK bảo hành? Chuyển gói sang email phụ của riêng bạn.</small>
+      ${mp ? `<div class="warn" style="background:#1E2A4A;color:#BFD0FF">Đã gửi yêu cầu đổi sang <b>${esc(mp.mail_phu)}</b> · ${esc(mp.status || 'Chờ xử lý')}. Gửi email khác bên dưới sẽ cập nhật lại.</div>` : ''}
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="mphu" type="email" placeholder="email-phu@gmail.com" style="flex:1 1 180px"><button class="btn sm" id="mpbtn" onclick="sendMailPhu()">Gửi yêu cầu</button></div>
+    </div>
+
+    <div class="h2" style="margin-top:6px">Lịch sử hỗ trợ</div>
     <div class="hist">${hist.map(t => `<div class="hrow"><div class="t"><b class="mono">${esc(t.ticket_id || '')}</b><span class="st ${TST[t.status] || 'processing'}">${esc(t.status || '')}</span></div>
       <small>Báo: ${esc(dshort(t.created_at))}${t.resolved_at ? ' · Xong: ' + esc(dshort(t.resolved_at)) : ''}</small>
-      ${t.resolution_type ? `<small>Cách xử lý: ${esc(t.resolution_type)}</small>` : ''}${t.note ? `<small>${esc(t.note)}</small>` : ''}</div>`).join('') || '<div class="empty">Chưa có lần báo lỗi nào.</div>'}</div>`;
+      ${t.resolution_type ? `<small>Cách xử lý: ${esc(t.resolution_type)}</small>` : ''}${t.note ? `<small>${esc(t.note)}</small>` : ''}</div>`).join('') || '<div class="empty">Chưa có lần báo lỗi nào.</div>'}</div>
+    <p class="note" style="margin:0 16px 20px">Cần hỗ trợ gấp: Zalo 0398.057.191</p>`;
+  if (w && w.secret2fa) startTotp(w.secret2fa); else stopPoll('totp');
+}
+function openReport() {
+  const me = S.me || {};
+  $('#sheet').innerHTML = `<h3>Báo lỗi YouTube</h3>
+    <label class="fl">Lỗi gặp phải<textarea class="inp" id="rpmsg" rows="3" placeholder="vd: Mở YouTube không còn Premium / bị văng nhóm…"></textarea></label>
+    <label class="fl">Số Zalo để shop báo khi xong<input class="inp" id="rpzalo" type="tel" inputmode="tel" value="${esc(me.zalo || me.phone || '')}" placeholder="09xx xxx xxx"></label>
+    <div style="display:flex;gap:10px"><button class="btn ghost" style="flex:1" onclick="closeSheet()">Huỷ</button><button class="btn" id="rpbtn" style="flex:2" onclick="sendReport()">Gửi báo lỗi</button></div>
+    <small class="note">Gửi 1 lần là đủ, shop xử lý trong buổi.</small>`;
+  $('#scrim').classList.add('on');
+}
+async function sendReport() {
+  const b = $('#rpbtn'); b.disabled = true; b.textContent = 'Đang gửi…';
+  const z = $('#rpzalo').value.trim();
+  try {
+    const r = await renewApi('submitReport', { email: S.pack.mail, message: $('#rpmsg').value.trim(), zalo_phone: z, zaloPhone: z, submitted_by: 'Khách lẻ' });
+    if (!r || !r.success) throw new Error((r && r.message) || 'Không gửi được');
+    closeSheet(); toast('Đã gửi báo lỗi'); loadPack(true);
+  } catch (e) { toast(e.message); b.disabled = false; b.textContent = 'Gửi báo lỗi'; }
+}
+async function getWarranty() {
+  const b = $('#wbtn'); b.disabled = true; b.textContent = 'Đang cấp…';
+  try {
+    const r = await renewApi('assignWarrantyAccount', { customerEmail: S.pack.mail, ctvName: 'Khách (app GO)' });
+    if (!r || !r.success) throw new Error((r && r.message) || 'Chưa cấp được, liên hệ Zalo');
+    S.pack.warranty = r; renderPack();
+  } catch (e) { toast(e.message); b.disabled = false; b.textContent = 'Lấy TK bảo hành tạm'; }
+}
+async function sendMailPhu() {
+  const v = $('#mphu').value.trim().toLowerCase(), b = $('#mpbtn');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return toast('Email phụ chưa đúng');
+  if (v === S.pack.mail) return toast('Email phụ phải khác email hiện tại');
+  b.disabled = true;
+  try {
+    const r = await renewApi('submitMailPhuRequest', { primaryEmail: S.pack.mail, mailPhu: v });
+    if (!r || !r.success) throw new Error((r && r.message) || 'Không gửi được');
+    toast('Đã gửi, shop sẽ mời ' + v + ' vào nhóm'); loadPack(true);
+  } catch (e) { toast(e.message); b.disabled = false; }
+}
+// Mã 2FA (TOTP 30 giây) tính ngay trên máy
+async function totpNow(secret) {
+  const al = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', clean = String(secret).toUpperCase().replace(/[^A-Z2-7]/g, '');
+  let bits = 0, val = 0; const out = [];
+  for (const ch of clean) { val = (val << 5) | al.indexOf(ch); bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } }
+  const now = Math.floor(Date.now() / 1000), ctr = Math.floor(now / 30), buf = new ArrayBuffer(8);
+  new DataView(buf).setUint32(4, ctr, false);
+  const key = await crypto.subtle.importKey('raw', new Uint8Array(out), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const h = new Uint8Array(await crypto.subtle.sign('HMAC', key, buf)), o = h[19] & 15;
+  const bin = ((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+  return { code: String(bin % 1e6).padStart(6, '0'), left: 30 - (now % 30) };
+}
+function startTotp(secret) {
+  const tick = async () => { const e = $('#totp'); if (!e) return stopPoll('totp'); try { const r = await totpNow(secret); e.textContent = r.code; $('#totpt').textContent = r.left + 's'; } catch { } };
+  tick(); startPoll('totp', tick, 1000, 30 * 60 * 1000);
 }
 
 // ======================= BOOT =======================
