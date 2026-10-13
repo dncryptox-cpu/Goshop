@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0F1115">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
-<link rel="stylesheet" href="app.css?v=3">
+<link rel="stylesheet" href="app.css?v=7">
 <style>
 .login-btn{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:0;background:var(--ink);color:var(--bg);font-weight:700;font-size:14px}
 .foot{margin:36px 16px 24px;padding:18px;border-radius:16px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--mute);line-height:1.6;display:flex;flex-direction:column;gap:10px}
@@ -136,9 +136,9 @@ nav.tab{grid-template-columns:repeat(5,1fr)}
 <div class="toast" id="toast" role="status"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
-<script src="config.js?v=6"></script>
-<script src="common.js?v=6"></script>
-<script src="quick.js?v=6"></script>
+<script src="config.js?v=7"></script>
+<script src="common.js?v=7"></script>
+<script src="quick.js?v=7"></script>
 <script>
 // ======================= STATE =======================
 const S = { user: null, me: null, cat: { tier: null, bank: null, products: [] }, settings: {}, orders: [], ledger: [],
@@ -188,7 +188,7 @@ function go(v) {
   S.view = v;
   document.querySelectorAll('.view').forEach(x => x.classList.toggle('on', x.id === 'v-' + v));
   document.querySelectorAll('nav.tab button[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === (TABMAP[v] || v)));
-  if (['home', 'wallet', 'tier', 'pack', 'orders'].includes(v)) history.replaceState(null, '', v === 'home' ? location.pathname : '#' + v);
+  if (['home', 'wallet', 'tier', 'pack', 'orders'].includes(v)) history.replaceState(null, '', location.pathname + location.search + (v === 'home' ? '' : '#' + v));
   window.scrollTo(0, 0); render();
   if (v === 'pack') loadPack();
 }
@@ -472,6 +472,13 @@ async function loadPack(force) {
   } catch (e) { S.pack = { mail, fail: true }; }
   if (S.view === 'pack') renderPack();
 }
+// Link có sẵn ?email=… (trang renew cũ, tin nhắn Zalo): điền sẵn và tự vào 1 lần
+const urlEmail = () => { try { return (new URLSearchParams(location.search).get('email') || '').trim().toLowerCase(); } catch { return ''; } };
+let autoEntered = false;
+function autoEnterFromLink() {
+  if (autoEntered || S.user || S.view !== 'pack' || !urlEmail() || !$('#pkmail')) return;
+  autoEntered = true; enterByEmail();
+}
 // Chưa đăng nhập: nhập email đã mua gói → vào thẳng (mật khẩu mặc định = phần trước @)
 async function enterByEmail() {
   const inp = $('#pkmail'), btn = $('#pkgo'), err = $('#pkerr');
@@ -498,10 +505,11 @@ function renderPack() {
     el.innerHTML = `<div class="pk"><b style="font-size:17px">Xem gói YouTube của bạn</b>
       <small style="color:var(--mute)">Nhập email đã đăng ký gói. Vào thẳng, không cần mật khẩu lần đầu.</small>
       <form onsubmit="event.preventDefault();enterByEmail()" style="display:flex;flex-direction:column;gap:10px">
-        <input class="inp" id="pkmail" type="email" inputmode="email" autocomplete="email" placeholder="email-cua-ban@gmail.com" required>
+        <input class="inp" id="pkmail" type="email" inputmode="email" autocomplete="email" placeholder="email-cua-ban@gmail.com" required value="${esc(urlEmail())}">
         <div class="warn" id="pkerr" style="display:none"></div>
         <button class="btn" id="pkgo" type="submit">Vào xem gói</button></form>
       <button class="btn ghost" onclick="openAuth('login')">Đã có mật khẩu? Đăng nhập</button></div>`;
+    setTimeout(autoEnterFromLink, 0);
     return;
   }
   const k = S.pack, mail = S.me ? S.me.email : '';
