@@ -259,26 +259,7 @@
                     <template x-for="c in f.customers" :key="c.row">
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
                         <td class="mono"><span x-text="c.email"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span>
-                        <template x-if="pick.row === c.row">
-                          <div class="mv" style="flex-direction:column;align-items:stretch">
-                            <div x-show="pick.loading" class="mute" style="font-size:13px">Đang tìm fam còn slot…</div>
-                            <div x-show="!pick.loading && !pick.list.length" class="mute" style="font-size:13px">Không còn fam nào có slot trống (đã bỏ fam bị chặn mời / hết lượt mời).</div>
-                            <template x-if="!pick.loading && pick.list.length">
-                              <div>
-                                <div style="font-size:14px"><b x-text="cur().rn"></b> <span class="mute" x-text="'· renew ' + cur().renew + ' (còn ' + cur().days + ' ngày) · mời ' + cur().used + '/' + cur().limit + ' tuần này'"></span></div>
-                                <div class="mute" style="font-size:13px" x-text="'Slot: ' + cur().label + ' · fam ' + (pick.i + 1) + '/' + pick.list.length"></div>
-                                <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
-                                  <label class="mute" style="font-size:13px"><input type="checkbox" x-model="pick.invited"> Đã mời luôn</label>
-                                  <label class="mute" style="font-size:13px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
-                                  <button class="btn sm pri" @click="doPick()" :disabled="!!mv.busy" x-text="mv.busy ? 'Đang chuyển…' : (pick.confirm ? 'Bấm lần nữa để chuyển' : 'Chuyển vào ' + cur().rn)"></button>
-                                  <button class="btn sm" x-show="pick.list.length > 1" @click="pick.i = (pick.i + 1) % pick.list.length; pick.confirm = false">Fam khác →</button>
-                                  <button class="btn sm" @click="pick = { row: null, list: [] }">Huỷ</button>
-                                </div>
-                              </div>
-                            </template>
-                            <div class="err" style="margin:0" x-show="mv.error && pick.row === c.row" x-text="mv.error"></div>
-                          </div>
-                        </template>
+                        <div class="mute" style="font-size:12px" x-show="pick.row === c.row">↓ đang tìm fam cho khách này</div>
                         <div class="mute" style="font-size:12px;color:var(--bad)" x-show="c.nojoin" x-text="'Chưa vào nhóm (kiểm tra ' + c.nojoin + ') · khi cần thì Đổi khách'"></div>
                         <div x-show="f.check && c.email" style="display:flex;gap:4px;margin-top:4px">
                           <button class="btn sm" :class="(f.mark||{})[c.email]==='in' && 'pri'" @click="setMark(f, c.email, 'in')">Đã vào</button>
@@ -332,6 +313,43 @@
                     </template>
                   </tbody>
                 </table>
+                <template x-if="pick.row && f.customers.some(c => c.row === pick.row)">
+                  <div class="card" style="margin-top:10px;background:var(--bg2, #f3f6f3)">
+                    <div x-show="pick.loading" class="mute" style="font-size:13px">Đang tìm fam còn slot…</div>
+                    <div x-show="!pick.loading && !pick.list.length" class="mute" style="font-size:13px">Không còn fam nào có slot (đã bỏ fam đến hạn, bị chặn mời, hết lượt mời tuần). <button class="btn sm" @click="pick = { row: null, list: [] }">Đóng</button></div>
+                    <template x-if="!pick.loading && pick.list.length">
+                      <div>
+                        <div class="row" style="gap:8px;flex-wrap:wrap">
+                          <div class="grow">
+                            <b>Chuyển <span class="mono" x-text="pick.email"></span> sang <span x-text="cur().rn"></span></b>
+                            <span class="mute" style="font-size:13px" x-text="' · fam ' + (pick.i + 1) + '/' + pick.list.length"></span>
+                            <div class="mute" style="font-size:13px" x-text="'Renew ' + cur().renew + ' (còn ' + cur().days + ' ngày) · đã mời ' + cur().used + '/' + cur().limit + ' tuần này · slot: ' + cur().label"></div>
+                          </div>
+                          <button class="btn sm" x-show="pick.list.length > 1" @click="pick.i = (pick.i + 1) % pick.list.length; pick.confirm = false; slotOtp = { ...slotOtp, P: '' }">Fam khác →</button>
+                        </div>
+                        <div style="margin-top:8px;font-size:14px">
+                          Chủ fam <span class="mono cp" title="Bấm để copy" @click="copy(cur().fam.email, 'Đã copy email chủ fam')" x-text="cur().fam.email"></span>
+                          · Pass <span class="mono cp" title="Bấm để copy" @click="copy(cur().fam.pass, 'Đã copy pass')" x-text="cur().fam.pass || '—'"></span>
+                          <span x-show="cur().fam.mkp"> · MKP <span class="mono cp" title="Bấm để copy" @click="copy(cur().fam.mkp, 'Đã copy MKP')" x-text="cur().fam.mkp"></span></span>
+                          · 2FA <b class="mono" :class="cur().fam.twofa && 'cp'" title="Bấm để copy mã" @click="cur().fam.twofa && copy(slotOtp.P, 'Đã copy mã 2FA')" x-text="cur().fam.twofa ? (slotOtp.P || '······') : 'không'"></b>
+                          · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
+                        </div>
+                        <div class="mute" style="font-size:13px;margin-top:6px">Thành viên hiện tại:</div>
+                        <template x-for="r in cur().fam.rows" :key="r.row">
+                          <div style="font-size:13px" :style="r.row === cur().row ? 'font-weight:700' : ''"><span class="mono" x-text="r.email || '(trống)'"></span> <span class="mute" x-text="(r.row === cur().row ? '← slot sẽ dùng · ' : '') + (stLabel(r) || (r.hsd ? 'HSD ' + r.hsd : ''))"></span></div>
+                        </template>
+                        <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">
+                          <label class="mute" style="font-size:13px"><input type="checkbox" x-model="pick.invited"> Đã mời luôn</label>
+                          <label class="mute" style="font-size:13px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
+                          <span class="grow"></span>
+                          <button class="btn sm" @click="pick = { row: null, list: [] }">Huỷ</button>
+                          <button class="btn sm pri" @click="doPick()" :disabled="!!mv.busy" x-text="mv.busy ? 'Đang chuyển…' : (pick.confirm ? 'Bấm lần nữa để chuyển' : 'Chuyển vào ' + cur().rn)"></button>
+                        </div>
+                      </div>
+                    </template>
+                    <div class="err" style="margin:6px 0 0" x-show="mv.error" x-text="mv.error"></div>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
@@ -920,7 +938,7 @@ function app() {
       const list = [];
       this.slots.forEach(x => {
         if (x.rn === f.rn || x.blockedUntil || x.used >= x.limit) return;
-        x.rows.forEach(r => { if (lab[r.state]) list.push({ rn: x.rn, renew: x.renew, days: x.days, used: x.used, limit: x.limit, row: r.row, state: r.state, label: lab[r.state] + (r.email ? ': ' + r.email : ''), replace: r.state === 'nojoin' ? r.email : '' }); });
+        x.rows.forEach(r => { if (lab[r.state]) list.push({ fam: x, rn: x.rn, renew: x.renew, days: x.days, used: x.used, limit: x.limit, row: r.row, state: r.state, label: lab[r.state] + (r.email ? ': ' + r.email : ''), replace: r.state === 'nojoin' ? r.email : '' }); });
       });
       const rank = { free: 0, reuse: 1, nojoin: 2 };
       list.sort((a, b) => (b.days || 0) - (a.days || 0) || rank[a.state] - rank[b.state]);
@@ -1264,6 +1282,10 @@ function app() {
         const m = {};
         for (const f of (this.searchOn() ? this.results : (this.tab === 'report' ? this.reported : this.due))) if (f.twofa && this.expanded(f)) m['S' + f.rn] = await totp(f.twofa);
         this.slotOtp = { ...this.slotOtp, ...m };
+      }
+      if (this.pick.list && this.pick.list.length) {
+        const t = this.cur();
+        this.slotOtp = { ...this.slotOtp, P: t.fam && t.fam.twofa ? await totp(t.fam.twofa) : '' };
       }
       if (this.tab === 'blocks') {
         const m = {};
