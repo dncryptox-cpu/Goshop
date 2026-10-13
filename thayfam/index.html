@@ -350,11 +350,11 @@
               <span class="badge" :class="f.used >= f.limit ? 'bad' : (f.used >= f.limit - 1 ? 'warn' : 'ok')" :title="'Lời mời đã gửi trong 7 ngày'" x-text="'Mời ' + f.used + '/' + f.limit + ' tuần'"></span>
               <span class="badge bad" x-show="f.blockedUntil" x-text="'Google chặn mời đến ' + f.blockedUntil"></span>
               <button class="btn sm" x-show="!f.blockedUntil" @click="blockInvite(f)" :disabled="!!f.blocking" :title="'Bấm khi Google báo: You\'ve reached the family invitation limit'" x-text="f.blocking ? '…' : (f.blockConfirm ? 'Bấm lần nữa' : 'Google chặn mời')"></button>
-              <button class="btn sm" x-show="f.pend" @click="f.check = !f.check" x-text="f.check ? 'Đóng' : 'Kiểm tra fam'"></button>
+              <button class="btn sm" x-show="f.pend || f.rows.some(r => r.state === 'nojoin')" @click="f.check = !f.check" x-text="f.check ? 'Đóng' : 'Kiểm tra fam'"></button>
             </div>
             <template x-if="f.check">
               <div class="peek" style="border-top:1px solid var(--line)">
-                <div class="peek-own">Đăng nhập chủ fam (pass / 2FA ở trên), mở trang Gia đình, tick những ai đã có trong nhóm rồi bấm Lưu.</div>
+                <div class="peek-own">Đăng nhập chủ fam (pass / 2FA ở trên), mở trang Gia đình, bấm <b>Đã vào</b> / <b>Chưa vào</b> cho từng khách rồi bấm Lưu. Khách <b>Chưa vào</b> được giữ slot, hiện ở đây với nút Đổi khách để hôm sau dùng.</div>
               </div>
             </template>
             <div class="peek" style="padding-top:4px">
@@ -363,7 +363,10 @@
                   <template x-for="r in f.rows" :key="r.row">
                     <tr class="slotrow">
                       <td style="width:1%">
-                        <input type="checkbox" x-show="f.check && r.state==='pending'" :checked="(f.sel||[]).includes(r.email)" @change="toggleSel(f, r.email)">
+                        <div x-show="f.check && ['pending','nojoin'].includes(r.state)" style="display:flex;gap:4px;white-space:nowrap">
+                          <button class="btn sm" :class="f.mark[r.email]==='in' && 'pri'" @click="setMark(f, r.email, 'in')">Đã vào</button>
+                          <button class="btn sm" :class="f.mark[r.email]==='out' && 'pri'" @click="setMark(f, r.email, 'out')">Chưa vào</button>
+                        </div>
                       </td>
                       <td>
                         <div class="mono" x-text="r.email || '(trống)'"></div>
@@ -394,7 +397,7 @@
                       <td style="text-align:right;white-space:nowrap">
                         <span class="st" x-show="stLabel(r)" :class="stClass(r)" x-text="stLabel(r)"></span>
                         <button class="btn sm" x-show="['free','reuse','expiredIn'].includes(r.state) && mv.row !== r.row" @click="mv = { row: r.row, email: '', invited: false }">Chuyển khách vào</button>
-                        <button class="btn sm" x-show="['pending','need'].includes(r.state) && mv.row !== r.row" @click="mv = { row: r.row, email: '', invited: false, replace: r.email }" title="Đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button>
+                        <button class="btn sm" x-show="['pending','need','nojoin'].includes(r.state) && mv.row !== r.row" @click="mv = { row: r.row, email: '', invited: false, replace: r.email }" title="Đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button>
                         <button class="btn sm" x-show="can('swapMail') && r.email && em.row !== r.row" @click="em = { row: r.row, newEmail: r.mailPhu || '', invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button>
                         <button class="btn sm pri" x-show="r.state==='need' && !f.blockedUntil" @click="doInvite(f, r)" :disabled="!!r.busy" x-text="r.busy ? '…' : (r.confirm ? 'Bấm lần nữa' : 'Đã mời')"></button>
                       </td>
@@ -403,8 +406,8 @@
                 </tbody>
               </table>
               <div class="row" x-show="f.check" style="margin-top:8px">
-                <span class="grow mute" style="font-size:13px" x-text="'Đã chọn ' + (f.sel||[]).length + ' khách'"></span>
-                <button class="btn sm pri" @click="saveJoined(f)" :disabled="!(f.sel||[]).length || !!f.saving" x-text="f.saving ? 'Đang lưu…' : 'Lưu: đã vào nhóm'"></button>
+                <span class="grow mute" style="font-size:13px" x-text="markCount(f, 'in') + ' đã vào · ' + markCount(f, 'out') + ' chưa vào (giữ slot, khi cần thì Đổi khách)'"></span>
+                <button class="btn sm pri" @click="saveJoined(f)" :disabled="!Object.keys(f.mark).length || !!f.saving" x-text="f.saving ? 'Đang lưu…' : 'Lưu kiểm tra'"></button>
               </div>
             </div>
           </div>
@@ -869,7 +872,7 @@ function app() {
       this.slotsLoading = true;
       try {
         const d = await this.api({ action: 'slots' });
-        this.slots = d.items.map(f => Object.assign(f, { check: false, sel: [], saving: false }));
+        this.slots = d.items.map(f => Object.assign(f, { check: false, mark: {}, saving: false }));
         this.slotLimit = d.limit; this.slotPendingH = d.pendingHours; this.slotsLoaded = true;
       } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script đang chạy bản cũ, chưa có chức năng Còn slot. Dán lại Code.gs mới rồi Deploy → New version.' : e.message; }
       this.slotsLoading = false;
@@ -880,18 +883,24 @@ function app() {
     },
     stLabel(r) {
       return ({ free: 'Trống', reuse: 'Hết hạn, chưa mời · dùng lại được', need: 'Còn hạn, chưa mời', pending: 'Đã mời ' + r.hours + 'h, chưa vào',
-        joined: 'Đã vào ✓', expiredIn: 'Hết hạn (có thể còn trong nhóm)', ok: '' })[r.state] || '';
+        joined: 'Đã vào ✓', nojoin: 'Mời ' + r.days + ' ngày, KHÔNG vào (kiểm tra ' + r.checked + ') · chờ đổi khách', expiredIn: 'Hết hạn (có thể còn trong nhóm)', ok: '' })[r.state] || '';
     },
-    stClass(r) { return ({ free: 'free', reuse: 'free', need: 'need', pending: 'pending', joined: 'joined' })[r.state] || ''; },
-    toggleSel(f, email) { f.sel = f.sel.includes(email) ? f.sel.filter(x => x !== email) : [...f.sel, email]; },
+    stClass(r) { return ({ free: 'free', reuse: 'free', need: 'need', pending: 'pending', joined: 'joined', nojoin: 'need' })[r.state] || ''; },
+    setMark(f, email, v) { const m = Object.assign({}, f.mark); if (m[email] === v) delete m[email]; else m[email] = v; f.mark = m; },
+    markCount(f, v) { return Object.values(f.mark || {}).filter(x => x === v).length; },
     async saveJoined(f) {
       f.saving = true;
+      const inn = Object.keys(f.mark).filter(e => f.mark[e] === 'in'), out = Object.keys(f.mark).filter(e => f.mark[e] === 'out');
       try {
-        await this.api({ action: 'markJoined', rn: f.rn, emails: f.sel });
-        f.rows.forEach(r => { if (f.sel.includes(r.email)) r.state = 'joined'; });
-        this.toast = 'Đã lưu ' + f.sel.length + ' khách đã vào ' + f.rn; setTimeout(() => this.toast = '', 1500);
-        f.sel = []; f.pend = f.rows.filter(r => r.state === 'pending').length; f.late = f.rows.filter(r => r.state === 'pending' && r.late).length;
-        if (!f.pend) f.check = false;
+        await this.api({ action: 'markJoined', rn: f.rn, emails: inn, notJoined: out });
+        f.rows.forEach(r => {
+          if (inn.includes(r.email)) r.state = 'joined';
+          if (out.includes(r.email)) { r.state = 'nojoin'; r.days = Math.floor((r.hours || 0) / 24); r.checked = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }); }
+        });
+        this.toast = f.rn + ': ' + inn.length + ' đã vào, ' + out.length + ' chưa vào'; setTimeout(() => this.toast = '', 2000);
+        f.mark = {}; f.pend = f.rows.filter(r => r.state === 'pending').length; f.late = f.rows.filter(r => r.state === 'pending' && r.late).length;
+        f.free = f.rows.filter(r => ['free', 'reuse', 'nojoin'].includes(r.state)).length;
+        f.check = false;
       } catch (e) { this.error = e.message; }
       f.saving = false;
     },
