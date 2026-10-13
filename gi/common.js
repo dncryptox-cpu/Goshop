@@ -145,12 +145,15 @@ function openAuth(mode = 'login') {
       <label class="fl">Email<input class="inp" id="au_mail" type="email" autocomplete="email" placeholder="ban@gmail.com" required></label>
       <label class="fl">Số điện thoại / Zalo<input class="inp" id="au_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="09xx xxx xxx" required minlength="9"></label>`
     : `
-      <label class="fl">Tên đăng nhập hoặc email<input class="inp" id="au_user" autocomplete="username" required autocapitalize="none"></label>
-      <label class="fl">Mật khẩu<input class="inp" id="au_pass" type="password" autocomplete="current-password" required></label>`}
+      <div class="authnote"><b>Đã mua YouTube Premium ở shop?</b> Bạn có sẵn tài khoản, không cần đăng ký.<br>
+        Nhập <b>email đang dùng YouTube</b>. Lần đầu, mật khẩu là <b>phần trước @</b> của email.<br>
+        <span class="ex">Ví dụ: email <b>tenban123@gmail.com</b> → mật khẩu <b>tenban123</b></span></div>
+      <label class="fl">Email (hoặc tên đăng nhập)<input class="inp" id="au_user" type="text" inputmode="email" autocomplete="username" required autocapitalize="none" placeholder="email-cua-ban@gmail.com"></label>
+      <label class="fl">Mật khẩu<input class="inp" id="au_pass" type="password" autocomplete="current-password" required placeholder="Lần đầu: phần trước @ của email"></label>`}
     <div class="warn" id="au_err" style="display:none"></div>
     <button class="btn" id="au_btn" type="submit">${reg ? 'Tạo tài khoản' : 'Đăng nhập'}</button>
-    <button class="btn ghost" type="button" onclick="openAuth('${reg ? 'login' : 'register'}')">${reg ? 'Đã có tài khoản? Đăng nhập' : 'Chưa có tài khoản? Đăng ký (5 giây)'}</button>
-    ${reg ? '' : '<small class="note">Quên mật khẩu? Liên hệ hỗ trợ để được cấp lại.</small>'}
+    <button class="btn ghost" type="button" onclick="openAuth('${reg ? 'login' : 'register'}')">${reg ? 'Đã mua YouTube ở shop / đã có tài khoản? Đăng nhập' : 'Khách mới, chưa mua gì? Đăng ký'}</button>
+    ${reg ? '' : '<small class="note">Đã đổi mật khẩu rồi quên? Nhắn Zalo 0398.057.191 để shop cấp lại.</small>'}
   </form>`;
   m.classList.add('on'); setTimeout(() => { const i = document.getElementById('au_user'); i && i.focus(); }, 50);
 }
@@ -159,14 +162,39 @@ function authErr(msg) { const e = document.getElementById('au_err'); e.textConte
 async function doLogin() {
   const b = document.getElementById('au_btn'); b.disabled = true;
   let id = document.getElementById('au_user').value.trim(); const pw = document.getElementById('au_pass').value;
+  const typedEmail = id.includes('@');
   if (!id.includes('@')) {
     const { data } = await sb.rpc('login_email', { p_username: id });
     if (!data) return authErr('Không tìm thấy tên đăng nhập này');
     id = data;
   }
+  id = id.toLowerCase();
   const { error } = await sb.auth.signInWithPassword({ email: id, password: pw });
-  if (error) return authErr(errText(error));
+  if (error) {
+    // Khách YouTube chưa từng vào app: tài khoản chưa được tạo → tạo luôn với mật khẩu khách vừa nhập
+    if (typedEmail && /Invalid login/i.test(error.message || '') && await GI_isYtCustomer(id)) {
+      const pass = pw.length >= 6 ? pw : GI_defaultPass(id);
+      const r = await sb.auth.signUp({ email: id, password: pass, options: { data: { quick: pass === GI_defaultPass(id) } } });
+      if (!r.error && r.data && r.data.session) {
+        closeAuth(); toast(pass === pw ? 'Đã vào. Mật khẩu của bạn là mật khẩu vừa nhập.' : 'Đã vào. Mật khẩu tạm: ' + pass + ' (đổi ở tab Đơn)');
+        if (window.GI_onAuth) window.GI_onAuth(); return;
+      }
+      if (r.error && /already registered/i.test(r.error.message || '')) return authErr('Sai mật khẩu. Lần đầu, mật khẩu là phần trước @ của email (' + GI_defaultPass(id) + '). Đã đổi mà quên thì nhắn Zalo shop.');
+    }
+    return authErr(/Invalid login/i.test(error.message || '') && typedEmail
+      ? 'Email này chưa có trong danh sách khách YouTube của shop, hoặc sai mật khẩu. Kiểm tra lại email, hoặc bấm Đăng ký.'
+      : errText(error));
+  }
   closeAuth(); toast('Đã đăng nhập'); if (window.GI_onAuth) window.GI_onAuth();
+}
+// Mật khẩu mặc định = phần trước @ (thiếu 6 ký tự thì thêm 1234…), giống quick.js
+const GI_defaultPass = e => { const l = String(e || '').trim().toLowerCase().split('@')[0]; return l.length >= 6 ? l : (l + '123456').slice(0, 6); };
+async function GI_isYtCustomer(email) {
+  if (!GI_CONFIG.RENEW_API || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+  try {
+    const r = await fetch(GI_CONFIG.RENEW_API + '?action=checkStatus', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ email }) });
+    const d = JSON.parse(await r.text()); return !!(d && d.success);
+  } catch (e) { return false; }
 }
 async function doRegister() {
   const b = document.getElementById('au_btn'); b.disabled = true;
