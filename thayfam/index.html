@@ -259,6 +259,26 @@
                     <template x-for="c in f.customers" :key="c.row">
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
                         <td class="mono"><span x-text="c.email"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span>
+                        <template x-if="pick.row === c.row">
+                          <div class="mv" style="flex-direction:column;align-items:stretch">
+                            <div x-show="pick.loading" class="mute" style="font-size:13px">Đang tìm fam còn slot…</div>
+                            <div x-show="!pick.loading && !pick.list.length" class="mute" style="font-size:13px">Không còn fam nào có slot trống (đã bỏ fam bị chặn mời / hết lượt mời).</div>
+                            <template x-if="!pick.loading && pick.list.length">
+                              <div>
+                                <div style="font-size:14px"><b x-text="cur().rn"></b> <span class="mute" x-text="'· renew ' + cur().renew + ' (còn ' + cur().days + ' ngày) · mời ' + cur().used + '/' + cur().limit + ' tuần này'"></span></div>
+                                <div class="mute" style="font-size:13px" x-text="'Slot: ' + cur().label + ' · fam ' + (pick.i + 1) + '/' + pick.list.length"></div>
+                                <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+                                  <label class="mute" style="font-size:13px"><input type="checkbox" x-model="pick.invited"> Đã mời luôn</label>
+                                  <label class="mute" style="font-size:13px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
+                                  <button class="btn sm pri" @click="doPick()" :disabled="!!mv.busy" x-text="mv.busy ? 'Đang chuyển…' : (pick.confirm ? 'Bấm lần nữa để chuyển' : 'Chuyển vào ' + cur().rn)"></button>
+                                  <button class="btn sm" x-show="pick.list.length > 1" @click="pick.i = (pick.i + 1) % pick.list.length; pick.confirm = false">Fam khác →</button>
+                                  <button class="btn sm" @click="pick = { row: null, list: [] }">Huỷ</button>
+                                </div>
+                              </div>
+                            </template>
+                            <div class="err" style="margin:0" x-show="mv.error && pick.row === c.row" x-text="mv.error"></div>
+                          </div>
+                        </template>
                         <div class="mute" style="font-size:12px;color:var(--bad)" x-show="c.nojoin" x-text="'Chưa vào nhóm (kiểm tra ' + c.nojoin + ') · khi cần thì Đổi khách'"></div>
                         <div x-show="f.check && c.email" style="display:flex;gap:4px;margin-top:4px">
                           <button class="btn sm" :class="(f.mark||{})[c.email]==='in' && 'pri'" @click="setMark(f, c.email, 'in')">Đã vào</button>
@@ -290,7 +310,7 @@
                         <td x-text="c.hsd || '—'"></td>
                         <td :style="c.daysLeft!==null && c.daysLeft<0 ? 'color:var(--bad)' : (c.daysLeft!==null && c.daysLeft<=10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft===null ? '—' : (c.daysLeft<0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + ' ngày')"></td>
                         <td class="hide-sm mono" x-show="me.role !== 'outsource'" x-text="c.mailPhu || '—'"></td>
-                        <td style="text-align:right;white-space:nowrap"><button class="btn sm" x-show="can('move') && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn sm" x-show="can('move') && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: c.mailPhu || '', invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
+                        <td style="text-align:right;white-space:nowrap"><button class="btn sm" x-show="can('move') && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn sm" x-show="can('move') && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn sm" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: c.mailPhu || '', invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
                       </tr>
                     </template>
                     <template x-for="sl in (f.slots || []).filter(x => !x.email)" :key="'e' + sl.row">
@@ -760,7 +780,7 @@ function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
-    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, autoSync: lsGet('thayfam_autosync') !== '0', syncSel: [], batchBusy: '', batchConfirm: false, batchReport: '',
+    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, autoSync: lsGet('thayfam_autosync') !== '0', syncSel: [], batchBusy: '', batchConfirm: false, batchReport: '',
     blocks: [], blocksLoading: false, blocksBusy: '', blocksOpen: 0, blocksDue: 0, blockWait: 5,
     today: '', due: [], reported: [], renewals: [], frs: [], skipped: [],
     ctvFilter: '', log: [], logLoading: false, actions: [],
@@ -890,6 +910,29 @@ function app() {
         this.slotLimit = d.limit; this.slotPendingH = d.pendingHours; this.slotsLoaded = true;
       } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script đang chạy bản cũ, chưa có chức năng Còn slot. Dán lại Code.gs mới rồi Deploy → New version.' : e.message; }
       this.slotsLoading = false;
+    },
+    cur() { return this.pick.list[this.pick.i] || {}; },
+    async findSlot(f, c) {
+      this.mv = {}; this.em = {};
+      this.pick = { row: c.row, email: c.email, list: [], i: 0, loading: true, invited: false, confirm: false };
+      await this.loadSlots();
+      const lab = { free: 'trống', reuse: 'khách hết hạn (chép xuống cuối DATA)', nojoin: 'khách chưa vào (chép xuống cuối DATA)' };
+      const list = [];
+      this.slots.forEach(x => {
+        if (x.rn === f.rn || x.blockedUntil || x.used >= x.limit) return;
+        x.rows.forEach(r => { if (lab[r.state]) list.push({ rn: x.rn, renew: x.renew, days: x.days, used: x.used, limit: x.limit, row: r.row, state: r.state, label: lab[r.state] + (r.email ? ': ' + r.email : ''), replace: r.state === 'nojoin' ? r.email : '' }); });
+      });
+      const rank = { free: 0, reuse: 1, nojoin: 2 };
+      list.sort((a, b) => (b.days || 0) - (a.days || 0) || rank[a.state] - rank[b.state]);
+      if (this.pick.row === c.row) Object.assign(this.pick, { list: list, loading: false });
+    },
+    async doPick() {
+      const p = this.pick, t = this.cur();
+      if (!p.confirm) { p.confirm = true; setTimeout(() => { if (this.pick === p) p.confirm = false; }, 4000); return; }
+      this.mv = { row: t.row, email: p.email, invited: !!p.invited, replace: t.replace, confirm: true };
+      await this.doMove(null, { row: t.row });
+      if (!this.mv.error) this.pick = { row: null, list: [] };
+      else p.confirm = false;
     },
     filteredSlots() {
       const k = this.slotFilter;
