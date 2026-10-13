@@ -243,6 +243,11 @@
               <div class="peek">
                 <div class="peek-own mute">
                   Pass <span class="mono cp" title="Bấm để copy" @click="copy(f.pass, 'Đã copy pass')" x-text="f.pass || '—'"></span> · MKP <span class="mono cp" title="Bấm để copy" @click="copy(f.mkp, 'Đã copy MKP')" x-text="f.mkp || '—'"></span> · 2FA <b class="mono" :class="f.twofa && 'cp'" title="Bấm để copy mã" @click="f.twofa && copy(slotOtp['S' + f.rn], 'Đã copy mã 2FA')" x-text="f.twofa ? (slotOtp['S' + f.rn] || '······') : 'không'"></b> · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
+                  <button class="btn sm" style="margin-left:8px" x-show="can('markJoined') && f.customers.length" @click="f.check = !f.check; f.mark = {}" x-text="f.check ? 'Đóng kiểm tra' : 'Kiểm tra fam'"></button>
+                </div>
+                <div class="row" x-show="f.check" style="margin:6px 0">
+                  <span class="grow mute" style="font-size:13px" x-text="'Mở trang Gia đình, bấm Đã vào / Chưa vào cho từng khách. ' + markCount(f, 'in') + ' đã vào · ' + markCount(f, 'out') + ' chưa vào'"></span>
+                  <button class="btn sm pri" @click="saveCheck(f)" :disabled="!Object.keys(f.mark || {}).length || !!f.saving" x-text="f.saving ? 'Đang lưu…' : 'Lưu kiểm tra'"></button>
                 </div>
                 <template x-if="f.customers.length===0"><div class="mute" style="font-size:13px">Không có email khách.</div></template>
                 <table x-show="f.customers.length || (f.slots || []).some(x => !x.email)">
@@ -251,6 +256,11 @@
                     <template x-for="c in f.customers" :key="c.row">
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
                         <td class="mono"><span x-text="c.email"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span>
+                        <div class="mute" style="font-size:12px;color:var(--bad)" x-show="c.nojoin" x-text="'Chưa vào nhóm (kiểm tra ' + c.nojoin + ') · khi cần thì Đổi khách'"></div>
+                        <div x-show="f.check && c.email" style="display:flex;gap:4px;margin-top:4px">
+                          <button class="btn sm" :class="(f.mark||{})[c.email]==='in' && 'pri'" @click="setMark(f, c.email, 'in')">Đã vào</button>
+                          <button class="btn sm" :class="(f.mark||{})[c.email]==='out' && 'pri'" @click="setMark(f, c.email, 'out')">Chưa vào</button>
+                        </div>
                         <template x-if="mv.row === c.row">
                           <div class="mv">
                             <div class="mute" style="width:100%;font-size:12px" x-show="mv.replace" x-text="'Đổi khách: ' + mv.replace + ' sẽ được chép xuống cuối sheet DATA (không mất data).'"></div>
@@ -883,11 +893,23 @@ function app() {
     },
     stLabel(r) {
       return ({ free: 'Trống', reuse: 'Hết hạn, chưa mời · dùng lại được', need: 'Còn hạn, chưa mời', pending: 'Đã mời ' + r.hours + 'h, chưa vào',
-        joined: 'Đã vào ✓', nojoin: 'Mời ' + r.days + ' ngày, KHÔNG vào (kiểm tra ' + r.checked + ') · chờ đổi khách', expiredIn: 'Hết hạn (có thể còn trong nhóm)', ok: '' })[r.state] || '';
+        joined: 'Đã vào ✓', nojoin: (r.days != null ? 'Mời ' + r.days + ' ngày, ' : '') + 'KHÔNG vào (kiểm tra ' + r.checked + ') · chờ đổi khách', expiredIn: 'Hết hạn (có thể còn trong nhóm)', ok: '' })[r.state] || '';
     },
     stClass(r) { return ({ free: 'free', reuse: 'free', need: 'need', pending: 'pending', joined: 'joined', nojoin: 'need' })[r.state] || ''; },
     setMark(f, email, v) { const m = Object.assign({}, f.mark); if (m[email] === v) delete m[email]; else m[email] = v; f.mark = m; },
     markCount(f, v) { return Object.values(f.mark || {}).filter(x => x === v).length; },
+    async saveCheck(f) {
+      f.saving = true;
+      const mk = f.mark || {}, inn = Object.keys(mk).filter(e => mk[e] === 'in'), out = Object.keys(mk).filter(e => mk[e] === 'out');
+      try {
+        await this.api({ action: 'markJoined', rn: f.rn, emails: inn, notJoined: out });
+        const d = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+        f.customers.forEach(c => { if (inn.includes(c.email)) c.nojoin = ''; if (out.includes(c.email)) c.nojoin = d; });
+        this.toast = f.rn + ': ' + inn.length + ' đã vào, ' + out.length + ' chưa vào'; setTimeout(() => this.toast = '', 2000);
+        f.mark = {}; f.check = false;
+      } catch (e) { this.error = e.message; }
+      f.saving = false;
+    },
     async saveJoined(f) {
       f.saving = true;
       const inn = Object.keys(f.mark).filter(e => f.mark[e] === 'in'), out = Object.keys(f.mark).filter(e => f.mark[e] === 'out');
