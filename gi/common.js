@@ -26,7 +26,8 @@ Object.assign(GI_ERR, {
   'Password should be at least': 'Mật khẩu tối thiểu 6 ký tự',
   'Database error saving new user': 'Tên đăng nhập đã có người dùng hoặc không hợp lệ',
   'Unable to validate email address': 'Email không hợp lệ',
-  'Email not confirmed': 'Tài khoản chưa xác nhận email'
+  'Email not confirmed': 'Tài khoản chưa xác nhận email',
+  'New password should be different': 'Mật khẩu mới phải khác mật khẩu cũ'
 });
 const errText = e => { const m = (e && (e.message || e.error_description)) || String(e); const k = Object.keys(GI_ERR).find(k => m.includes(k)); return k ? GI_ERR[k] : m; };
 
@@ -135,4 +136,29 @@ async function doRegister() {
   if (error) return authErr(errText(error));
   if (!data.session) return authErr('Đã tạo tài khoản. Vui lòng kiểm tra email để xác nhận rồi đăng nhập.');
   closeAuth(); toast('Tạo tài khoản thành công'); if (window.GI_onAuth) window.GI_onAuth();
+}
+
+// ===== Đổi mật khẩu (tài khoản tạo nhanh từ trang renew có mật khẩu mặc định) =====
+const GI_isQuick = u => !!(u && u.user_metadata && u.user_metadata.quick);
+function openChangePass() {
+  let m = document.getElementById('authModal');
+  if (!m) { m = document.createElement('div'); m.id = 'authModal'; m.className = 'scrim'; m.onclick = e => { if (e.target === m) closeAuth(); }; document.body.appendChild(m); }
+  m.innerHTML = `<form class="sheet" onsubmit="event.preventDefault();doChangePass()" style="gap:12px">
+    <h3>Đổi mật khẩu</h3>
+    <label class="fl">Mật khẩu mới<input class="inp" id="au_pass" type="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự" required minlength="6"></label>
+    <label class="fl">Nhập lại<input class="inp" id="au_pass2" type="password" autocomplete="new-password" required minlength="6"></label>
+    <div class="warn" id="au_err" style="display:none"></div>
+    <button class="btn" id="au_btn" type="submit">Lưu mật khẩu</button>
+    <button class="btn ghost" type="button" onclick="closeAuth()">Để sau</button>
+  </form>`;
+  m.classList.add('on'); setTimeout(() => { const i = document.getElementById('au_pass'); i && i.focus(); }, 50);
+}
+async function doChangePass() {
+  const b = document.getElementById('au_btn'); b.disabled = true;
+  const pw = document.getElementById('au_pass').value, pw2 = document.getElementById('au_pass2').value;
+  if (pw.length < 6) return authErr('Mật khẩu tối thiểu 6 ký tự');
+  if (pw !== pw2) return authErr('Hai lần nhập không khớp');
+  const { error } = await sb.auth.updateUser({ password: pw, data: { quick: false } });
+  if (error) return authErr(errText(error));
+  closeAuth(); toast('Đã đổi mật khẩu'); if (window.GI_onAuth) window.GI_onAuth();
 }
