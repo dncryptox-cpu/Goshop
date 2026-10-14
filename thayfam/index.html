@@ -261,7 +261,6 @@
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
                         <td class="mono"><input type="checkbox" x-show="can('sendMail')" style="margin-right:6px" :checked="!!mailSel[lcm(c.email)]" @change="toggleMail(c.email, f.rn, c.hsd)" title="Chọn để gửi mail"><span x-text="c.email"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span><span class="badge" x-show="mailLog[lcm(c.email)]" style="margin-left:6px;cursor:pointer" :title="mailTip(c.email)" @click="mailInfo = mailInfo === lcm(c.email) ? '' : lcm(c.email)" x-text="'✉ ' + (mailLog[lcm(c.email)] || {}).at"></span><div class="mute" style="font-size:12px;white-space:pre-wrap;font-family:inherit" x-show="mailInfo && mailInfo === lcm(c.email)" x-text="mailTip(c.email)"></div>
                         <div class="mute" style="font-size:12px" x-show="pick.row === c.row">↓ đang tìm fam cho khách này</div>
-                        <div style="font-size:12px;color:var(--warn)" x-show="can('mailPhu') && livePhu(c.mailPhu) && me.role !== 'outsource'">⚠ Mail phụ <span class="mono" x-text="c.mailPhu"></span> có thể đang chiếm thêm 1 slot. <button class="btn sm" @click="mailPhuDone(c)" :disabled="!!c.mpBusy" x-text="c.mpBusy ? '…' : 'Đã xoá / không có trong nhóm'"></button></div>
                         <div class="mute" style="font-size:12px;color:var(--bad)" x-show="c.nojoin" x-text="'Chưa vào nhóm (kiểm tra ' + c.nojoin + ') · khi cần thì Đổi khách'"></div>
                         <div x-show="f.check && c.email" style="display:flex;gap:4px;margin-top:4px">
                           <button class="btn sm" :class="(f.mark||{})[c.email]==='in' && 'pri'" @click="setMark(f, c.email, 'in')">Đã vào</button>
@@ -286,7 +285,7 @@
                             <label class="mute" style="font-size:13px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
                             <button class="btn sm pri" @click="doSwapMail(c)" :disabled="!!em.busy || !em.oldRemoved" x-text="em.busy ? 'Đang đổi…' : (em.confirm ? 'Bấm lần nữa để đổi' : 'Đổi mail')"></button>
                             <button class="btn sm" @click="em = {}">Huỷ</button>
-                            <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="c.email"></b> được lưu ở cột Mail phụ dạng "hủy &lt;mail&gt;". HSD, CTV giữ nguyên.</div>
+                            <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="c.email"></b> sẽ chuyển sang cột Mail phụ để lưu. HSD, CTV giữ nguyên.</div>
                             <div class="err" style="width:100%;margin:0" x-show="em.error" x-text="em.error"></div>
                           </div>
                         </template></td>
@@ -388,16 +387,16 @@
           <button class="chip" :class="slotFilter==='free' && 'on'" @click="slotFilter='free'">Còn slot trống</button>
           <button class="chip" :class="slotFilter==='need' && 'on'" @click="slotFilter='need'">Cần mời</button>
           <button class="chip" :class="slotFilter==='late' && 'on'" @click="slotFilter='late'" x-text="'Mời ' + slotPendingH + 'h chưa vào'"></button>
-          <button class="chip" x-show="can('mailPhu')" :class="slotFilter==='mp' && 'on'" @click="slotFilter='mp'; loadMp()" x-text="'Soi mail phụ' + (mp.loaded ? ' (' + mp.items.length + ' fam)' : '')"></button>
+          <button class="chip" x-show="can('mailPhu')" :class="slotFilter==='mp' && 'on'" @click="slotFilter='mp'; loadMp()" x-text="'Điểm đáng ngờ' + (mp.loaded ? ' (' + mp.items.length + ' fam)' : '')"></button>
           <button class="btn sm" style="margin-left:auto" @click="loadSlots()" :disabled="slotsLoading" x-text="slotsLoading ? 'Đang tải…' : 'Tải lại'"></button>
         </div>
         <template x-if="slotsLoading && !slots.length"><div class="empty">Đang tải…</div></template>
         <template x-if="slotsLoaded && slotFilter !== 'mp' && !filteredSlots().length"><div class="empty">Không có fam nào.</div></template>
         <template x-if="slotFilter === 'mp'">
           <div>
-            <div class="mute" style="font-size:13px;margin-bottom:10px">Khách có <b>mail phụ</b> mà chưa đánh dấu "hủy": có thể nhân viên cũ đã mời cả mail phụ lẫn mail chính → 1 khách chiếm 2 slot. Đăng nhập fam, mở Trang Gia đình: thấy mail phụ trong nhóm thì xoá, rồi bấm nút. Không thấy cũng bấm nút để khỏi hiện lại.</div>
+            <div class="mute" style="font-size:13px;margin-bottom:10px"><b>Chỉ để soi, webapp không sửa gì.</b> Đỏ = email khách trùng 2 chỗ hoặc mail phụ đang là khách ở dòng khác (gần như chắc chắn dư slot). Vàng = có mail phụ chưa ghi "hủy" (có thể nhân viên cũ đã mời cả mail phụ). Bạn đăng nhập fam, so với nhóm Gia đình rồi tự xoá / đổi.</div>
             <template x-if="mp.loading"><div class="empty">Đang tải…</div></template>
-            <template x-if="mp.loaded && !mp.items.length"><div class="empty">Không còn mail phụ nào cần soi.</div></template>
+            <template x-if="mp.loaded && !mp.items.length"><div class="empty">Không thấy điểm đáng ngờ nào.</div></template>
             <template x-for="f in mp.items" :key="f.rn">
               <div class="card">
                 <div class="row" style="gap:8px;flex-wrap:wrap">
@@ -410,9 +409,9 @@
                   </div>
                 </div>
                 <template x-for="r in f.rows" :key="r.row">
-                  <div class="row" style="gap:8px;margin-top:6px;font-size:13px">
-                    <div class="grow"><span class="mono" x-text="r.email"></span> · mail phụ <b class="mono" x-text="r.mailPhu"></b></div>
-                    <button class="btn sm pri" @click="mailPhuDone(r, f)" :disabled="!!r.mpBusy" x-text="r.mpBusy ? '…' : 'Đã xoá / không có trong nhóm'"></button>
+                  <div style="margin-top:6px;font-size:13px;padding-left:8px" :style="'border-left:3px solid ' + (r.lv <= 2 ? 'var(--bad)' : 'var(--warn)')">
+                    <span class="mono" x-text="r.email"></span><span x-show="r.mailPhu"> · mail phụ <b class="mono" x-text="r.mailPhu"></b></span> <span class="mute" x-text="'(dòng ' + r.row + ')'"></span>
+                    <template x-for="w in r.why" :key="w"><div class="mute" x-text="'• ' + w"></div></template>
                   </div>
                 </template>
               </div>
@@ -460,7 +459,7 @@
                             <label class="mute" style="font-size:13px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
                             <button class="btn sm pri" @click="doSwapMail(r)" :disabled="!!em.busy || !em.oldRemoved" x-text="em.busy ? 'Đang đổi…' : (em.confirm ? 'Bấm lần nữa để đổi' : 'Đổi mail')"></button>
                             <button class="btn sm" @click="em = {}">Huỷ</button>
-                            <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="r.email"></b> được lưu ở cột Mail phụ dạng "hủy &lt;mail&gt;". HSD, CTV giữ nguyên.</div>
+                            <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="r.email"></b> sẽ chuyển sang cột Mail phụ để lưu. HSD, CTV giữ nguyên.</div>
                             <div class="err" style="width:100%;margin:0" x-show="em.error" x-text="em.error"></div>
                           </div>
                         </template>
@@ -960,7 +959,7 @@ function app() {
         else {
           this.lastActionId = res.actionId;
           this.lastDone = '✓ ' + res.rn + ': đổi ' + res.oldEmail + ' → ' + res.newEmail + (res.invited ? ' (đã mời)' : ' (chưa mời)') + '. Mail gốc lưu ở cột Mail phụ. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
-          c.mailPhu = 'hủy ' + c.email; c.email = res.newEmail;
+          c.mailPhu = c.email; c.email = res.newEmail;
           if ('state' in c) { c.state = res.invited ? 'pending' : 'need'; c.hours = 0; }
           this.em = {};
           await this.autoSyncAfter(res.actionId);
@@ -1060,16 +1059,6 @@ function app() {
       this.mp = { items: this.mp.items || [], loading: true, loaded: this.mp.loaded };
       try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, loading: false, loaded: true }; }
       catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng Soi mail phụ: dán Code.gs mới rồi Deploy → New version.' : e.message; this.mp.loading = false; }
-    },
-    async mailPhuDone(r, f) {
-      r.mpBusy = true; this.error = '';
-      try {
-        await this.api({ action: 'mailPhu', op: 'done', row: r.row, mailPhu: r.mailPhu });
-        r.mailPhu = 'hủy ' + r.mailPhu;
-        if (f) { f.rows = f.rows.filter(x => x.row !== r.row); if (!f.rows.length) this.mp.items = this.mp.items.filter(x => x !== f); }
-        this.toast = 'Đã đánh dấu mail phụ'; setTimeout(() => this.toast = '', 1500);
-      } catch (e) { this.error = e.message; }
-      r.mpBusy = false;
     },
     filteredSlots() {
       const k = this.slotFilter;
