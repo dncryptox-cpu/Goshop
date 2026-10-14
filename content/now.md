@@ -1,4 +1,4 @@
-*Trang này nói tôi đang làm gì, ở thời điểm hiện tại. Cập nhật mỗi tháng.*
+*Trang này nói mình đang làm gì, ở thời điểm hiện tại. Cập nhật mỗi tháng.*
 
 ## Chạy
 

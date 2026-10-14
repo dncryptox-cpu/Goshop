@@ -1,56 +1,81 @@
-/* godnc.com blog — tất cả nội dung nằm trong /content (site.json, posts.json, *.md) */
-const CATS = { chay: 'Chạy', tinh: 'Tĩnh', tien: 'Tiền', xuong: 'Xưởng' };
+/* godnc.com — Sổ tay DNC. Nội dung: /content (site.json, posts.json, *.md) */
+const CATS = { trading: 'Trading', chay: 'Chạy', tinh: 'Tĩnh', tien: 'Tiền', xuong: 'Xưởng' };
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmtDate = d => { const [y, m, dd] = d.split('-'); return `${dd}.${m}.${y}`; };
 const getJSON = p => fetch(p, { cache: 'no-cache' }).then(r => r.json());
+const visible = posts => posts.filter(p => !p.draft && !p.page).sort((a, b) => b.date.localeCompare(a.date) || (a.order || 0) - (b.order || 0));
 
-function nav(active, over) {
-  const items = [['/bai/', 'Bài viết', 'bai'], ['/bai/?c=chay', 'Chạy', 'chay', 'hide-s'], ['/now/', 'Bây giờ', 'now'], ['/ve-toi/', 'Về tôi', 've-toi']];
-  return `<nav class="nav${over ? ' over' : ''}"><div class="wrap">
-    <a class="brand" href="/">dnc<span>.</span></a>
-    <ul>${items.map(([h, t, k, c]) => `<li class="${c || ''}"><a href="${h}" class="${k === active ? 'on' : ''}">${t}</a></li>`).join('')}</ul>
-  </div></nav>`;
+function chrome(site, active) {
+  const st = `<div class="status"><div class="wrap"><b>Đang làm</b>${site.doing.map(d =>
+    `<span><i class="dot${d.state === 'watch' ? ' w' : ''}"></i>${esc(d.short)} <em>${esc(d.status)}</em></span>`).join('')}</div></div>`;
+  const items = [['/', 'Trang chủ', 'home', 'hide-s'], ['/bai/', 'Bài viết', 'bai'], ['/ve-toi/', 'Về mình', 've-toi']];
+  const nav = `<nav class="nav"><div class="wrap">
+    <a class="brand" href="/">DNC<i>Sổ tay 2026</i></a>
+    <ul>${items.map(([h, t, k, c]) => `<li class="${c || ''}"><a href="${h}" class="${k === active ? 'on' : ''}">${t}</a></li>`).join('')}
+    <li><a class="btn" href="#dang-ky">Đăng ký</a></li></ul></div></nav>`;
+  document.body.insertAdjacentHTML('afterbegin', st + nav);
+}
+
+function subscribe(site) {
+  return `<div class="wrap"><div class="sub" id="dang-ky">
+    <div><span class="kicker" style="color:#f0a070">Thư từ Nha Trang</span><h2 style="margin-top:14px">Mỗi tuần một thư. <em>Làm gì, sai ở đâu.</em></h2>
+    <p>Trade trung lập, chạy núi, build tool. Ghi lại thật — kể cả chỗ sai.</p></div>
+    <div><form id="subForm"><input type="email" name="email" required placeholder="email@cuaban.com" autocomplete="email"><button class="btn" type="submit">Đăng ký →</button></form>
+    <div class="msg" id="subMsg"></div><small>Không spam. Huỷ lúc nào cũng được.</small></div></div></div>`;
+}
+
+function bindSubscribe(site) {
+  const f = $('#subForm'); if (!f) return;
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = f.email.value.trim().toLowerCase(), msg = $('#subMsg'), btn = f.querySelector('button');
+    btn.disabled = true; msg.className = 'msg'; msg.textContent = 'Đang gửi…';
+    try {
+      const r = await fetch(site.subscribe.url + '/rest/v1/' + site.subscribe.table, {
+        method: 'POST',
+        headers: { apikey: site.subscribe.key, Authorization: 'Bearer ' + site.subscribe.key, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+        body: JSON.stringify({ email, source: location.pathname })
+      });
+      if (r.ok || r.status === 409) { msg.className = 'msg ok'; msg.textContent = 'Đã nhận. Thư đầu tiên sẽ tới sớm.'; f.reset(); }
+      else throw new Error(r.status);
+    } catch (err) { msg.className = 'msg err'; msg.textContent = 'Chưa gửi được. Thử lại sau, hoặc nhắn mình qua X.'; }
+    btn.disabled = false;
+  });
 }
 
 function footer(site) {
-  return `<footer><div class="wrap">
-    <div><div class="big">a place to keep.</div><div>${esc(site.tagline)}</div></div>
-    <div style="display:flex;flex-direction:column;gap:12px">
-      <ul>${site.social.map(s => `<li><a href="${s.url}" target="_blank" rel="noopener">${esc(s.name)}</a></li>`).join('')}</ul>
-      <ul>${site.links.map(s => `<li><a href="${s.url}">${esc(s.name)}</a></li>`).join('')}</ul>
-    </div>
-  </div></footer>`;
+  return `<footer><div class="wrap"><div class="cols">
+    <div><div class="big">Sổ tay DNC</div><div>${esc(site.tagline)}</div></div>
+    <div><h4>Trang</h4><ul><li><a href="/bai/">Bài viết</a></li><li><a href="/ve-toi/">Về mình</a></li><li><a href="#dang-ky">Đăng ký thư</a></li></ul></div>
+    <div><h4>Kênh</h4><ul>${site.social.map(s => `<li><a href="${s.url}" target="_blank" rel="noopener">${esc(s.name)}</a></li>`).join('')}</ul></div>
+    <div><h4>Khác</h4><ul>${site.links.map(s => `<li><a href="${s.url}">${esc(s.name)}</a></li>`).join('')}</ul></div>
+  </div><div class="legal"><span>© 2026 DNC · Nha Trang</span><span>Nội dung là ghi chép cá nhân, không phải lời khuyên đầu tư.</span></div></div></footer>`;
 }
 
 function postRow(p) {
-  return `<li><a href="/bai/?s=${p.slug}">
-    <time>${fmtDate(p.date)}</time>
+  return `<li><a href="/bai/?s=${p.slug}"><time>${fmtDate(p.date)}</time>
     <div><h3>${esc(p.title)}</h3>${p.excerpt ? `<p>${esc(p.excerpt)}</p>` : ''}</div>
-    <span class="tag">${CATS[p.cat] || ''}</span></a></li>`;
+    <span class="tag ${p.cat}">${CATS[p.cat] || ''}</span></a></li>`;
 }
-
-const visible = posts => posts.filter(p => !p.draft && !p.page).sort((a, b) => b.date.localeCompare(a.date));
 
 /* ---------- trang chủ ---------- */
 async function home() {
   const [site, posts] = await Promise.all([getJSON('/content/site.json'), getJSON('/content/posts.json')]);
   const list = visible(posts);
-  document.body.insertAdjacentHTML('afterbegin', nav('', true));
-  $('#facts').innerHTML = site.facts.map(f => `<div><b>${esc(f.v)}</b><span>${esc(f.k)}</span></div>`).join('');
-  $('#now-list').innerHTML = site.now.items.map(i => `<li><span>${esc(i.k)}</span><div>${esc(i.v)}</div></li>`).join('');
-  $('#now-upd').textContent = 'Cập nhật ' + fmtDate(site.now.updated);
-  $('#latest').innerHTML = list.slice(0, 5).map(postRow).join('') || '<p class="empty">Chưa có bài.</p>';
-  $('#races').innerHTML = site.races.map(r => {
-    const inner = `<span class="yr">${esc(r.year)}</span><h3>${esc(r.name)}</h3><span class="meta">${esc(r.meta || '')}</span><span class="st">${esc(r.status)}${r.post ? ' →' : ''}</span>`;
-    return r.post ? `<a class="race link" href="/bai/?s=${r.post}">${inner}</a>` : `<div class="race">${inner}</div>`;
+  chrome(site, 'home');
+  $('#doing').innerHTML = site.doing.map((d, i) => {
+    const inner = `<div class="top"><span class="n">0${i + 1} · ${esc(d.area)}</span><span class="badge${d.state === 'watch' ? ' w' : ''}">${esc(d.status)}</span></div>
+      <h3>${esc(d.title)}</h3><p>${esc(d.desc)}</p>
+      <div class="meta"><span>${esc(d.where)}</span>${d.link ? `<span class="go">${esc(d.cta || 'Đọc')} →</span>` : ''}</div>`;
+    return d.link ? `<a class="do" href="${d.link}">${inner}</a>` : `<div class="do">${inner}</div>`;
   }).join('');
-  $('#pillars').innerHTML = Object.entries(site.pillars).map(([k, d]) => {
-    const n = list.filter(p => p.cat === k).length;
-    return `<a href="/bai/?c=${k}"><b>${CATS[k]}</b><p>${esc(d)}</p><span class="n">${n ? n + ' bài' : 'Sắp có'}</span></a>`;
-  }).join('');
+  $('#doing-count').textContent = String(site.doing.length).padStart(2, '0') + ' mục';
+  $('#latest').innerHTML = list.slice(0, 7).map(postRow).join('');
+  $('#post-count').innerHTML = `<a href="/bai/">${list.length} bài · xem tất cả →</a>`;
   $('#apps').innerHTML = site.apps.map(a => `<a href="${a.url}"><b>${esc(a.name)}</b><span>${esc(a.what)}</span></a>`).join('');
-  document.body.insertAdjacentHTML('beforeend', footer(site));
+  document.body.insertAdjacentHTML('beforeend', subscribe(site) + footer(site));
+  bindSubscribe(site);
 }
 
 /* ---------- danh sách + đọc bài ---------- */
@@ -62,28 +87,30 @@ async function reader(fixedSlug) {
 
   if (!slug) {
     const c = q.get('c');
-    document.body.insertAdjacentHTML('afterbegin', nav(c === 'chay' ? 'chay' : 'bai'));
+    chrome(site, 'bai');
     const all = visible(posts), list = c ? all.filter(p => p.cat === c) : all;
-    document.title = (c ? CATS[c] + ' — ' : 'Bài viết — ') + 'dnc';
-    main.innerHTML = `<div class="wrap"><header class="page-head"><span class="kicker">${c ? 'Chủ đề' : 'Tất cả'}</span>
-      <h1>${c ? CATS[c] : 'Bài viết'}</h1>${c ? `<p style="color:var(--mute);max-width:56ch;margin-top:12px">${esc(site.pillars[c] || '')}</p>` : ''}
+    document.title = (c ? CATS[c] : 'Bài viết') + ' — Sổ tay DNC';
+    main.innerHTML = `<div class="wrap"><header class="page-head"><span class="kicker">${c ? 'Chủ đề' : 'Tất cả · ' + all.length + ' bài'}</span>
+      <h1>${c ? CATS[c] : 'Bài viết'}</h1>
       <div class="chips"><a href="/bai/" class="${!c ? 'on' : ''}">Tất cả</a>${Object.keys(CATS).map(k => `<a href="/bai/?c=${k}" class="${c === k ? 'on' : ''}">${CATS[k]}</a>`).join('')}</div></header>
       <ul class="posts">${list.map(postRow).join('') || '<p class="empty">Chưa có bài trong mục này.</p>'}</ul></div>`;
-    document.body.insertAdjacentHTML('beforeend', footer(site));
-    return;
+  } else {
+    const p = posts.find(x => x.slug === slug);
+    chrome(site, p && p.page ? slug : 'bai');
+    if (!p) { main.innerHTML = `<div class="art"><header><h1>Không tìm thấy bài</h1><p><a href="/bai/" style="color:var(--sun)">← Về danh sách</a></p></header></div>`; }
+    else {
+      document.title = p.title + ' — Sổ tay DNC';
+      const md = await fetch(`/content/${slug}.md`, { cache: 'no-cache' }).then(r => r.text());
+      const meta = p.page ? (p.date ? 'Cập nhật ' + fmtDate(p.date) : '') : `${fmtDate(p.date)} · ${CATS[p.cat] || ''}`;
+      main.innerHTML = `${p.cover ? `<div class="art-cover"><img src="${p.cover}" alt=""></div>` : ''}
+        <article class="art"><header><span class="kicker">${p.page ? 'Sổ tay DNC' : CATS[p.cat] || ''}</span>
+        <h1>${esc(p.title)}</h1><div class="by">${meta}</div></header>
+        <div class="prose">${marked.parse(md)}</div>
+        ${p.cat === 'trading' ? '<div class="note">Ghi chép cá nhân, không phải lời khuyên đầu tư. Tự nghiên cứu và tự chịu trách nhiệm với vốn của mình.</div>' : ''}</article>
+        ${p.page ? '' : `<div class="art-foot"><a href="/bai/">← Tất cả bài</a><a href="/bai/?c=${p.cat}">Thêm về ${CATS[p.cat]} →</a></div>`}`;
+      main.querySelectorAll('.prose a[href^="http"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+    }
   }
-
-  const p = posts.find(x => x.slug === slug);
-  document.body.insertAdjacentHTML('afterbegin', nav(p && p.page ? slug : (p && p.cat === 'chay' ? 'chay' : 'bai')));
-  if (!p) { main.innerHTML = `<div class="art"><header><h1>Không tìm thấy bài</h1><p><a href="/bai/" style="color:var(--sun2)">← Về danh sách</a></p></header></div>`; return; }
-  document.title = p.title + ' — dnc';
-  const md = await fetch(`/content/${slug}.md`, { cache: 'no-cache' }).then(r => r.text());
-  const meta = p.page ? (p.date ? 'Cập nhật ' + fmtDate(p.date) : '') : `${fmtDate(p.date)} · ${CATS[p.cat] || ''}`;
-  main.innerHTML = `${p.cover ? `<div class="art-cover"><img src="${p.cover}" alt=""></div>` : ''}
-    <article class="art${p.cover ? ' has-cover' : ''}"><header><span class="kicker">${p.page ? 'dnc' : CATS[p.cat] || ''}</span>
-    <h1>${esc(p.title)}</h1><div class="by">${meta}</div></header>
-    <div class="prose">${marked.parse(md)}</div></article>
-    ${p.page ? '' : `<div class="art-foot"><a href="/bai/">← Tất cả bài</a><a href="/bai/?c=${p.cat}">Thêm về ${CATS[p.cat]} →</a></div>`}`;
-  main.querySelectorAll('.prose a[href^="http"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
-  document.body.insertAdjacentHTML('beforeend', footer(site));
+  document.body.insertAdjacentHTML('beforeend', subscribe(site) + footer(site));
+  bindSubscribe(site);
 }

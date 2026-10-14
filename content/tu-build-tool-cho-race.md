@@ -1,10 +1,10 @@
-Trước VMM 100km 2026, tôi không muốn mang theo kế hoạch trong đầu. Tôi muốn nó nằm trên điện thoại, mở ra là thấy.
+Trước VMM 100km 2026, mình không muốn mang theo kế hoạch trong đầu. Mình muốn nó nằm trên điện thoại, mở ra là thấy.
 
-Nên tôi tự build một trang: **[Phân tích VMM 100km 2026](/vmm100/)**.
+Nên mình tự build một trang: **[Phân tích VMM 100km 2026](/vmm100/)**.
 
 ## Trong đó có gì
 
-Bảy phần, đi theo đúng thứ tự tôi cần nghĩ trước một race 100 km:
+Bảy phần, đi theo đúng thứ tự mình cần nghĩ trước một race 100 km:
 
 1. **Địa hình** — biểu đồ độ cao, 5 chặng, đỉnh 2.260 m, vùng chạy đêm.
 2. **Chiến thuật** — 7 phase, mỗi phase một việc phải làm.
@@ -16,12 +16,12 @@ Bảy phần, đi theo đúng thứ tự tôi cần nghĩ trước một race 10
 
 ## Cách làm
 
-Dữ liệu lấy từ BTC: 18 trạm, cự ly, độ cao, cut-off. Tôi cộng chéo lại cho khớp — 5 chặng phải ra đúng 101.0 km và +5.468 m. Rồi từ mục tiêu tổng thời gian, chia ngược ra giờ đến từng trạm.
+Dữ liệu lấy từ BTC: 18 trạm, cự ly, độ cao, cut-off. Mình cộng chéo lại cho khớp — 5 chặng phải ra đúng 101.0 km và +5.468 m. Rồi từ mục tiêu tổng thời gian, chia ngược ra giờ đến từng trạm.
 
-Phần code để AI viết. Phần quyết định — chia chặng thế nào, nghỉ bao lâu, ăn gì ở đâu — là của tôi.
+Phần code để AI viết. Phần quyết định — chia chặng thế nào, nghỉ bao lâu, ăn gì ở đâu — là của mình.
 
 ## Vì sao viết ra đây
 
-Vì đây là cách tôi làm mọi thứ: race, tiền, lịch làm việc, dinh dưỡng. Cần gì thì tự build cái đó. Một mình, với AI.
+Vì đây là cách mình làm mọi thứ: race, tiền, lịch làm việc, dinh dưỡng. Cần gì thì tự build cái đó. Một mình, với AI.
 
-Các tool khác tôi đã làm nằm ở trang chủ, mục **Xưởng**.
+Các tool khác mình đã làm nằm ở trang chủ, mục **Xưởng**.
