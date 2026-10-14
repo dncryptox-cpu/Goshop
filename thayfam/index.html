@@ -128,6 +128,10 @@
       </header>
 
       <div class="err" x-show="error" x-text="error"></div>
+      <div class="row" x-show="checkDue().length && tab!=='slots'" style="background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <span class="grow" x-text="'🔎 ' + checkDue().length + ' fam đã mời khách ≥' + slotPendingH + 'h mà chưa kiểm tra ai vào: ' + checkDue().map(f => f.rn).slice(0, 12).join(', ') + (checkDue().length > 12 ? '…' : '')"></span>
+        <button class="btn sm" @click="tab='slots'; slotFilter='late'">Kiểm tra</button>
+      </div>
       <div class="row" x-show="blocksDue && can('blocks') && tab!=='blocks'" style="background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn);border-radius:8px;padding:10px 12px;margin-bottom:10px">
         <span class="grow" x-text="'⚠️ ' + blocksDue + ' fam đã đến hoặc sắp đến ngày mời lại (Google chặn mời trước đó).'"></span>
         <button class="btn sm" @click="tab='blocks'; loadBlocks()">Xem</button>
@@ -386,7 +390,7 @@
           <button class="chip" :class="slotFilter==='' && 'on'" @click="slotFilter=''">Tất cả</button>
           <button class="chip" :class="slotFilter==='free' && 'on'" @click="slotFilter='free'">Còn slot trống</button>
           <button class="chip" :class="slotFilter==='need' && 'on'" @click="slotFilter='need'">Cần mời</button>
-          <button class="chip" :class="slotFilter==='late' && 'on'" @click="slotFilter='late'" x-text="'Mời ' + slotPendingH + 'h chưa vào'"></button>
+          <button class="chip" :class="slotFilter==='late' && 'on'" @click="slotFilter='late'" x-text="'Chờ kiểm tra (' + checkDue().length + ')'"></button>
           <button class="chip" x-show="can('mailPhu')" :class="slotFilter==='mp' && 'on'" @click="slotFilter='mp'; loadMp()" x-text="'Điểm đáng ngờ' + (mp.loaded ? ' (' + mp.items.length + ' fam)' : '')"></button>
           <button class="btn sm" style="margin-left:auto" @click="loadSlots()" :disabled="slotsLoading" x-text="slotsLoading ? 'Đang tải…' : 'Tải lại'"></button>
         </div>
@@ -917,6 +921,7 @@ function app() {
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
         if (this.can('review') && !this._reviewed) { this._reviewed = true; this.loadReview(); }
+        if (this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
         if (this.can('mailLog') && !this._mailLoaded) { this._mailLoaded = true; this.loadMailLog(); }
         this.frs = d.frs.filter(x => !this.skipped.includes(x.row));
       } catch (e) {
@@ -1060,13 +1065,14 @@ function app() {
       try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, loading: false, loaded: true }; }
       catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng Soi mail phụ: dán Code.gs mới rồi Deploy → New version.' : e.message; this.mp.loading = false; }
     },
+    checkDue() { return (this.slots || []).filter(f => f.late); },
     filteredSlots() {
       const k = this.slotFilter;
       if (k === 'mp') return [];
       return this.slots.filter(f => !k || (k === 'free' ? f.free : k === 'need' ? f.need : f.late));
     },
     stLabel(r) {
-      return ({ free: 'Trống', reuse: 'Hết hạn, chưa mời · dùng lại được', need: 'Còn hạn, chưa mời', pending: 'Đã mời ' + r.hours + 'h, chưa vào',
+      return ({ free: 'Trống', reuse: 'Hết hạn, chưa mời · dùng lại được', need: 'Còn hạn, chưa mời', pending: 'Đã mời ' + (r.hours >= 48 ? Math.floor(r.hours / 24) + ' ngày' : r.hours + 'h') + ', chưa kiểm tra',
         joined: 'Đã vào ✓', nojoin: (r.days != null ? 'Mời ' + r.days + ' ngày, ' : '') + 'KHÔNG vào (kiểm tra ' + r.checked + ') · chờ đổi khách', expiredIn: 'Hết hạn (có thể còn trong nhóm)', ok: '' })[r.state] || '';
     },
     stClass(r) { return ({ free: 'free', reuse: 'free', need: 'need', pending: 'pending', joined: 'joined', nojoin: 'need' })[r.state] || ''; },
