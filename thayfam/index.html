@@ -506,14 +506,23 @@
               <div class="row" x-show="pull.nPush || pull.nPull" style="flex-wrap:wrap;gap:8px">
                 <span class="grow" style="font-size:14px"><b x-text="pull.nPush"></b> ô bản sao → gốc · <b x-text="pull.nPull"></b> ô gốc → bản sao</span>
                 <button class="btn sm" @click="pullShow = !pullShow" x-text="pullShow ? 'Ẩn chi tiết' : 'Xem chi tiết'"></button>
+                <button class="btn sm" @click="askPushAll()" :disabled="pulling" title="Bỏ qua luật cột: chép MỌI ô lệch (trừ dòng email khách lệch) từ bản sao sang gốc" x-text="pushAllConfirm ? 'Bấm lần nữa: tất cả sao → gốc' : 'Tất cả sao → gốc'"></button>
                 <button class="btn pri sm" @click="askPull()" :disabled="pulling" x-text="pulling ? 'Đang ghi…' : (pullConfirm ? 'Bấm lần nữa để ghi' : 'Đồng bộ theo luật')"></button>
               </div>
               <div style="overflow-x:auto;margin-top:8px" x-show="pullShow">
                 <table>
-                  <thead><tr><th>RN</th><th>Khách</th><th>Ô</th><th>Bản sao</th><th></th><th>Gốc</th></tr></thead>
+                  <thead><tr><th>RN</th><th>Khách</th><th>Ô: bản sao ⇄ gốc</th><th></th></tr></thead>
                   <tbody>
-                    <template x-for="c in pullCells()" :key="c.field">
-                      <tr><td x-text="c.rn"></td><td class="mono" x-text="c.email"></td><td x-text="c.field"></td><td class="mono" x-text="c.sao || '(trống)'"></td><td x-text="c.dir === 'push' ? '→' : '←'" style="font-weight:700"></td><td class="mono" x-text="c.goc || '(trống)'"></td></tr>
+                    <template x-for="r in pull.rows.filter(x => !x.review)" :key="r.key">
+                      <tr>
+                        <td x-text="r.rn"></td>
+                        <td class="mono" x-text="r.email"></td>
+                        <td class="mono" style="font-size:13px"><template x-for="c in r.cells" :key="c.field"><div><span x-text="c.field + ': '"></span><b x-text="c.sao || '(trống)'"></b> <span x-text="c.dir === 'push' ? '→' : '←'"></span> <span class="mute" x-text="c.goc || '(trống)'"></span></div></template></td>
+                        <td style="white-space:nowrap;text-align:right">
+                          <button class="btn sm" @click="pullRow(r.key, 'push')" :disabled="pulling" title="Chép cả dòng từ bản sao sang gốc">Sao → gốc</button>
+                          <button class="btn sm" @click="pullRow(r.key, 'pull')" :disabled="pulling" title="Chép cả dòng từ gốc về bản sao">Gốc → sao</button>
+                        </td>
+                      </tr>
                     </template>
                   </tbody>
                 </table>
@@ -842,7 +851,7 @@ function app() {
     notes: [], notesLoading: false, openNotes: 0, noteBusy: false, noteFor: '', noteText: '',
     users: [], usersLoading: false, usersBusy: false, usersLimit: 10, limitInput: 10,
     newUser: { name: '', role: 'outsource' }, newKeyMsg: '', userConfirm: '',
-    pull: null, pulling: false, pullConfirm: false, pullShow: false, lastPull: '',
+    pull: null, pulling: false, pullConfirm: false, pushAllConfirm: false, pullShow: false, lastPull: '',
     swap: null, swapError: '', confirming: false, saving: false,
     otp: { old: '', fr: '' }, otpPct: 100, toast: '',
 
@@ -1253,6 +1262,11 @@ function app() {
       this.doPull(this.pull.rows.filter(r => !r.review).map(r => ({ key: r.key, dir: 'auto' })));
     },
     pullCells() { return (this.pull ? this.pull.rows : []).filter(r => !r.review).flatMap(r => r.cells.map(c => Object.assign({ rn: r.rn, email: r.email }, c))); },
+    askPushAll() {
+      if (!this.pushAllConfirm) { this.pushAllConfirm = true; clearTimeout(this._pa); this._pa = setTimeout(() => this.pushAllConfirm = false, 4000); return; }
+      this.pushAllConfirm = false;
+      this.doPull(this.pull.rows.filter(r => !r.review).map(r => ({ key: r.key, dir: 'push' })));
+    },
     pullRow(key, dir) { this.doPull([{ key: key, dir: dir }]); },
     async doPull(items) {
       this.pulling = true; this.error = ''; this.lastDone = '';
