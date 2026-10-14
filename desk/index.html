@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>DNC Desk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Be+Vietnam+Pro:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one column instrument — "now" card, 24h tape, then tabbed work area (today / week / template) */
+:root{
+  --bg:#F2F4F1; --surface:#FFFFFF; --sunk:#E7EBE7; --ink:#15221E; --muted:#5A6964; --line:#D5DCD7;
+  --accent:#0B7A75; --accent-ink:#FFFFFF; --bad:#C2412D; --good:#2E7D4F;
+  --m-mind:#7A68B4; --m-body:#3F8B4E; --m-ops:#23899A; --m-research:#3554C0; --m-market:#C4840E;
+  --m-build:#4E7CA6; --m-review:#B3517A; --m-rest:#AAB4AF; --m-sleep:#4A5662;
+  --f-display:"Fraunces", Georgia, "Times New Roman", serif;
+  --f-body:"Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F1614; --surface:#162019; --sunk:#1D2925; --ink:#E3ECE8; --muted:#92A39C; --line:#2A3833;
+  --accent:#3DB7AC; --accent-ink:#06211E; --bad:#F07B66; --good:#62C48A;
+  --m-mind:#A493E0; --m-body:#6CBF7B; --m-ops:#4CC0D0; --m-research:#7F98F2; --m-market:#E8AC3C;
+  --m-build:#7FA9D0; --m-review:#E080A6; --m-rest:#66736E; --m-sleep:#3A4651; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#0F1614; --surface:#162019; --sunk:#1D2925; --ink:#E3ECE8; --muted:#92A39C; --line:#2A3833;
+  --accent:#3DB7AC; --accent-ink:#06211E; --bad:#F07B66; --good:#62C48A;
+  --m-mind:#A493E0; --m-body:#6CBF7B; --m-ops:#4CC0D0; --m-research:#7F98F2; --m-market:#E8AC3C;
+  --m-build:#7FA9D0; --m-review:#E080A6; --m-rest:#66736E; --m-sleep:#3A4651; color-scheme:dark;}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{color-scheme:light}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;margin:0}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:18px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+h1,h2,h3{font-family:var(--f-display);font-weight:650;margin:0;text-wrap:balance}
+h1{font-size:30px;letter-spacing:-.01em}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.clock{text-align:right}
+#clock{font-family:var(--f-mono);font-size:34px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+#dateLabel{color:var(--muted);font-size:13px;margin-top:4px}
+
+.now{--mc:var(--accent);display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:20px;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--mc);border-radius:10px;padding:20px}
+@media (max-width:720px){.now{grid-template-columns:1fr}}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:.04em;padding:3px 9px;border-radius:99px;background:color-mix(in srgb,var(--mc) 16%,transparent);color:var(--ink)}
+.chip::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--mc)}
+#nowTitle{font-size:28px;margin-top:10px}
+#nowRule{margin:6px 0 14px;color:var(--muted);max-width:60ch}
+.prog{height:6px;background:var(--sunk);border-radius:3px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--mc);width:0}
+.now-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:var(--muted)}
+.now-meta b{color:var(--ink);font-weight:600}
+.sessions{display:flex;flex-direction:column;gap:8px;min-width:0}
+.sess{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:var(--sunk);font-size:13px}
+.sess .dot{width:9px;height:9px;border-radius:50%;background:var(--line)}
+.sess.open .dot{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 25%,transparent)}
+.sess.open{background:color-mix(in srgb,var(--good) 12%,var(--sunk))}
+.sess small{color:var(--muted)}
+
+.tl-wrap{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 14px 8px}
+.tl{position:relative;height:96px}
+.tl .lane{position:absolute;left:0;right:0}
+.tl .blk{position:absolute;top:0;height:40px;border-radius:4px;background:var(--mc);overflow:hidden;font-size:11px;color:#fff;padding:3px 5px;line-height:1.2;white-space:nowrap;border-right:1px solid var(--surface)}
+.tl .blk.past{opacity:.45}
+.tl .ses{position:absolute;height:8px;border-radius:4px;background:var(--muted);opacity:.55}
+.tl .seslab{position:absolute;font-size:10px;color:var(--muted);transform:translateY(-1px)}
+.tl .needle{position:absolute;top:-4px;bottom:16px;width:2px;background:var(--ink);border-radius:1px}
+.tl .needle::before{content:"";position:absolute;top:-3px;left:-3px;width:8px;height:8px;border-radius:50%;background:var(--ink)}
+.tl .tick{position:absolute;bottom:0;font-size:10px;color:var(--muted);transform:translateX(-50%);font-family:var(--f-mono)}
+
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{appearance:none;border:0;background:none;color:var(--muted);font:600 14px var(--f-body);padding:10px 14px;border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.grid2{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:820px){.grid2{grid-template-columns:1fr}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;min-width:0}
+.panel h3{font-size:19px;margin-bottom:4px}
+.panel .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+.list{display:flex;flex-direction:column}
+.row{--mc:var(--accent);display:grid;grid-template-columns:92px minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .tm{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);padding-top:2px}
+.row .tt{font-weight:600;display:flex;align-items:center;gap:8px}
+.row .tt::before{content:"";flex:none;width:9px;height:9px;border-radius:2px;background:var(--mc)}
+.row .rl{font-size:13px;color:var(--muted);margin-top:2px}
+.row.cur{background:color-mix(in srgb,var(--mc) 9%,transparent);margin-inline:-8px;padding-inline:8px;border-radius:6px}
+.row.done .tt{text-decoration:line-through;text-decoration-color:var(--muted)}
+.row.skip .tt{color:var(--muted)}
+.acts{display:flex;gap:4px}
+.acts button{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:6px;font:600 12px var(--f-body);padding:4px 9px;cursor:pointer}
+.acts button.on.ok{background:var(--good);border-color:var(--good);color:#fff}
+.acts button.on.no{background:var(--bad);border-color:var(--bad);color:#fff}
+@media (max-width:520px){.row{grid-template-columns:1fr auto}.row .tm{grid-column:1/-1;padding:0}}
+
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:14px}
+.stat{background:var(--sunk);border-radius:8px;padding:10px}
+.stat .v{font-family:var(--f-mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.stat .k{font-size:11.5px;color:var(--muted)}
+.stat.warn .v{color:var(--bad)}
+form.log{display:flex;flex-direction:column;gap:10px}
+.f3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+label{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);font-weight:500}
+input,select,textarea{font:14px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 9px;width:100%;min-width:0}
+input[type=number]{font-family:var(--f-mono)}
+textarea{resize:vertical;min-height:62px}
+.saved{font-size:12px;color:var(--muted);min-height:16px}
+
+.tblwrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+td.bad{color:var(--bad);font-weight:600}
+tr.today td{background:color-mix(in srgb,var(--accent) 7%,transparent)}
+tfoot td{font-weight:600;border-bottom:0}
+.note{font-size:13px;color:var(--muted);margin-top:10px;max-width:70ch}
+
+.alloc{display:flex;height:26px;border-radius:6px;overflow:hidden;margin:6px 0 10px}
+.alloc span{background:var(--mc)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
+.legend div{display:flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;background:var(--mc)}
+.legend b{font-family:var(--f-mono);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:12px}
+.seg button{border:0;background:var(--surface);color:var(--muted);font:600 13px var(--f-body);padding:7px 12px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.ed{display:grid;grid-template-columns:78px 78px minmax(0,1.2fr) 118px minmax(0,1.6fr) 34px;gap:6px;align-items:center;margin-bottom:6px}
+.ed.h{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.ed button.x{border:1px solid var(--line);background:none;color:var(--muted);border-radius:6px;height:34px;cursor:pointer}
+@media (max-width:760px){.ed{grid-template-columns:1fr 1fr;padding:10px;background:var(--sunk);border-radius:8px}.ed.h{display:none}.ed>:nth-child(3),.ed>:nth-child(5){grid-column:1/-1}}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;font:600 13px var(--f-body);padding:8px 14px;cursor:pointer}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.notes{display:grid;grid-template-columns:minmax(0,330px) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:820px){.notes{grid-template-columns:1fr}}
+.nbar{display:flex;gap:8px}
+.nbar input{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 8px}
+.chips button{--mc:var(--muted);border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:99px;font:600 12px var(--f-body);padding:3px 10px;cursor:pointer}
+.chips button[aria-pressed="true"]{background:color-mix(in srgb,var(--mc) 18%,transparent);color:var(--ink);border-color:var(--mc)}
+.nitems{display:flex;flex-direction:column;max-height:62vh;overflow:auto;margin-inline:-8px}
+.nitem{--mc:var(--muted);text-align:left;border:0;background:none;color:var(--ink);padding:9px 8px;border-radius:6px;cursor:pointer;display:flex;flex-direction:column;gap:2px;font:inherit;min-width:0}
+.nitem:hover{background:color-mix(in srgb,var(--sunk) 60%,transparent)}
+.nitem[aria-current="true"]{background:var(--sunk)}
+.nitem .nt{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nitem .ns{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;white-space:nowrap;overflow:hidden}
+.nitem .ns::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--mc)}
+.nitem .np{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ntitle{font-family:var(--f-display);font-size:23px;font-weight:650;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;padding:4px 0}
+.nmeta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+.nmeta select{width:auto}
+.nmeta .when{font-size:12px;color:var(--muted);margin-left:auto}
+.btn[aria-pressed="true"]{background:var(--sunk);border-color:var(--ink)}
+.btn.armed{background:var(--bad);border-color:var(--bad);color:#fff}
+#nBody{min-height:52vh;font-size:15px;line-height:1.65}
+.nempty{color:var(--muted);padding:36px 8px;text-align:center}
+footer{font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+footer .btn{padding:4px 10px;font-size:12px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div><div class="eyebrow">Nha Trang · GMT+7</div><h1>DNC Desk</h1></div>
+    <div class="clock"><div id="clock">--:--:--</div><div id="dateLabel"></div></div>
+  </header>
+
+  <section class="panel login" id="loginBox" hidden>
+    <h3>Đăng nhập để đồng bộ</h3>
+    <p class="sub">Nhận link đăng nhập qua email. Dữ liệu chỉ tài khoản của bạn đọc được. Chưa đăng nhập thì app vẫn chạy, dữ liệu nằm trên trình duyệt này.</p>
+    <form id="loginForm" class="nbar"><input id="loginEmail" type="email" required placeholder="email@..." aria-label="Email"><button class="btn pri" type="submit">Gửi link</button></form>
+    <div class="saved" id="loginNote"></div>
+  </section>
+
+  <section class="now" id="nowCard" aria-live="polite">
+    <div>
+      <span class="chip" id="nowChip">—</span>
+      <h2 id="nowTitle">—</h2>
+      <p id="nowRule"></p>
+      <div class="prog"><i id="nowBar"></i></div>
+      <div class="now-meta"><span id="nowLeft"></span><span id="nowNext"></span></div>
+    </div>
+    <div class="sessions" id="sessions"></div>
+  </section>
+
+  <section class="tl-wrap" aria-label="Dòng thời gian 24 giờ"><div class="tl" id="timeline"></div></section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="t-today" aria-selected="true" data-tab="today">Hôm nay</button>
+    <button role="tab" id="t-notes" aria-selected="false" data-tab="notes">Ghi chú</button>
+    <button role="tab" id="t-week" aria-selected="false" data-tab="week">7 ngày</button>
+    <button role="tab" id="t-plan" aria-selected="false" data-tab="plan">Lịch mẫu</button>
+  </nav>
+
+  <section id="tab-today" class="grid2">
+    <div class="panel">
+      <h3 id="todayHead">Hôm nay</h3>
+      <p class="sub">Chọn kiểu ngày, đánh dấu từng khối khi xong. Khối đang chạy được tô nền.</p>
+      <div class="seg" id="daySeg" role="group" aria-label="Kiểu ngày hôm nay">
+        <button type="button" data-d="weekday" aria-pressed="false">Ngày thường</button>
+        <button type="button" data-d="mountain" aria-pressed="false">Ngày leo núi</button>
+        <button type="button" data-d="weekend" aria-pressed="false">Cuối tuần</button>
+      </div>
+      <div class="list" id="checklist"></div>
+    </div>
+    <div class="panel">
+      <h3>Sổ ngày</h3>
+      <p class="sub">Ghi trong khối Journal cuối ngày, 2 phút.</p>
+      <div class="stats">
+        <div class="stat"><div class="v" id="sAdh">0%</div><div class="k">khối hoàn thành</div></div>
+        <div class="stat"><div class="v" id="sDeep">0h</div><div class="k">deep work</div></div>
+        <div class="stat" id="sOutBox"><div class="v" id="sOut">0</div><div class="k">lệnh ngoài khung</div></div>
+      </div>
+      <form class="log" id="logForm">
+        <div class="f3">
+          <label for="lgIn">Lệnh trong khung<input id="lgIn" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label for="lgOut">Lệnh ngoài khung<input id="lgOut" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label for="lgR">Kết quả (R)<input id="lgR" type="number" step="0.1" inputmode="decimal"></label>
+        </div>
+        <label for="lgOutput">Output research hôm nay<input id="lgOutput" type="text" placeholder="VD: note mô hình funding Entropy, nháp 1 bài"></label>
+        <label for="lgLesson">Một điều rút ra<textarea id="lgLesson" placeholder="VD: vào lệnh 11h vì chán, không có trong plan"></textarea></label>
+        <div class="saved" id="savedNote"></div>
+      </form>
+    </div>
+  </section>
+
+  <section id="tab-notes" class="notes" hidden>
+    <div class="panel">
+      <div class="nbar"><input id="nq" type="search" placeholder="Tìm trong ghi chú" aria-label="Tìm ghi chú"><button class="btn pri" id="nNew" type="button">+ Ghi chú</button></div>
+      <div class="chips" id="nChips" role="group" aria-label="Lọc theo tag"></div>
+      <div class="nitems" id="nItems"></div>
+    </div>
+    <div class="panel">
+      <div class="nempty" id="nEmpty">Chọn một ghi chú bên trái, hoặc bấm “+ Ghi chú” để viết mới.</div>
+      <div id="nForm" hidden>
+        <input id="nTitle" class="ntitle" type="text" placeholder="Tiêu đề" aria-label="Tiêu đề">
+        <div class="nmeta">
+          <select id="nTag" aria-label="Tag"></select>
+          <button class="btn" id="nPin" type="button" aria-pressed="false">Ghim</button>
+          <button class="btn" id="nDel" type="button">Xoá</button>
+          <span class="when" id="nWhen"></span>
+        </div>
+        <textarea id="nBody" placeholder="Viết ở đây. Tự lưu khi bạn ngừng gõ." aria-label="Nội dung"></textarea>
+        <div class="saved" id="nSaved"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-week" class="panel" hidden>
+    <h3>7 ngày gần nhất</h3>
+    <p class="sub">Chỉ số kỷ luật: lệnh ngoài khung phải về 0 trước khi tăng size.</p>
+    <div class="tblwrap"><table>
+      <thead><tr><th>Ngày</th><th class="n">Hoàn thành</th><th class="n">Deep work</th><th class="n">Trong khung</th><th class="n">Ngoài khung</th><th class="n">R</th><th>Output</th></tr></thead>
+      <tbody id="weekBody"></tbody><tfoot id="weekFoot"></tfoot>
+    </table></div>
+  </section>
+
+  <section id="tab-plan" class="panel" hidden>
+    <h3>Phân bổ giờ một tuần</h3>
+    <p class="sub">Giả định 3 ngày thường + 2 ngày leo núi + 2 ngày cuối tuần. Hôm nay là ngày nào thì chọn ở tab Hôm nay.</p>
+    <div class="alloc" id="allocBar"></div>
+    <div class="legend" id="allocLegend"></div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+    <h3>Sửa lịch mẫu</h3>
+    <p class="sub">Ngày bắt đầu từ khối sớm nhất sau 03:00. Khối vắt qua nửa đêm (VD 23:30–06:30) vẫn hợp lệ.</p>
+    <div class="seg" role="group" aria-label="Chọn lịch mẫu">
+      <button id="segWd" aria-pressed="true" data-t="weekday">Ngày thường</button>
+      <button id="segMt" aria-pressed="false" data-t="mountain">Ngày leo núi</button>
+      <button id="segWe" aria-pressed="false" data-t="weekend">Cuối tuần</button>
+    </div>
+    <div class="ed h"><span>Bắt đầu</span><span>Kết thúc</span><span>Việc</span><span>Loại</span><span>Luật của khối</span><span></span></div>
+    <div id="editor"></div>
+    <div class="btns">
+      <button class="btn" id="addRow" type="button">+ Thêm khối</button>
+      <button class="btn pri" id="saveTpl" type="button">Lưu lịch</button>
+      <button class="btn" id="resetTpl" type="button">Khôi phục mặc định</button>
+      <span class="saved" id="tplNote" style="align-self:center"></span>
+    </div>
+  </section>
+
+  <footer><span id="storeNote">Đang mở…</span> <button class="btn" id="btnOut" type="button" hidden>Đăng xuất</button></footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script>
+const TZ = 'Asia/Ho_Chi_Minh';
+const MODES = {
+  mind:{label:'Thiền'}, body:{label:'Thể lực'}, ops:{label:'Shop'}, research:{label:'Research'},
+  market:{label:'Trading'}, build:{label:'Build'}, review:{label:'Review'}, rest:{label:'Nghỉ'}, sleep:{label:'Ngủ'}
+};
+const UNTRACKED = new Set(['rest','sleep']);
+const DEEP = new Set(['research','build']);
+const DEFAULT_TPL = {
+  weekday: [
+    {s:'06:30',e:'07:30',t:'Dậy, thiền sáng',m:'mind',r:'Chưa mở điện thoại, chưa xem giá.'},
+    {s:'07:30',e:'08:30',t:'Ăn sáng, ra quán',m:'rest',r:''},
+    {s:'08:30',e:'09:00',t:'Shop: gia hạn Zalo, CTV',m:'ops',r:'Gom xử lý 1 lần rồi tắt Zalo.'},
+    {s:'09:00',e:'12:00',t:'Deep research dự án',m:'research',r:'Không chart, không Zalo. Hết khối phải có 1 note hoặc nháp bài.'},
+    {s:'12:00',e:'13:30',t:'Ăn trưa, ngủ ngắn',m:'rest',r:''},
+    {s:'13:30',e:'14:00',t:'Prep thị trường',m:'market',r:'Check vị thế DN, funding spread, đánh dấu level. Viết plan trước khi mở lệnh.'},
+    {s:'14:00',e:'15:30',t:'Trade phiên Âu',m:'market',r:'Chỉ setup đã plan. Tối đa 2 lệnh/ngày. Chạm −2R là đóng terminal.'},
+    {s:'15:30',e:'17:00',t:'Build / viết bài',m:'build',r:'Chỉ 1 dự án build trong tuần. Ưu tiên đẩy bài lên dnctrading.xyz.'},
+    {s:'17:00',e:'18:15',t:'Chạy nhẹ',m:'body',r:'Easy run 1 tiếng.'},
+    {s:'18:15',e:'20:30',t:'Tắm, ăn tối, tự do',m:'rest',r:'Check shop 15 phút, còn lại là thời gian riêng.'},
+    {s:'20:30',e:'22:30',t:'Trade phiên Mỹ',m:'market',r:'Chỉ setup đã plan từ chiều. Không đuổi giá.'},
+    {s:'22:30',e:'22:45',t:'Journal + shutdown',m:'review',r:'Ghi sổ ngày, đặt alert Telegram, đóng tab sàn.'},
+    {s:'22:45',e:'23:30',t:'Thiền tối',m:'mind',r:''},
+    {s:'23:30',e:'06:30',t:'Ngủ',m:'sleep',r:''}
+  ],
+  mountain: [
+    {s:'06:30',e:'07:30',t:'Dậy, thiền sáng',m:'mind',r:'Chưa mở điện thoại, chưa xem giá.'},
+    {s:'07:30',e:'08:30',t:'Ăn sáng, ra quán',m:'rest',r:''},
+    {s:'08:30',e:'09:00',t:'Shop: gia hạn Zalo, CTV',m:'ops',r:'Gom xử lý 1 lần rồi tắt Zalo.'},
+    {s:'09:00',e:'12:00',t:'Deep research dự án',m:'research',r:'Không chart, không Zalo. Hết khối phải có 1 note hoặc nháp bài.'},
+    {s:'12:00',e:'13:30',t:'Ăn trưa, ngủ ngắn',m:'rest',r:''},
+    {s:'13:30',e:'14:00',t:'Prep thị trường',m:'market',r:'Đặt sẵn lệnh chờ và alert cho buổi tối. Tối nay không ngồi chart.'},
+    {s:'14:00',e:'15:30',t:'Trade phiên Âu',m:'market',r:'Phiên duy nhất của hôm nay. Tối đa 2 lệnh.'},
+    {s:'15:30',e:'16:30',t:'Build / viết bài',m:'build',r:''},
+    {s:'16:30',e:'17:00',t:'Chuẩn bị đồ, đi núi',m:'rest',r:''},
+    {s:'17:00',e:'20:00',t:'Leo núi Cô Tiên',m:'body',r:'Không trade trên núi.'},
+    {s:'20:00',e:'21:30',t:'Tắm, ăn tối, hồi phục',m:'rest',r:'Mệt sau núi: không mở lệnh mới. Chỉ xem alert.'},
+    {s:'21:30',e:'21:45',t:'Journal ngắn',m:'review',r:'Ghi sổ ngày, check vị thế DN.'},
+    {s:'21:45',e:'22:30',t:'Thiền tối',m:'mind',r:''},
+    {s:'22:30',e:'06:30',t:'Ngủ sớm',m:'sleep',r:'Ngủ bù cho buổi núi.'}
+  ],
+  weekend: [
+    {s:'06:30',e:'07:30',t:'Dậy, thiền sáng',m:'mind',r:''},
+    {s:'07:30',e:'08:30',t:'Ăn sáng, ra quán',m:'rest',r:''},
+    {s:'08:30',e:'10:30',t:'Review tuần',m:'review',r:'Đọc 7 ngày: lệnh ngoài khung, R, funding DN, output research. Chốt 1 thay đổi cho tuần sau.'},
+    {s:'10:30',e:'12:00',t:'Research tự do / bài dài',m:'research',r:'Watchlist dự án mới, viết bài dài cho blog.'},
+    {s:'12:00',e:'15:30',t:'Ăn, nghỉ, gia đình',m:'rest',r:'Không trade cuối tuần. Vị thế DN đã có alert.'},
+    {s:'15:30',e:'19:30',t:'Long run / núi',m:'body',r:''},
+    {s:'19:30',e:'22:00',t:'Tự do',m:'rest',r:'Không chart.'},
+    {s:'22:00',e:'22:30',t:'Thiền tối, plan ngày mai',m:'mind',r:''},
+    {s:'22:30',e:'06:30',t:'Ngủ',m:'sleep',r:''}
+  ]
+};
+const TPL_NAMES = {weekday:'Ngày thường', mountain:'Ngày leo núi', weekend:'Cuối tuần'};
+const SESSIONS = [
+  {k:'asia', name:'Á (Tokyo)', tz:'Asia/Tokyo', o:[9,0], c:[15,0]},
+  {k:'eu', name:'Âu (London)', tz:'Europe/London', o:[8,0], c:[16,30]},
+  {k:'us', name:'Mỹ (New York)', tz:'America/New_York', o:[9,30], c:[16,0]}
+];
+const WD = ['CN','T2','T3','T4','T5','T6','T7'];
+
+let templates = JSON.parse(JSON.stringify(DEFAULT_TPL));
+let days = {};
+const dirty = new Set();
+/* Supabase: điền URL + anon key của project, chạy desk/schema.sql. Để trống = chỉ lưu trên trình duyệt. */
+const SB_URL = '';
+const SB_KEY = '';
+let sb = null, sbUser = null;
+const LS = {tpl:'desk.tpl', days:'desk.days', notes:'desk.notes', tab:'desk.tab'};
+function lsSet(k,v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+function lsGet(k,d){ try { const v = JSON.parse(localStorage.getItem(k)||'null'); return v ?? d; } catch(e){ return d; } }
+function remoteSave(kind,key,data){
+  if (!sb || !sbUser) return Promise.resolve(false);
+  return sb.from('desk_docs').upsert({user_id:sbUser.id, kind, key, data, updated_at:new Date().toISOString()}, {onConflict:'user_id,kind,key'})
+    .then(({error})=>{ if (error) throw error; return true; });
+}
+function remoteDel(kind,key){
+  if (!sb || !sbUser) return Promise.resolve(false);
+  return sb.from('desk_docs').delete().match({user_id:sbUser.id, kind, key}).then(({error})=>{ if (error) throw error; return true; });
+}
+let activeTab = 'today', editKey = 'weekday', draft = null;
+
+/* ---------- time helpers ---------- */
+const pad = n => String(n).padStart(2,'0');
+const toMin = s => { const [h,m] = String(s||'0:0').split(':').map(Number); return (h||0)*60+(m||0); };
+const fmtMin = m => { m = ((Math.round(m)%1440)+1440)%1440; return pad(Math.floor(m/60))+':'+pad(m%60); };
+const fmtDur = m => { m = Math.max(0,Math.round(m)); const h = Math.floor(m/60), mm = m%60; return h ? `${h}h${mm?pad(mm):''}` : `${mm}p`; };
+function addDays(date,n){ const [y,m,d] = date.split('-').map(Number); return new Date(Date.UTC(y,m-1,d+n)).toISOString().slice(0,10); }
+function dow(date){ const [y,m,d] = date.split('-').map(Number); return new Date(Date.UTC(y,m-1,d)).getUTCDay(); }
+function partsIn(ms,tz){
+  const p = new Intl.DateTimeFormat('en-US',{timeZone:tz,hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(new Date(ms));
+  const g = t => +p.find(x=>x.type===t).value;
+  return {y:g('year'),mo:g('month'),d:g('day'),h:g('hour')%24,mi:g('minute'),s:g('second')};
+}
+function tzOffset(ms,tz){ const p = partsIn(ms,tz); return Date.UTC(p.y,p.mo-1,p.d,p.h,p.mi,p.s) - ms; }
+function zonedUtc(date,hh,mm,tz){ const [y,m,d] = date.split('-').map(Number); const guess = Date.UTC(y,m-1,d,hh,mm); let u = guess - tzOffset(guess,tz); return guess - tzOffset(u,tz); }
+function ictMin(date,u){ const [y,m,d] = date.split('-').map(Number); return (u - Date.UTC(y,m-1,d) + 7*3600e3)/60000; }
+
+const tplKey = date => { const o = days[date] && days[date].tpl; if (o && templates[o]) return o; const w = dow(date); return (w===0||w===6) ? 'weekend' : 'weekday'; };
+function layout(list){
+  const key = b => (toMin(b.s)-180+1440)%1440;
+  const sorted = [...(list||[])].filter(b=>b&&b.s&&b.e).sort((a,b)=>key(a)-key(b));
+  const start = sorted.length ? toMin(sorted[0].s) : 300;
+  const blocks = sorted.map(b=>{
+    let S = toMin(b.s); if (S < start) S += 1440;
+    let E = toMin(b.e); while (E <= S) E += 1440; E = Math.min(E, start+1440);
+    return {...b, id:b.s.replace(':',''), S, E};
+  });
+  return {start, blocks};
+}
+function nowState(){
+  const ms = Date.now(); const p = partsIn(ms,TZ);
+  let date = `${p.y}-${pad(p.mo)}-${pad(p.d)}`;
+  let t = p.h*60 + p.mi + p.s/60;
+  let L = layout(templates[tplKey(date)]);
+  if (t < L.start){ date = addDays(date,-1); L = layout(templates[tplKey(date)]); t += 1440; }
+  return {ms, p, date, t, L};
+}
+function sessionsFor(date){
+  const w = dow(date); const weekend = (w===0||w===6);
+  return SESSIONS.map(s=>({...s, weekend,
+    S: ictMin(date, zonedUtc(date,s.o[0],s.o[1],s.tz)),
+    E: ictMin(date, zonedUtc(date,s.c[0],s.c[1],s.tz))}));
+}
+
+/* ---------- day data ---------- */
+const dayOf = date => days[date] || {date, done:{}};
+function dayStats(date){
+  const L = layout(templates[tplKey(date)]); const d = dayOf(date); const done = d.done||{};
+  const tracked = L.blocks.filter(b=>!UNTRACKED.has(b.m));
+  const ok = tracked.filter(b=>done[b.id]==='done');
+  const deep = ok.filter(b=>DEEP.has(b.m)).reduce((a,b)=>a+(b.E-b.S),0);
+  return {adh: tracked.length ? Math.round(ok.length/tracked.length*100) : 0, deep,
+    tin:+d.tin||0, tout:+d.tout||0, r: d.r===''||d.r==null ? null : +d.r, output:d.output||'', touched: !!days[date]};
+}
+const timers = {};
+function changeDay(date, patch, delay){
+  const cur = dayOf(date);
+  days[date] = {...cur, ...patch, kind:'day', date, done:{...(cur.done||{}), ...(patch.done||{})}};
+  dirty.add(date); ver[date] = (ver[date]||0)+1;
+  clearTimeout(timers[date]);
+  timers[date] = setTimeout(()=>persistDay(date), delay ?? 400);
+  if (patch.tpl) renderAll(); else { renderToday(); renderWeek(); }
+}
+const chains = {}; const ver = {};
+function persistDay(date){
+  const doc = JSON.parse(JSON.stringify(days[date])); const v = ver[date];
+  const note = document.getElementById('savedNote');
+  lsSet(LS.days, days);
+  const id = 'day:'+date;
+  chains[id] = (chains[id]||Promise.resolve()).then(()=>remoteSave('day', date, doc))
+    .then(synced=>{ if (ver[date] === v) dirty.delete(date); note.textContent = (synced?'Đã đồng bộ ':'Đã lưu trên máy ')+fmtMin(nowState().t); })
+    .catch(e=>{ note.textContent = 'Chưa đồng bộ được: '+(e&&e.message||e)+'. Đã giữ trên máy, sẽ thử lại khi bạn sửa tiếp.'; });
+}
+
+/* ---------- render: now + timeline ---------- */
+const $ = id => document.getElementById(id);
+const modeVar = m => `var(--m-${MODES[m]?m:'rest'})`;
+let lastMinuteKey = '';
+function renderNow(){
+  const N = nowState(); const {p, t, L, date} = N;
+  $('clock').textContent = `${pad(p.h)}:${pad(p.mi)}:${pad(p.s)}`;
+  $('dateLabel').textContent = `${WD[dow(`${p.y}-${pad(p.mo)}-${pad(p.d)}`)]}, ${pad(p.d)}/${pad(p.mo)}/${p.y}`;
+  const cur = L.blocks.find(b=>b.S<=t && t<b.E);
+  const next = L.blocks.find(b=>b.S>t);
+  const card = $('nowCard');
+  if (cur){
+    card.style.setProperty('--mc', modeVar(cur.m));
+    $('nowChip').textContent = MODES[cur.m]?.label || cur.m;
+    $('nowTitle').textContent = cur.t;
+    $('nowRule').textContent = cur.r || ' ';
+    $('nowBar').style.width = ((t-cur.S)/(cur.E-cur.S)*100).toFixed(2)+'%';
+    $('nowLeft').innerHTML = `Còn <b class="mono">${fmtDur(cur.E-t)}</b> · đến ${fmtMin(cur.E)}`;
+  } else {
+    card.style.setProperty('--mc','var(--line)');
+    $('nowChip').textContent = 'Trống'; $('nowTitle').textContent = 'Không có khối nào';
+    $('nowRule').textContent = 'Khoảng trống trong lịch mẫu.'; $('nowBar').style.width = '0';
+    $('nowLeft').textContent = '';
+  }
+  $('nowNext').innerHTML = next ? `Tiếp: <b>${fmtMin(next.S)}</b> ${escapeHtml(next.t)}` : '';
+  const ss = sessionsFor(date);
+  $('sessions').innerHTML = ss.map(s=>{
+    let st, cls = '';
+    if (s.weekend) st = 'Cuối tuần, TradFi nghỉ';
+    else if (t>=s.S && t<s.E){ st = `Đang mở · đóng ${fmtMin(s.E)}`; cls = 'open'; }
+    else if (t<s.S) st = `Mở lúc ${fmtMin(s.S)} · còn ${fmtDur(s.S-t)}`;
+    else st = `Đã đóng ${fmtMin(s.E)}`;
+    return `<div class="sess ${cls}"><span class="dot"></span><span>${s.name}<br><small>${st}</small></span><span class="mono" style="font-size:12px;color:var(--muted)">${fmtMin(s.S)}–${fmtMin(s.E)}</span></div>`;
+  }).join('');
+  const key = date+'|'+Math.floor(t);
+  if (key !== lastMinuteKey){ lastMinuteKey = key; renderTimeline(N); if (activeTab==='today') markCurrentRow(N); }
+  else { const nd = $('needle'); if (nd) nd.style.left = ((t-L.start)/1440*100)+'%'; }
+}
+function renderTimeline(N){
+  const {L, t, date} = N; const pos = x => ((x-L.start)/1440*100);
+  let h = '';
+  L.blocks.forEach(b=>{
+    const w = pos(b.E)-pos(b.S);
+    h += `<div class="blk ${b.E<=t?'past':''}" style="--mc:${modeVar(b.m)};left:${pos(b.S)}%;width:${w}%" title="${fmtMin(b.S)}–${fmtMin(b.E)} ${escapeHtml(b.t)}">${w>7?escapeHtml(b.t):''}</div>`;
+  });
+  sessionsFor(date).forEach((s,i)=>{
+    if (s.weekend) return;
+    const a = Math.max(s.S,L.start), z = Math.min(s.E,L.start+1440); if (z<=a) return;
+    const top = 46 + i*11;
+    h += `<div class="ses" style="top:${top}px;left:${pos(a)}%;width:${pos(z)-pos(a)}%" title="Phiên ${s.name}"></div>`;
+    h += `<div class="seslab" style="top:${top-3}px;left:calc(${pos(z)}% + 4px)">${s.name.split(' ')[0]}</div>`;
+  });
+  for (let m = Math.ceil(L.start/180)*180; m <= L.start+1440; m += 180){
+    const x = pos(m); if (x<2||x>98) continue;
+    h += `<div class="tick" style="left:${x}%">${fmtMin(m)}</div>`;
+  }
+  h += `<div class="needle" id="needle" style="left:${pos(t)}%"></div>`;
+  $('timeline').innerHTML = h;
+}
+
+/* ---------- render: today ---------- */
+function renderToday(){
+  const N = nowState(); const {date, L} = N; const d = dayOf(date); const done = d.done||{};
+  $('todayHead').textContent = `${WD[dow(date)]} ${date.slice(8)}/${date.slice(5,7)} · ${TPL_NAMES[tplKey(date)]||tplKey(date)}`;
+  $('checklist').innerHTML = L.blocks.map(b=>{
+    const st = done[b.id]||'';
+    const acts = UNTRACKED.has(b.m) ? '' :
+      `<div class="acts"><button type="button" class="ok ${st==='done'?'on':''}" data-b="${b.id}" data-v="done" aria-pressed="${st==='done'}">Xong</button><button type="button" class="no ${st==='skip'?'on':''}" data-b="${b.id}" data-v="skip" aria-pressed="${st==='skip'}">Bỏ</button></div>`;
+    return `<div class="row ${st}" data-row="${b.id}" style="--mc:${modeVar(b.m)}"><div class="tm">${fmtMin(b.S)}–${fmtMin(b.E)}</div><div><div class="tt">${escapeHtml(b.t)}</div>${b.r?`<div class="rl">${escapeHtml(b.r)}</div>`:''}</div>${acts}</div>`;
+  }).join('');
+  markCurrentRow(N);
+  const k = tplKey(date); document.querySelectorAll('#daySeg [data-d]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.d===k));
+  const S = dayStats(date);
+  $('sAdh').textContent = S.adh+'%'; $('sDeep').textContent = fmtDur(S.deep); $('sOut').textContent = S.tout;
+  $('sOutBox').classList.toggle('warn', S.tout>0);
+  setVal('lgIn', d.tin ?? ''); setVal('lgOut', d.tout ?? ''); setVal('lgR', d.r ?? '');
+  setVal('lgOutput', d.output||''); setVal('lgLesson', d.lesson||'');
+}
+function markCurrentRow(N){
+  const cur = N.L.blocks.find(b=>b.S<=N.t && N.t<b.E);
+  document.querySelectorAll('#checklist .row').forEach(r=>r.classList.toggle('cur', !!cur && r.dataset.row===cur.id));
+}
+function setVal(id,v){ const el = $(id); if (document.activeElement !== el) el.value = v; }
+
+$('checklist').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-b]'); if (!b) return;
+  const {date} = nowState(); const cur = (dayOf(date).done||{})[b.dataset.b];
+  changeDay(date, {done:{[b.dataset.b]: cur===b.dataset.v ? '' : b.dataset.v}}, 250);
+});
+$('daySeg').addEventListener('click', e=>{
+  const b = e.target.closest('[data-d]'); if (!b) return;
+  const {date} = nowState(); changeDay(date, {tpl: b.dataset.d}, 250);
+});
+const fieldMap = {lgIn:'tin', lgOut:'tout', lgR:'r', lgOutput:'output', lgLesson:'lesson'};
+$('logForm').addEventListener('input', e=>{
+  const k = fieldMap[e.target.id]; if (!k) return;
+  const {date} = nowState(); changeDay(date, {[k]: e.target.value}, 800);
+});
+$('logForm').addEventListener('submit', e=>e.preventDefault());
+
+/* ---------- render: week ---------- */
+function renderWeek(){
+  const {date} = nowState(); const rows = []; let tot = {deep:0,tin:0,tout:0,r:0,adh:0,n:0};
+  for (let i=0;i<7;i++){
+    const dt = addDays(date,-i); const S = dayStats(dt);
+    if (S.touched){ tot.deep+=S.deep; tot.tin+=S.tin; tot.tout+=S.tout; tot.r+=S.r||0; tot.adh+=S.adh; tot.n++; }
+    rows.push(`<tr class="${i===0?'today':''}"><td>${WD[dow(dt)]} ${dt.slice(8)}/${dt.slice(5,7)}</td>`+
+      (S.touched ? `<td class="n">${S.adh}%</td><td class="n">${fmtDur(S.deep)}</td><td class="n">${S.tin}</td><td class="n ${S.tout>0?'bad':''}">${S.tout}</td><td class="n">${S.r==null?'—':(S.r>0?'+':'')+S.r}</td><td>${escapeHtml(S.output)||'<span style="color:var(--muted)">—</span>'}</td>`
+        : `<td class="n" colspan="5" style="color:var(--muted)">chưa ghi</td><td></td>`)+`</tr>`);
+  }
+  $('weekBody').innerHTML = rows.join('');
+  $('weekFoot').innerHTML = `<tr><td>Tổng</td><td class="n">${tot.n?Math.round(tot.adh/tot.n):0}%</td><td class="n">${fmtDur(tot.deep)}</td><td class="n">${tot.tin}</td><td class="n ${tot.tout>0?'bad':''}">${tot.tout}</td><td class="n">${(tot.r>0?'+':'')+Math.round(tot.r*10)/10}</td><td></td></tr>`;
+}
+
+/* ---------- render: plan ---------- */
+function renderAlloc(){
+  const hrs = {}; let total = 0;
+  [['weekday',3],['mountain',2],['weekend',2]].forEach(([k,n])=>layout(templates[k]).blocks.forEach(b=>{ const m=(b.E-b.S)*n/60; hrs[b.m]=(hrs[b.m]||0)+m; total+=m; }));
+  const order = Object.keys(MODES).filter(m=>hrs[m]);
+  $('allocBar').innerHTML = order.map(m=>`<span style="--mc:${modeVar(m)};width:${hrs[m]/total*100}%" title="${MODES[m].label} ${Math.round(hrs[m]*10)/10}h"></span>`).join('');
+  $('allocLegend').innerHTML = order.map(m=>`<div style="--mc:${modeVar(m)}"><i></i>${MODES[m].label} <b>${Math.round(hrs[m]*10)/10}h</b></div>`).join('');
+}
+function renderEditor(){
+  if (!draft) draft = JSON.parse(JSON.stringify(templates[editKey]||[]));
+  document.querySelectorAll('#tab-plan .seg [data-t]').forEach(b=>b.setAttribute('aria-pressed', b.dataset.t===editKey));
+  const opts = m => Object.entries(MODES).map(([k,v])=>`<option value="${k}" ${k===m?'selected':''}>${v.label}</option>`).join('');
+  $('editor').innerHTML = draft.map((b,i)=>`<div class="ed" data-i="${i}">
+    <input id="ed-s-${editKey}-${i}" type="time" value="${b.s}" data-f="s" aria-label="Bắt đầu">
+    <input id="ed-e-${editKey}-${i}" type="time" value="${b.e}" data-f="e" aria-label="Kết thúc">
+    <input id="ed-t-${editKey}-${i}" type="text" value="${escapeAttr(b.t)}" data-f="t" aria-label="Việc">
+    <select id="ed-m-${editKey}-${i}" data-f="m" aria-label="Loại">${opts(b.m)}</select>
+    <input id="ed-r-${editKey}-${i}" type="text" value="${escapeAttr(b.r||'')}" data-f="r" aria-label="Luật của khối" placeholder="Luật (tuỳ chọn)">
+    <button type="button" class="x" data-del="${i}" aria-label="Xoá khối">×</button></div>`).join('');
+}
+$('editor').addEventListener('input', e=>{ const row = e.target.closest('.ed'); const f = e.target.dataset.f; if (row && f){ draft[+row.dataset.i][f] = e.target.value; $('tplNote').textContent = 'Chưa lưu'; }});
+$('editor').addEventListener('click', e=>{ const d = e.target.closest('[data-del]'); if (d){ draft.splice(+d.dataset.del,1); renderEditor(); $('tplNote').textContent = 'Chưa lưu'; }});
+document.querySelector('#tab-plan .seg').addEventListener('click', e=>{ const b = e.target.closest('[data-t]'); if (!b) return; editKey = b.dataset.t; draft = null; $('tplNote').textContent=''; renderEditor(); });
+$('addRow').addEventListener('click', ()=>{ const last = draft[draft.length-1]; draft.push({s:last?last.e:'09:00', e:last?fmtMin(toMin(last.e)+60):'10:00', t:'Khối mới', m:'research', r:''}); renderEditor(); });
+$('resetTpl').addEventListener('click', ()=>{ draft = JSON.parse(JSON.stringify(DEFAULT_TPL[editKey])); renderEditor(); $('tplNote').textContent = 'Đã nạp mặc định, bấm Lưu để áp dụng'; });
+$('saveTpl').addEventListener('click', async ()=>{
+  const clean = draft.filter(b=>/^\d{2}:\d{2}$/.test(b.s) && /^\d{2}:\d{2}$/.test(b.e) && b.t.trim());
+  templates = {...templates, [editKey]: clean}; draft = null;
+  renderAll();
+  try {
+    lsSet(LS.tpl, templates);
+    const synced = await remoteSave('settings','templates',{templates});
+    $('tplNote').textContent = synced ? 'Đã lưu và đồng bộ' : 'Đã lưu trên máy này';
+  } catch(e){ $('tplNote').textContent = 'Chưa lưu được: '+(e&&e.message||e); }
+});
+
+/* ---------- notes ---------- */
+const TAGS = {research:{label:'Research',m:'research'}, trading:{label:'Trading',m:'market'}, idea:{label:'Ý tưởng',m:'build'}, shop:{label:'Shop',m:'ops'}, other:{label:'Khác',m:'rest'}};
+let notes = {}, curNote = null, noteFilter = 'all', noteQuery = '', delArmed = null;
+const noteDirty = new Set(), noteVer = {}, noteTimers = {}, noteChains = {};
+const fold = s => String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/đ/g,'d');
+const newId = () => 'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function fmtWhen(ms){ if(!ms) return ''; const p = partsIn(ms,TZ); return `${pad(p.d)}/${pad(p.mo)} ${pad(p.h)}:${pad(p.mi)}`; }
+function noteHead(n){ return (n.title||'').trim() || (n.body||'').trim().split('\n')[0].slice(0,80) || 'Chưa có tiêu đề'; }
+function visibleNotes(){
+  const q = fold(noteQuery);
+  return Object.values(notes)
+    .filter(n => (noteFilter==='all' || n.tag===noteFilter) && (!q || fold((n.title||'')+' '+(n.body||'')).includes(q)))
+    .sort((a,b) => (b.pinned?1:0)-(a.pinned?1:0) || (b.updated||0)-(a.updated||0));
+}
+function renderNoteList(){
+  const counts = {}; Object.values(notes).forEach(n=>counts[n.tag]=(counts[n.tag]||0)+1);
+  $('nChips').innerHTML = `<button type="button" data-tag="all" aria-pressed="${noteFilter==='all'}">Tất cả ${Object.keys(notes).length}</button>` +
+    Object.entries(TAGS).map(([k,v])=>`<button type="button" data-tag="${k}" style="--mc:${modeVar(v.m)}" aria-pressed="${noteFilter===k}">${v.label} ${counts[k]||0}</button>`).join('');
+  const list = visibleNotes();
+  $('nItems').innerHTML = list.length ? list.map(n=>{
+    const t = TAGS[n.tag]||TAGS.other; const body = (n.body||'').replace(/\s+/g,' ').trim();
+    return `<button type="button" class="nitem" data-id="${n.id}" style="--mc:${modeVar(t.m)}" aria-current="${n.id===curNote}"><span class="nt">${escapeHtml(noteHead(n))}</span>${body&&n.title?`<span class="np">${escapeHtml(body.slice(0,120))}</span>`:''}<span class="ns">${n.pinned?'Ghim · ':''}${t.label} · ${fmtWhen(n.updated)}</span></button>`;
+  }).join('') : `<div class="nempty">${Object.keys(notes).length ? 'Không có ghi chú khớp bộ lọc.' : 'Chưa có ghi chú nào. Bấm “+ Ghi chú” để bắt đầu.'}</div>`;
+}
+function renderNoteEditor(force){
+  const n = curNote && notes[curNote];
+  $('nEmpty').hidden = !!n; $('nForm').hidden = !n;
+  if (!n) return;
+  if (!$('nTag').options.length) $('nTag').innerHTML = Object.entries(TAGS).map(([k,v])=>`<option value="${k}">${v.label}</option>`).join('');
+  const sv = (id,v) => { const el=$(id); if (force || document.activeElement!==el) el.value = v; };
+  sv('nTitle', n.title||''); sv('nBody', n.body||''); $('nTag').value = n.tag||'other';
+  $('nPin').setAttribute('aria-pressed', !!n.pinned); $('nPin').textContent = n.pinned ? 'Đã ghim' : 'Ghim';
+  $('nWhen').textContent = 'Sửa ' + fmtWhen(n.updated);
+}
+function renderNotes(force){ renderNoteList(); renderNoteEditor(force); }
+function persistNote(id){
+  const v = noteVer[id]; const n = notes[id];
+  lsSet(LS.notes, notes); if (!n) return;
+  const doc = JSON.parse(JSON.stringify(n)); delete doc.id;
+  noteChains[id] = (noteChains[id]||Promise.resolve()).then(()=>remoteSave('note', id, doc))
+    .then(synced=>{ if (noteVer[id]===v) noteDirty.delete(id); $('nSaved').textContent = synced ? 'Đã đồng bộ' : 'Đã lưu trên máy này'; })
+    .catch(e=>{ $('nSaved').textContent = 'Chưa đồng bộ được: '+(e&&e.message||e)+'. Đã giữ trên máy.'; });
+}
+function changeNote(id, patch, delay){
+  if (!notes[id]) return;
+  notes[id] = {...notes[id], ...patch, updated: Date.now()};
+  noteDirty.add(id); noteVer[id] = (noteVer[id]||0)+1; $('nSaved').textContent = 'Đang gõ…';
+  clearTimeout(noteTimers[id]); noteTimers[id] = setTimeout(()=>persistNote(id), delay ?? 800);
+  renderNoteList(); $('nWhen').textContent = 'Sửa ' + fmtWhen(notes[id].updated);
+}
+$('nNew').addEventListener('click', ()=>{
+  const id = newId(), t = Date.now();
+  notes[id] = {id, title:'', body:'', tag: noteFilter!=='all' ? noteFilter : 'research', pinned:false, created:t, updated:t};
+  noteDirty.add(id); noteVer[id] = 1; curNote = id; noteQuery = ''; $('nq').value = '';
+  persistNote(id); renderNotes(true); $('nTitle').focus();
+});
+$('nItems').addEventListener('click', e=>{ const b = e.target.closest('[data-id]'); if (!b) return; curNote = b.dataset.id; delArmed = null; resetDel(); renderNotes(true); if (window.innerWidth < 820) $('nTitle').scrollIntoView({block:'start'}); });
+$('nChips').addEventListener('click', e=>{ const b = e.target.closest('[data-tag]'); if (!b) return; noteFilter = b.dataset.tag; renderNoteList(); });
+$('nq').addEventListener('input', e=>{ noteQuery = e.target.value; renderNoteList(); });
+$('nTitle').addEventListener('input', e=>changeNote(curNote, {title:e.target.value}));
+$('nBody').addEventListener('input', e=>changeNote(curNote, {body:e.target.value}));
+$('nTag').addEventListener('change', e=>changeNote(curNote, {tag:e.target.value}, 200));
+$('nPin').addEventListener('click', ()=>{ changeNote(curNote, {pinned: !notes[curNote].pinned}, 200); renderNoteEditor(false); });
+function resetDel(){ $('nDel').classList.remove('armed'); $('nDel').textContent = 'Xoá'; }
+$('nDel').addEventListener('click', ()=>{
+  const id = curNote; if (!id) return;
+  if (delArmed !== id){ delArmed = id; $('nDel').classList.add('armed'); $('nDel').textContent = 'Bấm lần nữa để xoá'; setTimeout(()=>{ if (delArmed===id){ delArmed=null; resetDel(); } }, 3000); return; }
+  delArmed = null; resetDel(); clearTimeout(noteTimers[id]); delete notes[id]; noteDirty.delete(id); curNote = null;
+  lsSet(LS.notes, notes);
+  noteChains[id] = (noteChains[id]||Promise.resolve()).then(()=>remoteDel('note', id)).catch(e=>{ $('nSaved').textContent = 'Chưa xoá được trên server: '+(e&&e.message||e); });
+  renderNotes(true);
+});
+window.addEventListener('beforeunload', ()=>{ Object.keys(noteTimers).forEach(id=>{ clearTimeout(noteTimers[id]); if (noteDirty.has(id)) persistNote(id); }); });
+
+/* ---------- tabs ---------- */
+document.querySelector('.tabs').addEventListener('click', e=>{
+  const b = e.target.closest('[data-tab]'); if (!b) return; activeTab = b.dataset.tab;
+  document.querySelectorAll('.tabs [data-tab]').forEach(x=>x.setAttribute('aria-selected', x===b));
+  ['today','notes','week','plan'].forEach(k=>$('tab-'+k).hidden = k!==activeTab);
+  lsSet(LS.tab, activeTab);
+});
+
+function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const escapeAttr = escapeHtml;
+function renderAll(){ lastMinuteKey=''; renderNow(); renderToday(); renderWeek(); renderAlloc(); renderEditor(); renderNotes(false); }
+
+/* ---------- storage ---------- */
+function loadLocal(){
+  const t = lsGet(LS.tpl, null); if (t && t.weekday) templates = {...JSON.parse(JSON.stringify(DEFAULT_TPL)), ...t};
+  days = lsGet(LS.days, {}) || {}; notes = lsGet(LS.notes, {}) || {};
+}
+let pulling = false;
+async function pull(){
+  if (!sb || !sbUser || pulling) return; pulling = true;
+  try {
+    const {data, error} = await sb.from('desk_docs').select('kind,key,data').limit(5000);
+    if (error) throw error;
+    if (!data.length){
+      // Lần đầu: đẩy dữ liệu đang có trên máy lên server
+      const jobs = [remoteSave('settings','templates',{templates})];
+      Object.entries(days).forEach(([k,v])=>jobs.push(remoteSave('day',k,v)));
+      Object.values(notes).forEach(n=>{ const d = {...n}; delete d.id; jobs.push(remoteSave('note',n.id,d)); });
+      await Promise.all(jobs);
+    } else {
+      const nd = {}, nn = {};
+      data.forEach(r=>{
+        if (r.kind==='settings' && r.data && r.data.templates && r.data.templates.weekday) templates = {...JSON.parse(JSON.stringify(DEFAULT_TPL)), ...r.data.templates};
+        else if (r.kind==='day') nd[r.key] = r.data;
+        else if (r.kind==='note') nn[r.key] = {...r.data, id:r.key};
+      });
+      dirty.forEach(k=>{ if (days[k]) nd[k] = days[k]; });
+      noteDirty.forEach(k=>{ if (notes[k]) nn[k] = notes[k]; });
+      days = nd; notes = nn; if (curNote && !notes[curNote]) curNote = null;
+      lsSet(LS.tpl, templates); lsSet(LS.days, days); lsSet(LS.notes, notes);
+    }
+    $('storeNote').textContent = 'Đồng bộ: ' + (sbUser.email||'đã đăng nhập') + ' · cập nhật ' + fmtMin(nowState().t);
+    renderAll();
+  } catch(e){ $('storeNote').textContent = 'Không tải được dữ liệu từ server: '+(e&&e.message||e)+'. Đang dùng bản trên máy.'; }
+  finally { pulling = false; }
+}
+function setUser(u){
+  sbUser = u || null;
+  $('loginBox').hidden = !!sbUser; $('btnOut').hidden = !sbUser;
+  if (sbUser) pull(); else $('storeNote').textContent = 'Chưa đăng nhập. Dữ liệu đang nằm trên trình duyệt này.';
+}
+async function initStore(){
+  loadLocal(); renderAll();
+  if (!SB_URL || !SB_KEY || !window.supabase){ $('storeNote').textContent = 'Lưu trên trình duyệt này. Điền Supabase trong code để đồng bộ nhiều máy.'; return; }
+  sb = window.supabase.createClient(SB_URL, SB_KEY);
+  const {data} = await sb.auth.getSession(); setUser(data.session && data.session.user);
+  sb.auth.onAuthStateChange((_ev, session)=>{ const u = session && session.user; if ((u&&u.id) !== (sbUser&&sbUser.id)) setUser(u); });
+  document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='visible') pull(); });
+}
+$('loginForm').addEventListener('submit', async e=>{
+  e.preventDefault(); if (!sb) return;
+  const email = $('loginEmail').value.trim(); $('loginNote').textContent = 'Đang gửi…';
+  const {error} = await sb.auth.signInWithOtp({email, options:{emailRedirectTo: location.origin + location.pathname}});
+  $('loginNote').textContent = error ? 'Không gửi được: '+error.message : 'Đã gửi. Mở email trên máy này và bấm link.';
+});
+$('btnOut').addEventListener('click', async ()=>{ if (sb) await sb.auth.signOut(); setUser(null); });
+
+const savedTab = lsGet(LS.tab, 'today'); if (savedTab && savedTab!=='today') document.querySelector(`[data-tab="${savedTab}"]`)?.click();
+setInterval(renderNow, 1000);
+initStore();
+</script>
+</body>
+</html>
