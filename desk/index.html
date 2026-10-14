@@ -159,6 +159,12 @@ tfoot td{font-weight:600;border-bottom:0}
 .btn.armed{background:var(--bad);border-color:var(--bad);color:#fff}
 #nBody{min-height:52vh;font-size:15px;line-height:1.65}
 .nempty{color:var(--muted);padding:36px 8px;text-align:center}
+.savebar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.jrow{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.jrow:first-child{border-top:0}
+.jrow .d{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);padding-top:2px}
+.jrow .o{font-weight:600}
+.jrow .l{color:var(--muted);font-size:14px;margin-top:2px;white-space:pre-wrap}
 footer{font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 footer .btn{padding:4px 10px;font-size:12px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -195,7 +201,7 @@ footer .btn{padding:4px 10px;font-size:12px}
   <nav class="tabs" role="tablist">
     <button role="tab" id="t-today" aria-selected="true" data-tab="today">Hôm nay</button>
     <button role="tab" id="t-notes" aria-selected="false" data-tab="notes">Ghi chú</button>
-    <button role="tab" id="t-week" aria-selected="false" data-tab="week">7 ngày</button>
+    <button role="tab" id="t-week" aria-selected="false" data-tab="week">Lịch sử</button>
     <button role="tab" id="t-plan" aria-selected="false" data-tab="plan">Lịch mẫu</button>
   </nav>
 
@@ -226,7 +232,7 @@ footer .btn{padding:4px 10px;font-size:12px}
         </div>
         <label for="lgOutput">Output research hôm nay<input id="lgOutput" type="text" placeholder="VD: note mô hình funding Entropy, nháp 1 bài"></label>
         <label for="lgLesson">Một điều rút ra<textarea id="lgLesson" placeholder="VD: vào lệnh 11h vì chán, không có trong plan"></textarea></label>
-        <div class="saved" id="savedNote"></div>
+        <div class="savebar"><button class="btn pri" id="saveDay" type="button">Lưu sổ ngày</button><span class="saved" id="savedNote"></span></div>
       </form>
     </div>
   </section>
@@ -244,6 +250,7 @@ footer .btn{padding:4px 10px;font-size:12px}
         <div class="nmeta">
           <select id="nTag" aria-label="Tag"></select>
           <button class="btn" id="nPin" type="button" aria-pressed="false">Ghim</button>
+          <button class="btn pri" id="nSave" type="button">Lưu</button>
           <button class="btn" id="nDel" type="button">Xoá</button>
           <span class="when" id="nWhen"></span>
         </div>
@@ -260,6 +267,9 @@ footer .btn{padding:4px 10px;font-size:12px}
       <thead><tr><th>Ngày</th><th class="n">Hoàn thành</th><th class="n">Deep work</th><th class="n">Trong khung</th><th class="n">Ngoài khung</th><th class="n">R</th><th>Output</th></tr></thead>
       <tbody id="weekBody"></tbody><tfoot id="weekFoot"></tfoot>
     </table></div>
+    <h3 style="margin-top:22px">Nhật ký đã ghi</h3>
+    <p class="sub">Mọi ngày có output research hoặc điều rút ra, mới nhất trước. Ghi chú dài nằm ở tab Ghi chú.</p>
+    <div class="list" id="journal"></div>
   </section>
 
   <section id="tab-plan" class="panel" hidden>
@@ -543,6 +553,7 @@ $('logForm').addEventListener('input', e=>{
   const {date} = nowState(); changeDay(date, {[k]: e.target.value}, 800);
 });
 $('logForm').addEventListener('submit', e=>e.preventDefault());
+$('saveDay').addEventListener('click', ()=>{ const {date} = nowState(); if (!days[date]) days[date] = {kind:'day', date, done:{}}; clearTimeout(timers[date]); $('savedNote').textContent = 'Đang lưu…'; persistDay(date); });
 
 /* ---------- render: week ---------- */
 function renderWeek(){
@@ -555,6 +566,9 @@ function renderWeek(){
         : `<td class="n" colspan="5" style="color:var(--muted)">chưa ghi</td><td></td>`)+`</tr>`);
   }
   $('weekBody').innerHTML = rows.join('');
+  const jd = Object.keys(days).filter(k=>days[k] && ((days[k].output||'').trim() || (days[k].lesson||'').trim())).sort().reverse();
+  $('journal').innerHTML = jd.length ? jd.map(k=>{ const d = days[k]; return `<div class="jrow"><div class="d">${WD[dow(k)]} ${k.slice(8)}/${k.slice(5,7)}/${k.slice(2,4)}</div><div>${d.output?`<div class="o">${escapeHtml(d.output)}</div>`:''}${d.lesson?`<div class="l">${escapeHtml(d.lesson)}</div>`:''}</div></div>`; }).join('')
+    : '<div class="nempty">Chưa có ngày nào ghi output hoặc điều rút ra.</div>';
   $('weekFoot').innerHTML = `<tr><td>Tổng</td><td class="n">${tot.n?Math.round(tot.adh/tot.n):0}%</td><td class="n">${fmtDur(tot.deep)}</td><td class="n">${tot.tin}</td><td class="n ${tot.tout>0?'bad':''}">${tot.tout}</td><td class="n">${(tot.r>0?'+':'')+Math.round(tot.r*10)/10}</td><td></td></tr>`;
 }
 
@@ -657,6 +671,7 @@ $('nTitle').addEventListener('input', e=>changeNote(curNote, {title:e.target.val
 $('nBody').addEventListener('input', e=>changeNote(curNote, {body:e.target.value}));
 $('nTag').addEventListener('change', e=>changeNote(curNote, {tag:e.target.value}, 200));
 $('nPin').addEventListener('click', ()=>{ changeNote(curNote, {pinned: !notes[curNote].pinned}, 200); renderNoteEditor(false); });
+$('nSave').addEventListener('click', ()=>{ const id = curNote; if (!id) return; clearTimeout(noteTimers[id]); $('nSaved').textContent = 'Đang lưu…'; persistNote(id); });
 function resetDel(){ $('nDel').classList.remove('armed'); $('nDel').textContent = 'Xoá'; }
 $('nDel').addEventListener('click', ()=>{
   const id = curNote; if (!id) return;
