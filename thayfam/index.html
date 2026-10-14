@@ -261,6 +261,7 @@
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
                         <td class="mono"><input type="checkbox" x-show="can('sendMail')" style="margin-right:6px" :checked="!!mailSel[lcm(c.email)]" @change="toggleMail(c.email, f.rn, c.hsd)" title="Chọn để gửi mail"><span x-text="c.email"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span><span class="badge" x-show="mailLog[lcm(c.email)]" style="margin-left:6px;cursor:pointer" :title="mailTip(c.email)" @click="mailInfo = mailInfo === lcm(c.email) ? '' : lcm(c.email)" x-text="'✉ ' + (mailLog[lcm(c.email)] || {}).at"></span><div class="mute" style="font-size:12px;white-space:pre-wrap;font-family:inherit" x-show="mailInfo && mailInfo === lcm(c.email)" x-text="mailTip(c.email)"></div>
                         <div class="mute" style="font-size:12px" x-show="pick.row === c.row">↓ đang tìm fam cho khách này</div>
+                        <div style="font-size:12px;color:var(--warn)" x-show="can('mailPhu') && livePhu(c.mailPhu) && me.role !== 'outsource'">⚠ Mail phụ <span class="mono" x-text="c.mailPhu"></span> có thể đang chiếm thêm 1 slot. <button class="btn sm" @click="mailPhuDone(c)" :disabled="!!c.mpBusy" x-text="c.mpBusy ? '…' : 'Đã xoá / không có trong nhóm'"></button></div>
                         <div class="mute" style="font-size:12px;color:var(--bad)" x-show="c.nojoin" x-text="'Chưa vào nhóm (kiểm tra ' + c.nojoin + ') · khi cần thì Đổi khách'"></div>
                         <div x-show="f.check && c.email" style="display:flex;gap:4px;margin-top:4px">
                           <button class="btn sm" :class="(f.mark||{})[c.email]==='in' && 'pri'" @click="setMark(f, c.email, 'in')">Đã vào</button>
@@ -281,10 +282,11 @@
                           <div class="mv">
                             <input type="text" x-model="em.newEmail" placeholder="Mail mới (mail phụ của khách)" class="mono">
                             <label class="mute" style="font-size:13px"><input type="checkbox" x-model="em.invited"> Đã mời mail mới</label>
+                            <label style="font-size:13px;width:100%;color:var(--bad)"><input type="checkbox" x-model="em.oldRemoved"> <b>Đã xoá mail cũ khỏi nhóm Gia đình</b> (hoặc mail cũ chưa từng vào nhóm). Bắt buộc, tránh 1 khách chiếm 2 slot.</label>
                             <label class="mute" style="font-size:13px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
-                            <button class="btn sm pri" @click="doSwapMail(c)" :disabled="!!em.busy" x-text="em.busy ? 'Đang đổi…' : (em.confirm ? 'Bấm lần nữa để đổi' : 'Đổi mail')"></button>
+                            <button class="btn sm pri" @click="doSwapMail(c)" :disabled="!!em.busy || !em.oldRemoved" x-text="em.busy ? 'Đang đổi…' : (em.confirm ? 'Bấm lần nữa để đổi' : 'Đổi mail')"></button>
                             <button class="btn sm" @click="em = {}">Huỷ</button>
-                            <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="c.email"></b> sẽ chuyển sang cột Mail phụ để lưu. HSD, CTV giữ nguyên.</div>
+                            <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="c.email"></b> được lưu ở cột Mail phụ dạng "hủy &lt;mail&gt;". HSD, CTV giữ nguyên.</div>
                             <div class="err" style="width:100%;margin:0" x-show="em.error" x-text="em.error"></div>
                           </div>
                         </template></td>
@@ -292,7 +294,7 @@
                         <td x-text="c.hsd || '—'"></td>
                         <td :style="c.daysLeft!==null && c.daysLeft<0 ? 'color:var(--bad)' : (c.daysLeft!==null && c.daysLeft<=10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft===null ? '—' : (c.daysLeft<0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + ' ngày')"></td>
                         <td class="hide-sm mono" x-show="me.role !== 'outsource'" x-text="c.mailPhu || '—'"></td>
-                        <td style="text-align:right;white-space:nowrap"><button class="btn sm" x-show="can('move') && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn sm" x-show="can('move') && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn sm" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: c.mailPhu || '', invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
+                        <td style="text-align:right;white-space:nowrap"><button class="btn sm" x-show="can('move') && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn sm" x-show="can('move') && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn sm" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: livePhu(c.mailPhu), invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
                       </tr>
                     </template>
                     <template x-for="sl in (f.slots || []).filter(x => !x.email)" :key="'e' + sl.row">
@@ -386,10 +388,37 @@
           <button class="chip" :class="slotFilter==='free' && 'on'" @click="slotFilter='free'">Còn slot trống</button>
           <button class="chip" :class="slotFilter==='need' && 'on'" @click="slotFilter='need'">Cần mời</button>
           <button class="chip" :class="slotFilter==='late' && 'on'" @click="slotFilter='late'" x-text="'Mời ' + slotPendingH + 'h chưa vào'"></button>
+          <button class="chip" x-show="can('mailPhu')" :class="slotFilter==='mp' && 'on'" @click="slotFilter='mp'; loadMp()" x-text="'Soi mail phụ' + (mp.loaded ? ' (' + mp.items.length + ' fam)' : '')"></button>
           <button class="btn sm" style="margin-left:auto" @click="loadSlots()" :disabled="slotsLoading" x-text="slotsLoading ? 'Đang tải…' : 'Tải lại'"></button>
         </div>
         <template x-if="slotsLoading && !slots.length"><div class="empty">Đang tải…</div></template>
-        <template x-if="slotsLoaded && !filteredSlots().length"><div class="empty">Không có fam nào.</div></template>
+        <template x-if="slotsLoaded && slotFilter !== 'mp' && !filteredSlots().length"><div class="empty">Không có fam nào.</div></template>
+        <template x-if="slotFilter === 'mp'">
+          <div>
+            <div class="mute" style="font-size:13px;margin-bottom:10px">Khách có <b>mail phụ</b> mà chưa đánh dấu "hủy": có thể nhân viên cũ đã mời cả mail phụ lẫn mail chính → 1 khách chiếm 2 slot. Đăng nhập fam, mở Trang Gia đình: thấy mail phụ trong nhóm thì xoá, rồi bấm nút. Không thấy cũng bấm nút để khỏi hiện lại.</div>
+            <template x-if="mp.loading"><div class="empty">Đang tải…</div></template>
+            <template x-if="mp.loaded && !mp.items.length"><div class="empty">Không còn mail phụ nào cần soi.</div></template>
+            <template x-for="f in mp.items" :key="f.rn">
+              <div class="card">
+                <div class="row" style="gap:8px;flex-wrap:wrap">
+                  <div class="rn" x-text="f.rn"></div>
+                  <div class="grow" style="font-size:13px">
+                    <span class="mono cp" @click="copy(f.email, 'Đã copy email chủ fam')" x-text="f.email"></span> · Pass <span class="mono cp" @click="copy(f.pass, 'Đã copy pass')" x-text="f.pass || '—'"></span>
+                    <span x-show="f.twofa"> · 2FA <b class="mono cp" @click="copy(slotOtp['M' + f.rn], 'Đã copy mã 2FA')" x-text="slotOtp['M' + f.rn] || '······'"></b></span>
+                    · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
+                    <div class="mute" x-text="'Nhóm chỉ được có: ' + f.members.join(', ')"></div>
+                  </div>
+                </div>
+                <template x-for="r in f.rows" :key="r.row">
+                  <div class="row" style="gap:8px;margin-top:6px;font-size:13px">
+                    <div class="grow"><span class="mono" x-text="r.email"></span> · mail phụ <b class="mono" x-text="r.mailPhu"></b></div>
+                    <button class="btn sm pri" @click="mailPhuDone(r, f)" :disabled="!!r.mpBusy" x-text="r.mpBusy ? '…' : 'Đã xoá / không có trong nhóm'"></button>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+        </template>
         <template x-for="f in filteredSlots()" :key="f.rn">
           <div class="card" style="padding:0">
             <div class="row" style="padding:12px 14px">
@@ -427,10 +456,11 @@
                           <div class="mv">
                             <input type="text" x-model="em.newEmail" placeholder="Mail mới (mail phụ của khách)" class="mono">
                             <label class="mute" style="font-size:13px"><input type="checkbox" x-model="em.invited"> Đã mời mail mới</label>
+                            <label style="font-size:13px;width:100%;color:var(--bad)"><input type="checkbox" x-model="em.oldRemoved"> <b>Đã xoá mail cũ khỏi nhóm Gia đình</b> (hoặc mail cũ chưa từng vào nhóm). Bắt buộc, tránh 1 khách chiếm 2 slot.</label>
                             <label class="mute" style="font-size:13px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
-                            <button class="btn sm pri" @click="doSwapMail(r)" :disabled="!!em.busy" x-text="em.busy ? 'Đang đổi…' : (em.confirm ? 'Bấm lần nữa để đổi' : 'Đổi mail')"></button>
+                            <button class="btn sm pri" @click="doSwapMail(r)" :disabled="!!em.busy || !em.oldRemoved" x-text="em.busy ? 'Đang đổi…' : (em.confirm ? 'Bấm lần nữa để đổi' : 'Đổi mail')"></button>
                             <button class="btn sm" @click="em = {}">Huỷ</button>
-                            <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="r.email"></b> sẽ chuyển sang cột Mail phụ để lưu. HSD, CTV giữ nguyên.</div>
+                            <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="r.email"></b> được lưu ở cột Mail phụ dạng "hủy &lt;mail&gt;". HSD, CTV giữ nguyên.</div>
                             <div class="err" style="width:100%;margin:0" x-show="em.error" x-text="em.error"></div>
                           </div>
                         </template>
@@ -450,7 +480,7 @@
                         <span class="st" x-show="stLabel(r)" :class="stClass(r)" x-text="stLabel(r)"></span>
                         <button class="btn sm" x-show="['free','reuse','expiredIn'].includes(r.state) && mv.row !== r.row" @click="mv = { row: r.row, email: '', invited: false }">Chuyển khách vào</button>
                         <button class="btn sm" x-show="['pending','need','nojoin'].includes(r.state) && mv.row !== r.row" @click="mv = { row: r.row, email: '', invited: false, replace: r.email }" title="Đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button>
-                        <button class="btn sm" x-show="can('swapMail') && r.email && em.row !== r.row" @click="em = { row: r.row, newEmail: r.mailPhu || '', invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button>
+                        <button class="btn sm" x-show="can('swapMail') && r.email && em.row !== r.row" @click="em = { row: r.row, newEmail: livePhu(r.mailPhu), invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button>
                         <button class="btn sm pri" x-show="r.state==='need' && !f.blockedUntil" @click="doInvite(f, r)" :disabled="!!r.busy" x-text="r.busy ? '…' : (r.confirm ? 'Bấm lần nữa' : 'Đã mời')"></button>
                       </td>
                     </tr>
@@ -834,7 +864,7 @@ function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
-    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
+    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
       'Đang xử lý lỗi': ['YouTube Premium: shop đang xử lý nhóm của bạn', 'Chào bạn,\n\nNhóm YouTube Premium của email {email} đang được shop xử lý. Bạn xem trạng thái tại: https://godnc.com/fixytb/?email={email}\n\nXong shop sẽ báo lại ngay. Cảm ơn bạn đã kiên nhẫn!'],
@@ -923,14 +953,14 @@ function app() {
       if (!m.confirm) { m.confirm = true; setTimeout(() => { if (this.em === m) m.confirm = false; }, 4000); return; }
       m.busy = true;
       try {
-        const body = { action: 'swapMail', row: c.row, oldEmail: c.email, newEmail: ne, invited: !!m.invited, force: !!m.force };
+        const body = { action: 'swapMail', row: c.row, oldEmail: c.email, newEmail: ne, invited: !!m.invited, force: !!m.force, oldRemoved: !!m.oldRemoved };
         const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
         if (res.limit) { m.error = res.error; m.force = this.me.role === 'admin'; }
         else if (!res.ok) m.error = res.error;
         else {
           this.lastActionId = res.actionId;
           this.lastDone = '✓ ' + res.rn + ': đổi ' + res.oldEmail + ' → ' + res.newEmail + (res.invited ? ' (đã mời)' : ' (chưa mời)') + '. Mail gốc lưu ở cột Mail phụ. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
-          c.mailPhu = c.email; c.email = res.newEmail;
+          c.mailPhu = 'hủy ' + c.email; c.email = res.newEmail;
           if ('state' in c) { c.state = res.invited ? 'pending' : 'need'; c.hours = 0; }
           this.em = {};
           await this.autoSyncAfter(res.actionId);
@@ -1025,8 +1055,25 @@ function app() {
       if (!this.mv.error) this.pick = { row: null, list: [] };
       else p.confirm = false;
     },
+    livePhu(v) { const t = String(v || '').trim(); return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) && !/h[uủ]y/i.test(t) ? t : ''; },
+    async loadMp() {
+      this.mp = { items: this.mp.items || [], loading: true, loaded: this.mp.loaded };
+      try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, loading: false, loaded: true }; }
+      catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng Soi mail phụ: dán Code.gs mới rồi Deploy → New version.' : e.message; this.mp.loading = false; }
+    },
+    async mailPhuDone(r, f) {
+      r.mpBusy = true; this.error = '';
+      try {
+        await this.api({ action: 'mailPhu', op: 'done', row: r.row, mailPhu: r.mailPhu });
+        r.mailPhu = 'hủy ' + r.mailPhu;
+        if (f) { f.rows = f.rows.filter(x => x.row !== r.row); if (!f.rows.length) this.mp.items = this.mp.items.filter(x => x !== f); }
+        this.toast = 'Đã đánh dấu mail phụ'; setTimeout(() => this.toast = '', 1500);
+      } catch (e) { this.error = e.message; }
+      r.mpBusy = false;
+    },
     filteredSlots() {
       const k = this.slotFilter;
+      if (k === 'mp') return [];
       return this.slots.filter(f => !k || (k === 'free' ? f.free : k === 'need' ? f.need : f.late));
     },
     stLabel(r) {
@@ -1364,6 +1411,11 @@ function app() {
       if (this.pick.list && this.pick.list.length) {
         const t = this.cur();
         this.slotOtp = { ...this.slotOtp, P: t.fam && t.fam.twofa ? await totp(t.fam.twofa) : '' };
+      }
+      if (this.tab === 'slots' && this.slotFilter === 'mp') {
+        const m = {};
+        for (const f of this.mp.items) if (f.twofa) m['M' + f.rn] = await totp(f.twofa);
+        this.slotOtp = { ...this.slotOtp, ...m };
       }
       if (this.tab === 'blocks') {
         const m = {};
