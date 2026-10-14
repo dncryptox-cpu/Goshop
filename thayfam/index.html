@@ -99,6 +99,12 @@
   th{color:var(--mute);font-weight:500}
   .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px;z-index:20}
   @media (max-width:560px){ .kv{grid-template-columns:56px 1fr auto} .hide-sm{display:none} .card.row>.grow{flex-basis:calc(100% - 80px)} .card.row>.badge{margin-left:72px} .card.row>.btn{margin-left:auto} }
+.pk{background:var(--bg)}
+.pk-step{display:flex;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.pk-n{flex:none;width:22px;height:22px;border-radius:50%;background:var(--acc);color:var(--acc-ink);font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center}
+.pk-mem{gap:6px;font-size:13px;padding:3px 6px;border-radius:6px;flex-wrap:wrap}
+.pk-mem.on{background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.pk-tag{font-size:11px;font-weight:700;color:var(--warn);border:1px solid currentColor;border-radius:4px;padding:0 4px}
 </style>
 </head>
 <body x-data="app()" x-init="init()">
@@ -321,48 +327,58 @@
                   </tbody>
                 </table>
                 <template x-if="pick.row && f.customers.some(c => c.row === pick.row)">
-                  <div class="card" style="margin-top:10px;background:var(--bg2, #f3f6f3)">
+                  <div class="card pk" style="margin-top:10px">
                     <div x-show="pick.loading" class="mute" style="font-size:13px">Đang tìm fam còn slot…</div>
-                    <div x-show="!pick.loading && !pick.list.length" class="mute" style="font-size:13px">Không còn fam nào có slot (đã bỏ fam đến hạn, bị chặn mời, hết lượt mời tuần). <button class="btn sm" @click="pick = { row: null, list: [] }">Đóng</button></div>
+                    <div x-show="!pick.loading && !pick.list.length" class="row"><span class="grow mute" style="font-size:13px">Không còn fam nào có slot (đã bỏ fam đến hạn, bị chặn mời, hết lượt mời tuần).</span><button class="btn sm" @click="pick = { row: null, list: [] }">Đóng</button></div>
                     <template x-if="!pick.loading && pick.list.length">
                       <div>
-                        <div class="row" style="gap:8px;flex-wrap:wrap">
-                          <div class="grow">
-                            <b>Chuyển <span class="mono" x-text="pick.email"></span> sang <span x-text="cur().rn"></span></b>
-                            <span class="mute" style="font-size:13px" x-text="' · fam ' + (pick.i + 1) + '/' + pick.list.length"></span>
-                            <div class="mute" style="font-size:13px" x-text="(cur().renew ? 'Renew ' + cur().renew + ' (còn ' + cur().days + ' ngày)' : 'Chưa có ngày renew') + ' · đã mời ' + cur().used + '/' + cur().limit + ' tuần này · slot: ' + cur().label"></div>
+                        <div class="row" style="gap:8px">
+                          <div class="grow"><b>Tìm fam cho <span class="mono" x-text="pick.email"></span></b>
+                            <div class="mute" style="font-size:13px"><b x-text="cur().rn"></b> <span x-text="'· ' + (cur().renew ? 'renew ' + cur().renew + ', còn ' + cur().days + ' ngày' : 'chưa có ngày renew') + ' · đã mời ' + cur().used + '/' + cur().limit + ' tuần này · fam ' + (pick.i + 1) + '/' + pick.list.length"></span></div>
                           </div>
-                          <button class="btn sm" @click="pickBlocked()" :disabled="!!pick.blocking" title="Google báo hết lượt mời ở fam này: ghi Chặn mời (hẹn mời lại sau vài ngày) rồi chuyển sang fam khác. Nếu đã tick 'Đã xoá lời mời' thì khách cũ được cất xuống cuối sheet DATA (Chờ xếp)." x-text="pick.blocking ? '…' : (pick.blockConfirm ? 'Bấm lần nữa' : 'Google chặn mời → fam khác')"></button>
-                          <button class="btn sm" x-show="pick.list.length > 1" @click="pick.i = (pick.i + 1) % pick.list.length; pick.confirm = false; pick.removedOld = false; slotOtp = { ...slotOtp, P: '' }">Fam khác →</button>
+                          <button class="btn sm" x-show="pick.list.length > 1" @click="nextPick()">Fam khác →</button>
+                          <button class="btn sm" @click="pick = { row: null, list: [] }">✕</button>
                         </div>
-                        <div style="margin-top:8px;font-size:14px">
-                          Chủ fam <span class="mono cp" title="Bấm để copy" @click="copy(cur().fam.email, 'Đã copy email chủ fam')" x-text="cur().fam.email"></span>
-                          · Pass <span class="mono cp" title="Bấm để copy" @click="copy(cur().fam.pass, 'Đã copy pass')" x-text="cur().fam.pass || '—'"></span>
-                          <span x-show="cur().fam.mkp"> · MKP <span class="mono cp" title="Bấm để copy" @click="copy(cur().fam.mkp, 'Đã copy MKP')" x-text="cur().fam.mkp"></span></span>
-                          · 2FA <b class="mono" :class="cur().fam.twofa && 'cp'" title="Bấm để copy mã" @click="cur().fam.twofa && copy(slotOtp.P, 'Đã copy mã 2FA')" x-text="cur().fam.twofa ? (slotOtp.P || '······') : 'không'"></b>
-                          · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
-                        </div>
-                        <div class="mute" style="font-size:13px;margin-top:6px">Thành viên hiện tại:</div>
-                        <div class="mute" style="font-size:12px">Đang đăng nhập fam này: thấy khách nào chưa vào nhóm thì bấm <b>Chưa vào</b> để giữ slot (hiện ở Còn slot, dùng Đổi khách sau).</div>
-                        <template x-for="r in cur().fam.rows" :key="r.row">
-                          <div class="row" style="font-size:13px;gap:6px;flex-wrap:wrap" :style="r.row === cur().row ? 'font-weight:700' : ''">
-                            <span class="mono" x-text="r.email || '(trống)'"></span> <span class="mute grow" x-text="(r.row === cur().row ? '← slot sẽ dùng · ' : '') + (stLabel(r) || (r.hsd ? 'HSD ' + r.hsd : ''))"></span>
-                            <template x-if="r.email && can('markJoined') && (r.row !== cur().row || cur().state === 'pending')">
-                              <span style="display:flex;gap:4px">
-                                <button class="btn sm" :class="r.state==='nojoin' && 'pri'" @click="pickMark(r, 'out')" :disabled="!!r.mkBusy">Chưa vào</button>
-                                <button class="btn sm" :class="r.state==='joined' && 'pri'" @click="pickMark(r, 'in')" :disabled="!!r.mkBusy">Đã vào</button>
-                              </span>
-                            </template>
+
+                        <div class="pk-step"><span class="pk-n">1</span><div class="grow">
+                          <b>Đăng nhập fam</b>
+                          <div style="font-size:14px">
+                            <span class="mono cp" title="Bấm để copy" @click="copy(cur().fam.email, 'Đã copy email chủ fam')" x-text="cur().fam.email"></span>
+                            · Pass <span class="mono cp" @click="copy(cur().fam.pass, 'Đã copy pass')" x-text="cur().fam.pass || '—'"></span>
+                            <span x-show="cur().fam.mkp"> · MKP <span class="mono cp" @click="copy(cur().fam.mkp, 'Đã copy MKP')" x-text="cur().fam.mkp"></span></span>
+                            · 2FA <b class="mono" :class="cur().fam.twofa && 'cp'" @click="cur().fam.twofa && copy(slotOtp.P, 'Đã copy mã 2FA')" x-text="cur().fam.twofa ? (slotOtp.P || '······') : 'không'"></b>
+                            · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
                           </div>
-                        </template>
-                        <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">
-                          <label style="font-size:13px;width:100%" x-show="cur().replace"><input type="checkbox" x-model="pick.removedOld"> Đã xoá lời mời của <b class="mono" x-text="cur().replace"></b> trong nhóm Gia đình</label>
-                          <label class="mute" style="font-size:13px"><input type="checkbox" x-model="pick.invited"> Đã mời luôn</label>
-                          <label class="mute" style="font-size:13px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
-                          <span class="grow"></span>
-                          <button class="btn sm" @click="pick = { row: null, list: [] }">Huỷ</button>
-                          <button class="btn sm pri" @click="doPick()" :disabled="!!mv.busy || (cur().state === 'pending' && cur().slot.state !== 'nojoin' && !pick.removedOld)" :title="cur().state === 'pending' && cur().slot.state !== 'nojoin' ? 'Slot này đang chờ khách vào: kiểm tra trong nhóm Gia đình, bấm Chưa vào rồi mới thế' : ''" x-text="mv.busy ? 'Đang chuyển…' : (cur().state === 'pending' && cur().slot.state !== 'nojoin' && !pick.removedOld ? 'Bấm Chưa vào ở slot trước' : (pick.confirm ? 'Bấm lần nữa để chuyển' : 'Chuyển vào ' + cur().rn))"></button>
-                        </div>
+                        </div></div>
+
+                        <div class="pk-step"><span class="pk-n">2</span><div class="grow">
+                          <b>So với nhóm Gia đình</b> <span class="mute" style="font-size:12px">(tiện thì đánh dấu ai đã vào / chưa vào)</span>
+                          <template x-for="r in cur().fam.rows" :key="r.row">
+                            <div class="row pk-mem" :class="r.row === cur().row && 'on'">
+                              <span class="mono" x-text="r.email || '(trống)'"></span>
+                              <span class="pk-tag" x-show="r.row === cur().row">slot này</span>
+                              <span class="mute grow" style="font-size:12px" x-text="shortSt(r)"></span>
+                              <template x-if="r.email && can('markJoined')">
+                                <span style="display:flex;gap:4px">
+                                  <button class="btn sm" :class="r.state==='joined' && 'pri'" @click="pickMark(r, 'in')" :disabled="!!r.mkBusy">Đã vào</button>
+                                  <button class="btn sm" :class="r.state==='nojoin' && 'pri'" @click="pickMark(r, 'out')" :disabled="!!r.mkBusy">Chưa vào</button>
+                                </span>
+                              </template>
+                            </div>
+                          </template>
+                        </div></div>
+
+                        <div class="pk-step"><span class="pk-n">3</span><div class="grow">
+                          <b x-show="!cur().replace">Mời <span class="mono" x-text="pick.email"></span> vào nhóm</b>
+                          <b x-show="cur().replace">Xoá lời mời <span class="mono" x-text="cur().replace"></span>, rồi mời <span class="mono" x-text="pick.email"></span></b>
+                          <div class="mute" style="font-size:12px" x-show="cur().replace" x-text="cur().replace + ' sẽ được chép xuống cuối sheet DATA, không mất data.'"></div>
+                          <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+                            <button class="btn pri" @click="pickOk()" :disabled="!!mv.busy || !!pick.blocking" x-text="mv.busy ? 'Đang chuyển…' : (pick.confirm ? 'Bấm lần nữa để lưu' : '✓ Mời được → chuyển vào ' + cur().rn)"></button>
+                            <button class="btn" @click="pickBlocked(!!cur().replace)" :disabled="!!pick.blocking || !!mv.busy" x-text="pick.blocking ? '…' : (pick.blockConfirm === 'y' ? 'Bấm lần nữa' : '✗ Google chặn mời → fam khác')"></button>
+                          </div>
+                          <div class="mute" style="font-size:12px;margin-top:6px" x-show="cur().replace">Bấm ✗ khi đã xoá lời mời của <span x-text="cur().replace"></span> mà không mời được ai: khách cũ cất xuống cuối sheet (Chờ xếp), slot thành trống. Chưa xoá ai thì <a href="#" @click.prevent="pickBlocked(false)" x-text="pick.blockConfirm === 'n' ? 'bấm lần nữa' : 'chỉ ghi chặn, giữ nguyên khách'"></a>.</div>
+                          <label class="mute" style="font-size:12px;display:block;margin-top:6px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
+                        </div></div>
                       </div>
                     </template>
                     <div class="err" style="margin:6px 0 0" x-show="mv.error" x-text="mv.error"></div>
@@ -1082,24 +1098,29 @@ function app() {
       } catch (e) { this.error = e.message; }
       r.mkBusy = false;
     },
-    async pickBlocked() {
-      const p = this.pick, t = this.cur();
-      if (!p.blockConfirm) { p.blockConfirm = true; setTimeout(() => { if (this.pick === p) p.blockConfirm = false; }, 4000); return; }
-      p.blockConfirm = false; p.blocking = true; this.error = '';
+    nextPick() { const p = this.pick; p.i = (p.i + 1) % p.list.length; p.confirm = false; p.blockConfirm = ''; this.slotOtp = { ...this.slotOtp, P: '' }; },
+    shortSt(r) {
+      if (!r.email) return 'trống';
+      return ({ joined: 'đã vào ✓', nojoin: 'chưa vào', pending: 'đã mời ' + (r.hours >= 48 ? Math.floor(r.hours / 24) + ' ngày' : r.hours + 'h') + ', chưa kiểm tra', need: 'chưa mời', reuse: 'hết hạn', expiredIn: 'hết hạn' })[r.state] || (r.hsd ? 'HSD ' + r.hsd : '');
+    },
+    pickOk() { this.pick.invited = true; this.doPick(); },
+    async pickBlocked(vac) {
+      const p = this.pick, t = this.cur(), key = vac ? 'y' : 'n';
+      if (p.blockConfirm !== key) { p.blockConfirm = key; setTimeout(() => { if (this.pick === p && p.blockConfirm === key) p.blockConfirm = ''; }, 4000); return; }
+      p.blockConfirm = ''; p.blocking = true; this.error = '';
       try {
         let vc = null;
-        if (p.removedOld && t.replace) {
+        if (vac && t.replace) {
           vc = await this.api({ action: 'vacate', row: t.row, email: t.replace, reason: 'Google chặn mời' });
           if (t.slot) { t.slot.email = ''; t.slot.state = 'free'; }
         }
         const d = await this.api({ action: 'inviteBlocked', rn: t.rn, email: p.email });
-        if (vc) this.lastDone = '✓ ' + t.rn + ': ' + vc.email + ' đã cất xuống cuối sheet DATA (dòng ' + vc.archRow + ', "Chờ xếp"), slot thành trống. Fam ghi Chặn mời đến ' + d.until + '. ' + p.email + ' vẫn chưa có fam.';
         if (t.fam) t.fam.blockedUntil = d.until;
         this.blocksOpen++;
+        this.lastDone = '✓ ' + t.rn + ': ghi Google chặn mời đến ' + d.until + '.' + (vc ? ' ' + vc.email + ' cất xuống cuối sheet DATA (dòng ' + vc.archRow + ', "Chờ xếp"), slot thành trống.' : '') + ' ' + p.email + ' vẫn chưa có fam, đang xem fam khác.';
         p.list = p.list.filter(x => x.rn !== t.rn);
         if (p.i >= p.list.length) p.i = 0;
-        p.confirm = false; p.removedOld = false; this.slotOtp = { ...this.slotOtp, P: '' };
-        this.toast = t.rn + ': ghi Chặn mời, hẹn mời lại từ ' + d.until + '. Đã chuyển sang fam khác.'; setTimeout(() => this.toast = '', 2500);
+        p.confirm = false; this.slotOtp = { ...this.slotOtp, P: '' };
       } catch (e) { this.error = e.message; }
       p.blocking = false;
     },
