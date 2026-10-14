@@ -343,8 +343,17 @@
                           · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
                         </div>
                         <div class="mute" style="font-size:13px;margin-top:6px">Thành viên hiện tại:</div>
+                        <div class="mute" style="font-size:12px">Đang đăng nhập fam này: thấy khách nào chưa vào nhóm thì bấm <b>Chưa vào</b> để giữ slot (hiện ở Còn slot, dùng Đổi khách sau).</div>
                         <template x-for="r in cur().fam.rows" :key="r.row">
-                          <div style="font-size:13px" :style="r.row === cur().row ? 'font-weight:700' : ''"><span class="mono" x-text="r.email || '(trống)'"></span> <span class="mute" x-text="(r.row === cur().row ? '← slot sẽ dùng · ' : '') + (stLabel(r) || (r.hsd ? 'HSD ' + r.hsd : ''))"></span></div>
+                          <div class="row" style="font-size:13px;gap:6px;flex-wrap:wrap" :style="r.row === cur().row ? 'font-weight:700' : ''">
+                            <span class="mono" x-text="r.email || '(trống)'"></span> <span class="mute grow" x-text="(r.row === cur().row ? '← slot sẽ dùng · ' : '') + (stLabel(r) || (r.hsd ? 'HSD ' + r.hsd : ''))"></span>
+                            <template x-if="r.email && r.row !== cur().row && can('markJoined')">
+                              <span style="display:flex;gap:4px">
+                                <button class="btn sm" :class="r.state==='nojoin' && 'pri'" @click="pickMark(r, 'out')" :disabled="!!r.mkBusy">Chưa vào</button>
+                                <button class="btn sm" :class="r.state==='joined' && 'pri'" @click="pickMark(r, 'in')" :disabled="!!r.mkBusy">Đã vào</button>
+                              </span>
+                            </template>
+                          </div>
                         </template>
                         <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:10px">
                           <label class="mute" style="font-size:13px"><input type="checkbox" x-model="pick.invited"> Đã mời luôn</label>
@@ -1052,6 +1061,16 @@ function app() {
       const rank = { free: 0, reuse: 1, nojoin: 2 };
       list.sort((a, b) => (b.days || 0) - (a.days || 0) || rank[a.state] - rank[b.state]);
       if (this.pick.row === c.row) Object.assign(this.pick, { list: list, loading: false });
+    },
+    async pickMark(r, v) {
+      const t = this.cur(); r.mkBusy = true; this.error = '';
+      try {
+        await this.api({ action: 'markJoined', rn: t.rn, emails: v === 'in' ? [r.email] : [], notJoined: v === 'out' ? [r.email] : [] });
+        if (v === 'in') r.state = 'joined';
+        else { r.state = 'nojoin'; r.days = r.hours != null ? Math.floor(r.hours / 24) : null; r.checked = new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }); }
+        this.toast = t.rn + ': ' + r.email + (v === 'in' ? ' đã vào' : ' chưa vào, giữ slot'); setTimeout(() => this.toast = '', 1800);
+      } catch (e) { this.error = e.message; }
+      r.mkBusy = false;
     },
     async pickBlocked() {
       const p = this.pick, t = this.cur();
