@@ -165,6 +165,8 @@ tfoot td{font-weight:600;border-bottom:0}
 .jrow .d{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);padding-top:2px}
 .jrow .o{font-weight:600}
 .jrow .l{color:var(--muted);font-size:14px;margin-top:2px;white-space:pre-wrap}
+.loginf{display:flex;gap:8px;flex-wrap:wrap}
+.loginf input{flex:1 1 180px}
 footer{font-size:12px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 footer .btn{padding:4px 10px;font-size:12px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -180,8 +182,13 @@ footer .btn{padding:4px 10px;font-size:12px}
 
   <section class="panel login" id="loginBox" hidden>
     <h3>Đăng nhập để đồng bộ</h3>
-    <p class="sub">Nhận link đăng nhập qua email. Dữ liệu chỉ tài khoản của bạn đọc được. Chưa đăng nhập thì app vẫn chạy, dữ liệu nằm trên trình duyệt này.</p>
-    <form id="loginForm" class="nbar"><input id="loginEmail" type="email" required placeholder="email@..." aria-label="Email"><button class="btn pri" type="submit">Gửi link</button></form>
+    <p class="sub">Đăng nhập bằng email và mật khẩu. Chưa có mật khẩu: đăng nhập trên máy đã vào được, bấm “Đặt mật khẩu” ở cuối trang.</p>
+    <form id="loginForm" class="loginf">
+      <input id="loginEmail" type="email" required autocomplete="username" placeholder="email@..." aria-label="Email">
+      <input id="loginPw" type="password" autocomplete="current-password" placeholder="Mật khẩu" aria-label="Mật khẩu">
+      <button class="btn pri" type="submit">Đăng nhập</button>
+      <button class="btn" id="btnLink" type="button">Gửi link qua email</button>
+    </form>
     <div class="saved" id="loginNote"></div>
   </section>
 
@@ -295,7 +302,8 @@ footer .btn{padding:4px 10px;font-size:12px}
     </div>
   </section>
 
-  <footer><span id="storeNote">Đang mở…</span> <button class="btn" id="btnOut" type="button" hidden>Đăng xuất</button></footer>
+  <footer><span id="storeNote">Đang mở…</span> <button class="btn" id="btnPw" type="button" hidden>Đặt mật khẩu</button> <button class="btn" id="btnOut" type="button" hidden>Đăng xuất</button>
+    <form id="pwForm" class="loginf" hidden><input id="newPw" type="password" minlength="6" required autocomplete="new-password" placeholder="Mật khẩu mới (≥ 6 ký tự)" aria-label="Mật khẩu mới"><button class="btn pri" type="submit">Lưu mật khẩu</button><span class="saved" id="pwNote"></span></form></footer>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -731,7 +739,7 @@ async function pull(){
 }
 function setUser(u){
   sbUser = u || null;
-  $('loginBox').hidden = !!sbUser; $('btnOut').hidden = !sbUser;
+  $('loginBox').hidden = !!sbUser; $('btnOut').hidden = !sbUser; $('btnPw').hidden = !sbUser; if (!sbUser) $('pwForm').hidden = true;
   if (sbUser) pull(); else $('storeNote').textContent = 'Chưa đăng nhập. Dữ liệu đang nằm trên trình duyệt này.';
 }
 async function initStore(){
@@ -744,9 +752,23 @@ async function initStore(){
 }
 $('loginForm').addEventListener('submit', async e=>{
   e.preventDefault(); if (!sb) return;
-  const email = $('loginEmail').value.trim(); $('loginNote').textContent = 'Đang gửi…';
+  const email = $('loginEmail').value.trim(), password = $('loginPw').value;
+  if (!password){ $('loginNote').textContent = 'Nhập mật khẩu, hoặc bấm “Gửi link qua email”.'; return; }
+  $('loginNote').textContent = 'Đang đăng nhập…';
+  const {error} = await sb.auth.signInWithPassword({email, password});
+  $('loginNote').textContent = error ? (/invalid/i.test(error.message) ? 'Sai email hoặc mật khẩu. Nếu chưa đặt mật khẩu: vào trên máy đã đăng nhập, bấm “Đặt mật khẩu”.' : 'Lỗi: '+error.message) : '';
+});
+$('btnLink').addEventListener('click', async ()=>{
+  if (!sb) return; const email = $('loginEmail').value.trim(); if (!email){ $('loginNote').textContent = 'Nhập email trước.'; return; }
+  $('loginNote').textContent = 'Đang gửi…';
   const {error} = await sb.auth.signInWithOtp({email, options:{emailRedirectTo: location.origin + location.pathname}});
-  $('loginNote').textContent = error ? 'Không gửi được: '+error.message : 'Đã gửi. Mở email trên máy này và bấm link.';
+  $('loginNote').textContent = error ? (/rate limit/i.test(error.message) ? 'Supabase giới hạn số email mỗi giờ. Dùng mật khẩu, hoặc thử lại sau 1 tiếng.' : 'Không gửi được: '+error.message) : 'Đã gửi. Mở email trên máy này và bấm link.';
+});
+$('btnPw').addEventListener('click', ()=>{ $('pwForm').hidden = !$('pwForm').hidden; if (!$('pwForm').hidden) $('newPw').focus(); });
+$('pwForm').addEventListener('submit', async e=>{
+  e.preventDefault(); if (!sb) return; $('pwNote').textContent = 'Đang lưu…';
+  const {error} = await sb.auth.updateUser({password: $('newPw').value});
+  if (error) $('pwNote').textContent = 'Lỗi: '+error.message; else { $('pwNote').textContent = 'Đã đặt mật khẩu. Trên điện thoại đăng nhập bằng email + mật khẩu này.'; $('newPw').value = ''; }
 });
 $('btnOut').addEventListener('click', async ()=>{ if (sb) await sb.auth.signOut(); setUser(null); });
 
