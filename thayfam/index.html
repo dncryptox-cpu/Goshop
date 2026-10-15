@@ -138,7 +138,7 @@
           <div class="sub" x-show="me.name"><b x-text="me.name"></b> · <span x-text="roleName()"></span><span x-show="me.limit" x-text="' · đã thay ' + me.usedToday + '/' + me.limit + ' hôm nay'"></span></div>
         </div>
         <div class="sp"></div>
-        <button class="btn sm" @click="load()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
+        <button class="btn sm" @click="freshUntil = Date.now() + 20000; load(); if (slotsLoaded) loadSlots(); if (wk) loadWeek()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
         <button class="btn sm" @click="logout()">Thoát</button>
       </header>
 
@@ -205,7 +205,7 @@
       <section x-show="tab==='week' && !searchOn()">
         <div class="row" style="margin-bottom:10px">
           <div class="grow mute" style="font-size:13px">Việc cần làm trong 7 ngày tới, lấy thẳng từ data. Xong mục nào thì mục đó tự hết.</div>
-          <button class="btn sm" @click="loadWeek()" :disabled="wkLoading" x-text="wkLoading ? 'Đang tải…' : 'Tải lại'"></button>
+          <button class="btn sm" @click="freshUntil = Date.now() + 20000; loadWeek()" :disabled="wkLoading" x-text="wkLoading ? 'Đang tải…' : 'Tải lại'"></button>
         </div>
         <template x-if="wkLoading && !wk"><div class="empty">Đang tổng hợp…</div></template>
         <template x-if="wk">
@@ -510,7 +510,7 @@
           <button class="chip" :class="slotFilter==='need' && 'on'" @click="slotFilter='need'">Cần mời</button>
           <button class="chip" :class="slotFilter==='late' && 'on'" @click="slotFilter='late'" x-text="'Chờ kiểm tra (' + checkDue().length + ')'"></button>
           <button class="chip" x-show="can('mailPhu')" :class="slotFilter==='mp' && 'on'" @click="slotFilter='mp'; loadMp()" x-text="'Điểm đáng ngờ' + (mp.loaded ? ' (' + mp.items.length + ' fam)' : '')"></button>
-          <button class="btn sm" style="margin-left:auto" @click="loadSlots()" :disabled="slotsLoading" x-text="slotsLoading ? 'Đang tải…' : 'Tải lại'"></button>
+          <button class="btn sm" style="margin-left:auto" @click="freshUntil = Date.now() + 20000; loadSlots()" :disabled="slotsLoading" x-text="slotsLoading ? 'Đang tải…' : 'Tải lại'"></button>
         </div>
         <template x-if="slotsLoading && !slots.length"><div class="empty">Đang tải…</div></template>
         <template x-if="slotsLoaded && slotFilter !== 'mp' && !filteredSlots().length"><div class="empty">Không có fam nào.</div></template>
@@ -1020,21 +1020,33 @@ function app() {
           if (this.swap && this.swap.f.customers.some(c => c.email === txt) && !this.swap.copied.includes(txt)) this.swap.copied.push(txt);
         }
       });
-      if (this.pass) this.load(); setInterval(() => this.tickOtp(), 1000); },
+      if (this.pass) { this.snapRestore(); this.load(); } setInterval(() => this.tickOtp(), 1000); },
+    // Mở trang hiện ngay dữ liệu lần trước (lưu trong trình duyệt), rồi cập nhật khi server trả về
+    snapKey(k) { return 'tf_snap_' + k + '_' + String(this.pass).slice(-6); },
+    snapSave(k, d) { try { localStorage.setItem(this.snapKey(k), JSON.stringify(d)); } catch (e) {} },
+    snapGet(k) { try { return JSON.parse(localStorage.getItem(this.snapKey(k)) || 'null'); } catch (e) { return null; } },
+    snapRestore() {
+      const d = this.snapGet('dash');
+      if (d) { this.today = d.today; this.due = d.due; this.reported = d.reported || []; this.renewals = d.renewals; this.me = d.me || this.me; this.frs = (d.frs || []).filter(x => !this.skipped.includes(x.row)); this.blocksOpen = d.blocksOpen || 0; this.blocksDue = d.blocksDue || 0; }
+      const sl = this.snapGet('slots');
+      if (sl) { this.slots = sl.items.map(f => Object.assign(f, { check: false, mark: {}, saving: false })); this.slotLimit = sl.limit; this.slotPendingH = sl.pendingHours; }
+      const w = this.snapGet('week'); if (w) this.wk = w;
+    },
 
     async api(body) {
-      const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) });
+      const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass, fresh: Date.now() < (this.freshUntil || 0) || undefined }) });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Lỗi không rõ');
       return data;
     },
     async login() { this.pass = this.passInput; this.error = ''; await this.load(); if (this.pass) lsSet('thayfam_pass', this.pass); },
-    logout() { this.pass = ''; lsSet('thayfam_pass', ''); this.me = { name: '', role: '', perms: [] }; this._reviewed = false; this.review = []; this.tab = 'due'; },
+    logout() { try { Object.keys(localStorage).filter(k => k.indexOf('tf_snap_') === 0).forEach(k => localStorage.removeItem(k)); } catch (e) {} this.pass = ''; lsSet('thayfam_pass', ''); this.me = { name: '', role: '', perms: [] }; this._reviewed = false; this.review = []; this.tab = 'due'; },
 
     async load() {
       this.loading = true; this.error = '';
       try {
         const d = await this.api({ action: 'dashboard', ahead: this.ahead });
+        if (!this.ahead) this.snapSave('dash', d);
         this.today = d.today; this.due = d.due; this.reported = d.reported || []; this.renewals = d.renewals;
         this.me = d.me || { name: 'Admin', role: 'admin', perms: [] };
         if (d.openNotes !== null && d.openNotes !== undefined) this.openNotes = d.openNotes;
@@ -1126,6 +1138,7 @@ function app() {
       this.slotsLoading = true;
       try {
         const d = await this.api({ action: 'slots' });
+        this.snapSave('slots', d);
         this.slots = d.items.map(f => Object.assign(f, { check: false, mark: {}, saving: false }));
         this.slotLimit = d.limit; this.slotPendingH = d.pendingHours; this.slotsLoaded = true;
       } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script đang chạy bản cũ, chưa có chức năng Còn slot. Dán lại Code.gs mới rồi Deploy → New version.' : e.message; }
@@ -1238,7 +1251,7 @@ function app() {
       this.wkLoading = true;
       if (this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
       if (this.can('review')) this.loadReview();
-      try { this.wk = await this.api({ action: 'week' }); }
+      try { this.wk = await this.api({ action: 'week' }); this.snapSave('week', this.wk); }
       catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có tab Tuần này: dán Code.gs mới rồi Deploy → New version.' : e.message; }
       this.wkLoading = false;
     },
