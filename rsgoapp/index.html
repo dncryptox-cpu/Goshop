@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Thư viện Template Factory</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: sidebar mục lục dính bên trái, cột đọc 68ch bên phải; mỗi mục có nút "đã đọc".
+   Màu: nền xám xanh lạnh, mực xanh đen, 1 màu nhấn xanh thông; vàng nghệ chỉ dùng cho "mới" và "cần chốt". */
+:root{
+  --bg:#f3f5f4; --panel:#ffffff; --ink:#16211f; --ink2:#4a5754; --line:#d5dcda; --line2:#e6ebe9;
+  --accent:#0d6b5c; --accent-soft:#dcefea; --warn:#8a5a00; --warn-soft:#f6e9c8; --code:#e9eeec;
+  --f-body:'Be Vietnam Pro',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-read:'Source Serif 4',Georgia,'Times New Roman',serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101716; --panel:#172120; --ink:#e4ecea; --ink2:#a2b1ad; --line:#2c3a38; --line2:#223130;
+    --accent:#58c4af; --accent-soft:#193631; --warn:#e6bd68; --warn-soft:#3a2f14; --code:#1f2b29; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101716; --panel:#172120; --ink:#e4ecea; --ink2:#a2b1ad; --line:#2c3a38; --line2:#223130;
+  --accent:#58c4af; --accent-soft:#193631; --warn:#e6bd68; --warn-soft:#3a2f14; --code:#1f2b29; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.7;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+a{color:var(--accent);text-underline-offset:2px}
+code{font-family:var(--f-mono);font-size:.88em;background:var(--code);padding:1px 5px;border-radius:3px}
+.wrap{max-width:1160px;margin:0 auto;display:grid;grid-template-columns:260px minmax(0,1fr);gap:48px}
+header.top{max-width:1160px;margin:0 auto;padding:36px 0 24px;border-bottom:1px solid var(--line)}
+header.top .kicker{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink2)}
+header.top h1{font-family:var(--f-read);font-weight:600;font-size:clamp(28px,5vw,40px);line-height:1.15;margin:8px 0 10px;text-wrap:balance}
+header.top p{margin:0;max-width:62ch;color:var(--ink2)}
+.docs{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:14px;font-size:13px}
+nav.toc{position:sticky;top:0;align-self:start;max-height:100vh;overflow:auto;padding:24px 0}
+nav.toc h2{font-family:var(--f-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink2);margin:20px 0 6px;font-weight:500}
+nav.toc h2:first-of-type{margin-top:0}
+nav.toc a{display:flex;gap:8px;align-items:baseline;padding:4px 8px;margin-left:-8px;color:var(--ink2);text-decoration:none;font-size:13.5px;line-height:1.4;border-left:2px solid transparent}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a.on{color:var(--ink);border-left-color:var(--accent);background:var(--accent-soft)}
+nav.toc a .tick{font-family:var(--f-mono);font-size:11px;color:var(--accent);width:1em;flex:none;visibility:hidden}
+nav.toc a.read .tick{visibility:visible}
+.prog{font-family:var(--f-mono);font-size:12px;color:var(--ink2);padding-bottom:12px;border-bottom:1px solid var(--line);margin-bottom:12px}
+.prog b{color:var(--ink)}
+.bar{height:3px;background:var(--line);margin-top:6px}
+.bar i{display:block;height:100%;background:var(--accent);width:0}
+main{min-width:0;padding-top:28px}
+section.doc{padding:8px 0 44px;border-bottom:1px solid var(--line);margin-bottom:36px}
+section.doc:last-child{border-bottom:0}
+.part{font-family:var(--f-mono);font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin:0 0 4px}
+h2.h{font-family:var(--f-read);font-weight:600;font-size:clamp(23px,3.4vw,29px);line-height:1.25;margin:0 0 14px;text-wrap:balance}
+h3{font-size:16px;margin:26px 0 6px;font-weight:600}
+p,li{max-width:68ch}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:22px}
+li{margin-bottom:5px}
+.lead{font-family:var(--f-read);font-size:18px;line-height:1.65}
+.tablewrap{overflow-x:auto;margin:6px 0 18px;border:1px solid var(--line);background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px;line-height:1.5}
+th,td{text-align:left;vertical-align:top;padding:9px 12px;border-bottom:1px solid var(--line2)}
+th{font-weight:600;background:var(--code);font-size:12.5px;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.n,th.n{font-variant-numeric:tabular-nums}
+.note{border-left:3px solid var(--warn);background:var(--warn-soft);padding:10px 14px;margin:6px 0 16px;max-width:68ch;font-size:14px}
+.note.ok{border-left-color:var(--accent);background:var(--accent-soft)}
+.mark{display:flex;justify-content:flex-end;margin-top:18px}
+.mark button{font:inherit;font-size:13px;color:var(--ink2);background:transparent;border:1px solid var(--line);padding:6px 12px;cursor:pointer;border-radius:3px}
+.mark button:hover{border-color:var(--accent);color:var(--ink)}
+.mark button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--bg)}
+button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.flow{display:flex;flex-wrap:wrap;gap:0;margin:8px 0 18px;align-items:stretch}
+.flow>div{flex:1 1 150px;min-width:0;border:1px solid var(--line);background:var(--panel);padding:10px 12px;font-size:13px;line-height:1.45;margin-right:-1px;margin-bottom:-1px}
+.flow>div b{display:block;font-size:13.5px;margin-bottom:2px}
+.flow>div.hl{background:var(--accent-soft);border-color:var(--accent);position:relative;z-index:1}
+.flow>div small{display:block;color:var(--ink2);font-size:12px}
+.log{list-style:none;padding:0;margin:0}
+.log li{display:grid;grid-template-columns:92px minmax(0,1fr);gap:14px;padding:12px 0;border-bottom:1px solid var(--line2);max-width:none}
+.log time{font-family:var(--f-mono);font-size:12.5px;color:var(--ink2);padding-top:2px}
+.log .t{font-weight:600}
+.log .new{font-family:var(--f-mono);font-size:10.5px;background:var(--warn-soft);color:var(--warn);padding:1px 6px;margin-left:6px;letter-spacing:.05em;vertical-align:1px}
+.log p{margin:2px 0 0;color:var(--ink2);font-size:14px}
+.checks{list-style:none;padding:0}
+.checks li{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line2);max-width:none}
+.checks input{margin-top:6px;accent-color:var(--accent);flex:none;width:16px;height:16px}
+.checks label{cursor:pointer;flex:1;min-width:0}
+.checks .who{font-family:var(--f-mono);font-size:11px;background:var(--code);padding:1px 6px;margin-right:6px}
+.checks input:checked+label{color:var(--ink2);text-decoration:line-through}
+.src li{font-size:14px;margin-bottom:6px}
+.mtoc{display:none}
+.mtoc summary{cursor:pointer;font-weight:600;padding:10px 0;border-bottom:1px solid var(--line)}
+@media (max-width:860px){
+  .wrap{grid-template-columns:minmax(0,1fr);gap:0}
+  nav.toc{display:none}
+  .mtoc{display:block;margin-top:12px}
+  .mtoc a{display:block;padding:5px 0;color:var(--ink2);text-decoration:none;font-size:14px}
+  .log li{grid-template-columns:minmax(0,1fr);gap:2px}
+  .lead{font-size:17px}
+}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+
+</head>
+<body>
+<header class="top">
+  <div class="kicker">Thư viện nghiên cứu · godnc</div>
+  <h1>Template Factory</h1>
+  <p>Toàn bộ nghiên cứu, quyết định và quy trình của dự án bán template/app cho cộng đồng, gom vào một trang để đọc từ đầu đến cuối. Mỗi lần nghiên cứu xong, mục mới được thêm vào Nhật ký ngay bên dưới.</p>
+  <div class="docs">
+    <a href="https://claude.ai/artifact/LCdm6k6tXoT8ECpDRs5ZkF" target="_blank" rel="noopener">Sơ đồ tư duy workflow</a>
+    <a href="https://claude.ai/code/artifact/a3a846cb-7651-430f-b067-0926433261ad" target="_blank" rel="noopener">Tài liệu gốc: Quy trình sản xuất</a>
+    <a href="https://claude.ai/code/artifact/b67c587b-8c69-4869-ad37-2febabf97dde" target="_blank" rel="noopener">Tài liệu gốc: Quyết định kiến trúc</a>
+  </div>
+</header>
+
+<div class="wrap">
+<nav class="toc" aria-label="Mục lục" id="toc"></nav>
+
+<main>
+<details class="mtoc" id="mtoc"><summary>Mục lục</summary><div id="mtoc-list"></div></details>
+
+<!-- ========== NHẬT KÝ ========== -->
+<section class="doc" id="nhat-ky" data-title="Nhật ký cập nhật" data-group="Bắt đầu">
+  <p class="part">Bắt đầu</p>
+  <h2 class="h">Nhật ký cập nhật</h2>
+  <p>Mục mới nhất ở trên cùng. Dòng có nhãn MỚI là phần chưa quá 3 ngày.</p>
+  <ul class="log" id="log"></ul>
+</section>
+
+<!-- ========== ĐỌC NHANH ========== -->
+<section class="doc" id="doc-nhanh" data-title="Đọc nhanh: 1 trang" data-group="Bắt đầu">
+  <p class="part">Bắt đầu</p>
+  <h2 class="h">Đọc nhanh: toàn bộ dự án trong 1 trang</h2>
+  <p class="lead">Mỗi ngày bạn gửi 1 dòng ý tưởng; Claude chạy cả quy trình ra một sản phẩm bán đứt, khách tự cài trên domain và Google Sheet của họ. Mình chỉ giữ cửa hàng bán hàng (đơn, license, gói tải).</p>
+  <h3>Năm điều đã chốt</h3>
+  <ol>
+    <li><b>Bán đứt</b>, không thuê bao. Khách dùng vĩnh viễn; 12 tháng được tải bản cập nhật mới (đã xác nhận).</li>
+    <li><b>Dữ liệu nằm ở Google Sheet của khách</b>. Mình không giữ dữ liệu kinh doanh của họ.</li>
+    <li><b>Mỗi ngách = 1 file <code>niche.json</code></b>; lõi dùng chung sinh ra Sheet, giao diện, script. Ngách mới chỉ là config mới.</li>
+    <li><b>Giao diện chống "mùi AI"</b>: không gradient tím, không Inter, không emoji trang trí; trông như phần mềm của đúng ngành đó.</li>
+    <li><b>Không khoá được code đã giao</b>. Thắng bằng tốc độ ra sản phẩm, cập nhật, hỗ trợ, cài hộ và cộng đồng.</li>
+  </ol>
+  <h3>Ba tầng sản phẩm</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Tầng</th><th>Là gì</th><th>Giá đề xuất</th></tr>
+    <tr><td>A · Sheet</td><td>Google Sheet + công thức + dashboard, bấm "Make a copy" là dùng</td><td class="n">$9–19 · 99–199k</td></tr>
+    <tr><td>B · Webapp</td><td>Sheet có script + thư mục <code>site/</code> (PWA) chạy trên domain của khách</td><td class="n">399–699k</td></tr>
+    <tr><td>C · Nâng cao</td><td>Tầng B + AI đọc hoá đơn (khách tự điền API key), tuỳ chọn Supabase của khách</td><td class="n">799k–1,5tr (chưa kiểm chứng)</td></tr>
+  </table></div>
+  <h3>Còn mở</h3>
+  <p>Chưa đo: đăng nhập bằng tab Users, độ trễ khi dữ liệu lớn, cảnh báo Google lúc khách cấp quyền, cập nhật bằng Apps Script Library. Cả bốn nằm trong các Spike ở mục <a href="#viec-chot">Việc cần chốt</a>.</p>
+  <div class="note"><b>Cách đọc gợi ý:</b> Phần II (Quyết định kiến trúc) trước vì nó chốt hướng đi, rồi mới tới Phần I (Quy trình) để thấy cách sản xuất hàng loạt.</div>
+</section>
+
+<!-- ================= PHẦN II: KIẾN TRÚC ================= -->
+<section class="doc" id="ket-luan" data-title="Kết luận: bán đứt" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Kết luận: bán đứt, khách tự cài</h2>
+  <p>Khách tự cài trên domain và tài khoản Google của họ. Mình không giữ dữ liệu khách, không cần database đa khách hàng; Supabase chỉ phục vụ cửa hàng bán hàng của mình (đơn, license, tải gói).</p>
+  <p>Bản trước của tài liệu này thiết kế theo hướng thuê bao do mình host và đã bị thay bằng hướng này. Lý do nên bán đứt:</p>
+  <ul>
+    <li>Đúng với thị trường: <a href="https://gsheets.vn/template/" target="_blank" rel="noopener">gsheets.vn</a> bán đứt từng sản phẩm, 189.000–699.000 đ mỗi món.</li>
+    <li>Khách giữ được domain và dữ liệu.</li>
+    <li>Mình không trả hosting hay AI cho từng khách, và không phải giữ dữ liệu kinh doanh của họ.</li>
+    <li>Hạn mức Apps Script tính theo tài khoản Google của từng khách, nên tự nhân lên theo số khách, không dồn vào 1 tài khoản của mình.</li>
+  </ul>
+  <p>Cái giá: không có doanh thu định kỳ từ chính sản phẩm, hỗ trợ cài đặt tốn công, và code đã giao thì không khoá được. Bù bằng dịch vụ cài hộ, bản lớn mới bán lại giảm giá, bundle theo ngành và affiliate.</p>
+  <h3>Chín quyết định</h3>
+  <div class="tablewrap"><table>
+    <tr><th class="n">#</th><th>Quyết định</th><th>Chọn</th><th>Đổi lại sau này</th></tr>
+    <tr><td class="n">1</td><td>Mô hình bán</td><td>Bán đứt gói triển khai, khách tự host trên domain của họ</td><td>Khó</td></tr>
+    <tr><td class="n">2</td><td>Nơi đặt dữ liệu khách</td><td>Google Sheet của khách (mặc định); Supabase của khách là gói nâng cao, cài hộ</td><td>Khó</td></tr>
+    <tr><td class="n">3</td><td>Backend</td><td>Apps Script Web App do khách tự deploy, có token</td><td>Vừa</td></tr>
+    <tr><td class="n">4</td><td>Giao diện</td><td>HTML tĩnh + Alpine.js, upload lên domain bất kỳ, không build step</td><td>Vừa</td></tr>
+    <tr><td class="n">5</td><td>Cấu trúc sản phẩm</td><td><code>niche.json</code> sinh ra Sheet + giao diện + script; 1 data adapter</td><td>Vừa</td></tr>
+    <tr><td class="n">6</td><td>Cập nhật</td><td>Gói mới tải về từ tài khoản mua hàng + hàm <code>migrate()</code> chạy 1 click</td><td>Khó: là lời hứa với khách</td></tr>
+    <tr><td class="n">7</td><td>Cửa hàng của mình</td><td>Supabase: đơn, license, gói tải; thu tiền VN qua webhook ngân hàng</td><td>Dễ</td></tr>
+    <tr><td class="n">8</td><td>AI</td><td>Khách tự nhập API key (BYOK), 1 hàm adapter</td><td>Dễ</td></tr>
+    <tr><td class="n">9</td><td>License</td><td>Chỉ để tải bản cập nhật và được hỗ trợ; app không bao giờ tự khoá</td><td>Dễ</td></tr>
+  </table></div>
+  <p>Các dòng 1, 2 và 6 phải chốt trước khi bán sản phẩm đầu tiên: đổi sau đồng nghĩa với việc di chuyển khách đang dùng.</p>
+</section>
+
+<section class="doc" id="du-lieu" data-title="Nơi đặt dữ liệu của khách" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Nơi đặt dữ liệu của khách</h2>
+  <p>Mặc định là Google Sheet của chính khách. Đây là cách duy nhất vừa bán đứt, vừa không bắt khách trả thêm tiền hạ tầng mỗi tháng.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Lựa chọn</th><th>Chi phí cho khách</th><th>Giới hạn</th><th>Dùng khi</th></tr>
+    <tr><td>Google Sheet + Apps Script (mặc định)</td><td>0</td><td>Hạn mức Apps Script theo tài khoản khách; chậm hơn database thật, chưa đo</td><td>Hộ kinh doanh, SME dữ liệu vừa phải; mốc dòng cụ thể chưa đo</td></tr>
+    <tr><td><a href="https://makerkit.dev/blog/md/saas/supabase-pricing" target="_blank" rel="noopener">Supabase của khách</a> (gói nâng cao)</td><td>Free $0 nhưng tự tạm dừng sau 1 tuần không hoạt động; Pro $25/tháng do khách trả</td><td>Khách không kỹ thuật không tự dựng được, phải cài hộ</td><td>Nhiều người dùng, dữ liệu lớn, báo cáo nặng</td></tr>
+    <tr><td>Database của mình, thuê bao</td><td>Mình trả</td><td>Mình phải giữ và chịu trách nhiệm dữ liệu của khách</td><td>Không làm giai đoạn 1; xem lại nếu thị trường đòi bản thuê bao</td></tr>
+  </table></div>
+  <h3>Quy tắc</h3>
+  <ul>
+    <li>Mỗi thực thể (khách, lịch hẹn, thu chi) là 1 tab; cột đầu là mã bản ghi, giữ cố định qua các phiên bản.</li>
+    <li>Gói Supabase: mỗi khách 1 project riêng của khách, nên không cần cột <code>tenant_id</code>; chỉ cần RLS theo vai trò người dùng. Adapter Postgres cùng giao diện với adapter Sheet, đổi chỗ được.</li>
+    <li>Khách dùng Supabase thật sự nên lên Pro, vì Free tự tạm dừng và phải khôi phục thủ công.</li>
+    <li>Cửa hàng của mình dùng project Supabase riêng, tách khỏi Go Shop OS. Lên Pro khi bắt đầu bán, để không bị tạm dừng lúc vắng đơn.</li>
+    <li>Nếu sau này cần thay Supabase cho gói nâng cao: Neon rẻ hơn khi tải thất thường, Firebase tính theo từng thao tác nên khó đoán hoá đơn (<a href="https://toolradar.com/blog/supabase-pricing-2026" target="_blank" rel="noopener">Toolradar</a>).</li>
+  </ul>
+</section>
+
+<section class="doc" id="cau-truc" data-title="Cấu trúc sản phẩm và cài đặt" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Cấu trúc sản phẩm và cài đặt</h2>
+  <p>Mỗi ngách là 1 file <code>niche.json</code>; từ đó sinh ra Sheet mẫu, giao diện và script. Gói giao cho khách gồm ba phần:</p>
+  <ul>
+    <li>Google Sheet mẫu có sẵn script (khách bấm "Make a copy").</li>
+    <li>Thư mục <code>site/</code>: file HTML/JS tĩnh để upload lên domain; <code>config.js</code> giữ URL Web App và token.</li>
+    <li>Hướng dẫn cài: PDF 1 trang + video từng bước.</li>
+  </ul>
+  <h3>Khách tự cài theo 4 bước</h3>
+  <div class="flow">
+    <div><b>1. Copy Sheet</b>Chạy menu "Cài đặt": <code>setup()</code> tạo tab, sinh token ngẫu nhiên lưu trong Script Properties.</div>
+    <div><b>2. Deploy Web App</b>Làm tay trong trình soạn Apps Script (có video), copy URL.</div>
+    <div><b>3. Dán vào config.js</b>URL và token, rồi upload <code>site/</code> lên domain hoặc hosting của khách.</div>
+    <div class="hl"><b>4. Đăng nhập</b>Mở domain, vào bằng tài khoản quản trị tạo trong tab Users.</div>
+  </div>
+  <p><b>Data adapter:</b> 1 bản ghi là 1 object JSON, ánh xạ thẳng sang 1 dòng Sheet (mỗi key là 1 cột). Phiên bản dữ liệu <code>schema_v</code> lưu ở tab <code>_meta</code>. Quy tắc tương thích: chỉ thêm cột, không đổi tên hay xoá trong cùng 1 phiên bản lớn.</p>
+  <p>Giao diện gọi Web App bằng POST kèm token. Mẫu này (HTML tĩnh + Alpine.js + <code>doPost</code>) đang chạy ở Go Shop OS nên dùng lại, kèm quy tắc cũ: endpoint không có token thì từ chối, mỗi màn hình 1 file để không dồn hàng nghìn dòng vào 1 <code>index.html</code>.</p>
+  <div class="note"><b>Chưa nghiên cứu:</b> cách đăng nhập (nghiêng về bảng Users trong Sheet, mật khẩu băm, token phiên do script cấp) và độ trễ Web App khi dữ liệu lớn. Cả hai nằm trong Spike 2.</div>
+</section>
+
+<section class="doc" id="gioi-han" data-title="Giới hạn của Google" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Tầng A/B: giới hạn của Google</h2>
+  <p>Do dữ liệu nằm trong Sheet của khách, gốc rễ của tầng A/B là hạn mức Apps Script và màn hình cảnh báo của Google. Cả hai đều phải thiết kế né từ đầu.</p>
+  <p>Hạn mức Apps Script theo <a href="https://dev.to/stack_c285afb2fa0bef/google-apps-script-quota-limits-2026-every-error-every-fix-2p87" target="_blank" rel="noopener">bài tổng hợp 2026</a> (bài có tính quảng cáo; phải đối chiếu với trang quota chính thức của Google trước khi cam kết với khách):</p>
+  <div class="tablewrap"><table>
+    <tr><th>Hạn mức</th><th class="n">Tài khoản thường</th><th class="n">Workspace</th></tr>
+    <tr><td>Thời gian chạy mỗi lần</td><td class="n">6 phút</td><td class="n">6 phút</td></tr>
+    <tr><td>Trigger mỗi ngày</td><td class="n">90 phút</td><td class="n">6 giờ</td></tr>
+    <tr><td>UrlFetch mỗi ngày</td><td class="n">20.000</td><td class="n">100.000</td></tr>
+    <tr><td>Tạo tài liệu mỗi ngày</td><td class="n">250</td><td class="n">1.500</td></tr>
+    <tr><td>Email mỗi ngày</td><td class="n">100</td><td class="n">1.500</td></tr>
+  </table></div>
+  <h3>Quy tắc thiết kế rút ra</h3>
+  <ul>
+    <li>Script gắn trong bản copy của khách, không chạy qua 1 web app trung tâm của mình. Hạn mức tính theo tài khoản chạy script, nên mỗi khách có hạn mức riêng; web app trung tâm sẽ dồn mọi khách vào 20.000 UrlFetch/ngày của 1 tài khoản.</li>
+    <li>Mỗi thao tác dưới 6 phút: ghi hàng loạt bằng <code>setValues</code>, chia lô khi xử lý nhiều dòng.</li>
+    <li>Không dựa vào email để nhắc lịch: 100 email/ngày là trần thấp với 1 tiệm đông khách. Dùng Telegram/Zalo.</li>
+    <li>Khoá API chỉ ở Script Properties, không ghi cứng trong mã.</li>
+    <li>Giao diện không gọi Sheets API trực tiếp, chỉ gọi Web App. Giới hạn 60 đọc và 60 ghi mỗi phút mỗi user (<a href="https://developers.google.com/sheets/api/limits" target="_blank" rel="noopener">Google</a>); Google cũng nêu sẽ tính phí khi vượt quota từ cuối 2026.</li>
+  </ul>
+  <h3>Màn hình cảnh báo "app chưa xác minh"</h3>
+  <p>Theo <a href="https://support.google.com/cloud/answer/7454865" target="_blank" rel="noopener">Google</a>:</p>
+  <ul>
+    <li>Hiện khi script xin scope nhạy cảm hoặc hạn chế mà chưa qua xác minh.</li>
+    <li>Ứng dụng chưa xác minh chỉ thêm được tối đa 100 người dùng mới.</li>
+    <li>Xác minh có thể mất vài tháng, yêu cầu có URL chính sách quyền riêng tư và xác minh quyền sở hữu website qua Search Console.</li>
+  </ul>
+  <div class="note"><b>Chưa kiểm chứng:</b> giới hạn 100 người dùng áp thế nào khi mỗi khách là chủ sở hữu 1 bản script riêng, và scope hẹp nhất có tránh được cảnh báo hay không (Spike 1). Trong lúc chờ, giữ video hướng dẫn bấm qua cảnh báo trong gói sản phẩm, và cài hộ cho khách ngại bước cấp quyền.</div>
+</section>
+
+<section class="doc" id="cap-nhat-khach" data-title="Cập nhật cho khách đã mua" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Cập nhật cho khách đã mua</h2>
+  <p>Khách giữ bản cài của họ, mình không đẩy sửa vào được. Cập nhật vì vậy là 1 gói mới để khách tải về, không phải bản vá tự động.</p>
+  <div class="note ok"><b>Lời hứa với khách:</b> 12 tháng được tải bản mới; bản đã mua dùng vô thời hạn.</div>
+  <h3>Quy trình cho khách</h3>
+  <ol>
+    <li>Đăng nhập tài khoản mua hàng trên godnc.com/store, tải gói mới theo license.</li>
+    <li>Tạo bản sao file Sheet (mình nhắc, không tự làm, để không phải xin thêm quyền Drive).</li>
+    <li>Thay thư mục <code>site/</code> trên domain bằng bản mới.</li>
+    <li>Dán mã script mới vào Apps Script, rồi bấm menu "Cập nhật" để chạy <code>migrate()</code> (thêm cột, thêm tab, ghi <code>schema_v</code>).</li>
+  </ol>
+  <h3>Quy tắc phiên bản</h3>
+  <ul>
+    <li>Trong cùng 1 phiên bản lớn, chỉ thêm trường. Không đổi tên, không xoá.</li>
+    <li><code>migrate()</code> chạy lại nhiều lần không hỏng dữ liệu.</li>
+    <li>Đổi phá vỡ = phiên bản lớn mới (v2.0), bán lại giảm 50% cho khách cũ.</li>
+    <li>Mỗi bản phát hành được chạy thử trên bản copy của bản trước có dữ liệu giả trước khi phát.</li>
+  </ul>
+  <p><b>Spike 3 (chưa làm):</b> thử dùng Apps Script Library để bước 4 bớt thủ công. Đạt khi khách không phải cấp thêm quyền, bản mới áp được mà không phải sửa mã, và bản copy thứ hai vẫn giữ liên kết tới library. Không đạt thì giữ quy trình dán mã tay.</p>
+</section>
+
+<section class="doc" id="thanh-toan" data-title="Thanh toán và license" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Thanh toán và license</h2>
+  <p>VN thu bằng chuyển khoản có webhook; quốc tế giai đoạn 1 chỉ qua Etsy. Không cần cổng thẻ quốc tế cho tới khi có khách mua ngoài Etsy.</p>
+  <h3>Luồng thu tiền VN</h3>
+  <div class="flow">
+    <div><b>1. Khách bấm mua</b>Hệ thống tạo đơn "chờ", sinh mã đơn ngắn, hiện VietQR kèm mã trong nội dung chuyển khoản.</div>
+    <div><b>2. Tiền về</b>SePay/Casso gửi webhook tới Edge Function.</div>
+    <div><b>3. Xử lý</b>Xác thực, tách mã đơn, đối chiếu số tiền, đánh dấu đã trả, cấp license.</div>
+    <div class="hl"><b>4. Giao hàng</b>Gửi link tải gói; báo vào Telegram bot Goshop.</div>
+  </div>
+  <div class="tablewrap"><table>
+    <tr><th></th><th>SePay</th><th>Casso</th></tr>
+    <tr><td>Xác thực webhook</td><td>HMAC-SHA256, API key, OAuth 2.0 hoặc không (<a href="https://developer.sepay.vn/en/sepay-webhooks" target="_blank" rel="noopener">SePay</a>)</td><td>Header <code>secure-token</code> so với giá trị đặt lúc đăng ký (<a href="https://developer.casso.vn/v1/thuc-hanh/tich-hop-xac-nhan-thanh-toan" target="_blank" rel="noopener">Casso</a>)</td></tr>
+    <tr><td>Gửi lại khi lỗi</td><td>Tối đa 7 lần, khoảng 33 phút</td><td>Tài liệu không nêu</td></tr>
+    <tr><td>Theo dõi</td><td>Log lần gửi, gửi lại thủ công, cảnh báo qua Telegram/Slack/Discord</td><td>Đồng bộ theo yêu cầu bằng <code>/sync</code> khi khách bấm "tôi đã chuyển"</td></tr>
+    <tr><td>Phí</td><td>Chưa tra được</td><td>Chưa tra được</td></tr>
+  </table></div>
+  <p>Nghiêng về SePay vì có HMAC, gửi lại và cảnh báo sẵn, phù hợp hệ thống chạy không người trông. Chốt sau khi so bảng phí hiện hành của cả hai.</p>
+  <h3>Hai lỗi phải chặn từ đầu</h3>
+  <p>Tài liệu của cả hai không mô tả cách xử lý trùng:</p>
+  <ul>
+    <li><b>Webhook trùng:</b> ràng buộc <code>unique(provider, transaction_id)</code> trong <code>orders</code>; xử lý 2 lần phải ra cùng kết quả, không cấp license 2 lần.</li>
+    <li><b>Chuyển thiếu hoặc sai mã:</b> không tự cấp; đưa vào danh sách chờ duyệt tay. Đơn quá 3 ngày thì hết hạn, theo ví dụ trong tài liệu Casso.</li>
+  </ul>
+  <h3>Quốc tế, để dành cho giai đoạn sau</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Nền tảng</th><th>Phí niêm yết</th><th>Ghi chú</th></tr>
+    <tr><td>Etsy</td><td>~$6,15 trên đơn $50 từ VN (<a href="https://globalfeecalculator.com/etsy-fee-vietnam/" target="_blank" rel="noopener">GlobalFeeCalculator</a>)</td><td>Nhận tiền qua Payoneer, chưa có tùy chọn Business cho VN (<a href="https://help.etsy.com/hc/articles/360002120927" target="_blank" rel="noopener">Etsy</a>)</td></tr>
+    <tr><td>Lemon Squeezy</td><td>5% + $0,50, cộng 1,5% giao dịch quốc tế, 1,5% PayPal (<a href="https://dodopayments.com/blogs/lemonsqueezy-review" target="_blank" rel="noopener">Dodo Payments</a>)</td><td>Là bên bán hợp pháp, lo VAT. Trả tiền bằng USD, phí 1% khi về ngân hàng ngoài Mỹ; chưa xác nhận hỗ trợ payout về VN</td></tr>
+    <tr><td>Paddle</td><td>5% + $0,50 (cùng bài)</td><td>Chưa kiểm chứng payout về VN</td></tr>
+    <tr><td>Gumroad</td><td>10% + $0,50 cộng phí xử lý (cùng bài)</td><td>Rẻ hơn chỉ khi đã có audience riêng</td></tr>
+  </table></div>
+  <div class="note">Bài của Dodo Payments là của đối thủ cạnh tranh và có ngày tháng không nhất quán; bài nêu Lemon Squeezy đang ở chế độ bảo trì sau khi Stripe mua lại. Đối chiếu trang giá chính thức trước khi chọn.</div>
+  <h3>License</h3>
+  <p>Bảng <code>licenses</code> (key, order_id, gói, domain, hạn tải bản mới). License chỉ quyết định khách có được tải bản cập nhật và được hỗ trợ hay không. App của khách không gọi về server của mình và không bao giờ tự khoá: khách đã mua đứt phải dùng được kể cả khi mình ngừng hoạt động.</p>
+</section>
+
+<section class="doc" id="domain-ai" data-title="Tên miền, cài hộ và AI" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Tên miền, dịch vụ cài hộ và AI</h2>
+  <p>Khách dùng domain của họ vì giao diện chỉ là file tĩnh, host ở đâu cũng được. Điểm nghẽn thật là bước cài đặt, không phải hạ tầng.</p>
+  <ul>
+    <li><b>Domain:</b> khách trỏ domain hoặc subdomain tới nơi chứa <code>site/</code> (hosting họ đang có hoặc dịch vụ host tĩnh miễn phí). Chưa tra giới hạn từng nơi host; chưa cần ở giai đoạn này.</li>
+    <li>Web App của Apps Script có địa chỉ script.google.com, ẩn sau giao diện trên domain của khách.</li>
+    <li><b>Dịch vụ cài hộ</b> là dòng thu phụ, chỗ bù doanh thu định kỳ. gsheets.vn cũng có mục Dịch vụ riêng trên menu.</li>
+  </ul>
+  <h3>AI do khách tự nhập API key</h3>
+  <p>Key nằm trong Script Properties (BYOK). Bán đứt chỉ thu 1 lần nên mình không gánh chi phí AI từng khách. Chi phí thật rất nhỏ. Giá theo <a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noopener">trang giá Claude</a>; ví dụ 1 lần đọc hoá đơn ước tính 1.500 token vào + 300 token ra, tỷ giá ước 26.000 đ/USD:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Model</th><th class="n">$/triệu token (vào / ra)</th><th class="n">1 lần gọi</th><th class="n">100 lần/tháng</th></tr>
+    <tr><td>Haiku 5.5</td><td class="n">0,10 / 0,50</td><td class="n">$0,0003 (~8 đ)</td><td class="n">$0,03 (~780 đ)</td></tr>
+    <tr><td>Sonnet 5.5</td><td class="n">2 / 10</td><td class="n">$0,006 (~156 đ)</td><td class="n">$0,60 (~15.600 đ)</td></tr>
+  </table></div>
+  <p>Một hàm <code>ai.extract(schema, input)</code> đứng giữa để khách chọn nhà cung cấp và đổi mà không sửa từng ngách. Gemini (đang dùng ở Go Shop OS) chưa tra giá nên chưa so sánh. Muốn có doanh thu định kỳ từ AI thì có thể bán gói credit qua proxy của mình; chưa làm.</p>
+</section>
+
+<section class="doc" id="kien-truc-dich" data-title="Kiến trúc đích" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Kiến trúc đích: ai giữ cái gì</h2>
+  <p>Sau khi giao gói, mọi thứ chạy trong domain và tài khoản Google của khách; mình chỉ giữ đơn hàng và license. Lần giao gói là điểm duy nhất mình chạm vào khách. Etsy chỉ giao link file tầng A.</p>
+  <div class="flow">
+    <div><b>Phía mình</b><small>Store (Supabase riêng)</small>Đơn hàng, license, gói tải, webhook ngân hàng, bot Telegram.</div>
+    <div class="hl"><b>Giao gói (một lần)</b><small>godnc.com/store</small>Sheet mẫu, <code>site/</code>, hướng dẫn cài; sau đó là các gói cập nhật theo license.</div>
+    <div><b>Phía khách</b><small>Domain + tài khoản Google của khách</small><code>site/</code> tĩnh → Web App (token) → Google Sheet. AI gọi bằng API key của khách.</div>
+  </div>
+</section>
+
+<section class="doc" id="rui-ro-mo-rong" data-title="Rủi ro khi mở rộng" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Rủi ro khi mở rộng</h2>
+  <p>Rủi ro lớn nhất của bán đứt là chi phí hỗ trợ trên mỗi đơn, vì khách tự cài trên hạ tầng của họ. Phần còn lại xử lý được bằng gói sản phẩm tốt.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Rủi ro</th><th>Cách chặn sớm</th></tr>
+    <tr><td>Khách kẹt ở bước cài (deploy Web App, cấp quyền)</td><td>Video từng bước; <code>setup()</code> làm tự động tối đa; bán kèm cài hộ; đếm tỉ lệ khách cài xong không cần hỗ trợ ở 10 đơn đầu</td></tr>
+    <tr><td>Cảnh báo Google làm khách bỏ giữa chừng</td><td>Video bấm qua; scope hẹp nhất; xin xác minh (mất vài tháng) nếu thấy cần</td></tr>
+    <tr><td>Chạm hạn mức Apps Script (6 phút mỗi lần, 20.000 UrlFetch/ngày)</td><td>Ghi hàng loạt, chia lô; nhắc lịch bằng Telegram/Zalo thay vì email. Hạn mức tính theo tài khoản từng khách nên không dồn vào mình</td></tr>
+    <tr><td>Code bị copy bán lại</td><td>Chấp nhận; giá trị ở cập nhật, hỗ trợ, cài hộ, nhóm cộng đồng; không làm khoá phức tạp. Chi tiết 6 lớp ở mục <a href="#chong-copy">Chống copy &amp; clone</a></td></tr>
+    <tr><td>Cập nhật làm hỏng dữ liệu khách</td><td>Chỉ thêm cột; <code>migrate()</code> chạy lại được; nhắc tạo bản sao file trước khi cập nhật; thử trên dữ liệu giả trước khi phát hành</td></tr>
+    <tr><td>Cửa hàng của mình dừng (Supabase Free tạm dừng sau 1 tuần không hoạt động)</td><td>Lên Pro ($25/tháng) khi bắt đầu bán; app của khách không phụ thuộc cửa hàng</td></tr>
+    <tr><td>Webhook thanh toán trùng hoặc rớt</td><td>Ràng buộc unique trên mã giao dịch; đơn lệch vào danh sách duyệt tay</td></tr>
+    <tr><td>Thiếu doanh thu định kỳ</td><td>Dịch vụ cài hộ, bản lớn bán lại giảm 50%, bundle theo ngành, affiliate; theo dõi doanh thu dịch vụ mỗi tháng</td></tr>
+    <tr><td>Phụ thuộc Etsy và Google</td><td>Mỗi gói tách rời nhau; dữ liệu khách nằm trong Sheet của họ, xuất được</td></tr>
+  </table></div>
+  <h3>Về luật</h3>
+  <p>Mình không giữ dữ liệu kinh doanh của khách, nên gánh nặng từ <a href="https://luatvietnam.vn/dan-su/luat-bao-ve-du-lieu-ca-nhan-2025-co-hieu-luc-khi-nao-568-103652-article.html" target="_blank" rel="noopener">Luật Bảo vệ dữ liệu cá nhân 2025</a> (hiệu lực từ 01/01/2026) nhẹ hơn mô hình thuê bao. Mình vẫn giữ thông tin người mua (tên, số điện thoại, email, giao dịch), nên cửa hàng cần chính sách bảo mật. Doanh nghiệp nhỏ và khởi nghiệp được chọn chưa tuân thủ một số điều trong 5 năm; hộ kinh doanh và doanh nghiệp siêu nhỏ không phải tuân thủ; có ngoại lệ cho bên cung cấp dịch vụ xử lý dữ liệu, dữ liệu nhạy cảm và dữ liệu của nhiều người.</p>
+  <div class="note">Đây là tổng hợp từ 1 trang tin pháp luật, không phải tư vấn pháp lý.</div>
+</section>
+
+<section class="doc" id="viec-chot" data-title="Việc cần chốt" data-group="Phần II · Quyết định kiến trúc">
+  <p class="part">Phần II · Quyết định kiến trúc</p>
+  <h2 class="h">Việc cần chốt trước khi build</h2>
+  <p>Ba việc đầu cần DNL; các việc sau Claude làm được khi có quyền truy cập. Ô bạn tick được lưu trong trình duyệt này.</p>
+  <ul class="checks" id="checks"></ul>
+</section>
+
+<!-- ================= PHẦN I: QUY TRÌNH ================= -->
+<section class="doc" id="dinh-vi" data-title="Định vị" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Định vị</h2>
+  <p>Xây một "xưởng template": 1 bộ lõi kỹ thuật dùng chung, mỗi sản phẩm mới chỉ là 1 file cấu hình theo ngách. Mục tiêu: sau 90 ngày ra được 2 sản phẩm/tuần, bán song song 2 thị trường: VN (giống gsheets.vn) và quốc tế (Etsy/Gumroad).</p>
+  <h3>Khác gsheets.vn ở 4 điểm</h3>
+  <ul>
+    <li><b>Chạy trên domain của khách:</b> bán đứt, khách tự host trên domain và Google Sheet của họ; dùng vĩnh viễn, không phụ thuộc server của mình.</li>
+    <li><b>Mobile-first + giao diện hiện đại:</b> thay UI HTML Service cũ bằng PWA cài được lên điện thoại.</li>
+    <li><b>AI dựng sẵn trong sản phẩm:</b> chụp hoá đơn → tự nhập, hỏi đáp số liệu bằng tiếng Việt, tóm tắt báo cáo tuần; khách tự điền API key của họ.</li>
+    <li><b>Không thuê bao, nhưng vẫn có thu nhập thêm:</b> cài đặt hộ, gia hạn quyền tải cập nhật, bản lớn v2.0 giảm 50% cho khách cũ, bundle theo ngành.</li>
+  </ul>
+  <p><b>Nguyên tắc chống phình:</b> 3 sản phẩm đầu làm tay; chỉ tách thành engine dùng chung sau khi thấy rõ phần lặp lại.</p>
+</section>
+
+<section class="doc" id="thi-truong" data-title="Thị trường" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Thị trường</h2>
+  <p>Thị trường template không thiếu cầu; cái quyết định là ngách hẹp và số lượng sản phẩm. Trên Gumroad, 44% sản phẩm template chưa bán được đồng nào, còn người bán có từ 3 sản phẩm trở lên kiếm gấp ~5,7 lần người bán 1 sản phẩm (<a href="https://insightraider.com/en/answers/is-selling-notion-templates-profitable" target="_blank" rel="noopener">InsightRaider</a>).</p>
+  <div class="tablewrap"><table>
+    <tr><th>Thị trường</th><th>Bán gì</th><th>Giá</th><th>Bài học</th></tr>
+    <tr><td><a href="https://gsheets.vn/template/" target="_blank" rel="noopener">gsheets.vn</a></td><td>Sheets + Webapp Apps Script cho hộ KD, SME: thu chi, kho, quán cafe, CRM, báo giá, mini-ERP</td><td>189k–699k VND; có bản miễn phí làm mồi</td><td>Đánh số phiên bản (v2.3 → v3.0) để bán lại; affiliate; khoá học; nhóm FB/Zalo làm kênh chính</td></tr>
+    <tr><td>Notion templates</td><td>Dashboard cuộc sống, OS cho startup/creator, planner sinh viên</td><td>phổ biến $19–79 (<a href="https://fungies.io/how-to-sell-notion-templates.md" target="_blank" rel="noopener">Fungies</a>)</td><td>Ngách chung đã bão hoà; ngách nghề cụ thể (VD: CRM cho nhiếp ảnh freelance) top listing chỉ 12–60 review (<a href="https://kupkaike.com/blog/is-selling-notion-templates-still-profitable-2026" target="_blank" rel="noopener">Kupkaike</a>)</td></tr>
+    <tr><td>Etsy</td><td>Planner, spreadsheet (budget, sổ sách KD nhỏ), Notion, Canva</td><td>spreadsheet $8–45, cạnh tranh thấp–trung bình (<a href="https://www.insightagent.app/guides/etsy-popular-digital-products" target="_blank" rel="noopener">InsightAgent</a>)</td><td>Đặt tên theo ngách + định dạng ("budget cho thu nhập không đều" thay vì "budget planner") (<a href="https://www.listadum.com/blog/digital-products-to-sell-on-etsy" target="_blank" rel="noopener">Listadum</a>)</td></tr>
+  </table></div>
+  <h3>Kết luận chọn ngách</h3>
+  <ul>
+    <li><b>VN:</b> đi theo nghề/mô hình KD (tiệm nail, spa, gara, phòng gym, nhà trọ, shop online). gsheets.vn đã phủ cafe, sửa xe, kho; tránh đối đầu trực diện ở các mảng này.</li>
+    <li><b>Quốc tế:</b> spreadsheet theo nghề + công cụ tài chính cá nhân có ngách (freelancer, gig worker, FIRE).</li>
+  </ul>
+</section>
+
+<section class="doc" id="san-pham" data-title="Dòng sản phẩm" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Dòng sản phẩm</h2>
+  <p>Mỗi ngách ra 3 tầng từ cùng 1 thiết kế dữ liệu: làm 1 lần, bán 3 mức giá.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Tầng</th><th>Là gì</th><th>Giao hàng</th><th>Thị trường</th><th>Giá đề xuất</th></tr>
+    <tr><td>A · Sheet</td><td>Google Sheets: bảng nhập + công thức + dashboard, không code</td><td>Link "Make a copy" + PDF hướng dẫn</td><td>Etsy, Gumroad, VN</td><td class="n">$9–19 · 99–199k</td></tr>
+    <tr><td>B · Webapp</td><td>Sheet có script + thư mục <code>site/</code> (PWA) chạy trên domain của khách</td><td>Gói tải về + PDF/video cài đặt</td><td>Chủ yếu VN</td><td class="n">399–699k bán đứt</td></tr>
+    <tr><td>C · Nâng cao</td><td>Tầng B + AI đọc hoá đơn (khách tự điền API key); tuỳ chọn Supabase của khách cho dữ liệu lớn</td><td>Gói tải về + hướng dẫn</td><td>VN trước, quốc tế sau</td><td class="n">799k–1,5tr bán đứt (chưa kiểm chứng)</td></tr>
+  </table></div>
+  <ul>
+    <li>Tầng A là mồi rẻ và là hàng Etsy chính; tầng B cạnh tranh trực tiếp gsheets.vn; tầng C là phần "tiên tiến hơn" (AI). Cả ba đều bán đứt, không có doanh thu định kỳ từ sản phẩm.</li>
+    <li>Tầng B khó bán quốc tế: khách nước ngoài gặp màn hình cảnh báo "Google hasn't verified this app" khi cấp quyền script.</li>
+    <li>Notion: chỉ làm khi ngách đó trên Etsy có cầu Notion rõ hơn Sheets; dùng chung spec, khác đầu ra.</li>
+  </ul>
+</section>
+
+<section class="doc" id="loi" data-title="Kiến trúc lõi" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Kiến trúc lõi</h2>
+  <p>Một file <code>niche.json</code> mô tả ngách; lõi đọc file đó và sinh ra cả 3 tầng. Sản phẩm mới = viết config mới, không viết lại code.</p>
+  <div class="flow">
+    <div><b>niche.json</b><small>1 file cho mỗi ngách</small>entities · views · reports · seed · copy · ai</div>
+    <div class="hl"><b>Lõi dùng chung</b><small>viết 1 lần</small>Sheet builder · UI kit (PWA) · Data adapter (Sheet / Postgres) · License mềm + <code>migrate()</code></div>
+    <div><b>Ba tầng</b><small>đầu ra</small>A · Sheet<br>B · Webapp (<code>site/</code> + Web App)<br>C · Nâng cao (AI + Postgres)</div>
+  </div>
+  <p>Thêm ngách = thêm 1 file bên trái; khối giữa giữ nguyên.</p>
+  <h3><code>niche.json</code> gồm</h3>
+  <ol>
+    <li><code>entities</code>: các bảng (VD tiệm nail: Khách, Dịch vụ, Lịch hẹn, Thu chi) và trường của từng bảng.</li>
+    <li><code>views</code>: màn hình: danh sách, form, lịch, kanban.</li>
+    <li><code>reports</code>: dashboard + công thức (doanh thu theo ngày, khách quay lại).</li>
+    <li><code>seed</code>: dữ liệu mẫu 30–50 dòng để ảnh demo trông thật.</li>
+    <li><code>copy</code>: tên, mô tả, nhãn VN/EN.</li>
+    <li><code>ai</code>: tính năng AI bật cho ngách này (OCR hoá đơn, hỏi đáp).</li>
+  </ol>
+  <h3>Lõi gồm 4 khối, viết 1 lần</h3>
+  <ul>
+    <li><b>Sheet builder</b> (Apps Script): tạo tab, header, validation, công thức, dashboard từ config.</li>
+    <li><b>UI kit</b> (PWA): component danh sách/form/lịch/dashboard đọc config, dùng chung cho tầng B và C.</li>
+    <li><b>Data adapter:</b> cùng 1 API; mặc định đọc/ghi Google Sheet của khách, tuỳ chọn Postgres (Supabase của khách) cho gói nâng cao.</li>
+    <li><b>License + cập nhật:</b> license chỉ mở quyền tải bản mới và hỗ trợ; app không gọi về server mình. Khách thay thư mục <code>site/</code>, dán script mới và chạy <code>migrate()</code>.</li>
+  </ul>
+</section>
+
+<section class="doc" id="giao-dien" data-title="Giao diện chống mùi AI" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Giao diện: chống "mùi AI"</h2>
+  <p>Khách đã quen nhận ra app do AI dựng qua vài dấu hiệu lặp lại; sản phẩm phải trông như phần mềm nghề làm cho đúng ngành đó.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Dấu hiệu "mùi AI" (cấm)</th><th>Thay bằng</th></tr>
+    <tr><td>Gradient tím/chàm, chữ gradient ở hero</td><td>1 màu nhấn lấy từ chính ngành (spa: be + rêu; gara: xám thép + cam an toàn), nền phẳng</td></tr>
+    <tr><td>Font Inter / mặc định hệ thống</td><td>Cặp font có dấu tiếng Việt, chọn theo ngách, cố định trong bộ nhận diện</td></tr>
+    <tr><td>Emoji và icon trong vòng tròn nhạt làm trang trí</td><td>1 bộ icon nét đồng nhất, chỉ đặt cạnh hành động</td></tr>
+    <tr><td>Card bo tròn lớn + bóng mờ khắp nơi</td><td>Đường kẻ mảnh, bo 4–6px, bảng dày thông tin như phần mềm kế toán</td></tr>
+    <tr><td>Lưới 3 card "tính năng" + hero căn giữa</td><td>Màn hình đầu là chính công việc: lịch hẹn hôm nay, doanh thu, việc cần làm</td></tr>
+    <tr><td>Câu chữ chung chung ("Tối ưu quy trình của bạn")</td><td>Lời của chủ tiệm ("Hôm nay còn 3 khách chưa thanh toán")</td></tr>
+    <tr><td>Dark mode xanh đen + neon</td><td>Sáng là mặc định; tối chỉ khi ngành cần (quán bar, gaming)</td></tr>
+    <tr><td>Dữ liệu demo kiểu "John Doe", số tròn</td><td>Tên, giá, địa chỉ Việt thực tế; số lẻ tự nhiên</td></tr>
+  </table></div>
+  <h3>Cách giữ kỷ luật</h3>
+  <ol>
+    <li>1 bộ nhận diện thương hiệu dùng chung (font, khoảng cách, bo góc, icon); mỗi ngách chỉ đổi màu nhấn và ảnh.</li>
+    <li>Trước khi viết UI, Claude chọn 2–3 phần mềm thật trong ngành làm tham chiếu (VD: phần mềm POS, app đặt lịch) chứ không lấy mẫu landing page SaaS.</li>
+    <li>Bài kiểm "mùi AI": đưa ảnh chụp màn hình cho 3 người ngoài, hỏi "app này ai làm?". Có 1 người nói "AI" thì làm lại phần giao diện đó.</li>
+  </ol>
+</section>
+
+<section class="doc" id="pipeline" data-title="Pipeline sản xuất" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Pipeline sản xuất: 7 trạm</h2>
+  <p>Mỗi sản phẩm đi qua 7 trạm, tổng ~2,5 ngày công khi lõi đã xong. Theo dõi bằng 1 bảng Kanban: mỗi ngách 1 dòng, cột = trạm.</p>
+  <ol>
+    <li><b>Săn ngách (1–2h).</b> Chấm điểm 10 ngách ứng viên trên 4 tiêu chí: cầu (số review top listing Etsy, số câu hỏi trong nhóm FB), cạnh tranh (top 5 listing &lt; 100 review là tốt), sẵn lòng trả tiền (ngách có doanh thu), độ khớp lõi (dùng được entity có sẵn không). Chọn 1.</li>
+    <li><b>Spec 1 trang (1h).</b> Claude viết: người dùng là ai, 3 việc họ cần làm, entity, màn hình, báo cáo → xuất thành <code>niche.json</code>.</li>
+    <li><b>Build (0,5–1 ngày).</b> Claude sinh 3 tầng từ config, chỉ viết thêm phần riêng của ngách (nếu có).</li>
+    <li><b>QA (2h).</b> Chạy checklist ở mục SOP; thử trên điện thoại thật + 1 người ngoài ngành.</li>
+    <li><b>Đóng gói (3h).</b> PDF hướng dẫn 1 trang, video 3 phút, trang FAQ, nút cài đặt, dán nhãn phiên bản v1.0.</li>
+    <li><b>Listing (2h).</b> 7–10 ảnh mockup (dashboard trên laptop + điện thoại), tiêu đề theo công thức ngách + định dạng, 13 tag Etsy, mô tả VN/EN, video 15–30s cho TikTok/Etsy.</li>
+    <li><b>Ra mắt + đo (14 ngày).</b> Đăng nhóm FB/Zalo, TikTok demo, Etsy Ads $3–5/ngày. Ngày 14: lượt xem, tỉ lệ mua, câu hỏi khách → giết, giữ, hay làm v1.1.</li>
+  </ol>
+  <p><b>Quy tắc nhân bản:</b> ngách bán được → làm biến thể cho ngách kề (spa → nail → mi → tóc) bằng cách sửa config, thường &lt; 1 ngày.</p>
+</section>
+
+<section class="doc" id="sop" data-title="SOP: Claude làm trọn gói" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">SOP: Claude làm trọn gói</h2>
+  <p>Không qua Antigravity nữa. DNL chỉ gửi 1 dòng ý tưởng; Claude chạy cả 7 trạm và dừng ở 2 cổng duyệt.</p>
+  <p>Cú pháp gửi:</p>
+  <p><code>Ý tưởng: app quản lý tiệm nail cho chủ tiệm 1–3 thợ</code></p>
+  <div class="tablewrap"><table>
+    <tr><th>Bước</th><th>Claude làm</th><th>DNL làm</th></tr>
+    <tr><td>Nghiên cứu + spec</td><td>Chấm ngách, viết spec 1 trang, <code>niche.json</code>, chọn bảng màu theo ngách</td><td><b>Cổng 1:</b> duyệt spec (đồng ý / sửa 1 dòng)</td></tr>
+    <tr><td>Build</td><td>Code 3 tầng, tạo Sheet mẫu thẳng trong Google Drive, deploy bản demo</td><td>—</td></tr>
+    <tr><td>QA</td><td>Tự chạy checklist trên trình duyệt, chụp màn hình 390px và 1440px</td><td>—</td></tr>
+    <tr><td>Đóng gói + listing</td><td>PDF hướng dẫn, FAQ, ảnh mockup, kịch bản video, listing VN/EN, 13 tag Etsy, bài đăng FB/TikTok</td><td><b>Cổng 2:</b> xem bản demo, bấm duyệt</td></tr>
+    <tr><td>Lên kệ</td><td>Đưa lên godnc.com/store; soạn sẵn listing Etsy</td><td>Bấm đăng Etsy (Claude không đăng nhập hộ tài khoản)</td></tr>
+  </table></div>
+  <p>Mỗi sản phẩm giao về 1 thư mục: <code>spec.md</code>, <code>niche.json</code>, link Sheet, code, <code>shots/</code>, <code>listing.md</code>, <code>guide.pdf</code>, <code>posts.md</code>.</p>
+  <h3>Checklist QA trước khi lên kệ</h3>
+  <ul>
+    <li>Copy sheet từ tài khoản Google mới tinh → chạy được, không lỗi quyền</li>
+    <li>Công thức không vỡ khi thêm 1.000 dòng</li>
+    <li>Mobile 390px: không cuộn ngang, nút đủ to</li>
+    <li>Dashboard đúng số khi đối chiếu tay 5 dòng</li>
+    <li>Xoá hết dữ liệu mẫu bằng 1 nút</li>
+    <li>Không có license hoặc hết hạn tải cập nhật → app vẫn chạy bình thường</li>
+    <li>Qua bài kiểm "mùi AI" ở mục Giao diện</li>
+  </ul>
+</section>
+
+<section class="doc" id="kenh-ban" data-title="Kênh bán và định giá" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Kênh bán và định giá</h2>
+  <p>VN bán trên kênh của mình để giữ biên và dữ liệu khách; quốc tế dựa vào lượng tìm kiếm sẵn có của Etsy.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Kênh</th><th>Vai trò</th><th>Thu tiền</th><th>Ghi chú</th></tr>
+    <tr><td>godnc.com/store</td><td>Cửa hàng chính VN, tầng A/B/C</td><td>Chuyển khoản + webhook (SePay/Casso) → cấp license, gửi link tải</td><td>Supabase riêng cho store, tách khỏi Go Shop OS</td></tr>
+    <tr><td>Nhóm FB/Zalo riêng</td><td>Phễu: tặng 1 template miễn phí → vào nhóm → bán tầng B/C</td><td>—</td><td>Mô hình gsheets.vn đang chạy với 4+ nhóm Zalo</td></tr>
+    <tr><td>Affiliate (CTV)</td><td>Hoa hồng 20–30%</td><td>Qua portal CTV hiện có</td><td>Tái dùng hệ thống CTV đang có</td></tr>
+    <tr><td>Etsy</td><td>Tầng A cho khách quốc tế</td><td>Payoneer bắt buộc với người bán VN (<a href="https://help.etsy.com/hc/articles/360002120927" target="_blank" rel="noopener">Etsy</a>)</td><td>Phí ~$6,15 trên đơn $50 (<a href="https://globalfeecalculator.com/etsy-fee-vietnam/" target="_blank" rel="noopener">GlobalFeeCalculator</a>)</td></tr>
+    <tr><td>Gumroad / Lemon Squeezy</td><td>Bundle cho khách quốc tế</td><td>Thẻ quốc tế</td><td>Dùng khi đã có audience, biên cao hơn Etsy</td></tr>
+  </table></div>
+  <h3>Định giá</h3>
+  <ul>
+    <li>Bán đứt, dùng vĩnh viễn; kèm 12 tháng tải bản cập nhật mới (gia hạn được); bản lớn tiếp theo (v2.0) giảm 50% cho khách cũ, học cách gsheets.vn đánh số phiên bản để bán lại.</li>
+    <li>Bundle theo ngành (VD "Bộ quản lý spa": 4 template) giá bằng ~2,5 lần 1 template.</li>
+    <li>Cài đặt hộ cho khách ngại bước deploy: tính phí riêng (mức giá chưa chốt).</li>
+  </ul>
+</section>
+
+<section class="doc" id="lo-trinh" data-title="Lộ trình 90 ngày" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Lộ trình 90 ngày</h2>
+  <p>Ba giai đoạn, mỗi giai đoạn có 1 cổng phải qua mới đi tiếp: làm tay để học → tách lõi → nhân bản.</p>
+  <div class="flow">
+    <div><b>Giai đoạn 1 · Làm tay</b><small>Tuần 1–4 · 15/10–11/11</small>3 sản phẩm tầng A+B, ngách VN<br>Mở godnc.com/store<br>1 listing Etsy thử<br><b style="margin-top:6px">Cổng: ≥ 10 đơn bán</b></div>
+    <div><b>Giai đoạn 2 · Tách lõi</b><small>Tuần 5–8 · 12/11–9/12</small>Rút schema + builder + UI kit<br>4 sản phẩm mới qua pipeline<br>8 listing Etsy<br><b style="margin-top:6px">Cổng: ra 1 sản phẩm &lt; 3 ngày</b></div>
+    <div><b>Giai đoạn 3 · Nhân bản</b><small>Tuần 9–13 · 10/12–12/1</small>Tầng C (AI) cho ngách bán chạy<br>2 sản phẩm/tuần<br>20 listing Etsy<br><b style="margin-top:6px">Cổng: 100 đơn bán đứt/tháng</b></div>
+  </div>
+  <p>Không qua cổng 1 thì đổi ngách trước khi tách lõi, tránh xây engine cho sản phẩm không ai mua.</p>
+  <h3>KPI theo dõi hàng tuần</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Chỉ số</th><th class="n">Mốc ngày 30</th><th class="n">Mốc ngày 60</th><th class="n">Mốc ngày 90</th></tr>
+    <tr><td>Sản phẩm đang bán</td><td class="n">3</td><td class="n">7</td><td class="n">15</td></tr>
+    <tr><td>Thời gian ra 1 sản phẩm mới</td><td class="n">5 ngày</td><td class="n">3 ngày</td><td class="n">2,5 ngày</td></tr>
+    <tr><td>Đơn bán đứt / tháng</td><td class="n">10</td><td class="n">40</td><td class="n">100</td></tr>
+    <tr><td>Đơn cài đặt hộ / tháng</td><td class="n">0</td><td class="n">3</td><td class="n">10</td></tr>
+    <tr><td>Listing Etsy</td><td class="n">1</td><td class="n">8</td><td class="n">20</td></tr>
+    <tr><td>Thành viên nhóm cộng đồng</td><td class="n">300</td><td class="n">1.000</td><td class="n">2.500</td></tr>
+  </table></div>
+  <p>Các con số là mục tiêu đặt ra để đo, chưa phải dự báo. Chỉnh lại sau 30 ngày đầu theo số thật.</p>
+</section>
+
+<section class="doc" id="rui-ro" data-title="Rủi ro và tuân thủ" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Rủi ro và tuân thủ</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Rủi ro</th><th>Cách xử lý</th></tr>
+    <tr><td>Etsy gỡ listing vì không khai AI</td><td>Tick ô "I used AI-generative technology", chọn "Designed by", ghi rõ dùng AI trong mô tả (<a href="https://nightjar.so/help-desk/do-i-need-to-disclose-that-my-product-images-are-ai-generated-on-etsy-or-shopify" target="_blank" rel="noopener">Nightjar</a>); thiết kế phải là của mình, không bán lại template PLR (<a href="https://www.listadum.com/blog/etsy-creativity-standards" target="_blank" rel="noopener">Listadum</a>)</td></tr>
+    <tr><td>Thu tiền Etsy</td><td>Người bán VN phải dùng Payoneer, chưa có lựa chọn tài khoản Business (<a href="https://help.etsy.com/hc/articles/360002120927" target="_blank" rel="noopener">Etsy</a>)</td></tr>
+    <tr><td>Khách copy rồi bán lại</td><td>Không khoá được code đã giao; xử lý theo mục <a href="#chong-copy">Chống copy &amp; clone</a></td></tr>
+    <tr><td>Màn hình cảnh báo Google khi cài script</td><td>Video hướng dẫn bấm qua; dài hạn: xin Google xác minh app (cần kiểm tra ở Spike 1)</td></tr>
+    <tr><td>Support ăn hết thời gian</td><td>FAQ + video trước khi bán; support chỉ qua nhóm, không chat riêng</td></tr>
+    <tr><td>Đối đầu gsheets.vn</td><td>Né ngách họ đã phủ; cạnh tranh bằng mobile, AI, giao diện đúng ngành, chạy trên domain riêng của khách</td></tr>
+    <tr><td>Thuế thu nhập online</td><td>Câu hỏi mở: cần hỏi kế toán về hộ kinh doanh và doanh thu từ nền tảng nước ngoài</td></tr>
+  </table></div>
+</section>
+
+<section class="doc" id="chong-copy" data-title="Chống copy và clone" data-group="Phần I · Quy trình sản xuất">
+  <p class="part">Phần I · Quy trình sản xuất</p>
+  <h2 class="h">Chống copy &amp; clone</h2>
+  <p>Thừa nhận trước: gói đã giao tận tay khách thì không khoá được. Sheet, script và <code>site/</code> đều đọc và sao chép được, nên mục tiêu không phải ngăn tuyệt đối mà là 4 việc: làm bản lậu kém hơn bản chính, truy được nguồn rò, gỡ nhanh khi bị bán lại, và luôn đi trước kẻ clone một bước.</p>
+  <h3>Hai kiểu "copy" khác nhau</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Kiểu</th><th>Là gì</th><th>Đối sách chính</th></tr>
+    <tr><td>Rò gói</td><td>Khách mua 1 bản rồi chia sẻ miễn phí hoặc bán lại (nhóm Zalo, Facebook, Etsy)</td><td>Truy vết, báo gỡ, cập nhật và hỗ trợ chỉ dành cho người mua thật</td></tr>
+    <tr><td>Làm lại</td><td>Đối thủ xem sản phẩm rồi tự code bản tương tự</td><td>Tốc độ, độ sâu theo ngách, giao diện đúng ngành, thương hiệu</td></tr>
+  </table></div>
+  <p>Theo nguyên tắc chung của luật bản quyền, ý tưởng và chức năng không được bảo hộ; chỉ code, thiết kế và nội dung cụ thể mới được. Vì vậy "làm lại" bằng code riêng thường hợp pháp và không gỡ được: phải thắng bằng sản phẩm, không bằng đơn khiếu nại.</p>
+  <h3>Sáu lớp phòng thủ</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Lớp</th><th>Làm gì</th><th>Ghi chú</th></tr>
+    <tr><td>1. Giá trị chỉ người mua thật có</td><td>Tải bản cập nhật qua license (12 tháng), hỗ trợ trong nhóm, cài đặt hộ, video hướng dẫn, v2.0 giảm 50%</td><td>Lớp chủ lực: bản lậu mất hết sau lần cập nhật đầu tiên</td></tr>
+    <tr><td>2. Tốc độ</td><td>2,5 ngày/sản phẩm, 2 sản phẩm/tuần, ngách kề làm bằng sửa config</td><td>Kẻ clone luôn chậm một bước; mình quyết định ngách nào ra trước</td></tr>
+    <tr><td>3. Thương hiệu và cộng đồng</td><td>Nhóm FB/Zalo, nhãn godnc, hướng dẫn riêng cho từng ngành</td><td>Người mua tin nguồn chính chủ vì có người trả lời</td></tr>
+    <tr><td>4. Truy vết</td><td>Mỗi gói tải gắn mã người mua: trong tab <code>_meta</code>, comment trong <code>config.js</code>, dòng nhỏ trong PDF; bảng ghép mã ↔ đơn lưu ở store</td><td>Chỉ làm bằng chứng để thu hồi license; xoá được nên không coi là khoá</td></tr>
+    <tr><td>5. Cảnh báo mềm theo domain</td><td>License gắn với domain đã đăng ký; <code>site/</code> chạy ở domain khác thì chỉ hiện dòng nhắc</td><td>Không khoá app, không gọi về server mình</td></tr>
+    <tr><td>6. Pháp lý</td><td>Điều khoản: 1 doanh nghiệp, 1 domain, cấm bán lại hoặc chia sẻ; báo gỡ trên Etsy, Facebook, Gumroad; đăng ký bản quyền cho gói chủ lực</td><td>Quyền tác giả phát sinh khi tạo ra, đăng ký là tuỳ chọn và làm bằng chứng. Hỏi luật sư trước khi gửi thư cảnh báo</td></tr>
+  </table></div>
+  <h3>Không làm</h3>
+  <ul>
+    <li>Khoá kiểm tra server mỗi lần mở app: phạt khách trả tiền, và trái lời hứa dùng vĩnh viễn nếu mình ngừng bán.</li>
+    <li>Obfuscate nặng, DRM: không chặn được người quyết tâm, chỉ làm mình khó sửa lỗi.</li>
+  </ul>
+  <p><b>Để sau nếu cần:</b> một phần chạy trên server mình dưới dạng add-on trả phí (VD AI dùng sẵn, khỏi tự điền API key). Phần này khó clone vì nằm phía mình, nhưng quay lại thành thuê bao nên chưa làm ở giai đoạn đầu.</p>
+  <div class="note">Tham khảo thêm (chưa kiểm chứng đầy đủ, không phải tư vấn pháp lý): <a href="https://luatvietnam.vn/linh-vuc-khac/dang-ky-ban-quyen-phan-mem-883-91319-article.html" target="_blank" rel="noopener">đăng ký bản quyền phần mềm tại Việt Nam</a>, <a href="https://terms.law/2025/12/04/digital-product-template-theft-demand-letters/" target="_blank" rel="noopener">thư yêu cầu gỡ khi bị lấy template</a>.</div>
+</section>
+
+<!-- ========== NGUỒN ========== -->
+<section class="doc" id="nguon" data-title="Nguồn" data-group="Tham khảo">
+  <p class="part">Tham khảo</p>
+  <h2 class="h">Nguồn</h2>
+  <p>Các trang đã mở để lấy số liệu, ngày 14/10/2026. Bài của Makerkit, Toolradar, Dev.to và Dodo Payments là bên thứ ba; Google, SePay, Casso và trang giá Claude là tài liệu gốc.</p>
+  <ul class="src">
+    <li><a href="https://gsheets.vn/template/" target="_blank" rel="noopener">gsheets.vn – Template</a></li>
+    <li><a href="https://insightraider.com/en/answers/is-selling-notion-templates-profitable" target="_blank" rel="noopener">InsightRaider – Is selling Notion templates profitable</a></li>
+    <li><a href="https://kupkaike.com/blog/is-selling-notion-templates-still-profitable-2026" target="_blank" rel="noopener">Kupkaike – Is selling Notion templates still profitable 2026</a></li>
+    <li><a href="https://fungies.io/how-to-sell-notion-templates.md" target="_blank" rel="noopener">Fungies – How to sell Notion templates</a></li>
+    <li><a href="https://www.listadum.com/blog/digital-products-to-sell-on-etsy" target="_blank" rel="noopener">Listadum – Digital products to sell on Etsy</a></li>
+    <li><a href="https://www.insightagent.app/guides/etsy-popular-digital-products" target="_blank" rel="noopener">InsightAgent – Popular digital products on Etsy</a></li>
+    <li><a href="https://help.etsy.com/hc/articles/360002120927" target="_blank" rel="noopener">Etsy Help – What is Etsy Payments</a></li>
+    <li><a href="https://globalfeecalculator.com/etsy-fee-vietnam/" target="_blank" rel="noopener">GlobalFeeCalculator – Etsy fee Vietnam</a></li>
+    <li><a href="https://nightjar.so/help-desk/do-i-need-to-disclose-that-my-product-images-are-ai-generated-on-etsy-or-shopify" target="_blank" rel="noopener">Nightjar – AI disclosure on Etsy</a></li>
+    <li><a href="https://www.listadum.com/blog/etsy-creativity-standards" target="_blank" rel="noopener">Listadum – Etsy Creativity Standards</a></li>
+    <li><a href="https://makerkit.dev/blog/md/saas/supabase-pricing" target="_blank" rel="noopener">Makerkit – Supabase pricing</a></li>
+    <li><a href="https://toolradar.com/blog/supabase-pricing-2026" target="_blank" rel="noopener">Toolradar – Supabase pricing 2026</a></li>
+    <li><a href="https://makerkit.dev/blog/md/tutorials/supabase-rls-best-practices" target="_blank" rel="noopener">Makerkit – Supabase RLS best practices</a> (chỉ áp dụng cho gói Supabase nâng cao)</li>
+    <li><a href="https://dev.to/stack_c285afb2fa0bef/google-apps-script-quota-limits-2026-every-error-every-fix-2p87" target="_blank" rel="noopener">Dev.to – Google Apps Script quota limits 2026</a></li>
+    <li><a href="https://developers.google.com/sheets/api/limits" target="_blank" rel="noopener">Google – Sheets API usage limits</a></li>
+    <li><a href="https://support.google.com/cloud/answer/7454865" target="_blank" rel="noopener">Google – Unverified apps</a></li>
+    <li><a href="https://developer.sepay.vn/en/sepay-webhooks" target="_blank" rel="noopener">SePay – Webhooks</a></li>
+    <li><a href="https://developer.casso.vn/v1/thuc-hanh/tich-hop-xac-nhan-thanh-toan" target="_blank" rel="noopener">Casso – Tích hợp xác nhận thanh toán</a></li>
+    <li><a href="https://dodopayments.com/blogs/lemonsqueezy-review" target="_blank" rel="noopener">Dodo Payments – Lemon Squeezy review</a></li>
+    <li><a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noopener">Claude – Pricing</a></li>
+    <li><a href="https://luatvietnam.vn/dan-su/luat-bao-ve-du-lieu-ca-nhan-2025-co-hieu-luc-khi-nao-568-103652-article.html" target="_blank" rel="noopener">LuatVietnam – Luật Bảo vệ dữ liệu cá nhân 2025</a></li>
+    <li><a href="https://luatvietnam.vn/linh-vuc-khac/dang-ky-ban-quyen-phan-mem-883-91319-article.html" target="_blank" rel="noopener">LuatVietnam – Đăng ký bản quyền phần mềm</a></li>
+    <li><a href="https://terms.law/2025/12/04/digital-product-template-theft-demand-letters/" target="_blank" rel="noopener">Terms.law – Digital product template theft demand letters</a></li>
+  </ul>
+</section>
+</main>
+</div>
+
+<script>
+/* ---- Nhật ký: thêm mục mới vào ĐẦU mảng này mỗi khi nghiên cứu xong ---- */
+var LOG = [
+  {d:'2026-10-15', t:'Gom toàn bộ nghiên cứu lên trang này', p:'Hai tài liệu, sơ đồ tư duy và mục chống copy được đưa vào một chỗ, có mục lục và đánh dấu đã đọc.'},
+  {d:'2026-10-14', t:'Thêm mục Chống copy & clone', p:'Sáu lớp phòng thủ cho hai kiểu copy (rò gói, làm lại). Quy trình sản xuất và sơ đồ tư duy chuyển hẳn sang bán đứt.'},
+  {d:'2026-10-14', t:'Chốt lời hứa cập nhật: 12 tháng tải bản mới, dùng vĩnh viễn', p:'DNL xác nhận. Mục Cập nhật cho khách đã mua viết lại theo gói tải về + migrate().'},
+  {d:'2026-10-14', t:'Viết lại Quyết định kiến trúc theo hướng bán đứt', p:'Bỏ mô hình thuê bao do mình host. Thêm hạn mức Apps Script, webhook SePay/Casso, chi phí AI, luật dữ liệu cá nhân.'},
+  {d:'2026-10-14', t:'Quy trình sản xuất hàng loạt và giao diện chống "mùi AI"', p:'7 trạm, 2 cổng duyệt, lộ trình 90 ngày, nghiên cứu thị trường gsheets.vn, Notion và Etsy.'}
+];
+var CHECKS = [
+  {id:'c1', who:'DNL', t:'Xác nhận mô hình bán đứt và lời hứa cập nhật: 12 tháng tải bản mới, bản đã mua dùng vô thời hạn', done:true},
+  {id:'c2', who:'DNL', t:'Tạo project Supabase riêng cho cửa hàng (tách khỏi Go Shop OS)'},
+  {id:'c3', who:'DNL', t:'Hỏi kế toán về thuế (hộ kinh doanh, doanh thu từ nền tảng nước ngoài) và luật sư về chính sách bảo mật cửa hàng'},
+  {id:'c4', who:'Claude', t:'So bảng phí hiện hành của SePay và Casso, chọn 1'},
+  {id:'c5', who:'Claude', t:'Spike 1 (1 ngày): cài thử đầu-cuối trên 1 domain thử: copy Sheet, deploy Web App, upload site/. Ghi số bước, chỗ dễ kẹt, thử cảnh báo Google với scope hẹp nhất'},
+  {id:'c6', who:'Claude', t:'Spike 2: đăng nhập bằng bảng Users + token (mật khẩu băm) và độ trễ Web App với 1.000 và 10.000 dòng'},
+  {id:'c7', who:'Claude', t:'Spike 3: cập nhật script qua Apps Script Library'},
+  {id:'c8', who:'Claude', t:'Đối chiếu hạn mức Apps Script với trang quota chính thức của Google'}
+];
+function store(k,v){try{if(v===undefined){return JSON.parse(localStorage.getItem(k)||'null')}localStorage.setItem(k,JSON.stringify(v))}catch(e){return null}}
+function fmt(d){var p=d.split('-');return p[2]+'/'+p[1]+'/'+p[0]}
+(function(){
+  var NOW=Date.parse('2026-10-15');
+  var log=document.getElementById('log');
+  LOG.forEach(function(e){
+    var li=document.createElement('li');
+    var isNew=(NOW-Date.parse(e.d))/864e5<=3;
+    li.innerHTML='<time datetime="'+e.d+'">'+fmt(e.d)+'</time><div><span class="t"></span>'+(isNew?'<span class="new">MỚI</span>':'')+'<p></p></div>';
+    li.querySelector('.t').textContent=e.t; li.querySelector('p').textContent=e.p; log.appendChild(li);
+  });
+  var saved=store('tf-checks')||{};
+  var ul=document.getElementById('checks');
+  CHECKS.forEach(function(c){
+    var on=(c.id in saved)?saved[c.id]:!!c.done;
+    var li=document.createElement('li');
+    li.innerHTML='<input type="checkbox" id="'+c.id+'"><label for="'+c.id+'"><span class="who"></span><span class="tx"></span></label>';
+    var inp=li.querySelector('input'); inp.checked=on;
+    li.querySelector('.who').textContent=c.who; li.querySelector('.tx').textContent=c.t;
+    inp.addEventListener('change',function(){saved[c.id]=inp.checked;store('tf-checks',saved)});
+    ul.appendChild(li);
+  });
+
+  var secs=[].slice.call(document.querySelectorAll('section.doc'));
+  var read=store('tf-read')||{};
+  var toc=document.getElementById('toc'), mlist=document.getElementById('mtoc-list');
+  toc.innerHTML='<div class="prog"><span><b id="pn">0</b> / '+secs.length+' mục đã đọc</span><div class="bar"><i id="pb"></i></div></div>';
+  var lastGroup='', links={};
+  secs.forEach(function(s){
+    var g=s.dataset.group;
+    if(g!==lastGroup){lastGroup=g;var h=document.createElement('h2');h.textContent=g;toc.appendChild(h)}
+    var a=document.createElement('a');a.href='#'+s.id;a.innerHTML='<span class="tick">✓</span><span></span>';
+    a.lastChild.textContent=s.dataset.title;toc.appendChild(a);links[s.id]=a;
+    var m=document.createElement('a');m.href='#'+s.id;m.textContent=s.dataset.title;mlist.appendChild(m);
+    var mk=document.createElement('div');mk.className='mark';
+    mk.innerHTML='<button type="button" aria-pressed="false">Đánh dấu đã đọc</button>';
+    var b=mk.firstChild;
+    b.addEventListener('click',function(){read[s.id]=!read[s.id];store('tf-read',read);paint()});
+    s.appendChild(mk);s._b=b;
+  });
+  function paint(){
+    var n=0;
+    secs.forEach(function(s){
+      var r=!!read[s.id];if(r)n++;
+      links[s.id].classList.toggle('read',r);
+      s._b.setAttribute('aria-pressed',r?'true':'false');
+      s._b.textContent=r?'Đã đọc ✓':'Đánh dấu đã đọc';
+    });
+    document.getElementById('pn').textContent=n;
+    document.getElementById('pb').style.width=(100*n/secs.length)+'%';
+  }
+  paint();
+  document.getElementById('mtoc-list').addEventListener('click',function(){document.getElementById('mtoc').open=false});
+  if('IntersectionObserver' in window){
+    var cur=null;
+    var io=new IntersectionObserver(function(es){
+      es.forEach(function(e){if(e.isIntersecting){if(cur)links[cur].classList.remove('on');cur=e.target.id;links[cur].classList.add('on')}});
+    },{rootMargin:'-20% 0px -70% 0px'});
+    secs.forEach(function(s){io.observe(s)});
+  }
+})();
+</script>
+
+</body>
+</html>
