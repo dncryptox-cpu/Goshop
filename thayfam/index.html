@@ -105,6 +105,15 @@
 .pk-mem{gap:6px;font-size:13px;padding:3px 6px;border-radius:6px;flex-wrap:wrap}
 .pk-mem.on{background:color-mix(in srgb,var(--warn) 14%,transparent)}
 .pk-tag{font-size:11px;font-weight:700;color:var(--warn);border:1px solid currentColor;border-radius:4px;padding:0 4px}
+.wk{padding:12px 14px}
+.wk-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.wk-ck{flex:none;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.wk-ck.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.wk-ck.no{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.wk-list{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0 34px}
+.wk-pill{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:2px 8px}
+.wk-pill.bad{border-color:var(--bad);color:var(--bad)}
+.wk-row{gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
 </style>
 </head>
 <body x-data="app()" x-init="init()">
@@ -180,6 +189,7 @@
       </div>
 
       <nav class="tabs" x-show="!searchOn()">
+        <button class="tab" x-show="can('week')" :class="tab==='week' && 'on'" @click="tab='week'; loadWeek()">📋 Tuần này<span class="n" :class="weekLeft() && 'hot'" x-text="wk ? weekLeft() : '·'"></span></button>
         <button class="tab" x-show="me.role !== 'ctv'" :class="tab==='due' && 'on'" @click="tab='due'">Đến hạn<span class="n" x-text="due.length"></span></button>
         <button class="tab" x-show="me.role !== 'ctv'" :class="tab==='report' && 'on'" @click="tab='report'">🚨 Khách báo lỗi<span class="n" x-text="reported.length"></span></button>
         <button class="tab" x-show="can('slots')" :class="tab==='slots' && 'on'" @click="tab='slots'; loadSlots()">Còn slot<span class="n" x-text="slotsLoaded ? slots.length : '·'"></span></button>
@@ -190,6 +200,86 @@
         <button class="tab" x-show="me.role==='admin'" :class="tab==='notes' && 'on'" @click="tab='notes'; loadNotes()">Cần xử lý<span class="n" :class="openNotes && 'hot'" x-text="openNotes"></span></button>
         <button class="tab" x-show="me.role==='admin'" :class="tab==='users' && 'on'" @click="tab='users'; loadUsers()">Tài khoản</button>
       </nav>
+
+      <!-- TAB TUẦN NÀY -->
+      <section x-show="tab==='week' && !searchOn()">
+        <div class="row" style="margin-bottom:10px">
+          <div class="grow mute" style="font-size:13px">Việc cần làm trong 7 ngày tới, lấy thẳng từ data. Xong mục nào thì mục đó tự hết.</div>
+          <button class="btn sm" @click="loadWeek()" :disabled="wkLoading" x-text="wkLoading ? 'Đang tải…' : 'Tải lại'"></button>
+        </div>
+        <template x-if="wkLoading && !wk"><div class="empty">Đang tổng hợp…</div></template>
+        <template x-if="wk">
+          <div>
+            <!-- 1. FR -->
+            <div class="card wk">
+              <div class="wk-h"><span class="wk-ck" :class="frNeed() ? 'no' : 'ok'" x-text="frNeed() ? '!' : '✓'"></span>
+                <b class="grow">Chuẩn bị FR cho fam đến hạn</b>
+                <span class="mute" x-text="wk.due.length + ' fam đến hạn · ' + wk.frReady + ' FR sẵn sàng'"></span></div>
+              <div style="font-size:14px;margin:4px 0 0 34px" x-show="frNeed()"><b style="color:var(--bad)" x-text="'Cần chuẩn bị thêm ' + frNeed() + ' FR'"></b> (cài 2FA, nhập vào FamRenew)</div>
+              <div class="wk-list"><template x-for="f in wk.due" :key="f.rn"><span class="wk-pill" :class="f.days <= 0 && 'bad'" x-text="f.rn + ' · ' + f.renew + (f.days < 0 ? ' (quá ' + (-f.days) + 'n)' : (f.days === 0 ? ' (hôm nay)' : ''))"></span></template></div>
+            </div>
+            <!-- 2. Nhắc gia hạn -->
+            <div class="card wk">
+              <div class="wk-h"><span class="wk-ck" :class="remindLeft() ? 'no' : 'ok'" x-text="remindLeft() ? remindLeft() : '✓'"></span>
+                <b class="grow">Nhắc gia hạn khách sắp hết hạn</b>
+                <span class="mute" x-text="(wk.customers.length - remindLeft()) + '/' + wk.customers.length + ' đã nhắc'"></span></div>
+              <div class="chips" style="margin:6px 0 0 34px">
+                <button class="chip" :class="wkCtv==='' && 'on'" @click="wkCtv=''">Tất cả</button>
+                <template x-for="c in [...new Set(wk.customers.map(x => x.ctv || '(trống)'))]" :key="c"><button class="chip" :class="wkCtv===c && 'on'" @click="wkCtv=c" x-text="c + ' (' + wk.customers.filter(x => (x.ctv || '(trống)')===c && !x.reminded).length + ')'"></button></template>
+                <label class="mute" style="font-size:13px;margin-left:auto"><input type="checkbox" x-model="wkHideDone"> Ẩn khách đã nhắc</label>
+              </div>
+              <div style="margin-left:34px">
+                <template x-for="c in wk.customers.filter(x => (!wkCtv || (x.ctv || '(trống)')===wkCtv) && !(wkHideDone && x.reminded))" :key="c.email + c.hsd">
+                  <div class="row wk-row">
+                    <input type="checkbox" :checked="!!c.reminded" @change="toggleRemind(c, $event.target.checked)" :disabled="!!c.busy" title="Đã nhắc gia hạn">
+                    <div class="grow" style="min-width:0">
+                      <span class="mono" x-text="c.email"></span>
+                      <span class="mute" style="font-size:12px" x-text="' · ' + c.rn + ' · CTV ' + (c.ctv || '—') + ' · HSD ' + c.hsd"></span>
+                      <div class="mute" style="font-size:12px" x-show="c.reminded" x-text="'Đã nhắc ' + (c.reminded ? c.reminded.at + (c.reminded.how ? ' qua ' + c.reminded.how : '') + (c.reminded.by ? ' · ' + c.reminded.by : '') : '')"></div>
+                    </div>
+                    <span class="badge" :class="c.daysLeft < 0 ? 'bad' : (c.daysLeft <= 3 ? 'warn' : '')" x-text="c.daysLeft < 0 ? 'hết ' + (-c.daysLeft) + 'n' : (c.daysLeft === 0 ? 'hôm nay' : 'còn ' + c.daysLeft + 'n')"></span>
+                    <button class="btn sm" @click="copy(renewMsg(c), 'Đã copy tin nhắn')">Copy tin</button>
+                  </div>
+                </template>
+              </div>
+            </div>
+            <!-- 3. Chờ kiểm tra -->
+            <div class="card wk">
+              <div class="wk-h"><span class="wk-ck" :class="checkDue().length ? 'no' : 'ok'" x-text="checkDue().length || '✓'"></span>
+                <b class="grow">Kiểm tra khách đã vào fam chưa</b>
+                <button class="btn sm" x-show="checkDue().length" @click="tab='slots'; slotFilter='late'">Kiểm tra</button></div>
+              <div class="wk-list"><template x-for="f in checkDue()" :key="f.rn"><span class="wk-pill" x-text="f.rn + ' · ' + f.rows.filter(r => r.state==='pending').length + ' khách'"></span></template></div>
+            </div>
+            <!-- 4. Chặn mời -->
+            <div class="card wk">
+              <div class="wk-h"><span class="wk-ck" :class="wk.blocked.some(b => b.due) ? 'no' : 'ok'" x-text="wk.blocked.filter(b => b.due).length || '✓'"></span>
+                <b class="grow">Fam bị Google chặn mời: mời lại khi đến ngày</b>
+                <button class="btn sm" x-show="wk.blocked.length" @click="tab='blocks'; loadBlocks()">Mở tab Chặn mời</button></div>
+              <div class="wk-list"><template x-for="b in wk.blocked" :key="b.rn"><span class="wk-pill" :class="b.due && 'bad'" x-text="b.rn + ' · ' + (b.due ? 'đến ngày mời lại' : 'mời lại từ ' + b.until)"></span></template>
+                <span class="mute" x-show="!wk.blocked.length" style="font-size:13px">Không có fam nào bị chặn.</span></div>
+            </div>
+            <!-- 5. Báo lỗi -->
+            <div class="card wk">
+              <div class="wk-h"><span class="wk-ck" :class="reported.length ? 'no' : 'ok'" x-text="reported.length || '✓'"></span>
+                <b class="grow">Khách báo lỗi chưa xử lý</b>
+                <button class="btn sm" x-show="reported.length" @click="tab='report'">Xem</button></div>
+              <div class="wk-list"><template x-for="f in reported.slice(0, 30)" :key="f.rn"><span class="wk-pill" x-text="f.rn"></span></template></div>
+            </div>
+            <!-- 6. Chờ xếp -->
+            <div class="card wk">
+              <div class="wk-h"><span class="wk-ck" :class="wk.waiting.length ? 'no' : 'ok'" x-text="wk.waiting.length || '✓'"></span>
+                <b class="grow">Khách đang chờ xếp fam (đã cất xuống cuối sheet)</b></div>
+              <div style="margin-left:34px;font-size:13px"><template x-for="w in wk.waiting" :key="w.row"><div><span class="mono" x-text="w.email"></span> <span class="mute" x-text="'· CTV ' + (w.ctv || '—') + ' · HSD ' + w.hsd + ' · ' + w.note"></span></div></template></div>
+            </div>
+            <!-- 7. Duyệt -->
+            <div class="card wk" x-show="can('review')">
+              <div class="wk-h"><span class="wk-ck" :class="review.length ? 'no' : 'ok'" x-text="review.length || '✓'"></span>
+                <b class="grow">Thao tác chờ duyệt sang data gốc</b>
+                <button class="btn sm" x-show="review.length" @click="tab='sync'; loadReview()">Duyệt</button></div>
+            </div>
+          </div>
+        </template>
+      </section>
 
       <!-- TAB ĐẾN HẠN -->
       <section x-show="tab==='due' || tab==='report' || searchOn()">
@@ -898,7 +988,7 @@ function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
-    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
+    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
       'Đang xử lý lỗi': ['YouTube Premium: shop đang xử lý nhóm của bạn', 'Chào bạn,\n\nNhóm YouTube Premium của email {email} đang được shop xử lý. Bạn xem trạng thái tại: https://godnc.com/fixytb/?email={email}\n\nXong shop sẽ báo lại ngay. Cảm ơn bạn đã kiên nhẫn!'],
@@ -952,6 +1042,7 @@ function app() {
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
         if (this.me.role === 'ctv' && ['due', 'report'].includes(this.tab)) { this.tab = 'slots'; this.loadSlots(); }
+        if (this.can('week') && !this._wkInit) { this._wkInit = true; this.loadWeek(); }
         if (this.can('review') && !this._reviewed) { this._reviewed = true; this.loadReview(); }
         if (this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
         if (this.can('mailLog') && !this._mailLoaded) { this._mailLoaded = true; this.loadMailLog(); }
@@ -1142,6 +1233,25 @@ function app() {
       this.mp = { items: this.mp.items || [], loading: true, loaded: this.mp.loaded };
       try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, loading: false, loaded: true }; }
       catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng Soi mail phụ: dán Code.gs mới rồi Deploy → New version.' : e.message; this.mp.loading = false; }
+    },
+    async loadWeek() {
+      this.wkLoading = true;
+      if (this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
+      if (this.can('review')) this.loadReview();
+      try { this.wk = await this.api({ action: 'week' }); }
+      catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có tab Tuần này: dán Code.gs mới rồi Deploy → New version.' : e.message; }
+      this.wkLoading = false;
+    },
+    frNeed() { return this.wk ? Math.max(0, this.wk.due.length - this.wk.frReady) : 0; },
+    remindLeft() { return this.wk ? this.wk.customers.filter(c => !c.reminded).length : 0; },
+    weekLeft() { if (!this.wk) return 0; return (this.frNeed() ? 1 : 0) + this.remindLeft() + this.checkDue().length + this.wk.blocked.filter(b => b.due).length + this.wk.waiting.length; },
+    async toggleRemind(c, on) {
+      c.busy = true; this.error = '';
+      try {
+        const r = await this.api({ action: 'remind', op: on ? 'set' : 'unset', email: c.email, hsd: c.hsd, rn: c.rn });
+        c.reminded = on ? { at: r.at, by: r.by, how: 'Zalo' } : null;
+      } catch (e) { this.error = e.message; }
+      c.busy = false;
     },
     checkDue() { return (this.slots || []).filter(f => f.late); },
     filteredSlots() {
