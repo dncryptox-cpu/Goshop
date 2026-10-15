@@ -979,6 +979,7 @@
 <script>
 /* ========= ĐIỀN SAU KHI DEPLOY APPS SCRIPT ========= */
 const RENEW_API = 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec'; // hệ thống báo lỗi (renew)
+const READS = ['dashboard', 'log', 'review', 'search', 'slots', 'week', 'mailLog', 'all', 'users', 'notes', 'blocks', 'mailPhu'];
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 const FIXYTB_URL = 'https://godnc.com/fixytb/';
 
@@ -988,7 +989,7 @@ function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
-    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
+    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
       'Đang xử lý lỗi': ['YouTube Premium: shop đang xử lý nhóm của bạn', 'Chào bạn,\n\nNhóm YouTube Premium của email {email} đang được shop xử lý. Bạn xem trạng thái tại: https://godnc.com/fixytb/?email={email}\n\nXong shop sẽ báo lại ngay. Cảm ơn bạn đã kiên nhẫn!'],
@@ -1022,6 +1023,25 @@ function app() {
       });
       if (this.pass) { this.snapRestore(); this.load(); } setInterval(() => this.tickOtp(), 1000); },
     // Mở trang hiện ngay dữ liệu lần trước (lưu trong trình duyệt), rồi cập nhật khi server trả về
+    // Sau 1 thao tác ghi: tải lại nền (không bắt người dùng chờ)
+    afterWrite(quiet) {
+      this.allStale = true;
+      clearTimeout(this._aw);
+      this._aw = setTimeout(() => {
+        this.loadAll();
+        if (this.can('review')) this.loadReview();
+        if (this.slotsLoaded) this.loadSlots();
+        if (!quiet && this.searchOn()) this.doSearch();
+      }, 300);
+    },
+    async loadAll() {
+      if (!this.can('all')) return;
+      try {
+        const d = await this.api({ action: 'all' });
+        this.allFams = d.items; this.allStale = false; this.snapSave('all', d.items);
+        if (this.searchOn()) this.doSearch();
+      } catch (e) {}
+    },
     snapKey(k) { return 'tf_snap_' + k + '_' + String(this.pass).slice(-6); },
     snapSave(k, d) { try { localStorage.setItem(this.snapKey(k), JSON.stringify(d)); } catch (e) {} },
     snapGet(k) { try { return JSON.parse(localStorage.getItem(this.snapKey(k)) || 'null'); } catch (e) { return null; } },
@@ -1031,12 +1051,15 @@ function app() {
       const sl = this.snapGet('slots');
       if (sl) { this.slots = sl.items.map(f => Object.assign(f, { check: false, mark: {}, saving: false })); this.slotLimit = sl.limit; this.slotPendingH = sl.pendingHours; }
       const w = this.snapGet('week'); if (w) this.wk = w;
+      const al = this.snapGet('all'); if (al) this.allFams = al;
     },
 
     async api(body) {
+      // các lệnh chỉ đọc (không làm cũ dữ liệu)
       const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass, fresh: Date.now() < (this.freshUntil || 0) || undefined }) });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Lỗi không rõ');
+      if (!READS.includes(body.action) && !(body.op === 'list') && !(body.action === 'pull' && !body.apply)) this.afterWrite(true);
       return data;
     },
     async login() { this.pass = this.passInput; this.error = ''; await this.load(); if (this.pass) lsSet('thayfam_pass', this.pass); },
@@ -1055,6 +1078,7 @@ function app() {
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
         if (this.me.role === 'ctv' && ['due', 'report'].includes(this.tab)) { this.tab = 'slots'; this.loadSlots(); }
         if (this.can('week') && !this._wkInit) { this._wkInit = true; this.loadWeek(); }
+        if (this.can('all') && !this._allInit) { this._allInit = true; this.loadAll(); }
         if (this.can('review') && !this._reviewed) { this._reviewed = true; this.loadReview(); }
         if (this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
         if (this.can('mailLog') && !this._mailLoaded) { this._mailLoaded = true; this.loadMailLog(); }
@@ -1076,8 +1100,10 @@ function app() {
         + 'Bạn làm theo 3 bước ở link này nhé (khoảng 1 phút): ' + n.url + '?email=' + encodeURIComponent(it.email);
     },
     copyNotify(n, it) { this.copy(this.notifyMsg(n, it), 'Đã copy tin cho ' + it.email); if (!n.sent.includes(it.email)) n.sent.push(it.email); },
-    async autoSyncAfter(id) {
+    async autoSyncAfter(res) {
+      const id = res && res.actionId;
       if (this.me.role !== 'admin' || !this.autoSync || !id) return;
+      if (res.sync) { const r = res.sync; this.lastDone = this.lastDone.replace(/ Hoàn tác được.*$/, '') + (r.ok ? ' Đã ghi luôn vào data gốc (' + r.cells + ' ô).' : ' CHƯA ghi vào gốc: ' + (r.error || 'lỗi') + ' Vào tab Đồng bộ để xử lý.'); return; }
       try {
         const r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'sync', id: id, pass: this.pass }) }).then(x => x.json());
         this.lastDone = this.lastDone.replace(/ Hoàn tác được.*$/, '') + (r.ok ? ' Đã ghi luôn vào data gốc (' + r.cells + ' ô).' : ' CHƯA ghi vào gốc: ' + (r.error || 'lỗi') + ' Vào tab Đồng bộ để xử lý.');
@@ -1092,7 +1118,7 @@ function app() {
       if (!m.confirm) { m.confirm = true; setTimeout(() => { if (this.em === m) m.confirm = false; }, 4000); return; }
       m.busy = true;
       try {
-        const body = { action: 'swapMail', row: c.row, oldEmail: c.email, newEmail: ne, invited: !!m.invited, force: !!m.force, oldRemoved: !!m.oldRemoved };
+        const body = { action: 'swapMail', row: c.row, oldEmail: c.email, newEmail: ne, invited: !!m.invited, force: !!m.force, oldRemoved: !!m.oldRemoved, autoSync: this.me.role === 'admin' && this.autoSync };
         const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
         if (res.limit) { m.error = res.error; m.force = this.me.role === 'admin'; }
         else if (!res.ok) m.error = res.error;
@@ -1102,8 +1128,8 @@ function app() {
           c.mailPhu = c.email; c.email = res.newEmail;
           if ('state' in c) { c.state = res.invited ? 'pending' : 'need'; c.hours = 0; }
           this.em = {};
-          await this.autoSyncAfter(res.actionId);
-          this.loadReview();
+          await this.autoSyncAfter(res);
+          this.afterWrite();
         }
       } catch (e) { m.error = e.message; }
       m.busy = false; m.confirm = false;
@@ -1326,7 +1352,7 @@ function app() {
       if (!m.confirm) { m.confirm = true; setTimeout(() => { if (this.mv === m) m.confirm = false; }, 4000); return; }
       m.busy = true;
       try {
-        const body = { action: 'move', email: m.email.trim(), toRow: r.row, invited: !!m.invited, force: !!m.force, replace: !!m.replace, replaceEmail: m.replace || '' };
+        const body = { action: 'move', email: m.email.trim(), toRow: r.row, invited: !!m.invited, force: !!m.force, replace: !!m.replace, replaceEmail: m.replace || '', autoSync: this.me.role === 'admin' && this.autoSync };
         const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
         if (res.limit) { m.error = res.error; m.force = this.me.role === 'admin'; }
         else if (!res.ok) m.error = res.error;
@@ -1334,10 +1360,8 @@ function app() {
           this.lastActionId = res.actionId;
           this.lastDone = '✓ Đã chuyển ' + res.email + ': ' + res.from + ' → ' + res.to + (res.invited ? ' (đã mời)' : ' (chưa mời)') + (res.overwrote ? ', ' + res.overwrote + ' đã chép xuống cuối sheet DATA' : '') + '. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
           this.mv = {};
-          await this.autoSyncAfter(res.actionId);
-          this.loadReview();
-          if (this.searchOn()) this.doSearch();
-          if (this.slotsLoaded) await this.loadSlots();
+          await this.autoSyncAfter(res);
+          this.afterWrite();
         }
       } catch (e) { m.error = e.message; }
       m.busy = false; m.confirm = false;
@@ -1461,6 +1485,18 @@ function app() {
     async doSearch() {
       const q = this.q.trim();
       if (q.length < 2) { this.results = []; return; }
+      if (this.allFams && !this.allStale) {
+        const lq = q.toLowerCase(), lc = x => String(x || '').toLowerCase(), items = [];
+        this.allFams.forEach(f => {
+          const rn = lc(f.rn);
+          const hitRn = rn === lq || (lq.length >= 3 && rn.indexOf(lq) === 0);
+          const hitOwner = lc(f.email).indexOf(lq) >= 0;
+          const hit = (f.customers || []).filter(c => c.email && (lc(c.email).indexOf(lq) >= 0 || lc(c.mailPhu).indexOf(lq) >= 0)).map(c => c.email);
+          if (this.me.role === 'ctv' ? hit.length : (hitRn || hitOwner || hit.length)) items.push(Object.assign({}, f, { hit: hit }));
+        });
+        this.results = items.slice(0, 30); this.searchTotal = items.length;
+        return;
+      }
       this.searching = true;
       try { const d = await this.api({ action: 'search', q }); if (this.q.trim() === q) { this.results = d.items; this.searchTotal = d.total; } }
       catch (e) { this.error = e.message; }
@@ -1484,7 +1520,7 @@ function app() {
         else {
           this.lastDone = '↩ Đã hoàn tác ' + r.rn + ' về ' + r.restoredTo + (r.goc ? ' (cả data gốc)' : '') + ' (' + r.fr + ' trả lại kho FR).';
           if (this.lastActionId === id) this.lastActionId = '';
-          await this.load(); if (this.tab === 'log') await this.loadLog(); if (this.tab === 'sync') await this.loadReview();
+          this.afterWrite(); this.load(); if (this.tab === 'log') this.loadLog();
         }
       } catch (e) { this.error = e.message; }
       this.undoBusy = '';
