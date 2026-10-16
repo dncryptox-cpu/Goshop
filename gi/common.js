@@ -132,6 +132,17 @@ function startPoll(name, fn, every, maxMs) {
 }
 function stopPoll(name) { if (POLLS[name]) { clearInterval(POLLS[name]); delete POLLS[name]; } }
 
+// ===== Ô mật khẩu: không tự viết hoa, có nút hiện/ẩn, báo khi bật Caps Lock =====
+function pwField(id, label, ac, ph, min) {
+  return `<label class="fl">${label}<span class="pwbox"><input class="inp" id="${id}" type="password" autocomplete="${ac}" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="${ph || ''}" required ${min ? 'minlength="' + min + '"' : ''} onkeydown="capsWarn(event)" onkeyup="capsWarn(event)">`
+    + `<button type="button" class="eye" onclick="togglePw('${id}', this)" aria-label="Hiện mật khẩu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span>`
+    + `<small class="caps" id="${id}_caps" style="display:none">Đang bật Caps Lock: chữ đang gõ là CHỮ HOA</small></label>`;
+}
+function togglePw(id, b) { const i = document.getElementById(id); const show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.classList.toggle('on', show); b.setAttribute('aria-label', show ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'); i.focus(); }
+function capsWarn(e) { const w = document.getElementById(e.target.id + '_caps'); if (w && e.getModifierState) w.style.display = e.getModifierState('CapsLock') ? '' : 'none'; }
+// Các cách gõ nhầm hay gặp: bật Caps Lock, điện thoại tự viết hoa chữ đầu
+const pwVariants = pw => { const sw = pw.replace(/[a-zA-Z]/g, c => c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase()); return [...new Set([pw, pw.toLowerCase(), sw, pw.charAt(0).toLowerCase() + pw.slice(1)])]; };
+
 // ===== Đăng nhập / Đăng ký (tên đăng nhập + mật khẩu) =====
 function openAuth(mode = 'login') {
   let m = document.getElementById('authModal');
@@ -141,7 +152,7 @@ function openAuth(mode = 'login') {
     <h3>${reg ? 'Tạo tài khoản' : 'Đăng nhập'}</h3>
     ${reg ? `
       <label class="fl">Tên đăng nhập<input class="inp" id="au_user" autocomplete="username" placeholder="vd: dinh.nguyen" required minlength="3" maxlength="20" autocapitalize="none"></label>
-      <label class="fl">Mật khẩu<input class="inp" id="au_pass" type="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự" required minlength="6"></label>
+      ${pwField('au_pass', 'Mật khẩu', 'new-password', 'Tối thiểu 6 ký tự', 6)}
       <label class="fl">Email<input class="inp" id="au_mail" type="email" autocomplete="email" placeholder="ban@gmail.com" required></label>
       <label class="fl">Số điện thoại / Zalo<input class="inp" id="au_phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="09xx xxx xxx" required minlength="9"></label>`
     : `
@@ -149,7 +160,7 @@ function openAuth(mode = 'login') {
         Nhập <b>email đang dùng YouTube</b>. Lần đầu, mật khẩu là <b>phần trước @</b> của email.<br>
         <span class="ex">Ví dụ: email <b>tenban123@gmail.com</b> → mật khẩu <b>tenban123</b></span></div>
       <label class="fl">Email (hoặc tên đăng nhập)<input class="inp" id="au_user" type="text" inputmode="email" autocomplete="username" required autocapitalize="none" placeholder="email-cua-ban@gmail.com"></label>
-      <label class="fl">Mật khẩu<input class="inp" id="au_pass" type="password" autocomplete="current-password" required placeholder="Lần đầu: phần trước @ của email"></label>`}
+      ${pwField('au_pass', 'Mật khẩu', 'current-password', 'Lần đầu: phần trước @ của email')}`}
     <div class="warn" id="au_err" style="display:none"></div>
     <button class="btn" id="au_btn" type="submit">${reg ? 'Tạo tài khoản' : 'Đăng nhập'}</button>
     <button class="btn ghost" type="button" onclick="openAuth('${reg ? 'login' : 'register'}')">${reg ? 'Đã mua YouTube ở shop / đã có tài khoản? Đăng nhập' : 'Khách mới, chưa mua gì? Đăng ký'}</button>
@@ -169,14 +180,15 @@ async function doLogin() {
     id = data;
   }
   id = id.toLowerCase();
-  const { error } = await sb.auth.signInWithPassword({ email: id, password: pw });
+  let error = null;
+  for (const v of pwVariants(pw)) { const r = await sb.auth.signInWithPassword({ email: id, password: v }); error = r.error; if (!error || !/Invalid login/i.test(error.message || '')) break; }
   if (error) {
     // Khách YouTube chưa từng vào app: tài khoản chưa được tạo → tạo luôn với mật khẩu khách vừa nhập
     if (typedEmail && /Invalid login/i.test(error.message || '') && await GI_isYtCustomer(id)) {
-      const pass = pw.length >= 6 ? pw : GI_defaultPass(id);
+      const pass = (pw.length < 6 || pw.toLowerCase() === GI_defaultPass(id)) ? GI_defaultPass(id) : pw;
       const r = await sb.auth.signUp({ email: id, password: pass, options: { data: { quick: pass === GI_defaultPass(id) } } });
       if (!r.error && r.data && r.data.session) {
-        closeAuth(); toast(pass === pw ? 'Đã vào. Mật khẩu của bạn là mật khẩu vừa nhập.' : 'Đã vào. Mật khẩu tạm: ' + pass + ' (đổi ở tab Đơn)');
+        closeAuth(); toast(pass === pw ? 'Đã vào. Mật khẩu của bạn là mật khẩu vừa nhập.' : 'Đã vào. Mật khẩu: ' + pass + ' (đổi ở tab Đơn)');
         if (window.GI_onAuth) window.GI_onAuth(); return;
       }
       if (r.error && /already registered/i.test(r.error.message || '')) return authErr('Sai mật khẩu. Lần đầu, mật khẩu là phần trước @ của email (' + GI_defaultPass(id) + '). Đã đổi mà quên thì nhắn Zalo shop.');
@@ -218,8 +230,8 @@ function openChangePass() {
   if (!m) { m = document.createElement('div'); m.id = 'authModal'; m.className = 'scrim'; m.onclick = e => { if (e.target === m) closeAuth(); }; document.body.appendChild(m); }
   m.innerHTML = `<form class="sheet" onsubmit="event.preventDefault();doChangePass()" style="gap:12px">
     <h3>Đổi mật khẩu</h3>
-    <label class="fl">Mật khẩu mới<input class="inp" id="au_pass" type="password" autocomplete="new-password" placeholder="Tối thiểu 6 ký tự" required minlength="6"></label>
-    <label class="fl">Nhập lại<input class="inp" id="au_pass2" type="password" autocomplete="new-password" required minlength="6"></label>
+    ${pwField('au_pass', 'Mật khẩu mới', 'new-password', 'Tối thiểu 6 ký tự', 6)}
+    ${pwField('au_pass2', 'Nhập lại', 'new-password', '', 6)}
     <div class="warn" id="au_err" style="display:none"></div>
     <button class="btn" id="au_btn" type="submit">Lưu mật khẩu</button>
     <button class="btn ghost" type="button" onclick="closeAuth()">Để sau</button>
