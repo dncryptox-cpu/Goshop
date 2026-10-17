@@ -23,6 +23,7 @@ QLKH.define('data', {
         dashboard: ['datagoc', 'sheets', 'transactions'],
         today: ['datagoc', 'products', 'famrenew', 'transactions'],
         pnl_calculator: ['sheets', 'transactions'],
+        lai_lo: ['transactions'],
         manual_other_orders: ['sheets', 'datagoc'],
         data_goc: ['datagoc', 'sheets'],
         fam_spot: ['sheets'],
@@ -107,7 +108,7 @@ QLKH.define('data', {
     parseCSV(csv) {
         if (!csv || /^\s*</.test(csv)) return []; // trang HTML lỗi / chưa share
         const rows = [];
-        let row = [], cell = '', inQuote = false;
+        let row = [], cell = '', inQuote = false, line = 1;
         for (let i = 0; i < csv.length; i++) {
             const c = csv[i];
             if (inQuote) {
@@ -119,12 +120,12 @@ QLKH.define('data', {
             else if (c === '\n' || c === '\r') {
                 if (c === '\r' && csv[i + 1] === '\n') i++;
                 row.push(cell.trim()); cell = '';
-                if (row.some(v => v !== '')) rows.push(row);
-                row = [];
+                if (row.some(v => v !== '')) { row._line = line; rows.push(row); }
+                row = []; line++;
             } else cell += c;
         }
         row.push(cell.trim());
-        if (row.some(v => v !== '')) rows.push(row);
+        if (row.some(v => v !== '')) { row._line = line; rows.push(row); }
         if (rows.length < 2) return [];
 
         // Một số tab có dòng tiêu đề ở hàng 2: chọn hàng có nhiều từ khoá tiêu đề hơn.
@@ -156,6 +157,7 @@ QLKH.define('data', {
             }
             // không liệt kê trong Object.keys(): nhiều chỗ đọc cột theo vị trí keys[i]
             Object.defineProperty(obj, '_rawVals', { value: values, enumerable: false });
+            Object.defineProperty(obj, '_line', { value: values._line, enumerable: false });
             if (hasData) result.push(obj);
         }
         return result;
@@ -201,6 +203,8 @@ QLKH.define('data', {
             this.gvizCsv(this.CONFIG.TRANSACTION_SHEET_ID, 'DATA(YTB)'),
             this.gvizCsv(this.CONFIG.TRANSACTION_SHEET_ID, 'DATA(GCC)')
         ]);
+        const tag = (list, tab) => list.forEach(r => Object.defineProperty(r, '_tab', { value: tab, enumerable: false }));
+        tag(ytb, 'DATA(YTB)'); tag(gcc, 'DATA(GCC)');
         window._rawDb.DATA_YTB = [...ytb, ...gcc];
         this.calculateGlobalProfit();
         this.syncNotificationsFromTransactions();

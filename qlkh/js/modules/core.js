@@ -20,6 +20,7 @@ QLKH.define('core', {
         { id: 'dashboard', name: 'Dashboard', icon: 'layout-grid' },
         { id: 'today', name: 'Hôm Nay', icon: 'sun' },
         { id: 'pnl_calculator', name: 'Tính Lợi Nhuận', icon: 'calculator' },
+        { id: 'lai_lo', name: 'Lãi Lỗ Từng Đơn', icon: 'receipt' },
         { id: 'refunds', name: 'Hoàn Tiền', icon: 'banknote' },
         { id: 'chatgpt_shared', name: 'Thiết Bị ChatGPT', icon: 'monitor-smartphone', href: 'chatgpt.html' },
         { id: 'netflix_module', name: 'Quản Lý Netflix', icon: 'tv-2', href: 'netflix.html' },
