@@ -83,6 +83,12 @@ QLKH.define('datagoc', {
                 list = list.filter(item => item.daysLeft !== null && item.daysLeft >= 0 && item.daysLeft <= 15);
             } else if (this.dataGocFilterStatus === 'expired') {
                 list = list.filter(item => item.daysLeft !== null && item.daysLeft < 0);
+            } else if (this.dataGocFilterStatus === 'due7') {
+                list = list.filter(item => item.daysLeft !== null && item.daysLeft >= 0 && item.daysLeft <= 7)
+                    .sort((a, b) => a.daysLeft - b.daysLeft);
+            } else if (this.dataGocFilterStatus === 'overdue7') {
+                list = list.filter(item => item.daysLeft !== null && item.daysLeft < 0 && item.daysLeft >= -7)
+                    .sort((a, b) => b.daysLeft - a.daysLeft);
             }
         }
         return list;

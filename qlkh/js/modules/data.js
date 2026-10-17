@@ -20,7 +20,7 @@ QLKH.define('data', {
 
     // Module nào cần nhóm dữ liệu nào.
     MODULE_DATA: {
-        dashboard: ['datagoc', 'sheets', 'transactions'],
+        dashboard: ['datagoc', 'sheets', 'transactions', 'famrenew'],
         pnl_calculator: ['sheets', 'transactions'],
         manual_other_orders: ['sheets', 'datagoc'],
         data_goc: ['datagoc', 'sheets'],
