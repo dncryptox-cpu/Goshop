@@ -24,6 +24,7 @@ QLKH.define('data', {
         today: ['datagoc', 'products', 'famrenew', 'transactions'],
         pnl_calculator: ['sheets', 'transactions'],
         lai_lo: ['transactions'],
+        capcut: ['transactions', 'stockcc'],
         manual_other_orders: ['sheets', 'datagoc'],
         data_goc: ['datagoc', 'sheets'],
         fam_spot: ['sheets'],
@@ -31,7 +32,7 @@ QLKH.define('data', {
         twofa: ['twofa'],
         account: ['accounts'],
     },
-    ADMIN_ONLY_DATA: ['sheets', 'transactions'],
+    ADMIN_ONLY_DATA: ['sheets', 'transactions', 'stockcc'],
 
     _dataState: {},      // name -> 'loading' | 'ready' | 'error'
     _dataPromises: {},   // name -> Promise đang chạy (chống gọi trùng)
@@ -55,6 +56,7 @@ QLKH.define('data', {
             datagoc: () => this.fetchDataGoc(!!force),
             accounts: () => this.fetchLoginAccounts(true),
             products: () => this.loadProductItems(),
+            stockcc: () => this.loadCapcutStock(),
         };
         if (!loaders[name]) return Promise.resolve();
         this._dataState = { ...this._dataState, [name]: 'loading' };
@@ -209,6 +211,7 @@ QLKH.define('data', {
         this.calculateGlobalProfit();
         this.syncNotificationsFromTransactions();
         if (this.activeModule === 'pnl_calculator') this.$nextTick(() => this.renderProfitChart());
+        if (this.activeModule === 'capcut') this.$nextTick(() => this.renderCapcutChart());
         this.writeCache({ DATA_YTB: window._rawDb.DATA_YTB });
         this.invalidateCaches();
     },

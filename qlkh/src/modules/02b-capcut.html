@@ -1,0 +1,197 @@
+                <!-- Module: CapCut — tổng quan, việc cần làm, khách, giá, kho -->
+                <div x-show="activeModule === 'capcut' && isModuleAllowed('capcut')" x-cloak class="space-y-6">
+                    <div class="flex flex-wrap items-end justify-between gap-3">
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">CapCut Pro</h1>
+                            <p class="text-sm text-gray-500 mt-1" x-show="ccRows.length"
+                               x-text="ccStats.customers + ' khách · ' + ccRows.length + ' đơn · tổng lãi ' + llVnd(ccStats.totalProfit) + ' trên ' + llVnd(ccStats.totalRevenue) + ' doanh thu'"></p>
+                        </div>
+                        <button type="button" @click="activeModule = 'lai_lo'; llProduct = 'CapCut'; llMonth = 'all'"
+                                class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                            Lãi lỗ từng đơn <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+
+                    <template x-if="!ccRows.length">
+                        <div class="bg-white rounded-xl border border-gray-100 p-10 text-center text-sm text-gray-400"
+                             x-text="dataStatus('transactions') === 'error' ? 'Không tải được sheet tài chính.' : (dataStatus('transactions') === 'ready' ? 'Chưa có đơn CapCut nào.' : 'Đang tải sheet tài chính…')"></div>
+                    </template>
+
+                    <div x-show="ccRows.length" class="space-y-6">
+                        <!-- 1. Sức khoẻ -->
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div class="bg-white rounded-xl border border-gray-100 card-shadow p-4">
+                                <p class="text-[11px] font-bold text-gray-400 uppercase">Khách đang dùng</p>
+                                <p class="text-2xl font-black text-gray-900 mt-1 tabular-nums" x-text="ccStats.active"></p>
+                                <p class="text-[11px] text-gray-500 mt-1" x-text="ccStats.lost + ' khách đã rời · ' + ccStats.lapsed + ' vừa hết hạn'"></p>
+                            </div>
+                            <div class="bg-white rounded-xl border border-gray-100 card-shadow p-4">
+                                <p class="text-[11px] font-bold text-gray-400 uppercase">Đơn 30 ngày</p>
+                                <p class="text-2xl font-black text-gray-900 mt-1 tabular-nums" x-text="ccStats.orders30"></p>
+                                <p class="text-[11px] mt-1" :class="ccStats.orders30 >= ccStats.ordersPrev ? 'text-emerald-600' : 'text-red-600'" x-text="ccDelta(ccStats.orders30, ccStats.ordersPrev)"></p>
+                            </div>
+                            <div class="bg-white rounded-xl border border-gray-100 card-shadow p-4">
+                                <p class="text-[11px] font-bold text-gray-400 uppercase">Lãi 30 ngày</p>
+                                <p class="text-2xl font-black text-emerald-600 mt-1 tabular-nums" x-text="llVnd(ccStats.profit30)"></p>
+                                <p class="text-[11px] mt-1" :class="ccStats.profit30 >= ccStats.profitPrev ? 'text-emerald-600' : 'text-red-600'" x-text="ccDelta(ccStats.profit30, ccStats.profitPrev)"></p>
+                            </div>
+                            <div class="bg-white rounded-xl border border-gray-100 card-shadow p-4" title="Trong số khách mà đơn đầu tiên đã hết hạn, bao nhiêu % đã mua thêm ít nhất 1 lần (tính theo email/tên).">
+                                <p class="text-[11px] font-bold text-gray-400 uppercase">Khách quay lại</p>
+                                <p class="text-2xl font-black mt-1 tabular-nums"
+                                   :class="ccStats.repeatRate >= .5 ? 'text-emerald-600' : (ccStats.repeatRate >= .25 ? 'text-amber-600' : 'text-red-600')"
+                                   x-text="ccStats.repeatRate === null ? '—' : llPct(ccStats.repeatRate)"></p>
+                                <p class="text-[11px] text-gray-500 mt-1" x-text="'trên ' + ccStats.matured + ' khách đã hết gói đầu'"></p>
+                            </div>
+                        </div>
+
+                        <!-- 2. Biểu đồ theo tháng + giá đang bán -->
+                        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                            <div class="xl:col-span-2 bg-white rounded-xl border border-gray-100 card-shadow p-5 min-w-0">
+                                <h2 class="font-bold text-gray-900 text-sm">Đơn và lãi theo tháng</h2>
+                                <p class="text-xs text-gray-500 mt-0.5 mb-3">Cột: đơn mới / gia hạn · Đường: lãi trong tháng</p>
+                                <div class="h-64 relative"><canvas id="ccChart"></canvas></div>
+                            </div>
+                            <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden min-w-0">
+                                <div class="px-5 pt-5 pb-3">
+                                    <h2 class="font-bold text-gray-900 text-sm">Giá đang bán</h2>
+                                    <p class="text-xs text-gray-500 mt-0.5">Theo đơn gần nhất của từng gói</p>
+                                </div>
+                                <table class="w-full text-xs tabular-nums">
+                                    <thead class="bg-gray-50 text-[10px] font-bold uppercase text-gray-400">
+                                        <tr><th class="text-left px-4 py-2">Gói</th><th class="text-right px-2 py-2">Bán</th><th class="text-right px-2 py-2">Vốn</th><th class="text-right px-4 py-2">Lãi</th></tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-50">
+                                        <template x-for="p in ccPrices" :key="p.sku">
+                                            <tr :title="'Đơn gần nhất ' + ccFmtDate(p.date) + ' · ' + p.orders + ' đơn · ' + p.active + ' khách đang dùng'">
+                                                <td class="px-4 py-2"><span class="font-bold text-gray-900" x-text="p.sku"></span> <span class="text-gray-400" x-text="'· ' + p.active + ' đang dùng'"></span></td>
+                                                <td class="px-2 py-2 text-right" x-text="llVnd(p.price)"></td>
+                                                <td class="px-2 py-2 text-right text-gray-500" x-text="llVnd(p.cost)"></td>
+                                                <td class="px-4 py-2 text-right font-bold" :class="p.profit > 0 ? 'text-emerald-600' : 'text-red-600'" x-text="llVnd(p.profit)"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- 3. Việc cần làm / Khách / Kho -->
+                        <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
+                            <div class="px-4 pt-4 flex flex-wrap gap-1 border-b border-gray-100">
+                                <template x-for="t in [['todo', 'Cần nhắn (' + ccTodo.length + ')'], ['customers', 'Khách hàng (' + ccStats.customers + ')'], ['stock', 'Kho tài khoản' + (ccStock.length ? ' (' + ccStock.length + ')' : '')]]" :key="t[0]">
+                                    <button type="button" @click="ccView = t[0]" :class="ccView === t[0] ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-800'"
+                                            class="px-3 pb-3 text-sm font-bold border-b-2 -mb-px" x-text="t[1]"></button>
+                                </template>
+                            </div>
+
+                            <!-- Cần nhắn -->
+                            <div x-show="ccView === 'todo'">
+                                <p class="px-5 py-3 text-xs text-gray-500 border-b border-gray-50">Khách hết hạn trong <b x-text="ccDueDays"></b> ngày tới và khách đã hết hạn dưới 30 ngày (còn cứu được). Bấm <b>Copy tin nhắn</b> để có sẵn lời nhắc kèm giá đang bán.</p>
+                                <div class="divide-y divide-gray-50">
+                                    <template x-if="!ccTodo.length"><div class="py-10 text-center text-sm text-gray-400">Không có khách nào cần nhắn 🎉</div></template>
+                                    <template x-for="c in ccTodo" :key="c.key">
+                                        <div class="px-5 py-3 flex flex-wrap items-center gap-3">
+                                            <div class="min-w-0 flex-1">
+                                                <button type="button" @click="copyToClipboard(c.label, 'khách')" class="text-sm font-bold text-gray-900 hover:text-primary truncate max-w-full text-left" x-text="c.label"></button>
+                                                <p class="text-[11px] text-gray-500" x-text="c.sku + ' · mua ' + c.count + ' lần · đã chi ' + llVnd(c.spent) + ' · CTV ' + (c.ctv || '—')"></p>
+                                            </div>
+                                            <div class="text-right shrink-0">
+                                                <p class="text-xs font-bold text-gray-700" x-text="ccFmtDate(c.expiry)"></p>
+                                                <p class="text-[11px] font-bold" :class="c.daysLeft < 0 ? 'text-red-600' : 'text-amber-600'"
+                                                   x-text="c.daysLeft < 0 ? 'Quá hạn ' + (-c.daysLeft) + ' ngày' : (c.daysLeft === 0 ? 'Hết hạn hôm nay' : 'Còn ' + c.daysLeft + ' ngày')"></p>
+                                            </div>
+                                            <button type="button" @click="ccCopyMessage(c)" class="shrink-0 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-600 text-indigo-700 hover:text-white text-xs font-bold flex items-center gap-1.5">
+                                                <i data-lucide="message-square" class="w-3.5 h-3.5"></i> Copy tin nhắn
+                                            </button>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Khách hàng -->
+                            <div x-show="ccView === 'customers'">
+                                <div class="px-5 py-3 flex flex-wrap items-center gap-2 border-b border-gray-50">
+                                    <template x-for="s in [['all','Tất cả'],['active','Đang dùng'],['due','Sắp hết hạn'],['lapsed','Vừa hết hạn'],['lost','Đã rời']]" :key="s[0]">
+                                        <button type="button" @click="ccStatus = s[0]" :class="ccStatus === s[0] ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'"
+                                                class="px-2.5 py-1 rounded-lg text-xs font-bold" x-text="s[1]"></button>
+                                    </template>
+                                    <div class="relative ml-auto w-full sm:w-60">
+                                        <i data-lucide="search" class="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                                        <input id="cc-search" x-model.debounce.200ms="ccSearch" type="search" placeholder="Tìm email, tên, gói…"
+                                               class="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-primary focus:bg-white">
+                                    </div>
+                                </div>
+                                <div class="overflow-x-auto max-h-[34rem] overflow-y-auto">
+                                    <table class="w-full text-xs tabular-nums">
+                                        <thead class="bg-gray-50 text-[10px] font-bold uppercase text-gray-400 sticky top-0">
+                                            <tr>
+                                                <th class="text-left px-4 py-2.5">Khách</th><th class="text-left px-3 py-2.5">Gói gần nhất</th>
+                                                <th class="text-left px-3 py-2.5">Mua lần đầu</th><th class="text-right px-3 py-2.5">Số lần</th>
+                                                <th class="text-right px-3 py-2.5">Đã chi</th><th class="text-right px-3 py-2.5">Lãi</th>
+                                                <th class="text-left px-3 py-2.5">HSD</th><th class="text-left px-4 py-2.5">Trạng thái</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-50">
+                                            <template x-for="c in ccCustomerList" :key="c.key">
+                                                <tr class="hover:bg-gray-50 cursor-pointer align-top" @click="ccOpen = ccOpen === c.key ? null : c.key">
+                                                    <td class="px-4 py-2">
+                                                        <p class="font-bold text-gray-900 max-w-[16rem] truncate" x-text="c.label"></p>
+                                                        <div x-show="ccOpen === c.key" class="mt-2 space-y-1">
+                                                            <template x-for="o in c.orders.slice().reverse()" :key="o.ref">
+                                                                <p class="text-[11px] text-gray-500 font-mono" x-text="ccFmtDate(o.date) + ' · ' + o.sku + ' · ' + (o.type || '') + ' · ' + llVnd(o.price) + ' · ' + o.ref"></p>
+                                                            </template>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-3 py-2 font-semibold" x-text="c.sku"></td>
+                                                    <td class="px-3 py-2 text-gray-500" x-text="ccFmtDate(c.first)"></td>
+                                                    <td class="px-3 py-2 text-right" x-text="c.count"></td>
+                                                    <td class="px-3 py-2 text-right" x-text="llVnd(c.spent)"></td>
+                                                    <td class="px-3 py-2 text-right text-emerald-600 font-semibold" x-text="llVnd(c.profit)"></td>
+                                                    <td class="px-3 py-2 whitespace-nowrap" x-text="ccFmtDate(c.expiry) + (c.daysLeft !== null ? (c.daysLeft >= 0 ? ' (còn ' + c.daysLeft + 'd)' : ' (quá ' + (-c.daysLeft) + 'd)') : '')"></td>
+                                                    <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap" :class="ccStatusClass(c.status)" x-text="ccStatusLabel(c.status)"></span></td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p x-show="ccStats.noEmail" class="px-5 py-2.5 text-[11px] text-gray-400 border-t border-gray-50"
+                                   x-text="ccStats.noEmail + ' khách không có email trong sheet nên gộp theo tên/ghi chú — có thể bị tách thành nhiều khách.'"></p>
+                            </div>
+
+                            <!-- Kho tài khoản -->
+                            <div x-show="ccView === 'stock'">
+                                <template x-if="!ccStock.length">
+                                    <div class="py-10 text-center text-sm text-gray-400" x-text="dataStatus('stockcc') === 'loading' ? 'Đang tải tab Stock CC…' : 'Không đọc được tab Stock CC.'"></div>
+                                </template>
+                                <div x-show="ccStock.length">
+                                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-px bg-gray-100 border-b border-gray-100">
+                                        <div class="bg-white p-4"><p class="text-[11px] font-bold text-gray-400 uppercase">Tài khoản</p><p class="text-xl font-black" x-text="ccStockStats.total"></p></div>
+                                        <div class="bg-white p-4"><p class="text-[11px] font-bold text-gray-400 uppercase">Đã giao khách</p><p class="text-xl font-black" x-text="ccStockStats.assigned"></p></div>
+                                        <div class="bg-white p-4"><p class="text-[11px] font-bold text-emerald-600 uppercase">Còn trống</p><p class="text-xl font-black" x-text="ccStockStats.free"></p></div>
+                                        <div class="p-4" :class="ccStockStats.expired ? 'bg-red-50' : 'bg-white'"><p class="text-[11px] font-bold uppercase" :class="ccStockStats.expired ? 'text-red-600' : 'text-gray-400'">HSD kho đã qua</p><p class="text-xl font-black" x-text="ccStockStats.expired"></p><p class="text-[10px] text-gray-500" x-show="ccStockStats.soon" x-text="ccStockStats.soon + ' sắp hết trong 14 ngày'"></p></div>
+                                        <div class="p-4" :class="ccStockStats.shareUnpaid ? 'bg-amber-50' : 'bg-white'"><p class="text-[11px] font-bold uppercase" :class="ccStockStats.shareUnpaid ? 'text-amber-700' : 'text-gray-400'">Share chưa trả</p><p class="text-xl font-black" x-text="ccStockStats.shareUnpaid"></p></div>
+                                    </div>
+                                    <div class="overflow-x-auto max-h-[28rem] overflow-y-auto">
+                                        <table class="w-full text-xs tabular-nums">
+                                            <thead class="bg-gray-50 text-[10px] font-bold uppercase text-gray-400 sticky top-0">
+                                                <tr><th class="text-left px-4 py-2.5">STT</th><th class="text-left px-3 py-2.5">Tài khoản</th><th class="text-left px-3 py-2.5">Khách</th><th class="text-left px-3 py-2.5">HSD kho</th><th class="text-right px-3 py-2.5">Thiết bị</th><th class="text-left px-4 py-2.5">Share</th></tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-gray-50">
+                                                <template x-for="s in ccStock" :key="s.stt + s.account">
+                                                    <tr>
+                                                        <td class="px-4 py-2 text-gray-400" x-text="s.stt"></td>
+                                                        <td class="px-3 py-2 font-mono text-gray-600" x-text="s.account"></td>
+                                                        <td class="px-3 py-2 font-semibold" :class="s.customer ? 'text-gray-900' : 'text-emerald-600'" x-text="s.customer || 'Trống'"></td>
+                                                        <td class="px-3 py-2" :class="s.hsd && ccDays(s.hsd) < 0 ? 'text-red-600 font-bold' : 'text-gray-600'" x-text="s.hsd ? ccFmtDate(s.hsd) : '—'"></td>
+                                                        <td class="px-3 py-2 text-right" x-text="s.devices || ''"></td>
+                                                        <td class="px-4 py-2"><span x-show="s.shareCustomer" :class="s.sharePaid ? 'text-emerald-600' : 'text-amber-700 font-bold'" x-text="s.shareCustomer + (s.sharePaid ? ' · đã trả' : ' · chưa trả')"></span></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <p class="px-5 py-2.5 text-[11px] text-gray-400 border-t border-gray-50">Mật khẩu không hiển thị ở đây — xem trong tab Stock CC của sheet tài chính.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>

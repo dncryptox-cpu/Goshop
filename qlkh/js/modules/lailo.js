@@ -67,6 +67,8 @@ QLKH.define('lailo', {
                 month: `${d[2]}-${d[1].padStart(2, '0')}`,
                 type: String(r[k[2]] || '').trim(),
                 customer: String(r[k[3]] || '').trim(),
+                idName: String(r[k[1]] || '').trim(),           // cột B: mã đơn (YTB) hoặc tên khách (GCC)
+                expiry: (() => { const e = String(r[k[13]] || '').trim().split('/'); return e.length === 3 ? `${e[2]}-${e[1].padStart(2, '0')}-${e[0].padStart(2, '0')}` : ''; })(),
                 sku, family: this.llFamily(sku),
                 ctv: String(r[k[7]] || '').trim(),
                 price, cost, hh, ps, profit,

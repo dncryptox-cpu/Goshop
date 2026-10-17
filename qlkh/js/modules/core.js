@@ -22,6 +22,7 @@ QLKH.define('core', {
         { id: 'pnl_calculator', name: 'Tính Lợi Nhuận', icon: 'calculator' },
         { id: 'lai_lo', name: 'Lãi Lỗ Từng Đơn', icon: 'receipt' },
         { id: 'refunds', name: 'Hoàn Tiền', icon: 'banknote' },
+        { id: 'capcut', name: 'CapCut', icon: 'scissors' },
         { id: 'chatgpt_shared', name: 'Thiết Bị ChatGPT', icon: 'monitor-smartphone', href: 'chatgpt.html' },
         { id: 'netflix_module', name: 'Quản Lý Netflix', icon: 'tv-2', href: 'netflix.html' },
         { id: 'googleone_module', name: 'Quản Lý Google One', icon: 'cloud', href: 'googleone.html' },
@@ -89,6 +90,7 @@ QLKH.define('core', {
         this.ensureData(needs).then(() => {
             if (id === 'dashboard') this.calculateGlobalProfit();
             if (id === 'pnl_calculator') this.$nextTick(() => this.renderProfitChart());
+            if (id === 'capcut') this.$nextTick(() => this.renderCapcutChart());
         });
         if (id === 'fam_renew' && this.startLoiAutoRefresh) this.startLoiAutoRefresh();
     },
