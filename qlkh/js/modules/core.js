@@ -18,6 +18,7 @@ QLKH.define('core', {
 
     menuItems: [
         { id: 'dashboard', name: 'Dashboard', icon: 'layout-grid' },
+        { id: 'today', name: 'Hôm Nay', icon: 'sun' },
         { id: 'pnl_calculator', name: 'Tính Lợi Nhuận', icon: 'calculator' },
         { id: 'refunds', name: 'Hoàn Tiền', icon: 'banknote' },
         { id: 'chatgpt_shared', name: 'Thiết Bị ChatGPT', icon: 'monitor-smartphone', href: 'chatgpt.html' },

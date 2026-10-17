@@ -10,7 +10,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, 'src')
 
 # Thứ tự nạp JS: core trước, các module sau (thứ tự không quan trọng vì gộp thành 1 object).
-JS_MODULES = ['core', 'auth', 'data', 'dashboard', 'pnl', 'refunds', 'manual', 'datagoc',
+JS_MODULES = ['core', 'auth', 'data', 'dashboard', 'today', 'pnl', 'refunds', 'manual', 'datagoc',
               'famspot', 'famrenew', 'pricing', 'twofa', 'promo']
 
 ROOT_RE = re.compile(r'^(\s*)<div x-show="([^"]+)"\s+x-cloak(.*)$')

@@ -20,7 +20,8 @@ QLKH.define('data', {
 
     // Module nào cần nhóm dữ liệu nào.
     MODULE_DATA: {
-        dashboard: ['datagoc', 'sheets', 'transactions', 'famrenew'],
+        dashboard: ['datagoc', 'sheets', 'transactions'],
+        today: ['datagoc', 'products', 'famrenew', 'transactions'],
         pnl_calculator: ['sheets', 'transactions'],
         manual_other_orders: ['sheets', 'datagoc'],
         data_goc: ['datagoc', 'sheets'],
@@ -52,6 +53,7 @@ QLKH.define('data', {
             twofa: () => this.loadTwofaSheet(),
             datagoc: () => this.fetchDataGoc(!!force),
             accounts: () => this.fetchLoginAccounts(true),
+            products: () => this.loadProductItems(),
         };
         if (!loaders[name]) return Promise.resolve();
         this._dataState = { ...this._dataState, [name]: 'loading' };
