@@ -239,6 +239,8 @@
                     </div>
                     <span class="badge" :class="c.daysLeft < 0 ? 'bad' : (c.daysLeft <= 3 ? 'warn' : '')" x-text="c.daysLeft < 0 ? 'hết ' + (-c.daysLeft) + 'n' : (c.daysLeft === 0 ? 'hôm nay' : 'còn ' + c.daysLeft + 'n')"></span>
                     <button class="btn sm" @click="copy(renewMsg(c), 'Đã copy tin nhắn')">Copy tin</button>
+                    <button class="btn sm" style="color:var(--bad)" x-show="c.daysLeft < 0 && can('vacate') && !c.kicked" @click="kickCus(null, c)" :disabled="!!c.kicking" title="Không gia hạn: đã xoá khỏi nhóm → cất xuống cuối sheet, fam thành Còn slot" x-text="c.kicking ? '…' : (c.kickConfirm ? 'Bấm lần nữa' : 'Kick')"></button>
+                    <span class="badge" x-show="c.kicked">Đã kick</span>
                   </div>
                 </template>
               </div>
@@ -270,6 +272,12 @@
               <div class="wk-h"><span class="wk-ck" :class="wk.waiting.length ? 'no' : 'ok'" x-text="wk.waiting.length || '✓'"></span>
                 <b class="grow">Khách đang chờ xếp fam (đã cất xuống cuối sheet)</b></div>
               <div style="margin-left:34px;font-size:13px"><template x-for="w in wk.waiting" :key="w.row"><div><span class="mono" x-text="w.email"></span> <span class="mute" x-text="'· CTV ' + (w.ctv || '—') + ' · HSD ' + w.hsd + ' · ' + w.note"></span></div></template></div>
+            </div>
+            <!-- 6b. Đã kick -->
+            <div class="card wk" x-show="(wk.kicked || []).length">
+              <div class="wk-h"><span class="wk-ck ok" x-text="(wk.kicked || []).length"></span>
+                <b class="grow">Khách đã kick 30 ngày qua (data lưu cuối sheet, check lại nếu khách quay lại)</b></div>
+              <div style="margin-left:34px;font-size:13px"><template x-for="w in (wk.kicked || [])" :key="w.row"><div><span class="mono" x-text="w.email"></span> <span class="mute" x-text="'· CTV ' + (w.ctv || '—') + ' · ' + w.note"></span></div></template></div>
             </div>
             <!-- 7. Duyệt -->
             <div class="card wk" x-show="can('review')">
@@ -394,7 +402,7 @@
                         <td x-text="c.hsd || '—'"></td>
                         <td :style="c.daysLeft!==null && c.daysLeft<0 ? 'color:var(--bad)' : (c.daysLeft!==null && c.daysLeft<=10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft===null ? '—' : (c.daysLeft<0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + ' ngày')"></td>
                         <td class="hide-sm mono" x-show="me.role !== 'outsource'" x-text="c.mailPhu || '—'"></td>
-                        <td style="text-align:right;white-space:nowrap"><button class="btn sm" x-show="can('move') && !c.masked && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn sm" x-show="can('move') && !c.masked && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn sm" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: livePhu(c.mailPhu), invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
+                        <td style="text-align:right;white-space:nowrap"><button class="btn sm" x-show="can('move') && !c.masked && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn sm" x-show="can('move') && !c.masked && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn sm" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn sm" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked" @click="kickCus(f, c)" :disabled="!!c.kicking" title="Khách không gia hạn: đã xoá khỏi nhóm Gia đình → cất xuống cuối sheet DATA (giữ data), slot thành trống, fam chuyển Còn slot" x-text="c.kicking ? '…' : (c.kickConfirm ? 'Bấm lần nữa' : 'Kick')"></button><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: livePhu(c.mailPhu), invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
                       </tr>
                     </template>
                     <template x-for="sl in (f.slots || []).filter(x => !x.email)" :key="'e' + sl.row">
@@ -1284,6 +1292,18 @@ function app() {
     frNeed() { return this.wk ? Math.max(0, this.wk.due.length - this.wk.frReady) : 0; },
     remindLeft() { return this.wk ? this.wk.customers.filter(c => !c.reminded).length : 0; },
     weekLeft() { if (!this.wk) return 0; return (this.frNeed() ? 1 : 0) + this.remindLeft() + this.checkDue().length + this.wk.blocked.filter(b => b.due).length + this.wk.waiting.length; },
+    async kickCus(f, c) {
+      if (!c.kickConfirm) { c.kickConfirm = true; setTimeout(() => { c.kickConfirm = false; }, 4000); return; }
+      c.kickConfirm = false; c.kicking = true; this.error = '';
+      try {
+        const r = await this.api({ action: 'vacate', kind: 'kick', reason: 'không gia hạn', row: c.row, email: c.email, autoSync: this.me.role === 'admin' && this.autoSync });
+        this.lastActionId = r.actionId;
+        this.lastDone = '✓ ' + r.rn + ': đã kick ' + r.email + ', data cất xuống cuối sheet DATA (dòng ' + r.archRow + ', "Đã kick").' + (r.statusChanged ? ' Fam chuyển Còn slot.' : '') + ' Slot trống, hiện ở tab Còn slot để mời khách mới.' + (r.sync ? (r.sync.ok ? ' Đã ghi luôn vào data gốc.' : ' CHƯA ghi vào gốc: ' + r.sync.error) : '') + ' Hoàn tác ở tab Lịch sử.';
+        if (f) { f.customers = f.customers.filter(x => x.row !== c.row); if (f.slots) f.slots = f.slots.map(x => x.row === c.row ? { row: x.row, email: '' } : x); if (f.status === 'FULL') f.status = 'Còn slot'; }
+        c.kicked = true;
+      } catch (e) { this.error = e.message; }
+      c.kicking = false;
+    },
     async toggleRemind(c, on) {
       c.busy = true; this.error = '';
       try {
