@@ -1,0 +1,1451 @@
+                <div x-show="activeModule === 'fam_renew' && isModuleAllowed('fam_renew')" x-cloak>
+
+                    <!-- Confirm Modal (Double-check) -->
+                    <div x-show="famRenewConfirm.show" x-cloak class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" @click.self="famRenewConfirm.show = false">
+                        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                            <h3 class="text-base font-bold text-gray-900 mb-1">Xác nhận thao tác</h3>
+                            <p class="text-xs text-gray-500 mb-4">Kiểm tra lại thông tin trước khi xác nhận</p>
+                            <template x-if="famRenewConfirm.newStatus === 'Hết hạn - đã thay' && famRenewPairings[famRenewConfirm.item?.stt]">
+                                <div class="bg-emerald-50 text-emerald-800 p-2.5 rounded-lg border border-emerald-100 mb-4 text-xs flex flex-col gap-1">
+                                    <div class="flex justify-between"><span>Fam Cũ:</span> <span class="font-mono" x-text="famRenewConfirm.item?.email"></span></div>
+                                    <div class="flex justify-between font-bold"><span>Fam Mới:</span> <span class="font-mono text-emerald-700" x-text="famRenewPairings[famRenewConfirm.item.stt].nextFamEmail"></span></div>
+                                </div>
+                            </template>
+                            <div class="bg-gray-50 rounded-xl p-4 mb-4 text-xs space-y-1.5">
+                                <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Tài khoản:</span><span class="font-bold text-gray-800" x-text="famRenewConfirm.item?.email"></span></div>
+                                <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Trạng thái cũ:</span><span class="text-gray-600" x-text="famRenewConfirm.item?.status || 'Trống'"></span></div>
+                                <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Trạng thái mới:</span><span class="font-bold" :class="famRenewConfirm.newStatus?.includes('Đang dùng') ? 'text-emerald-600' : famRenewConfirm.newStatus?.includes('Lỗi') ? 'text-red-600' : 'text-amber-600'" x-text="famRenewConfirm.newStatus === 'Hết hạn - đã thay' && famRenewPairings[famRenewConfirm.item?.stt] ? 'Thay Fam Mới' : famRenewConfirm.newStatus"></span></div>
+                                <template x-if="famRenewConfirm.activationDate">
+                                    <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Ngày kích hoạt:</span><span class="font-bold text-indigo-600" x-text="famRenewConfirm.activationDate"></span></div>
+                                </template>
+                                <template x-if="famRenewConfirm.expiryDate">
+                                    <div class="flex gap-2"><span class="text-gray-400 w-24 shrink-0">Ngày hết hạn:</span><span class="font-bold text-indigo-600" x-text="famRenewConfirm.expiryDate"></span></div>
+                                </template>
+                            </div>
+                            
+                            <!-- Ghi chú / Lý do lỗi -->
+                            <div class="mb-4 text-left">
+                                <label class="block text-xs font-bold text-gray-700 mb-1.5">Ghi chú lỗi / Lý do đổi trạng thái:</label>
+                                <textarea x-model="famRenewConfirm.notes" rows="2" placeholder="Nhập ghi chú hoặc lý do lỗi ở đây..."
+                                    class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium resize-none"></textarea>
+                            </div>
+
+                            <div class="flex gap-3">
+                                <button @click="famRenewConfirm.show = false" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl text-sm transition-all">Hủy</button>
+                                <button @click="confirmFamRenewStatus()" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-xl text-sm transition-all">✓ Xác Nhận Đúng</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Header + Metrics -->
+                    <div class="mb-6 flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">Gia Hạn Family (FamRenew)</h1>
+                            <p class="text-sm text-gray-500 mt-1">Quản lý vòng đời tài khoản Family. Dữ liệu từ Google Sheet RENEW.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 shrink-0">
+                            <!-- Tổng -->
+                            <div class="bg-indigo-50 border border-indigo-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <i data-lucide="database" class="w-4 h-4 text-indigo-500"></i>
+                                <div><p class="text-[10px] font-bold text-indigo-400 uppercase">Tổng</p><p class="text-base font-bold text-indigo-700" x-text="famRenewList.length"></p></div>
+                            </div>
+                            <!-- Cần test BH -->
+                            <div class="bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <i data-lucide="alert-triangle" class="w-4 h-4 text-red-500"></i>
+                                <div><p class="text-[10px] font-bold text-red-400 uppercase">Test BH gấp</p><p class="text-base font-bold text-red-700" x-text="famRenewList.filter(i => getFamRenewAlert(i).isWarrantyUrgent).length"></p></div>
+                            </div>
+                            <!-- Sắp hết hạn gói -->
+                            <div class="bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <i data-lucide="clock" class="w-4 h-4 text-orange-500"></i>
+                                <div><p class="text-[10px] font-bold text-orange-400 uppercase">Sắp hết hạn</p><p class="text-base font-bold text-orange-700" x-text="famRenewList.filter(i => getFamRenewAlert(i).isExpiryUrgent).length"></p></div>
+                            </div>
+                            <!-- Đang dùng -->
+                            <div class="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 flex items-center gap-2">
+                                <i data-lucide="check-circle" class="w-4 h-4 text-emerald-500"></i>
+                                <div><p class="text-[10px] font-bold text-emerald-400 uppercase">Đang dùng</p><p class="text-base font-bold text-emerald-700" x-text="famRenewList.filter(i => i.status === 'Đang dùng').length"></p></div>
+                            </div>
+                            <button @click="copyWarrantyReport()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5">
+                                <i data-lucide="file-output" class="w-3.5 h-3.5"></i> Copy Lỗi BH
+                            </button>
+                            <button @click="fetchSheetData()" class="bg-emerald-50 text-emerald-600 px-3 py-2 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-1.5 border border-emerald-200">
+                                <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i> Đồng Bộ
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- View Toggle -->
+                    <div class="flex gap-2 mb-4">
+                        <button @click="famRenewView='bulk_tool'"
+                            :class="famRenewView==='bulk_tool' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
+                            <i data-lucide="bolt" class="w-3.5 h-3.5"></i> Thay Nhanh & Banned
+                        </button>
+                        <button @click="famRenewView='requests'"
+                            :class="famRenewView==='requests' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
+                            <i data-lucide="shopping-cart" class="w-3.5 h-3.5"></i> Yêu cầu Fam
+                        </button>
+                        <button @click="famRenewView='table'"
+                            :class="famRenewView==='table' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
+                            <i data-lucide="table" class="w-3.5 h-3.5"></i> Bảng dữ liệu
+                        </button>
+                        <button @click="famRenewView='loi_fam'"
+                            :class="famRenewView==='loi_fam' ? 'bg-primary text-white shadow-md' : 'bg-white text-gray-500 border border-gray-200'"
+                            class="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all">
+                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Theo Dõi Lỗi
+                        </button>
+                    </div>
+
+                    <!-- Tab: Yêu cầu Fam -->
+                    <div x-show="famRenewView==='requests'" class="space-y-6 mb-6" x-cloak>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <!-- Column 1: Controls & SoluongRN -->
+                            <div class="space-y-6 col-span-1">
+                                <!-- CONTROL CARD -->
+                                <div class="bg-white p-5 rounded-xl border border-gray-100 card-shadow space-y-4">
+                                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                        <i data-lucide="shopping-cart" class="w-4 h-4 text-primary"></i>
+                                        Yêu cầu xuất Fam mới
+                                    </h3>
+                                    <p class="text-xs text-gray-500 leading-relaxed">
+                                        Nhập số lượng cần lấy. Hệ thống sẽ tự động trích xuất các tài khoản đang ở trạng thái <b>Sẵn sàng</b> trong Kho Renew dưới định dạng bảng để copy-paste trực tiếp vào Google Sheets.
+                                    </p>
+                                    
+                                    <div class="bg-gray-50 rounded-lg p-3 border border-gray-100 space-y-2">
+                                        <div class="flex justify-between text-xs">
+                                            <span class="text-gray-500">Kho dự phòng (Sẵn sàng):</span>
+                                            <span class="font-bold text-emerald-600" x-text="khoRenewList.filter(c => c.status === 'Sẵn sàng').length"></span>
+                                        </div>
+                                        <div class="flex justify-between text-xs">
+                                            <span class="text-gray-500">Chưa sẵn sàng:</span>
+                                            <span class="font-bold text-amber-600" x-text="khoRenewList.filter(c => c.status === 'Chưa sẵn sàng').length"></span>
+                                        </div>
+                                        <div class="flex justify-between text-xs">
+                                            <span class="text-gray-500">Đã dùng:</span>
+                                            <span class="font-bold text-blue-600" x-text="khoRenewList.filter(c => c.status === 'Đã dùng').length"></span>
+                                        </div>
+                                    </div>
+
+                                    <div class="space-y-2">
+                                        <label class="block text-xs font-bold text-gray-700">Số lượng Fam cần lấy:</label>
+                                        <input type="number" min="1" x-model="bulkRequestCount" 
+                                            class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary text-gray-700 font-bold">
+                                    </div>
+
+                                    <button @click="fetchBulkFams()"
+                                        class="w-full bg-primary text-white rounded-lg py-2.5 text-xs font-bold hover:bg-primary-hover shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2">
+                                        <i data-lucide="play" class="w-4 h-4"></i>
+                                        Lấy Danh Sách Fam
+                                    </button>
+                                </div>
+
+                                <!-- DYNAMIC RENEW SCHEDULE CARD -->
+                                <div class="bg-white p-5 rounded-xl border border-gray-100 card-shadow space-y-4">
+                                    <div class="flex items-center justify-between">
+                                        <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                            <i data-lucide="calendar" class="w-4 h-4 text-indigo-600"></i>
+                                            Lịch Thay Fam (Quét Từ RENEW)
+                                        </h3>
+                                    </div>
+
+                                    <div class="max-h-[260px] overflow-y-auto pr-1 space-y-2 text-xs scrollbar-thin">
+                                        <template x-for="item in groupedRenewDates" :key="item.date">
+                                            <div class="flex flex-col gap-2 p-3 rounded-lg bg-gray-50 border border-gray-100 hover:bg-gray-100/50 transition-colors">
+                                                <div class="flex items-center justify-between">
+                                                    <span class="font-bold text-gray-800" x-text="item.date"></span>
+                                                    <span class="font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100 text-[10px]" x-text="item.count + ' Fam'"></span>
+                                                </div>
+                                                <div class="flex flex-wrap gap-1 mb-1">
+                                                    <template x-for="fam in item.fams" :key="fam.stt">
+                                                        <span class="text-[10px] font-mono bg-white border border-gray-200 text-gray-600 px-1.5 py-0.5 rounded" x-text="fam.stt"></span>
+                                                    </template>
+                                                </div>
+                                                <button @click="bulkRequestCount = item.count; selectedRNDate = item.date; selectedRNQty = item.count; fetchBulkFams(); confirmBulkFams();"
+                                                    class="w-full text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-1.5 rounded transition-all shadow-md flex items-center justify-center gap-1.5">
+                                                    <i data-lucide="zap" class="w-3.5 h-3.5"></i> Auto Thay Hàng Loạt
+                                                </button>
+                                            </div>
+                                        </template>
+                                        
+                                        <template x-if="groupedRenewDates.length === 0">
+                                            <div class="text-center py-6 text-gray-400 text-[11px]">
+                                                Không có Fam nào cần thay thế.
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- DATA TABLE / COPY CARD -->
+                            <div class="bg-white p-5 rounded-xl border border-gray-100 card-shadow md:col-span-2 space-y-4">
+                                <div class="flex items-center justify-between flex-wrap gap-2">
+                                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                        <i data-lucide="file-text" class="w-4 h-4 text-emerald-600"></i>
+                                        Danh sách xuất (Định dạng Sheets)
+                                    </h3>
+                                    
+                                    <div class="flex gap-2" x-show="requestedFams.length > 0">
+                                        <button @click="copyRequestedFams()"
+                                            class="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-100 transition-all flex items-center gap-1">
+                                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                            Copy Trọn Bộ
+                                        </button>
+                                        <button @click="confirmBulkFams()"
+                                            class="bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all flex items-center gap-1 shadow-md shadow-indigo-100">
+                                            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                            <span x-text="selectedRNDate ? 'Thay thế hàng loạt' : 'Xác nhận đã lấy'"></span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <template x-if="requestedFams.length === 0">
+                                    <div class="border-2 border-dashed border-gray-100 rounded-xl p-12 text-center text-gray-400 space-y-2">
+                                        <i data-lucide="shopping-bag" class="w-8 h-8 mx-auto text-gray-300"></i>
+                                        <p class="text-xs font-medium">Chưa có Fam nào được trích xuất.</p>
+                                        <p class="text-[10px] text-gray-400">Chọn số lượng ở bảng bên trái và nhấn nút "Lấy Danh Sách Fam".</p>
+                                    </div>
+                                </template>
+
+                                <template x-if="requestedFams.length > 0">
+                                    <div class="border border-gray-100 rounded-lg overflow-hidden">
+                                        <div class="overflow-x-auto">
+                                            <table class="w-full text-left border-collapse text-xs">
+                                                <thead>
+                                                    <tr class="bg-gray-50 border-b border-gray-100 text-gray-600 font-bold">
+                                                        <th class="p-3">STT FAM</th>
+                                                        <th class="p-3">Fam Hiện Tại (Cũ)</th>
+                                                        <th class="p-3">Fam Thay Thế (Mới)</th>
+                                                        <th class="p-3">Pass</th>
+                                                        <th class="p-3">MKP</th>
+                                                        <th class="p-3">2FA</th>
+                                                        <th class="p-3">Ngày Renew</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <template x-for="f in requestedFams" :key="f.email">
+                                                        <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                                                            <td class="p-3">
+                                                                <select x-model="f.stt" @change="updateOldEmailForReplacements(f)"
+                                                                    class="bg-gray-50 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-bold text-indigo-600">
+                                                                    <option value="">-- Chưa gán --</option>
+                                                                    <template x-for="item in famRenewList" :key="item.stt">
+                                                                        <option :value="item.stt" x-text="item.stt + (item.status ? ' (' + item.status + ')' : '')"></option>
+                                                                    </template>
+                                                                </select>
+                                                            </td>
+                                                            <td class="p-3 text-gray-400 font-mono text-[11px]" x-text="f.oldEmail || 'Chưa gán'"></td>
+                                                            <td class="p-3 font-semibold text-emerald-700 font-mono" x-text="f.email"></td>
+                                                            <td class="p-3 font-mono text-gray-600" x-text="f.pass"></td>
+                                                            <td class="p-3 font-mono text-gray-500" x-text="f.recoveryEmail || '-'"></td>
+                                                            <td class="p-3 font-mono text-gray-500" x-text="f.twofa || '-'"></td>
+                                                            <td class="p-3 text-gray-500" x-text="f.renewDate || '-'"></td>
+                                                        </tr>
+                                                    </template>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- KHO RENEW (STOCK POOL) LISTING -->
+                        <div class="bg-white p-5 rounded-xl border border-gray-100 card-shadow space-y-4 mt-6">
+                            <div class="flex items-center justify-between flex-wrap gap-3">
+                                <div>
+                                    <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                        <i data-lucide="database" class="w-4 h-4 text-primary"></i>
+                                        Chi tiết Kho Fam Dự Phòng (KHO_RENEW)
+                                    </h3>
+                                    <p class="text-[11px] text-gray-400 mt-0.5">Danh sách toàn bộ các tài khoản lưu trữ trong kho dự phòng của tháng tới.</p>
+                                </div>
+                                <div class="flex items-center gap-2 w-full md:w-auto">
+                                    <!-- Date Filter Dropdown -->
+                                    <select x-model="khoRenewFilterDate" 
+                                        class="bg-gray-50 border border-gray-200 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium">
+                                        <option value="all">📅 Tất cả ngày</option>
+                                        <template x-for="date in uniqueKhoRenewDates" :key="date">
+                                            <option :value="date" x-text="date"></option>
+                                        </template>
+                                    </select>
+
+                                    <!-- Search Input -->
+                                    <div class="relative w-full md:w-72">
+                                        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"></i>
+                                        <input type="text" x-model.debounce.300ms="khoRenewSearchQuery" placeholder="Tìm email, trạng thái, mã ghép..." 
+                                            class="w-full bg-gray-50 border border-gray-200 rounded-lg py-1.5 pl-8 pr-4 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border border-gray-100 rounded-lg overflow-hidden">
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                            <tr class="bg-gray-50 border-b border-gray-100 text-gray-600 font-bold">
+                                                <th class="p-3 w-16">STT Fam</th>
+                                                <th class="p-3">Email</th>
+                                                <th class="p-3">Pass</th>
+                                                <th class="p-3">MKP</th>
+                                                <th class="p-3">2FA</th>
+                                                <th class="p-3">Ngày Renew</th>
+                                                <th class="p-3">Ngày Nhập</th>
+                                                <th class="p-3">Trạng thái</th>
+                                                <th class="p-3">Ghi chú</th>
+                                                <th class="p-3">Fam Hiện Tại</th>
+                                                <th class="p-3 text-right">Thao tác</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <template x-for="c in filteredKhoRenewList.filter(c => !khoRenewSearchQuery || c.email.toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.status || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.famFollow || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.sttFam || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()) || (c.notes || '').toLowerCase().includes(khoRenewSearchQuery.toLowerCase()))" :key="c.email">
+                                                <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors" :class="editingKhoEmail === c.email ? 'bg-blue-50/30' : ''">
+                                                    <!-- STT Fam -->
+                                                    <td class="p-3 font-bold">
+                                                        <span class="bg-indigo-50 border border-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded text-[10px] font-black inline-block shadow-2xs" x-show="c.sttFam" x-text="c.sttFam"></span>
+                                                        <span x-show="!c.sttFam" class="text-gray-400 font-medium">-</span>
+                                                    </td>
+
+                                                    <!-- Email (Không sửa) -->
+                                                    <td class="p-3 font-medium text-gray-700 cursor-pointer hover:text-primary" 
+                                                        @click="editingKhoEmail !== c.email && copyToClipboard(c.email, 'Email')" x-text="c.email"></td>
+                                                    
+                                                    <!-- Pass (Không sửa) -->
+                                                    <td class="p-3 font-mono text-gray-600 cursor-pointer hover:text-primary" 
+                                                        @click="editingKhoEmail !== c.email && copyToClipboard(c.pass, 'Pass')" x-text="c.pass"></td>
+                                                    
+                                                    <!-- MKP (Không sửa) -->
+                                                    <td class="p-3 font-mono text-gray-500 cursor-pointer hover:text-primary" 
+                                                        @click="editingKhoEmail !== c.email && copyToClipboard(c.recoveryEmail, 'MKP')" x-text="c.recoveryEmail || '-'"></td>
+                                                    
+                                                    <!-- 2FA (Sửa được) -->
+                                                    <td class="p-3 font-mono text-gray-500">
+                                                        <template x-if="editingKhoEmail === c.email">
+                                                            <input type="text" x-model="editingKhoTwofa" placeholder="2FA key" 
+                                                                class="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-primary text-gray-800">
+                                                        </template>
+                                                        <template x-if="editingKhoEmail !== c.email">
+                                                            <div class="flex items-center gap-1.5">
+                                                                <span class="cursor-pointer hover:text-primary max-w-[80px] truncate block font-mono" @click="copyToClipboard(c.twofa, '2FA')" x-text="c.twofa || '-'"></span>
+                                                                <template x-if="c.twofa && c.twofa.trim() && c.twofa.trim() !== '-'">
+                                                                    <button @click="copyFamRenewTwofaCode(c)" class="bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 text-[9px] font-bold px-1.5 py-1 rounded transition-all shrink-0 flex items-center gap-0.5">
+                                                                        <i data-lucide="key" class="w-2.5 h-2.5"></i> OTP
+                                                                    </button>
+                                                                </template>
+                                                            </div>
+                                                        </template>
+                                                    </td>
+                                                    
+                                                    <!-- Ngày Renew (Sửa được) -->
+                                                    <td class="p-3 text-gray-500">
+                                                        <template x-if="editingKhoEmail === c.email">
+                                                            <input type="date" x-model="editingKhoRenewDate" 
+                                                                class="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-primary font-medium text-gray-700">
+                                                        </template>
+                                                        <template x-if="editingKhoEmail !== c.email">
+                                                            <span class="cursor-pointer hover:text-primary" @click="copyToClipboard(c.renewDate, 'Ngày Renew')" x-text="c.renewDate || '-'"></span>
+                                                        </template>
+                                                    </td>
+                                                    
+                                                    <!-- Ngày Nhập (Không sửa) -->
+                                                    <td class="p-3 text-gray-500" x-text="c.importDate || '-'"></td>
+                                                    
+                                                    <!-- Trạng thái (Sửa được) -->
+                                                    <td class="p-3">
+                                                        <template x-if="editingKhoEmail === c.email">
+                                                            <select x-model="editingKhoStatus" 
+                                                                class="bg-white border border-gray-200 rounded px-1 py-1 text-xs focus:outline-none focus:border-primary font-medium text-gray-700">
+                                                                <option value="Sẵn sàng">🟢 Sẵn sàng</option>
+                                                                <option value="Chưa sẵn sàng">🟢 Chưa sẵn sàng</option>
+                                                                <option value="Đã dùng">🔵 Đã dùng</option>
+                                                                <option value="Ver lần 1">🟠 Ver lần 1</option>
+                                                                <option value="Ver lần 2">🟣 Ver lần 2</option>
+                                                                <option value="Banned">🔴 Banned</option>
+                                                                <option value="ko có Trail">🟣 ko có Trail</option>
+                                                                <option value="Ver khi chưa dùng">🟣 Ver khi chưa dùng</option>
+                                                                <option value="Lỗi Pay">🟡 Lỗi Pay</option>
+                                                            </select>
+                                                        </template>
+                                                        <template x-if="editingKhoEmail !== c.email">
+                                                            <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-sm inline-block" 
+                                                                :class="getKhoStatusBadgeClass(c.status)" x-text="c.status || 'Sẵn sàng'"></span>
+                                                        </template>
+                                                    </td>
+                                                    
+                                                    <!-- Ghi chú (Sửa được) -->
+                                                    <td class="p-3 text-gray-500">
+                                                        <template x-if="editingKhoEmail === c.email">
+                                                            <input type="text" x-model="editingKhoNotes" placeholder="Nhập ghi chú lỗi..." 
+                                                                class="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-primary text-gray-800">
+                                                        </template>
+                                                        <template x-if="editingKhoEmail !== c.email">
+                                                            <span class="cursor-pointer hover:text-primary max-w-[150px] truncate block" 
+                                                                  :title="c.notes || '-'"
+                                                                  @click="copyToClipboard(c.notes, 'Ghi chú')" x-text="c.notes || '-'"></span>
+                                                        </template>
+                                                    </td>
+                                                    
+                                                    <!-- Fam Hiện Tại -->
+                                                    <td class="p-3">
+                                                        <div class="flex flex-col gap-0.5" x-show="c.famFollow">
+                                                            <span class="text-[10px] font-extrabold text-indigo-600" x-text="c.famFollow"></span>
+                                                            <span class="text-[9px] text-gray-400 truncate max-w-[150px]" 
+                                                                  :title="famRenewList.find(i => String(i.stt) === String(c.famFollow))?.email || ''"
+                                                                  x-text="famRenewList.find(i => String(i.stt) === String(c.famFollow))?.email || ''"></span>
+                                                        </div>
+                                                        <span x-show="!c.famFollow" class="text-gray-400 font-medium">-</span>
+                                                    </td>
+                                                    
+                                                    <!-- Thao tác (Sửa/Lưu/Hủy) -->
+                                                    <td class="p-3 text-right">
+                                                        <template x-if="editingKhoEmail === c.email">
+                                                            <div class="flex justify-end gap-1.5">
+                                                                <button @click="saveKhoItem(c)" :disabled="isSavingKhoItem"
+                                                                    class="bg-emerald-600 text-white px-2 py-1 rounded text-[10px] font-bold hover:bg-emerald-700 transition-all">
+                                                                    Lưu
+                                                                </button>
+                                                                <button @click="cancelEditKho()" :disabled="isSavingKhoItem"
+                                                                    class="bg-gray-100 text-gray-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-gray-200 transition-all">
+                                                                    Hủy
+                                                                </button>
+                                                            </div>
+                                                        </template>
+                                                        <template x-if="editingKhoEmail !== c.email">
+                                                            <button @click="startEditKho(c)"
+                                                                class="text-primary hover:bg-primary-light border border-transparent hover:border-primary/20 px-2 py-1 rounded text-[10px] font-bold transition-all">
+                                                                Sửa
+                                                            </button>
+                                                        </template>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filter Bar -->
+                    <div x-show="famRenewView==='table'" class="bg-white p-3 rounded-xl border border-gray-100 card-shadow flex flex-wrap items-center gap-3 mb-5">
+                        <div class="relative flex-1 min-w-[200px]">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                            <input type="text" x-model.debounce.300ms="famRenewSearchQuery" placeholder="Tìm email, pass, loại, source..." class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 pl-9 pr-4 text-xs focus:outline-none focus:border-primary text-gray-700">
+                        </div>
+                        <select x-model="famRenewFilterStatus" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-primary text-gray-700 font-medium">
+                            <option value="all">Tất cả trạng thái</option>
+                            <option value="Mới">Mới (chưa test)</option>
+                            <option value="Đang dùng">Đang dùng</option>
+                            <option value="Quét ver 1">Quét ver 1</option>
+                            <option value="Lỗi BH">Lỗi BH</option>
+                            <option value="Hết hạn - đã thay">Hết hạn - đã thay</option>
+                            <option value="Hủy (ver 2)">Hủy (ver 2)</option>
+                            <template x-for="st in famRenewStatuses" :key="st">
+                                <option :value="st" x-text="st"></option>
+                            </template>
+                        </select>
+                        <label class="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+                            <input type="checkbox" x-model="famRenewShowUrgentOnly" class="rounded">
+                            <span>Chỉ xem cần xử lý</span>
+                        </label>
+                    </div>
+
+                    <!-- Table -->
+                    <div x-show="famRenewView==='table'" class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse text-xs">
+                                <thead>
+                                    <tr class="bg-gray-50 border-b border-gray-100">
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest w-8">#</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Trạng thái / Cảnh báo</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mail</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pass</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">2FA</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mail KP</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Số Slot</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Hết hạn</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Ghi chú / Thay thế</th>
+                                        <th class="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="item in filteredFamRenew" :key="item.id">
+                                        <tr class="border-b border-gray-100 transition-colors"
+                                            :class="getFamRenewAlert(item).isWarrantyUrgent ? 'bg-red-50/40' : getFamRenewAlert(item).isExpiryUrgent ? 'bg-orange-50/40' : 'hover:bg-gray-50/50'">
+
+                                            <!-- STT -->
+                                            <td class="px-4 py-3 text-gray-400" x-text="item.stt || item.rowIndex"></td>
+
+                                            <!-- Status + Alert -->
+                                            <td class="px-4 py-3">
+                                                <div class="flex flex-col gap-1">
+                                                    <span class="px-2 py-0.5 text-[10px] font-bold rounded uppercase border inline-block w-fit"
+                                                        :class="item.status === 'Đang dùng' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                                                                item.status === 'Mới' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                                                                (item.status && item.status.toLowerCase().includes('slot')) ? 'bg-cyan-50 border-cyan-200 text-cyan-700 border-dashed font-extrabold shadow-sm' :
+                                                                item.status === 'Quét ver 1' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                                                                item.status === 'Lỗi BH' ? 'bg-red-50 border-red-200 text-red-700' :
+                                                                item.status === 'Hủy (ver 2)' ? 'bg-gray-100 border-gray-300 text-gray-500' :
+                                                                item.status === 'Hết hạn - đã thay' ? 'bg-purple-50 border-purple-200 text-purple-600' :
+                                                                'bg-gray-50 border-gray-200 text-gray-600'"
+                                                        x-text="item.status || 'Chưa có'">
+                                                    </span>
+                                                    <!-- Alert badge -->
+                                                    <template x-if="getFamRenewAlert(item).text">
+                                                        <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border w-fit animate-pulse"
+                                                              :class="getFamRenewAlert(item).alertClass"
+                                                              x-text="getFamRenewAlert(item).text">
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                            </td>
+
+                                            <!-- Mail -->
+                                            <td class="px-4 py-3">
+                                                <span class="font-bold text-gray-800 cursor-pointer hover:text-primary select-all" @click="copyToClipboard(item.email, 'Email')" x-text="item.email"></span>
+                                            </td>
+
+                                            <!-- Pass -->
+                                            <td class="px-4 py-3">
+                                                <span class="font-mono text-gray-500 cursor-pointer hover:text-primary select-all" @click="copyToClipboard(item.pass, 'Mật khẩu')" x-text="item.pass || '-'"></span>
+                                            </td>
+
+                                            <!-- 2FA -->
+                                            <td class="px-4 py-3">
+                                                <div class="flex items-center gap-1.5">
+                                                    <span class="font-mono text-gray-400 max-w-[80px] truncate cursor-pointer hover:text-primary" @click="copyToClipboard(item.twofa, '2FA Key')" x-text="item.twofa || '-'"></span>
+                                                    <template x-if="item.twofa && item.twofa.trim()">
+                                                        <button @click="copyFamRenewTwofaCode(item)" class="bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 text-[9px] font-bold px-1.5 py-1 rounded transition-all shrink-0 flex items-center gap-0.5">
+                                                            <i data-lucide="key" class="w-2.5 h-2.5"></i> OTP
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                            </td>
+
+                                            <!-- Mail KP -->
+                                            <td class="px-4 py-3">
+                                                <span class="font-mono text-gray-400 cursor-pointer hover:text-primary select-all max-w-[100px] truncate block" @click="copyToClipboard(item.recoveryEmail, 'Mail khôi phục')" x-text="item.recoveryEmail || '-'"></span>
+                                            </td>
+
+                                            <!-- Số Slot -->
+                                            <td class="px-4 py-3 text-gray-500 font-bold" x-text="item.slots || '-'"></td>
+
+                                            <!-- Ngày hết hạn -->
+                                            <td class="px-4 py-3">
+                                                <span class="font-bold"
+                                                    :class="getFamRenewAlert(item).isExpiryUrgent ? 'text-orange-600' : 'text-gray-600'"
+                                                    x-text="item.expiryDate || '-'">
+                                                </span>
+                                            </td>
+
+                                            <!-- Ghi chú / Thay thế -->
+                                            <td class="px-4 py-3">
+                                                <span class="text-gray-500 cursor-pointer hover:text-primary select-all max-w-[120px] truncate block" @click="copyToClipboard(item.source, 'Ghi chú')" x-text="item.source || '-'"></span>
+                                            </td>
+
+                                            <!-- Actions -->
+                                            <td class="px-4 py-3 text-right">
+                                                <div class="flex items-center justify-end gap-1 flex-wrap">
+                                                    <!-- Nâng gói thành công -->
+                                                    <button @click="openFamRenewConfirm(item, 'Đang dùng')" 
+                                                            class="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-bold px-2 py-1.5 rounded transition-all"
+                                                            x-show="item.status === 'Mới' || item.status === 'Quét ver 1' || !item.status">
+                                                        ✓ Đã Nâng
+                                                    </button>
+                                                    <!-- Lỗi BH -->
+                                                    <button @click="openFamRenewConfirm(item, 'Lỗi BH')"
+                                                            class="bg-red-50 hover:bg-red-100 text-red-700 text-[10px] font-bold px-2 py-1.5 rounded border border-red-200 transition-all"
+                                                            x-show="item.status === 'Mới' || !item.status">
+                                                        Lỗi BH
+                                                    </button>
+                                                    <!-- Báo quét ver -->
+                                                    <button @click="openFamRenewConfirm(item, 'Quét ver 1')"
+                                                            class="bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] font-bold px-2 py-1.5 rounded border border-amber-200 transition-all"
+                                                            x-show="item.status === 'Đang dùng'">
+                                                        Báo Ver
+                                                    </button>
+                                                    <!-- Đã thay / hết hạn -->
+                                                    <button @click="openFamRenewConfirm(item, 'Hết hạn - đã thay')"
+                                                            class="bg-purple-50 hover:bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-1.5 rounded border border-purple-200 transition-all"
+                                                            x-show="item.status === 'Đang dùng' || item.status === 'Quét ver 1'">
+                                                        Đã Thay
+                                                    </button>
+                                                    <!-- Hủy ver 2 -->
+                                                    <button @click="openFamRenewConfirm(item, 'Hủy (ver 2)')"
+                                                            class="bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-1.5 rounded border border-gray-200 transition-all"
+                                                            x-show="item.status === 'Quét ver 1'">
+                                                        Hủy Ver 2
+                                                    </button>
+                                                    <!-- Copy full -->
+                                                    <button @click="copyToClipboard(`${item.email}|${item.pass}|${item.recoveryEmail}|${item.twofa}`, 'Thông tin tài khoản')"
+                                                            class="bg-gray-100 hover:bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-1.5 rounded border border-gray-200 transition-all flex items-center gap-0.5">
+                                                        <i data-lucide="copy" class="w-3 h-3"></i>
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="filteredFamRenew.length === 0">
+                                        <tr><td colspan="9" class="px-6 py-10 text-center text-sm text-gray-400">Không có tài khoản nào phù hợp.</td></tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- Tab: Theo Dõi Lỗi -->
+                    <!-- Tab: Theo Dõi Lỗi -->
+                    <div x-show="famRenewView==='loi_fam'" x-cloak
+                        x-init="startLoiAutoRefresh()">
+
+                        <!-- Header: bộ lọc + refresh -->
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+                            <div class="flex flex-wrap gap-2">
+                                <button @click="loiFilter='all'"
+                                    :class="loiFilter==='all' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 border border-gray-200'"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+                                    Tất cả
+                                    <span class="bg-white/20 text-xs px-1.5 py-0.5 rounded-full font-extrabold ml-1" x-text="loiFams.length"></span>
+                                </button>
+                                <template x-for="st in loiStatuses" :key="st">
+                                    <button @click="loiFilter = (loiFilter===st ? 'all' : st)"
+                                        :class="loiFilter===st ? 'bg-primary text-white shadow' : 'bg-white text-gray-500 border border-gray-200'"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+                                        <span x-text="st"></span>
+                                        <span class="bg-white/20 text-xs px-1.5 py-0.5 rounded-full font-extrabold" x-text="getLoiCount(st)"></span>
+                                    </button>
+                                </template>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400 flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse inline-block"></span>
+                                    Cập nhật: <span x-text="loiLastRefreshed || '--:--'"></span>
+                                </span>
+                                <button @click="loadDataset('famrenew', true).then(() => loiLastRefreshed = new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit'}))"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 flex items-center gap-1 transition-all">
+                                    <i data-lucide="refresh-cw" class="w-3 h-3"></i> Làm mới
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Danh sách Fam lỗi -->
+                        <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden mb-6">
+                            <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-500"></i>
+                                    Fam chưa hết hạn đang có vấn đề
+                                </h3>
+                                <span class="text-xs text-gray-400" x-text="loiFams.length + ' fam'"></span>
+                            </div>
+                            <!-- Table header -->
+                            <!-- Table header -->
+                            <div class="grid grid-cols-12 gap-2 px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                <div class="col-span-3">Email</div>
+                                <div class="col-span-2">Pass / MKP</div>
+                                <div class="col-span-2">Trạng thái</div>
+                                <div class="col-span-3">HSD (Ngày Renew)</div>
+                                <div class="col-span-2">Thao tác</div>
+                            </div>
+                            <div class="divide-y divide-gray-50 max-h-[460px] overflow-y-auto">
+                                <template x-for="item in loiFams" :key="item.email">
+                                    <div class="grid grid-cols-12 gap-2 px-4 py-3 hover:bg-gray-50/60 transition-all items-center text-sm">
+                                        <!-- Email -->
+                                        <div class="col-span-3">
+                                            <span class="font-mono text-gray-800 text-sm font-bold cursor-pointer hover:text-primary transition-colors"
+                                                @click="copyToClipboard(item.email,'Email')"
+                                                x-text="item.email"></span>
+                                        </div>
+                                        <!-- Pass / MKP -->
+                                        <div class="col-span-2 space-y-1">
+                                            <div class="flex gap-1.5 items-center">
+                                                <span class="text-xs text-gray-400 w-10">Pass:</span>
+                                                <span class="font-mono text-xs text-gray-700 cursor-pointer hover:text-primary"
+                                                    @click="copyToClipboard(item.pass,'Pass')"
+                                                    x-text="item.pass||'-'"></span>
+                                            </div>
+                                            <div class="flex gap-1.5 items-center">
+                                                <span class="text-xs text-gray-400 w-10">MKP:</span>
+                                                <span class="font-mono text-xs text-gray-700 cursor-pointer hover:text-primary truncate max-w-[100px]"
+                                                    @click="copyToClipboard(item.recoveryEmail,'MKP')"
+                                                    x-text="item.recoveryEmail||'-'"></span>
+                                            </div>
+                                        </div>
+                                        <!-- Status badge -->
+                                        <div class="col-span-2">
+                                            <span :class="getKhoStatusBadgeClass(item.status)" class="text-xs px-2 py-1" x-text="item.status"></span>
+                                        </div>
+                                        <!-- HSD -->
+                                        <div class="col-span-3">
+                                            <template x-if="item.renewDate">
+                                                <div>
+                                                    <span class="font-bold text-sm"
+                                                        :class="loiDaysLeft(item.renewDate) !== null && loiDaysLeft(item.renewDate) <= 7 ? 'text-orange-600' : 'text-gray-700'"
+                                                        x-text="item.renewDate"></span>
+                                                    <span class="text-xs block"
+                                                        :class="loiDaysLeft(item.renewDate) !== null && loiDaysLeft(item.renewDate) <= 0 ? 'text-red-500 font-bold' : 'text-gray-400'"
+                                                        x-text="loiDaysLeft(item.renewDate) !== null ? (loiDaysLeft(item.renewDate) >= 0 ? 'còn ' + loiDaysLeft(item.renewDate) + ' ngày' : 'quá hạn ' + Math.abs(loiDaysLeft(item.renewDate)) + ' ngày') : ''"></span>
+                                                </div>
+                                            </template>
+                                            <template x-if="!item.renewDate">
+                                                <span class="text-gray-400 text-xs">—</span>
+                                            </template>
+                                        </div>
+                                        <!-- Thao tác: Ghi chú / Đổi trạng thái chung -->
+                                        <div class="col-span-2">
+                                            <button @click="loiNoteForm.email = item.email; loiNoteForm.loai = item.status; showLoiNoteForm = true"
+                                                class="text-xs bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-all font-bold flex items-center justify-center gap-1.5 w-full">
+                                                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i> Xử lý
+                                            </button>
+                                        </div>
+                                        <!-- Hàng Ghi chú (Nếu có) -->
+                                        <template x-if="item.notes">
+                                            <div class="col-span-12 mt-1.5 p-2 bg-yellow-50/60 border border-yellow-200 rounded text-xs text-gray-700 flex items-start gap-2 shadow-sm">
+                                                <i data-lucide="info" class="w-3.5 h-3.5 text-yellow-600 mt-0.5 flex-shrink-0"></i>
+                                                <div class="whitespace-pre-line font-medium leading-relaxed" x-text="item.notes"></div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <template x-if="loiFams.length === 0">
+                                    <div class="text-center py-12 text-gray-400">
+                                        <i data-lucide="check-circle-2" class="w-8 h-8 mx-auto mb-2 text-emerald-300"></i>
+                                        <p class="text-sm">Không có Fam nào đang có lỗi</p>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Modal ghi chú -->
+                        <div x-show="showLoiNoteForm" x-cloak
+                            class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+                            @click.self="showLoiNoteForm=false">
+                            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+                                <h4 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+                                    <i data-lucide="pen-line" class="w-4 h-4 text-primary"></i>
+                                    Xử lý Trạng thái & Ghi chú
+                                </h4>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Email Fam</label>
+                                        <input x-model="loiNoteForm.email" type="text" readonly
+                                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-primary bg-gray-50 text-gray-500">
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Đổi trạng thái thành</label>
+                                        <select x-model="loiNoteForm.loai"
+                                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none focus:border-primary text-gray-800">
+                                            <option value="">-- Chọn loại --</option>
+                                            <template x-for="st in ['Sẵn sàng','Đã dùng','Ver lần 1','Ver lần 2','Lỗi Pay','Lỗi BH','Banned','Hủy (ver 2)']" :key="st">
+                                                <option :value="st" x-text="st"></option>
+                                            </template>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs font-bold text-gray-500 uppercase mb-1 block">Ghi chú (bắt buộc khi xử lý)</label>
+                                        <textarea x-model="loiNoteForm.xu_ly" rows="3"
+                                            placeholder="Ghi chú chi tiết cách đã xử lý..."
+                                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none"></textarea>
+                                    </div>
+                                </div>
+                                <div class="flex gap-2 mt-5">
+                                    <button @click="showLoiNoteForm=false"
+                                        class="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-500 hover:bg-gray-50 transition-all">Hủy</button>
+                                    <button @click="addLoiNote()"
+                                        class="flex-1 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 transition-all flex items-center justify-center gap-2">
+                                        <i data-lucide="save" class="w-4 h-4"></i> Lưu & Đồng bộ
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Nhật ký xử lý -->
+                        <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
+                            <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="clipboard-check" class="w-4 h-4 text-emerald-500"></i>
+                                    Nhật ký xử lý
+                                    <span class="text-xs text-emerald-600 font-normal bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">(Đồng bộ Sheet NHAT_KY_XU_LY)</span>
+                                </h3>
+                                <button @click="loiNoteForm = { email: '', loai: '', xu_ly: '' }; showLoiNoteForm=true"
+                                    class="px-3 py-1.5 rounded-lg text-sm font-bold bg-primary text-white hover:bg-primary/90 transition-all flex items-center gap-1">
+                                    <i data-lucide="plus" class="w-4 h-4"></i> Thêm mới
+                                </button>
+                            </div>
+                            <template x-if="loiNotes.length === 0">
+                                <div class="text-center py-10 text-gray-400">
+                                    <i data-lucide="clipboard" class="w-7 h-7 mx-auto mb-2 opacity-30"></i>
+                                    <p class="text-sm">Chưa có ghi chú nào</p>
+                                </div>
+                            </template>
+                            <div class="divide-y divide-gray-50 max-h-[320px] overflow-y-auto">
+                                <template x-for="note in loiNotes" :key="note.id">
+                                    <div class="flex items-start gap-3 px-4 py-3 hover:bg-gray-50/50 transition-all">
+                                        <div class="flex-1 min-w-0">
+                                            <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                                                <span class="font-mono text-sm text-gray-800 font-bold cursor-pointer hover:text-primary"
+                                                    @click="copyToClipboard(note.email,'Email')"
+                                                    x-text="note.email"></span>
+                                                <span :class="getKhoStatusBadgeClass(note.loai)" class="text-xs px-2 py-0.5" x-text="note.loai||'—'"></span>
+                                                
+                                                <span class="ml-auto flex items-center gap-2">
+                                                    <!-- Người làm -->
+                                                    <span class="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                                                        <i data-lucide="user" class="w-3 h-3"></i>
+                                                        <span x-text="note.nguoi_lam || 'Admin'"></span>
+                                                    </span>
+                                                    <!-- Ngày giờ -->
+                                                    <span class="text-xs text-gray-400" x-text="note.date"></span>
+                                                </span>
+                                            </div>
+                                            <p class="text-sm text-gray-600 leading-relaxed" x-text="note.xu_ly||'—'"></p>
+                                        </div>
+                                        <button @click="removeLoiNote(note.id)"
+                                            class="text-gray-300 hover:text-red-400 transition-colors flex-shrink-0 mt-1">
+                                            <i data-lucide="x" class="w-4 h-4"></i>
+                                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Tab: Công cụ thay nhanh & Banned -->
+                    <div x-show="famRenewView==='bulk_tool'" class="space-y-6 mb-6" x-cloak>
+                        <!-- KPI Row for Warehouse -->
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                            <div class="bg-gradient-to-br from-indigo-50 to-indigo-100/50 p-4 rounded-xl border border-indigo-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-indigo-500 font-bold block mb-1">Tổng Kho Renew</span>
+                                <span class="text-2xl font-extrabold text-indigo-700" x-text="khoRenewList.length">0</span>
+                            </div>
+                            <div class="bg-gradient-to-br from-emerald-50 to-emerald-100/50 p-4 rounded-xl border border-emerald-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-emerald-600 font-bold block mb-1">Sẵn sàng (Còn Trống)</span>
+                                <span class="text-2xl font-extrabold text-emerald-700" x-text="khoRenewList.filter(c => c.status === 'Sẵn sàng').length">0</span>
+                            </div>
+                            <div class="bg-gradient-to-br from-blue-50 to-blue-100/50 p-4 rounded-xl border border-blue-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-blue-600 font-bold block mb-1">Đã dùng (Đang chạy)</span>
+                                <span class="text-2xl font-extrabold text-blue-700" x-text="khoRenewList.filter(c => c.status === 'Đã dùng').length">0</span>
+                            </div>
+                            <div class="bg-gradient-to-br from-amber-50 to-amber-100/50 p-4 rounded-xl border border-amber-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-amber-600 font-bold block mb-1">Các Fam Lỗi</span>
+                                <span class="text-2xl font-extrabold text-amber-700" x-text="khoRenewList.filter(c => ['Chưa sẵn sàng', 'Ver lần 1', 'Ver lần 2', 'ko có Trail', 'Ver khi chưa dùng', 'Lỗi Pay'].includes(c.status)).length">0</span>
+                            </div>
+                            <div class="bg-gradient-to-br from-red-50 to-red-100/50 p-4 rounded-xl border border-red-100 card-shadow">
+                                <span class="text-[10px] uppercase tracking-wider text-red-600 font-bold block mb-1">Đã Banned</span>
+                                <span class="text-2xl font-extrabold text-red-700" x-text="khoRenewList.filter(c => c.status === 'Banned').length">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Bulk input and execution panel -->
+                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow">
+                            <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2 mb-4">
+                                <i data-lucide="bolt" class="w-4 h-4 text-primary"></i> Nhập danh sách email xử lý hàng loạt
+                            </h3>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div class="lg:col-span-1 space-y-4">
+                                    <!-- Lọc nhanh theo Ngày Renew -->
+                                    <div class="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-2">
+                                        <label class="block text-[11px] font-bold text-indigo-800 uppercase tracking-wider">⚡ Lọc nhanh theo Ngày Renew (Từ RENEW)</label>
+                                        <p class="text-[10px] text-indigo-600/80 leading-normal">Chọn ngày hết hạn để tự động lấy toàn bộ email của ngày đó.</p>
+                                        <div class="flex gap-2">
+                                            <select x-model="selectedBulkRenewDate" 
+                                                class="flex-1 bg-white border border-gray-200 rounded-lg py-1.5 px-2 text-xs focus:outline-none focus:border-indigo-600 text-gray-700 font-bold">
+                                                <option value="">-- Chọn ngày hết hạn --</option>
+                                                <template x-for="item in groupedRenewDates" :key="item.date">
+                                                    <option :value="item.date" x-text="`${item.date} (${item.count} Fam)`"></option>
+                                                </template>
+                                            </select>
+                                            <button @click="fillEmailsByRenewDate()"
+                                                class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-1.5 text-xs font-bold transition-all shrink-0 shadow-md shadow-indigo-100">
+                                                Lấy
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Nhập danh sách email (mỗi dòng hoặc phẩy 1 email)</label>
+                                        <textarea x-model="bulkEmailInput" rows="6" 
+                                            class="w-full text-xs font-medium border border-gray-200 rounded-lg p-3 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                                            placeholder="email1@gmail.com&#10;email2@gmail.com, email3@gmail.com"></textarea>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Lựa chọn hành động</label>
+                                        <div class="flex gap-4 flex-wrap items-center">
+                                            <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                                                <input type="radio" value="replace" x-model="bulkActionType" class="text-primary focus:ring-primary">
+                                                Thay thế Fam
+                                            </label>
+                                            <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                                                <input type="radio" value="status" x-model="bulkActionType" class="text-primary focus:ring-primary">
+                                                Cập nhật Trạng thái:
+                                            </label>
+                                            <select x-show="bulkActionType === 'status'" x-model="bulkStatusTarget"
+                                                class="text-xs font-bold border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary bg-white text-gray-700">
+                                                <option value="Banned">Banned</option>
+                                                <option value="Ver lần 1">Ver lần 1</option>
+                                                <option value="Ver lần 2">Ver lần 2</option>
+                                                <option value="ko có Trail">ko có Trail</option>
+                                                <option value="Ver khi chưa dùng">Ver khi chưa dùng</option>
+                                                <option value="Lỗi Pay">Lỗi Pay</option>
+                                                <option value="Chưa sẵn sàng">Chưa sẵn sàng</option>
+                                                <option value="Sẵn sàng">Sẵn sàng</option>
+                                                <option value="Đã dùng">Đã dùng</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div x-show="bulkActionType === 'replace'">
+                                        <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Cách tính HSD mới</label>
+                                        <div class="flex gap-4 flex-wrap">
+                                            <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                                                <input type="radio" value="accumulate" x-model="expiryCalculationMethod" class="text-primary focus:ring-primary">
+                                                Cộng dồn (+30d từ HSD cũ)
+                                            </label>
+                                            <label class="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                                                <input type="radio" value="today" x-model="expiryCalculationMethod" class="text-primary focus:ring-primary">
+                                                Từ hôm nay (+30d)
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <button @click="analyzeBulkEmails()" 
+                                        class="w-full bg-slate-800 text-white text-xs font-bold py-2.5 px-4 rounded-lg hover:bg-slate-900 transition-all flex items-center justify-center gap-2 shadow-sm">
+                                        <i data-lucide="sparkles" class="w-4 h-4"></i> Phân tích & Đối chiếu
+                                    </button>
+                                </div>
+
+                                <div class="lg:col-span-2 space-y-4">
+                                    <div class="border border-gray-150 rounded-xl overflow-hidden">
+                                        <div class="bg-gray-55 px-4 py-3 border-b border-gray-150 flex items-center justify-between">
+                                            <span class="text-xs font-bold text-gray-600">Bảng xem trước & đối chiếu kết quả</span>
+                                            <span class="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-full font-bold" x-text="`${bulkActionResults.length} dòng`">&nbsp;</span>
+                                        </div>
+
+                                        <div class="overflow-x-auto max-h-[280px]">
+                                            <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                                <thead class="bg-white border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
+                                                    <tr>
+                                                        <th class="px-4 py-2 w-20">STT FAM</th>
+                                                        <th class="px-4 py-2">Email</th>
+                                                        <th class="px-4 py-2">Phân loại</th>
+                                                        <th class="px-4 py-2">HSD hiện tại</th>
+                                                        <th class="px-4 py-2" x-show="bulkActionType === 'replace'">Đề xuất thay thế</th>
+                                                        <th class="px-4 py-2" x-show="bulkActionType === 'replace'">HSD mới</th>
+                                                        <th class="px-4 py-2" x-show="bulkActionType === 'status'">Trạng thái hiện tại</th>
+                                                        <th class="px-4 py-2" x-show="bulkActionType === 'status'">Cập nhật thành</th>
+                                                        <th class="px-4 py-2">Ghi chú hàng</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="divide-y divide-gray-50 bg-white">
+                                                    <template x-for="(row, idx) in bulkActionResults" :key="idx">
+                                                        <tr class="hover:bg-slate-50/50 transition-colors">
+                                                            <td class="px-4 py-2 font-mono font-bold text-indigo-700" x-text="row.stt || '-'"></td>
+                                                            <td class="px-4 py-2 font-bold text-gray-800 cursor-pointer hover:text-primary hover:underline" @click="copyToClipboard(row.email, 'Email')" title="Bấm để copy Email" x-text="row.email"></td>
+                                                            <td class="px-4 py-2">
+                                                                <template x-if="row.foundIn === 'BOTH'">
+                                                                    <span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-150 text-[10px] font-bold">Cả 2 bảng</span>
+                                                                </template>
+                                                                <template x-if="row.foundIn === 'RENEW'">
+                                                                    <span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-150 text-[10px] font-bold">Active (RENEW)</span>
+                                                                </template>
+                                                                <template x-if="row.foundIn === 'KHO_RENEW'">
+                                                                    <span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded border border-amber-150 text-[10px] font-bold">Kho (KHO_RENEW)</span>
+                                                                </template>
+                                                                <template x-if="row.foundIn === 'NOT_FOUND'">
+                                                                    <span class="bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-150 text-[10px] font-bold">Không tìm thấy</span>
+                                                                </template>
+                                                            </td>
+                                                            <td class="px-4 py-2">
+                                                                <div x-text="row.oldExpiry || '-'"></div>
+                                                                <template x-if="row.daysRemaining !== null">
+                                                                    <div :class="row.daysRemaining <= 3 ? 'text-red-500 font-bold' : 'text-gray-405'" class="text-[9px]">
+                                                                        <span x-text="row.daysRemaining > 0 ? `Còn ${row.daysRemaining} ngày` : `Quá hạn ${Math.abs(row.daysRemaining)} ngày`"></span>
+                                                                    </div>
+                                                                </template>
+                                                            </td>
+                                                            <td class="px-4 py-2" x-show="bulkActionType === 'replace'">
+                                                                <template x-if="row.stt">
+                                                                    <select :value="row.newFamEmail" @change="updateSelectedBackupEmail(row, $event.target.value)"
+                                                                        class="text-[10px] font-medium border border-gray-250 rounded p-1 focus:outline-none focus:ring-1 focus:ring-primary w-48 bg-white">
+                                                                        <option value="">-- Chọn tài khoản thay thế --</option>
+                                                                        <option :value="row.newFamEmail" x-text="`${row.newFamEmail} (Đề xuất)`" selected></option>
+                                                                        <template x-for="item in khoRenewList.filter(c => c.status === 'Sẵn sàng')" :key="item.email">
+                                                                            <option :value="item.email" x-text="item.email"></option>
+                                                                        </template>
+                                                                    </select>
+                                                                </template>
+                                                                <template x-if="!row.stt">
+                                                                    <span class="text-red-400 italic text-[10px]">Không thể thay thế (Thiếu STT Fam)</span>
+                                                                </template>
+                                                            </td>
+                                                            <td class="px-4 py-2" x-show="bulkActionType === 'replace'">
+                                                                <input type="text" x-model="row.expiryDate" class="w-20 text-[10px] border border-gray-250 rounded p-0.5 text-center focus:outline-none focus:ring-1 focus:ring-primary bg-white">
+                                                            </td>
+                                                            <td class="px-4 py-2" x-show="bulkActionType === 'status'">
+                                                                <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-sm inline-block" 
+                                                                    :class="getKhoStatusBadgeClass(row.currentStatus)" x-text="row.currentStatus || '-'"></span>
+                                                            </td>
+                                                            <td class="px-4 py-2" x-show="bulkActionType === 'status'">
+                                                                <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-sm inline-block" 
+                                                                    :class="getKhoStatusBadgeClass(bulkStatusTarget)" x-text="bulkStatusTarget || '-'"></span>
+                                                            </td>
+                                                            <td class="px-4 py-2">
+                                                                <input type="text" x-model="row.notes" placeholder="Ghi chú thêm..." class="w-full text-[10px] border border-gray-250 rounded p-0.5 focus:outline-none focus:ring-1 focus:ring-primary bg-white">
+                                                            </td>
+                                                        </tr>
+                                                    </template>
+                                                    <template x-if="bulkActionResults.length === 0">
+                                                        <tr>
+                                                            <td colspan="9" class="text-center py-8 text-gray-400 italic">Nhập email và bấm Phân tích để hiển thị kết quả đối chiếu.</td>
+                                                        </tr>
+                                                    </template>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+ 
+                                    <div class="flex justify-end gap-3" x-show="bulkActionResults.length > 0">
+                                        <button @click="copyBulkNewAccounts()" x-show="bulkActionType === 'replace'"
+                                            class="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold py-2 px-4 rounded-lg hover:bg-emerald-100 transition-all flex items-center gap-1.5 shadow-sm">
+                                            <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copy thông tin acc mới
+                                        </button>
+                                        <button @click="bulkActionResults = []" 
+                                            class="bg-white border border-gray-200 text-gray-600 text-xs font-bold py-2 px-4 rounded-lg hover:bg-gray-50 transition-all">
+                                            Hủy bỏ
+                                        </button>
+                                        <button @click="executeBulkAction()" :disabled="isExecutingBulkAction"
+                                            :class="(bulkActionType === 'banned' || bulkActionType === 'status') ? 'bg-red-600 hover:bg-red-700' : 'bg-primary hover:bg-primary/95'"
+                                            class="text-white text-xs font-bold py-2 px-4 rounded-lg transition-all flex items-center gap-2 shadow-sm">
+                                            <template x-if="isExecutingBulkAction">
+                                                <i class="animate-spin w-4 h-4" data-lucide="loader-2"></i>
+                                            </template>
+                                            <span x-text="(bulkActionType === 'banned' || bulkActionType === 'status') ? 'Xác nhận Cập nhật Trạng thái' : 'Xác nhận Thay Fam hàng loạt'"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Historical Log of Replacements & Status Updates -->
+                        <div class="bg-white p-6 rounded-xl border border-gray-100 card-shadow" x-data="{ historyTab: 'rn_tracking' }" x-init="fetchRnTracking()">
+                            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
+                                <div class="flex items-center gap-1 border-b border-gray-150 pb-1 flex-wrap">
+                                    <button @click="historyTab = 'rn_tracking'; if(rnTrackingList.length === 0) fetchRnTracking();" :class="historyTab === 'rn_tracking' ? 'text-purple-600 border-b-2 border-purple-600 font-bold bg-purple-50/60 rounded-t-lg' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="shield-check" class="w-4 h-4 text-purple-600"></i> Kiểm Soát RN (Timeline)
+                                    </button>
+                                    <button @click="historyTab = 'rn_table'; if(rnTrackingList.length === 0) fetchRnTracking();" :class="historyTab === 'rn_table' ? 'text-indigo-600 border-b-2 border-indigo-600 font-bold bg-indigo-50/60 rounded-t-lg' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="table" class="w-4 h-4 text-indigo-600"></i> Bảng Sheet KIEM_SOAT_RN
+                                    </button>
+                                    <button @click="historyTab = 'replace'; if(replaceHistoryList.length === 0) fetchReplaceHistory();" :class="historyTab === 'replace' ? 'text-emerald-600 border-b-2 border-emerald-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="history" class="w-4 h-4"></i> Lịch sử Thay thế
+                                    </button>
+                                    <button @click="historyTab = 'status'; if(statusHistoryList.length === 0) fetchStatusHistory();" :class="historyTab === 'status' ? 'text-blue-600 border-b-2 border-blue-600 font-bold' : 'text-gray-400 font-medium hover:text-gray-600'" class="py-2 px-3 text-sm flex items-center gap-2 transition-colors">
+                                        <i data-lucide="activity" class="w-4 h-4"></i> Lịch sử Trạng thái
+                                    </button>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <template x-if="historyTab === 'rn_tracking' || historyTab === 'rn_table'">
+                                        <div class="flex items-center gap-3">
+                                            <button @click="fetchRnTracking()" :disabled="isFetchingRnTracking"
+                                                class="text-xs font-bold text-purple-600 hover:underline flex items-center gap-1">
+                                                <i data-lucide="refresh-cw" :class="isFetchingRnTracking ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Làm mới
+                                            </button>
+                                        </div>
+                                    </template>
+                                    <template x-if="historyTab === 'replace'">
+                                        <button @click="fetchReplaceHistory()" :disabled="isFetchingHistory"
+                                            class="text-xs font-bold text-primary hover:underline flex items-center gap-1">
+                                            <i data-lucide="refresh-cw" :class="isFetchingHistory ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại lịch sử thay thế
+                                        </button>
+                                    </template>
+                                    <template x-if="historyTab === 'status'">
+                                        <button @click="fetchStatusHistory()" :disabled="isFetchingStatusHistory"
+                                            class="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1">
+                                            <i data-lucide="refresh-cw" :class="isFetchingStatusHistory ? 'animate-spin' : ''" class="w-3.5 h-3.5"></i> Tải lại lịch sử trạng thái
+                                        </button>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Table 0: Timeline Kiểm Soát Định Danh RN (Group theo RN) -->
+                            <div class="space-y-4" x-show="historyTab === 'rn_tracking'">
+                                <!-- Filter & Search Bar -->
+                                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-3">
+                                    <div class="relative w-full md:w-80">
+                                        <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                                        <input type="text" x-model.debounce.300ms="rnTrackingSearchQuery"
+                                            placeholder="🔍 Nhập STT RN (vd: 12, RN01...) hoặc Email để tra cứu..."
+                                            class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 shadow-sm">
+                                    </div>
+                                    <div class="flex items-center gap-1.5 flex-wrap w-full md:w-auto">
+                                        <span class="text-[11px] font-bold text-slate-500 mr-1">Lọc nhanh:</span>
+                                        <button @click="rnTrackingFilterType = 'all'"
+                                            :class="rnTrackingFilterType === 'all' ? 'bg-purple-600 text-white shadow-sm font-bold' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'"
+                                            class="px-2.5 py-1 rounded-lg text-xs transition-colors">
+                                            Tất cả Định danh
+                                        </button>
+                                        <button @click="rnTrackingFilterType = 'errors'"
+                                            :class="rnTrackingFilterType === 'errors' ? 'bg-amber-600 text-white shadow-sm font-bold' : 'bg-white text-amber-700 hover:bg-amber-50 border border-amber-200'"
+                                            class="px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 transition-colors">
+                                            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> RN Có lịch sử lỗi/Ver
+                                        </button>
+                                        <button @click="rnTrackingFilterType = 'multiple'"
+                                            :class="rnTrackingFilterType === 'multiple' ? 'bg-indigo-600 text-white shadow-sm font-bold' : 'bg-white text-indigo-700 hover:bg-indigo-50 border border-indigo-200'"
+                                            class="px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 transition-colors">
+                                            <i data-lucide="git-merge" class="w-3.5 h-3.5"></i> RN Thay nhiều lần (>1)
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- Loading / Empty state -->
+                                <div x-show="isFetchingRnTracking" class="text-center py-12 text-slate-400 font-medium">
+                                    <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto mb-2 text-purple-600"></i> Đang tải dữ liệu kiểm soát định danh RN...
+                                </div>
+                                <div x-show="!isFetchingRnTracking && groupedRnTrackingList.length === 0" class="text-center py-12 bg-slate-50 rounded-xl border border-slate-200 text-slate-400 italic">
+                                    Không tìm thấy hành trình của định danh RN nào phù hợp với bộ lọc.
+                                </div>
+
+                                <!-- List of RN Timelines -->
+                                <div x-show="!isFetchingRnTracking && groupedRnTrackingList.length > 0" class="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                                    <template x-for="(group, idx) in groupedRnTrackingList" :key="group.rn">
+                                        <div class="bg-white border rounded-xl shadow-sm overflow-hidden transition-all duration-200"
+                                            :class="group.hasError ? 'border-amber-200 hover:border-amber-400 bg-amber-50/10' : 'border-slate-200 hover:border-purple-300'"
+                                            x-data="{ open: idx === 0 || groupedRnTrackingList.length <= 3 }">
+                                            
+                                            <!-- RN Header / Summary Bar -->
+                                            <div @click="open = !open" class="px-4 py-3 bg-slate-50/80 hover:bg-slate-100/80 cursor-pointer flex items-center justify-between gap-3 border-b border-slate-100 transition-colors">
+                                                <div class="flex items-center gap-3">
+                                                    <div class="w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shadow-sm"
+                                                        :class="group.hasError ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-purple-100 text-purple-800 border border-purple-300'">
+                                                        <span x-text="group.rn"></span>
+                                                    </div>
+                                                    <div>
+                                                        <div class="flex items-center gap-2">
+                                                            <span class="font-bold text-slate-800 text-sm" x-text="`Định Danh RN: STT ${group.rn}`"></span>
+                                                            <span class="text-[10px] font-bold px-2 py-0.5 rounded border shadow-2xs"
+                                                                :class="getKhoStatusBadgeClass(group.latestStatus)" x-text="group.latestStatus"></span>
+                                                        </div>
+                                                        <div class="text-[11px] text-slate-500 font-medium flex items-center gap-2 mt-0.5">
+                                                            <span>📧 Acc hiện tại: <strong class="text-emerald-700 font-bold" x-text="group.latestEmail + (getMailSttFam(group.latestEmail) ? ' ' + getMailSttFam(group.latestEmail) : '')"></strong></span>
+                                                            <span>•</span>
+                                                            <span>🕒 Lần cuối: <span x-text="group.latestTime"></span></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="flex items-center gap-3">
+                                                    <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-200 text-slate-700 flex items-center gap-1 shadow-2xs">
+                                                        <i data-lucide="git-commit" class="w-3.5 h-3.5 text-purple-600"></i>
+                                                        <span x-text="`${group.totalEvents} bước`"></span>
+                                                    </span>
+                                                    <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform duration-200" :class="open ? 'rotate-180 text-purple-600' : ''"></i>
+                                                </div>
+                                            </div>
+
+                                            <!-- Step-by-Step Timeline Body -->
+                                            <div x-show="open" x-collapse class="p-4 bg-white">
+                                                <div class="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                                                    <template x-for="(ev, stepIdx) in group.events" :key="ev.timestamp + '_' + stepIdx">
+                                                        <div class="relative group/step">
+                                                            <!-- Timeline Dot -->
+                                                            <div class="absolute -left-6 top-1.5 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm flex items-center justify-center transition-transform group-hover/step:scale-125"
+                                                                :class="ev.eventType.includes('Thay mới') ? 'bg-emerald-500' : (ev.eventType.includes('Hoàn tác') ? 'bg-red-500' : 'bg-amber-500')">
+                                                            </div>
+                                                            
+                                                            <!-- Step Box -->
+                                                            <div class="bg-slate-50/60 hover:bg-slate-50 p-3 rounded-xl border border-slate-150 transition-colors">
+                                                                <div class="flex items-center justify-between gap-2 border-b border-slate-150/60 pb-1.5 mb-2">
+                                                                    <div class="flex items-center gap-2">
+                                                                        <span class="font-bold text-xs px-2 py-0.5 rounded shadow-2xs"
+                                                                            :class="ev.eventType.includes('Thay mới') ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : (ev.eventType.includes('Hoàn tác') ? 'bg-red-100 text-red-800 border border-red-200' : 'bg-amber-100 text-amber-800 border border-amber-200')"
+                                                                            x-text="`Bước ${stepIdx + 1}: ${ev.eventType}`"></span>
+                                                                        <span class="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                                                                            :class="getKhoStatusBadgeClass(ev.status)" x-text="ev.status"></span>
+                                                                    </div>
+                                                                    <div class="text-[10px] font-bold text-slate-400 flex items-center gap-1">
+                                                                        <i data-lucide="clock" class="w-3 h-3"></i> <span x-text="ev.timestamp"></span>
+                                                                        <span>•</span>
+                                                                        <i data-lucide="user" class="w-3 h-3"></i> <span class="text-slate-600" x-text="ev.staff"></span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <!-- Details: Old -> New Email -->
+                                                                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                                                                    <template x-if="ev.oldEmail && ev.oldEmail !== ev.newEmail && ev.oldEmail !== ''">
+                                                                        <div class="bg-white p-2 rounded-lg border border-slate-150 flex items-center justify-between">
+                                                                            <span class="text-slate-400 text-[10px] font-bold">📤 Từ Acc cũ:</span>
+                                                                            <span @click="copyToClipboard(ev.oldEmail, 'Acc cũ')" 
+                                                                                class="font-bold text-slate-700 cursor-pointer hover:text-red-600 hover:underline flex items-center gap-1"
+                                                                                title="Bấm để copy">
+                                                                                <span x-text="ev.oldEmail + (getMailSttFam(ev.oldEmail) ? ' ' + getMailSttFam(ev.oldEmail) : '')"></span>
+                                                                                <i data-lucide="copy" class="w-3 h-3 text-slate-400"></i>
+                                                                            </span>
+                                                                        </div>
+                                                                    </template>
+                                                                    
+                                                                    <div class="bg-white p-2 rounded-lg border border-slate-150 flex items-center justify-between"
+                                                                        :class="(!ev.oldEmail || ev.oldEmail === ev.newEmail) ? 'md:col-span-2' : ''">
+                                                                        <span class="text-slate-400 text-[10px] font-bold">📥 Acc áp dụng (Mới):</span>
+                                                                        <span @click="copyToClipboard(ev.newEmail || ev.oldEmail, 'Acc mới')" 
+                                                                            class="font-bold text-emerald-700 cursor-pointer hover:text-emerald-800 hover:underline flex items-center gap-1"
+                                                                            title="Bấm để copy">
+                                                                            <span x-text="(ev.newEmail || ev.oldEmail) + (getMailSttFam(ev.newEmail || ev.oldEmail) ? ' ' + getMailSttFam(ev.newEmail || ev.oldEmail) : '')"></span>
+                                                                            <i data-lucide="copy" class="w-3 h-3 text-emerald-500"></i>
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+
+                                                                <!-- Expiry & Notes -->
+                                                                <div class="mt-2 flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-150/40 text-slate-600">
+                                                                    <div>
+                                                                        <template x-if="ev.expiryDate && ev.expiryDate !== '-' && ev.expiryDate !== ''">
+                                                                            <span class="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
+                                                                                📅 HSD: <span x-text="ev.expiryDate"></span>
+                                                                            </span>
+                                                                        </template>
+                                                                    </div>
+                                                                    <div class="italic text-slate-500 text-right font-medium">
+                                                                        <span x-text="ev.notes ? `💬 Ghi chú: ${ev.notes}` : 'Không có ghi chú'"></span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Table 0.5: Bảng Tổng Hợp Sheet KIEM_SOAT_RN -->
+                            <div class="border border-gray-150 rounded-xl overflow-hidden" x-show="historyTab === 'rn_table'">
+                                <div class="overflow-x-auto max-h-[450px]">
+                                    <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                        <thead class="bg-purple-50/70 border-b border-purple-200 text-purple-900 font-bold uppercase tracking-wider sticky top-0 z-10">
+                                            <tr>
+                                                <th class="px-3 py-3">Thời gian</th>
+                                                <th class="px-3 py-3">Định Danh RN</th>
+                                                <th class="px-3 py-3">Sự Kiện</th>
+                                                <th class="px-3 py-3">Email Cũ</th>
+                                                <th class="px-3 py-3">Email Mới</th>
+                                                <th class="px-3 py-3">Trạng Thái</th>
+                                                <th class="px-3 py-3">HSD</th>
+                                                <th class="px-3 py-3">Người làm</th>
+                                                <th class="px-3 py-3">Ghi chú chi tiết</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-50 bg-white">
+                                            <template x-for="(item, iIdx) in rnTrackingList" :key="item.timestamp + '_' + iIdx">
+                                                <tr class="hover:bg-purple-50/30 transition-colors">
+                                                    <td class="px-3 py-2.5 text-gray-500 font-bold" x-text="item.timestamp"></td>
+                                                    <td class="px-3 py-2.5 font-bold text-slate-800">
+                                                        <span class="bg-purple-100 text-purple-800 border border-purple-200 px-2 py-0.5 rounded font-black text-xs" x-text="item.rn"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5 font-bold text-slate-700" x-text="item.eventType"></td>
+                                                    <td class="px-3 py-2.5">
+                                                                                        <span @click="copyToClipboard(item.oldEmail, 'Email cũ')" class="font-bold text-gray-700 hover:text-primary hover:underline cursor-pointer" x-text="(item.oldEmail || '-') + (getMailSttFam(item.oldEmail) ? ' ' + getMailSttFam(item.oldEmail) : '')"></span>
+                                                                                    </td>
+                                                                                    <td class="px-3 py-2.5">
+                                                                                        <span @click="copyToClipboard(item.newEmail, 'Email mới')" class="font-bold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer" x-text="(item.newEmail || '-') + (getMailSttFam(item.newEmail) ? ' ' + getMailSttFam(item.newEmail) : '')"></span>
+                                                                                    </td>
+                                                    <td class="px-3 py-2.5">
+                                                        <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-2xs inline-block" 
+                                                            :class="getKhoStatusBadgeClass(item.status)" x-text="item.status"></span>
+                                                    </td>
+                                                    <td class="px-3 py-2.5 font-bold text-indigo-600" x-text="item.expiryDate || '-'"></td>
+                                                    <td class="px-3 py-2.5 font-semibold text-gray-700" x-text="item.staff"></td>
+                                                    <td class="px-3 py-2.5 text-gray-500 italic" x-text="item.notes || '-'"></td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="rnTrackingList.length === 0">
+                                                <tr>
+                                                    <td colspan="9" class="text-center py-12 text-gray-400 italic">Chưa có nhật ký kiểm soát định danh RN.</td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Table 1: Lịch sử thay thế -->
+                            <div class="border border-gray-150 rounded-xl overflow-hidden" x-show="historyTab === 'replace'">
+                                <div class="overflow-x-auto max-h-[400px]">
+                                    <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                        <thead class="bg-gray-55 border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
+                                            <tr>
+                                                <th class="px-4 py-3">Thời gian</th>
+                                                <th class="px-4 py-3">STT Fam</th>
+                                                <th class="px-4 py-3">Tài khoản cũ</th>
+                                                <th class="px-4 py-3">Tài khoản mới</th>
+                                                <th class="px-4 py-3">HSD Mới</th>
+                                                <th class="px-4 py-3">Người làm</th>
+                                                <th class="px-4 py-3">Ghi chú</th>
+                                                <th class="px-4 py-3 text-center">Trạng thái</th>
+                                                <th class="px-4 py-3 text-right">Thao tác</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-50 bg-white">
+                                            <template x-for="item in replaceHistoryList" :key="item.timestamp + '_' + item.stt">
+                                                <tr class="hover:bg-slate-50/50 transition-colors">
+                                                    <td class="px-4 py-3 text-gray-500 font-bold" x-text="item.timestamp"></td>
+                                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                                        <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold" x-text="`STT ${item.stt}`"></span>
+                                                    </td>
+                                                    <td class="px-4 py-3">
+                                                        <div class="font-bold text-gray-800 cursor-pointer hover:text-primary hover:underline" @click="copyToClipboard(item.oldEmail, 'Email cũ')" title="Bấm để copy Email" x-text="item.oldEmail + (getMailSttFam(item.oldEmail) ? ' ' + getMailSttFam(item.oldEmail) : '')"></div>
+                                                        <div class="text-[9px] text-gray-400" x-text="`Pass: ${item.oldPass || '-'}`"></div>
+                                                    </td>
+                                                    <td class="px-4 py-3">
+                                                        <div class="font-bold text-emerald-700 cursor-pointer hover:text-emerald-800 hover:underline" @click="copyToClipboard(item.newEmail, 'Email mới')" title="Bấm để copy Email" x-text="item.newEmail + (getMailSttFam(item.newEmail) ? ' ' + getMailSttFam(item.newEmail) : '')"></div>
+                                                        <div class="text-[9px] text-gray-400">
+                                                            <span x-text="`Pass: ${item.newPass || '-'}`"></span>
+                                                            <template x-if="item.new2fa">
+                                                                <span class="ml-2 bg-emerald-50 text-emerald-600 border border-emerald-100 px-1 rounded font-semibold" x-text="`2FA: ${item.new2fa}`"></span>
+                                                            </template>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-4 py-3 font-bold text-gray-800" x-text="item.expiryDate"></td>
+                                                    <td class="px-4 py-3" x-text="item.staff"></td>
+                                                    <td class="px-4 py-3 text-gray-450 italic" x-text="item.notes || '-'"></td>
+                                                    <td class="px-4 py-3 text-center">
+                                                        <span :class="item.status === 'Đã hoàn tác' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-green-50 text-green-700 border-green-200'"
+                                                            class="px-2 py-0.5 rounded border text-[9px] font-bold" x-text="item.status"></span>
+                                                    </td>
+                                                    <td class="px-4 py-3 text-right">
+                                                        <div class="flex items-center justify-end gap-1.5" x-show="item.status !== 'Đã hoàn tác'">
+                                                            <button @click="startEditHistory(item)" 
+                                                                class="text-blue-600 hover:text-blue-800 text-[10px] font-bold flex items-center gap-0.5">
+                                                                <i data-lucide="edit-3" class="w-3 h-3"></i> Sửa
+                                                            </button>
+                                                            <span class="text-gray-300">|</span>
+                                                            <button @click="revertHistoryItem(item)" 
+                                                                class="text-red-600 hover:text-red-800 text-[10px] font-bold flex items-center gap-0.5">
+                                                                <i data-lucide="rotate-ccw" class="w-3 h-3"></i> Hoàn tác
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="replaceHistoryList.length === 0">
+                                                <tr>
+                                                    <td colspan="9" class="text-center py-12 text-gray-400 italic">Không có lịch sử thay thế nào.</td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- Table 2: Lịch sử trạng thái -->
+                            <div class="border border-gray-150 rounded-xl overflow-hidden" x-show="historyTab === 'status'">
+                                <div class="overflow-x-auto max-h-[400px]">
+                                    <table class="w-full text-left text-[11px] font-medium text-gray-500">
+                                        <thead class="bg-gray-55 border-b border-gray-150 text-gray-400 font-bold uppercase tracking-wider sticky top-0 z-10">
+                                            <tr>
+                                                <th class="px-4 py-3">Thời gian</th>
+                                                <th class="px-4 py-3">STT Fam</th>
+                                                <th class="px-4 py-3">Tài khoản</th>
+                                                <th class="px-4 py-3">Ngày Renew</th>
+                                                <th class="px-4 py-3">Ngày Nhập</th>
+                                                <th class="px-4 py-3">Trạng thái cập nhật</th>
+                                                <th class="px-4 py-3">Người làm</th>
+                                                <th class="px-4 py-3">Ghi chú</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-50 bg-white">
+                                            <template x-for="item in statusHistoryList" :key="item.timestamp + '_' + item.email + '_' + item.status">
+                                                <tr class="hover:bg-slate-50/50 transition-colors">
+                                                    <td class="px-4 py-3 text-gray-500 font-bold" x-text="item.timestamp"></td>
+                                                    <td class="px-4 py-3 font-bold text-slate-700">
+                                                        <span class="bg-indigo-50 text-indigo-700 border border-indigo-150 px-2 py-0.5 rounded font-bold text-[10px]" 
+                                                              x-text="(item.sttFam || getKhoRenewInfo(item.email).sttFam) ? 'STT ' + (item.sttFam || getKhoRenewInfo(item.email).sttFam) : (item.stt ? 'Slot ' + item.stt : 'STT -')"></span>
+                                                    </td>
+                                                    <td class="px-4 py-3 font-bold text-gray-800 cursor-pointer hover:text-primary hover:underline" @click="copyToClipboard(item.email, 'Email')" title="Bấm để copy Email" x-text="item.email"></td>
+                                                    <td class="px-4 py-3 text-slate-600 font-semibold" x-text="cleanDateDisplay(item.renewDate) || getKhoRenewInfo(item.email).renewDate || '-'"></td>
+                                                    <td class="px-4 py-3 text-slate-600 font-semibold" x-text="cleanDateDisplay(item.importDate) || getKhoRenewInfo(item.email).importDate || '-'"></td>
+                                                    <td class="px-4 py-3">
+                                                        <span class="text-[10px] font-bold border px-2 py-0.5 rounded shadow-sm inline-block" 
+                                                            :class="getKhoStatusBadgeClass(item.status)" x-text="item.status"></span>
+                                                    </td>
+                                                    <td class="px-4 py-3 font-semibold text-gray-700" x-text="item.staff"></td>
+                                                    <td class="px-4 py-3 text-gray-450 italic" x-text="item.notes || '-'"></td>
+                                                </tr>
+                                            </template>
+                                            <template x-if="statusHistoryList.length === 0">
+                                                <tr>
+                                                    <td colspan="8" class="text-center py-12 text-gray-400 italic">Không có lịch sử cập nhật trạng thái nào.</td>
+                                                </tr>
+                                            </template>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal: Sửa Lịch Sử Thay Thế -->
+                    <div x-show="showHistoryEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" x-cloak>
+                        <div class="bg-white rounded-2xl w-full max-w-lg overflow-hidden border border-slate-100 card-shadow animate-in fade-in zoom-in-95 duration-150">
+                            <!-- Header -->
+                            <div class="px-6 py-4 bg-slate-50 border-b border-gray-150 flex items-center justify-between">
+                                <h3 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+                                    <i data-lucide="edit-3" class="w-4 h-4 text-primary"></i> Sửa lịch sử thay thế
+                                </h3>
+                                <button @click="cancelEditHistory()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                                    <i data-lucide="x" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+                            <!-- Body -->
+                            <template x-if="editingHistoryRow">
+                                <div class="p-6 space-y-4">
+                                <div class="bg-slate-50 p-3 rounded-lg text-xs space-y-1">
+                                    <div><span class="font-bold text-gray-500">STT Fam:</span> <span class="font-bold text-gray-800" x-text="editingHistoryRow.stt"></span></div>
+                                    <div><span class="font-bold text-gray-500">Tài khoản cũ:</span> <span class="font-medium text-gray-800" x-text="editingHistoryRow.oldEmail"></span></div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Email mới</label>
+                                        <input type="text" x-model="editingHistoryRow.newEmail" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Mật khẩu mới</label>
+                                        <input type="text" x-model="editingHistoryRow.newPass" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">2FA mới</label>
+                                        <input type="text" x-model="editingHistoryRow.new2fa" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Email khôi phục mới</label>
+                                        <input type="text" x-model="editingHistoryRow.newMkp" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Hạn sử dụng mới (HSD)</label>
+                                        <input type="text" x-model="editingHistoryRow.expiryDate" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Ghi chú</label>
+                                        <input type="text" x-model="editingHistoryRow.notes" class="w-full text-xs font-semibold border border-gray-200 rounded-lg p-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary bg-white">
+                                    </div>
+                                </div>
+                                </div>
+                            </template>
+                            <!-- Footer -->
+                            <div class="px-6 py-4 bg-gray-50 border-t border-gray-150 flex justify-end gap-3">
+                                <button @click="cancelEditHistory()" class="bg-white border border-gray-200 text-gray-600 text-xs font-bold py-2 px-4 rounded-lg hover:bg-gray-50 transition-all">Hủy</button>
+                                <button @click="saveHistoryEdit()" class="bg-primary text-white text-xs font-bold py-2 px-4 rounded-lg hover:bg-primary/95 transition-all shadow-sm">Lưu thay đổi</button>
+                            </div>
+                    </div>
+
+                </div>
+                </div>

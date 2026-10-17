@@ -1,0 +1,799 @@
+                <div x-show="activeModule === 'data_goc' && isModuleAllowed('data_goc')" x-cloak class="space-y-6">
+                    <!-- Header Bar -->
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-100 card-shadow">
+                        <div>
+                            <div class="flex items-center gap-2.5">
+                                <span class="bg-indigo-50 text-indigo-600 p-2 rounded-xl border border-indigo-100 flex items-center justify-center">
+                                    <i data-lucide="database" class="w-6 h-6"></i>
+                                </span>
+                                <h1 class="text-2xl font-black text-gray-900 tracking-tight">Hệ Thống DATAGoc (Tra Cứu & Gia Hạn AI)</h1>
+                            </div>
+                            <p class="text-sm text-gray-500 mt-1">Tra cứu nhanh thông tin khách hàng gốc, tự động hóa gia hạn qua AI từ tin nhắn Zalo và đồng bộ sheet ngay lập tức.</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2.5">
+                            <button @click="fetchDataGoc(true)" :disabled="isFetchingDataGoc" class="bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all">
+                                <i data-lucide="rotate-cw" class="w-4 h-4" :class="isFetchingDataGoc ? 'animate-spin text-indigo-600' : ''"></i>
+                                <span>Đồng Bộ Lại</span>
+                            </button>
+                            <div class="bg-gray-100 p-1 rounded-xl flex items-center gap-1">
+                                <button @click="dataGocActiveTab = 'list'" :class="dataGocActiveTab === 'list' ? 'bg-white text-gray-900 shadow-sm font-extrabold' : 'text-gray-600 font-medium hover:text-gray-900'" class="px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2">
+                                    <i data-lucide="list" class="w-4 h-4"></i>
+                                    <span>Danh Sách (<span x-text="filteredDataGocList.length"></span>)</span>
+                                </button>
+                                <button @click="dataGocActiveTab = 'ai_tool'" :class="dataGocActiveTab === 'ai_tool' ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md font-extrabold' : 'text-gray-600 font-medium hover:text-gray-900'" class="px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2">
+                                    <i data-lucide="sparkles" class="w-4 h-4 text-yellow-300"></i>
+                                    <span>Gia Hạn AI Smart Paste</span>
+                                </button>
+                                <button @click="dataGocActiveTab = 'bulk_ai'" :class="dataGocActiveTab === 'bulk_ai' ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md font-extrabold' : 'text-gray-600 font-medium hover:text-gray-900'" class="px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2">
+                                    <i data-lucide="layers" class="w-4 h-4 text-emerald-300"></i>
+                                    <span>Đồng Bộ Hàng Loạt (Bulk Paste)</span>
+                                </button>
+                                <button x-show="currentUserRole === 'admin'" x-cloak @click="dataGocActiveTab = 'diff_appdata'; calculateAppDataDiff()" :class="dataGocActiveTab === 'diff_appdata' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md font-extrabold' : 'text-gray-600 font-medium hover:text-gray-900'" class="px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2">
+                                    <i data-lucide="git-compare" class="w-4 h-4" :class="dataGocActiveTab === 'diff_appdata' ? 'text-white' : 'text-indigo-600'"></i>
+                                    <span>Đối Chiếu APP_DATA</span>
+                                    <span x-show="appDataDiffList.filter(i => i.status !== 'unchanged').length > 0"
+                                        class="px-2 py-0.5 rounded-full text-[11px] font-black"
+                                        :class="dataGocActiveTab === 'diff_appdata' ? 'bg-white text-indigo-700' : 'bg-indigo-100 text-indigo-700'"
+                                        x-text="appDataDiffList.filter(i => i.status !== 'unchanged').length"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 1: DANH SÁCH TRA CỨU KHÁCH HÀNG -->
+                    <div x-show="dataGocActiveTab === 'list'" class="space-y-4">
+                        <!-- Filters Bar -->
+                        <div class="bg-white p-5 rounded-2xl border border-gray-100 card-shadow flex flex-col 2xl:flex-row 2xl:items-center gap-4 justify-between">
+                            <div class="relative flex-1 min-w-0">
+                                <i data-lucide="search" class="w-5 h-5 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                                <input type="text" x-model.debounce.300ms="dataGocSearchQuery" placeholder="Gõ email khách hàng, mail phụ, tên gói hoặc CTV để tra cứu ngay lập tức..." class="w-full pl-11 pr-4 py-2.5 bg-gray-50/70 border border-gray-200 rounded-xl text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium">
+                                <button x-show="dataGocSearchQuery" @click="dataGocSearchQuery = ''" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600" x-cloak>
+                                    <i data-lucide="x" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2.5">
+                                <button @click="dataGocFilterProduct = 'ChatGPT'; dataGocSearchQuery = '';" class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-indigo-100">
+                                    <i data-lucide="monitor-smartphone" class="w-3.5 h-3.5"></i>
+                                    <span>Lọc ChatGPT</span>
+                                </button>
+                                <select x-model="dataGocFilterProduct" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                    <option value="all">Sản Phẩm: Tất cả</option>
+                                    <option value="YTB">Youtube (YTB)</option>
+                                    <option value="ChatGPT">ChatGPT</option>
+                                    <option value="Netflix">Netflix</option>
+                                    <option value="Canva">Canva</option>
+                                    <option value="Google One">Google One / Drive</option>
+                                    <option value="Spotify">Spotify</option>
+                                </select>
+                                <select x-model="dataGocFilterCategory" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                    <option value="all">Phân Loại: Tất cả</option>
+                                    <option value="FULL">FULL</option>
+                                    <option value="NOM">NOM</option>
+                                    <option value="PLUS">PLUS</option>
+                                </select>
+                                <select x-model="dataGocFilterStaff" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                    <option value="all">CTV: Tất cả</option>
+                                    <option value="Dnc">DNC</option>
+                                    <option value="Lộc">Lộc</option>
+                                    <option value="Tuan">Tuấn</option>
+                                </select>
+                                <select x-model="dataGocFilterStatus" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                    <option value="all">Hạn Sử Dụng: Tất cả</option>
+                                    <option value="active">Còn hạn (>15 ngày)</option>
+                                    <option value="warning">Sắp hết hạn (<=15 ngày)</option>
+                                    <option value="expired">Quá hạn</option>
+                                </select>
+                                <div class="flex items-center bg-gray-100 p-1 rounded-xl shrink-0">
+                                    <button @click="dataGocViewMode = 'table'" :class="dataGocViewMode === 'table' ? 'bg-white text-indigo-600 shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-700'" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5" title="Bảng Tổng Quan Gọn">
+                                        <i data-lucide="table-2" class="w-3.5 h-3.5"></i>
+                                        <span>Bảng Gọn</span>
+                                    </button>
+                                    <button @click="dataGocViewMode = 'cards'" :class="dataGocViewMode === 'cards' ? 'bg-white text-indigo-600 shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-700'" class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5" title="Lưới Thẻ (Cards)">
+                                        <i data-lucide="layout-grid" class="w-3.5 h-3.5"></i>
+                                        <span>Lưới Thẻ</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Data Table (Bảng Gọn - Không phải kéo ngang) -->
+                        <div x-show="dataGocViewMode === 'table'" class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                            <div class="overflow-y-auto max-h-[680px]">
+                                <table class="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr class="bg-gray-50/95 border-b border-gray-200/80 text-[11px] font-extrabold text-gray-500 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-md">
+                                            <th class="py-3.5 px-4 text-center w-12">#</th>
+                                            <th class="py-3.5 px-5">Khách Hàng & Dịch Vụ</th>
+                                            <th class="py-3.5 px-4">Chu Kỳ & Hạn Sử Dụng (HSD)</th>
+                                            <th class="py-3.5 px-4 text-center">Trạng Thái HSD</th>
+                                            <th class="py-3.5 px-4 text-center w-28">Thao Tác</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 text-sm">
+                                        <template x-if="isFetchingDataGoc && filteredDataGocList.length === 0">
+                                            <tr>
+                                                <td colspan="5" class="py-16 text-center text-gray-400 font-medium">
+                                                    <i data-lucide="loader-2" class="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-500"></i>
+                                                    Đang đồng bộ dữ liệu từ sheet DATAGoc...
+                                                </td>
+                                            </tr>
+                                        </template>
+                                        <template x-if="!isFetchingDataGoc && filteredDataGocList.length === 0">
+                                            <tr>
+                                                <td colspan="5" class="py-16 text-center text-gray-400 font-medium">
+                                                    <i data-lucide="database-backup" class="w-10 h-10 mx-auto mb-2 text-gray-300"></i>
+                                                    Không tìm thấy khách hàng nào thỏa điều kiện tra cứu.
+                                                </td>
+                                            </tr>
+                                        </template>
+                                        <template x-for="(item, index) in paginatedDataGocList" :key="index">
+                                            <tr class="hover:bg-indigo-50/40 transition-all group border-b border-gray-100/80">
+                                                <!-- Cột 1: STT -->
+                                                <td class="py-4 px-4 text-center font-bold text-gray-400 text-xs" x-text="index + 1"></td>
+                                                
+                                                <!-- Cột 2: Khách Hàng & Dịch Vụ -->
+                                                <td class="py-4 px-5">
+                                                    <div class="flex flex-wrap items-center gap-2 mb-2">
+                                                        <span class="font-bold text-gray-900 text-sm cursor-pointer hover:text-indigo-600 hover:underline select-all tracking-tight"
+                                                            @click="copyToClipboard(item.email, 'Email')"
+                                                            title="Bấm để copy Email"
+                                                            x-text="item.email"></span>
+                                                        <button @click="copyToClipboard(item.email, 'Email')" class="text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" title="Copy Email">
+                                                            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                                        </button>
+                                                        <template x-if="item.subEmail && item.subEmail !== '-'">
+                                                            <span @click="copyToClipboard(item.subEmail, 'Mail Phụ')" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 cursor-pointer hover:bg-indigo-100 select-all" title="Bấm để copy Mail Phụ">
+                                                                <i data-lucide="mail" class="w-3 h-3 text-indigo-500"></i>
+                                                                <span x-text="item.subEmail"></span>
+                                                            </span>
+                                                        </template>
+                                                    </div>
+                                                    <div class="flex flex-wrap items-center gap-1.5">
+                                                        <span class="px-2 py-0.5 rounded text-[11px] font-black tracking-wide uppercase shadow-2xs"
+                                                            :class="item.product === 'YTB' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'"
+                                                            x-text="item.product || 'YTB'"></span>
+                                                        <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase"
+                                                            :class="item.category === 'FULL' ? 'bg-green-100 text-green-800 border border-green-200/60' : (item.category === 'NOM' ? 'bg-amber-100 text-amber-800 border border-amber-200/60' : 'bg-gray-100 text-gray-700 border border-gray-200')"
+                                                            x-text="item.category || 'FULL'"></span>
+                                                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase inline-flex items-center gap-1"
+                                                            :class="item.staff && item.staff.toLowerCase().includes('lộc') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'">
+                                                            <i data-lucide="user" class="w-2.5 h-2.5"></i>
+                                                            <span x-text="item.staff || 'Dnc'"></span>
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                <!-- Cột 3: Chu Kỳ & Hạn Sử Dụng -->
+                                                <td class="py-4 px-4">
+                                                    <div class="flex items-center gap-2 mb-1.5">
+                                                        <span class="text-xs font-semibold text-gray-400 uppercase">HSD:</span>
+                                                        <span class="text-sm font-black tracking-tight"
+                                                            :class="item.daysLeft !== null && item.daysLeft < 0 ? 'text-red-600' : (item.daysLeft !== null && item.daysLeft <= 15 ? 'text-amber-600' : 'text-gray-900')"
+                                                            x-text="item.expiryDate || '-'"></span>
+                                                    </div>
+                                                    <div class="flex items-center gap-2 text-xs text-gray-500 font-medium">
+                                                        <span>Mua: <strong class="text-gray-700" x-text="item.purchaseDate || '-'"></strong></span>
+                                                        <span x-show="item.months" class="px-1.5 py-0.5 bg-gray-100 text-gray-700 font-bold rounded text-[11px]" x-text="item.months + ' tháng'"></span>
+                                                    </div>
+                                                </td>
+
+                                                <!-- Cột 4: Trạng Thái HSD -->
+                                                <td class="py-4 px-4 text-center">
+                                                    <template x-if="item.daysLeft !== null">
+                                                        <span class="px-3 py-1.5 rounded-full text-xs font-black shadow-2xs inline-flex items-center gap-1.5"
+                                                            :class="item.daysLeft > 15 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : (item.daysLeft >= 0 ? 'bg-amber-50 text-amber-700 border border-amber-300 animate-pulse' : 'bg-red-50 text-red-700 border border-red-300')">
+                                                            <i :data-lucide="item.daysLeft < 0 ? 'alert-triangle' : (item.daysLeft <= 15 ? 'clock' : 'check-circle')" class="w-3.5 h-3.5"></i>
+                                                            <span x-text="item.daysLeft < 0 ? ('Quá hạn ' + Math.abs(item.daysLeft) + ' ngày') : ('Còn ' + item.daysLeft + ' ngày')"></span>
+                                                        </span>
+                                                    </template>
+                                                    <template x-if="item.daysLeft === null">
+                                                        <span class="text-gray-400 text-xs">-</span>
+                                                    </template>
+                                                </td>
+
+                                                <!-- Cột 5: Thao Tác -->
+                                                <td class="py-4 px-4 text-center">
+                                                    <button @click="dataGocActiveTab = 'ai_tool'; dataGocAiInput = item.email + ' '; $nextTick(() => { $refs.aiInputBox.focus(); }); parseDataGocAiInput();" class="bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs hover:shadow-md flex items-center justify-center gap-1.5 mx-auto group-hover:bg-indigo-600 group-hover:text-white">
+                                                        <i data-lucide="zap" class="w-3.5 h-3.5 text-indigo-500 group-hover:text-yellow-300 transition-colors"></i>
+                                                        <span>Gia Hạn</span>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Card Grid View (Lưới Thẻ) -->
+                        <div x-show="dataGocViewMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" x-cloak>
+                            <template x-if="isFetchingDataGoc && filteredDataGocList.length === 0">
+                                <div class="col-span-full py-16 text-center text-gray-400 font-medium bg-white rounded-2xl border border-gray-100">
+                                    <i data-lucide="loader-2" class="w-8 h-8 animate-spin mx-auto mb-2 text-indigo-500"></i>
+                                    Đang đồng bộ dữ liệu từ sheet DATAGoc...
+                                </div>
+                            </template>
+                            <template x-if="!isFetchingDataGoc && filteredDataGocList.length === 0">
+                                <div class="col-span-full py-16 text-center text-gray-400 font-medium bg-white rounded-2xl border border-gray-100">
+                                    <i data-lucide="database-backup" class="w-10 h-10 mx-auto mb-2 text-gray-300"></i>
+                                    Không tìm thấy khách hàng nào thỏa điều kiện tra cứu.
+                                </div>
+                            </template>
+                            <template x-for="(item, index) in paginatedDataGocList" :key="index">
+                                <div class="bg-white rounded-2xl border border-gray-100 card-shadow hover:shadow-lg transition-all p-5 flex flex-col justify-between group">
+                                    <div>
+                                        <div class="flex items-center justify-between gap-2 mb-3">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="px-2 py-0.5 rounded text-xs font-black tracking-wide uppercase"
+                                                    :class="item.product === 'YTB' ? 'bg-indigo-600 text-white' : 'bg-emerald-600 text-white'"
+                                                    x-text="item.product || 'YTB'"></span>
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase"
+                                                    :class="item.category === 'FULL' ? 'bg-green-100 text-green-800' : (item.category === 'NOM' ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-700')"
+                                                    x-text="item.category || 'FULL'"></span>
+                                            </div>
+                                            <template x-if="item.daysLeft !== null">
+                                                <span class="px-2.5 py-1 rounded-full text-[11px] font-black inline-flex items-center gap-1"
+                                                    :class="item.daysLeft > 15 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : (item.daysLeft >= 0 ? 'bg-amber-50 text-amber-700 border border-amber-300 animate-pulse' : 'bg-red-50 text-red-700 border border-red-300')">
+                                                    <i :data-lucide="item.daysLeft < 0 ? 'alert-triangle' : (item.daysLeft <= 15 ? 'clock' : 'check-circle')" class="w-3 h-3"></i>
+                                                    <span x-text="item.daysLeft < 0 ? ('Quá hạn ' + Math.abs(item.daysLeft) + ' ngày') : ('Còn ' + item.daysLeft + ' ngày')"></span>
+                                                </span>
+                                            </template>
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-extrabold text-gray-900 text-sm cursor-pointer hover:text-indigo-600 hover:underline select-all"
+                                                    @click="copyToClipboard(item.email, 'Email')"
+                                                    title="Bấm để copy Email"
+                                                    x-text="item.email"></span>
+                                                <button @click="copyToClipboard(item.email, 'Email')" class="text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity" title="Copy Email">
+                                                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                                </button>
+                                            </div>
+                                            <template x-if="item.subEmail && item.subEmail !== '-'">
+                                                <div @click="copyToClipboard(item.subEmail, 'Mail Phụ')" class="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50/80 text-indigo-700 border border-indigo-100/80 cursor-pointer hover:bg-indigo-100 select-all" title="Bấm để copy Mail Phụ">
+                                                    <i data-lucide="mail" class="w-3 h-3 text-indigo-500"></i>
+                                                    <span>Phụ: <span x-text="item.subEmail"></span></span>
+                                                </div>
+                                            </template>
+                                        </div>
+
+                                        <div class="bg-gray-50/80 rounded-xl p-3 border border-gray-100 space-y-1.5 text-xs">
+                                            <div class="flex justify-between items-center">
+                                                <span class="text-gray-500 font-medium">Hạn Sử Dụng (HSD):</span>
+                                                <span class="font-black text-sm"
+                                                    :class="item.daysLeft !== null && item.daysLeft < 0 ? 'text-red-600' : (item.daysLeft !== null && item.daysLeft <= 15 ? 'text-amber-600' : 'text-gray-900')"
+                                                    x-text="item.expiryDate || '-'"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center text-gray-500">
+                                                <span>Ngày mua: <strong class="text-gray-700" x-text="item.purchaseDate || '-'"></strong></span>
+                                                <span x-show="item.months" class="px-1.5 py-0.5 bg-white border border-gray-200 text-gray-700 font-bold rounded text-[10px]" x-text="item.months + ' tháng'"></span>
+                                            </div>
+                                            <div class="flex justify-between items-center pt-1 border-t border-gray-200/60">
+                                                <span class="text-gray-400 font-semibold">CTV Phụ Trách:</span>
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
+                                                    :class="item.staff && item.staff.toLowerCase().includes('lộc') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'"
+                                                    x-text="item.staff || 'Dnc'"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                                        <span class="text-[11px] font-bold text-gray-400">#<span x-text="index + 1"></span></span>
+                                        <button @click="dataGocActiveTab = 'ai_tool'; dataGocAiInput = item.email + ' '; $nextTick(() => { $refs.aiInputBox.focus(); }); parseDataGocAiInput();"
+                                            class="bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5">
+                                            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                                            <span>Gia Hạn Nhanh</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- PAGINATION / SHOW MORE FOOTER -->
+                        <div x-show="filteredDataGocList.length > dataGocDisplayLimit" class="py-6 text-center bg-white rounded-2xl border border-gray-100 card-shadow">
+                            <button @click="dataGocDisplayLimit += 50"
+                                class="px-6 py-3 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white rounded-xl text-xs font-black transition-all shadow-sm inline-flex items-center gap-2">
+                                <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                                <span>Hiển thị thêm 50 khách hàng nữa</span>
+                                <span class="opacity-80" x-text="'(Đang hiện ' + paginatedDataGocList.length + ' / ' + filteredDataGocList.length + ')'"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: GIA HẠN AI SMART PASTE -->
+                    <div x-show="dataGocActiveTab === 'ai_tool'" class="grid grid-cols-1 lg:grid-cols-12 gap-6" x-cloak>
+                        <!-- Left Box: Paste area -->
+                        <div class="lg:col-span-6 bg-white p-6 rounded-2xl border border-gray-100 card-shadow flex flex-col justify-between">
+                            <div>
+                                <div class="flex items-center gap-2 mb-3">
+                                    <span class="p-2 bg-orange-50 text-orange-600 rounded-lg">
+                                        <i data-lucide="wand-2" class="w-5 h-5"></i>
+                                    </span>
+                                    <h3 class="text-lg font-extrabold text-gray-900">Dán Câu Lệnh Gia Hạn / Tin Nhắn Zalo</h3>
+                                </div>
+                                <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-3 mb-3 text-xs text-indigo-900">
+                                    <div class="font-extrabold flex items-center gap-1.5 mb-1 text-indigo-700">
+                                        <i data-lucide="info" class="w-4 h-4 text-indigo-600"></i>
+                                        <span>HƯỚNG DẪN GHI CHÚ CHO AI DỄ ĐỌC NHẤT:</span>
+                                    </div>
+                                    <ul class="list-disc list-inside space-y-1 text-gray-600 ml-1">
+                                        <li><strong>Cú pháp chuẩn:</strong> <code class="bg-white text-orange-600 px-1.5 py-0.5 rounded font-mono border border-indigo-100">email | sản phẩm + số tháng</code> (Ví dụ: <code class="bg-white font-mono px-1 py-0.5 rounded border border-indigo-100">a@gmail.com | ytb 6th</code>).</li>
+                                        <li><strong>Gia hạn vs Đơn mới:</strong> Chọn chế độ bên dưới hoặc gõ từ khóa <code class="bg-white text-emerald-600 px-1 py-0.5 rounded font-mono border border-indigo-100">đơn mới</code> trong câu lệnh để tự kiểm tra trùng email.</li>
+                                        <li>Hỗ trợ bóc tách tin nhắn Zalo chuyển tiếp đầy đủ gói: <span class="font-bold text-gray-800">YTB, ChatGPT, Netflix, Canva, Spotify...</span></li>
+                                    </ul>
+                                </div>
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-bold text-gray-600">Chế độ xử lý:</span>
+                                    <div class="flex items-center gap-1.5">
+                                        <button @click="dataGocMode = 'renew'; parseDataGocAiInput()" type="button"
+                                            :class="dataGocMode === 'renew' ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20 font-extrabold' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 font-semibold'"
+                                            class="px-3 py-1 rounded-lg text-xs transition-all flex items-center gap-1">
+                                            <i data-lucide="repeat" class="w-3.5 h-3.5"></i>
+                                            <span>Gia Hạn (Cộng dồn)</span>
+                                        </button>
+                                        <button @click="dataGocMode = 'new'; parseDataGocAiInput()" type="button"
+                                            :class="dataGocMode === 'new' ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/20 font-extrabold' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 font-semibold'"
+                                            class="px-3 py-1 rounded-lg text-xs transition-all flex items-center gap-1">
+                                            <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i>
+                                            <span>Đơn Mới (Check trùng)</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <textarea x-ref="aiInputBox" x-model="dataGocAiInput" @input="parseDataGocAiInput()" rows="5"
+                                    placeholder="Dán tin nhắn Zalo hoặc gõ tự do theo các ví dụ sau:
+
+👉 Ví dụ Zalo: 1035 gianghuy152a@gmail.com | ytb 6th | 25/06/2026 -> 25/12/2026 | 16.680
+👉 Ví dụ Đơn Mới: gianghuy152a@gmail.com đơn mới 6th plus
+👉 Ví dụ Gia Hạn: nguyenhaithanh060890@gmail.com gh 12 tháng"
+                                    class="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-mono focus:bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all"></textarea>
+                            </div>
+                            <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                                <span class="flex items-center gap-1.5 font-bold text-emerald-600">
+                                    <i data-lucide="shield-check" class="w-4 h-4"></i>
+                                    Nhật ký tự động ghi danh người làm: <span class="underline" x-text="operatorName === 'Lộc' ? 'Lộc' : 'DNC'"></span>
+                                </span>
+                                <button x-show="dataGocAiInput" @click="dataGocAiInput = ''; dataGocPreview = null;" class="text-gray-400 hover:text-red-500 font-bold underline" x-cloak>Xóa trắng</button>
+                            </div>
+                        </div>
+
+                        <!-- Right Box: AI Preview & Confirm -->
+                        <div class="lg:col-span-6 bg-gradient-to-br from-indigo-900 via-slate-900 to-gray-950 text-white p-6 rounded-2xl shadow-2xl flex flex-col justify-between relative overflow-hidden">
+                            <!-- Background decoration -->
+                            <div class="absolute -right-10 -bottom-10 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="cpu" class="w-5 h-5 text-orange-400 animate-pulse"></i>
+                                        <h3 class="text-lg font-black tracking-wide text-white uppercase">Kết Quả Phân Tích AI</h3>
+                                    </div>
+                                    <span x-show="dataGocPreview && !dataGocPreview.error" class="px-2.5 py-1 rounded-full text-[11px] font-extrabold tracking-wider uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30" x-cloak>
+                                        Sẵn Sàng Đồng Bộ
+                                    </span>
+                                </div>
+
+                                <template x-if="!dataGocPreview">
+                                    <div class="py-20 text-center text-gray-400">
+                                        <i data-lucide="terminal" class="w-12 h-12 mx-auto mb-3 text-gray-600"></i>
+                                        <p class="text-sm font-medium">Vui lòng dán nội dung vào ô bên trái để AI tiến hành phân tích...</p>
+                                    </div>
+                                </template>
+
+                                <template x-if="dataGocPreview && dataGocPreview.error">
+                                    <div class="p-4 rounded-xl bg-red-500/20 border border-red-500/40 text-red-200 text-sm flex items-center gap-3 my-10">
+                                        <i data-lucide="alert-circle" class="w-6 h-6 flex-shrink-0 text-red-400"></i>
+                                        <span x-text="dataGocPreview.error"></span>
+                                    </div>
+                                </template>
+
+                                <template x-if="dataGocPreview && !dataGocPreview.error">
+                                    <div class="space-y-4">
+                                        <!-- Customer status alert -->
+                                        <div class="p-3.5 rounded-xl text-xs font-bold flex items-center justify-between"
+                                            :class="dataGocPreview.isNew ? 'bg-amber-500/20 border border-amber-500/30 text-amber-200' : 'bg-indigo-500/20 border border-indigo-500/30 text-indigo-200'">
+                                            <div class="flex items-center gap-2">
+                                                <i :data-lucide="dataGocPreview.isNew ? 'user-plus' : 'user-check'" class="w-4 h-4"></i>
+                                                <span x-text="dataGocPreview.isNew ? 'Khách hàng mới chưa có trong DATAGoc' : 'Khách hàng đã có trong hệ thống DATAGoc'"></span>
+                                            </div>
+                                            <span x-show="!dataGocPreview.isNew" class="text-[10px] bg-white/10 px-2 py-0.5 rounded text-white" x-text="'HSD hiện tại: ' + (dataGocPreview.currentInfo?.expiryDate || '-')"></span>
+                                        </div>
+
+                                        <!-- Fields Preview Form -->
+                                        <div class="grid grid-cols-2 gap-3 bg-white/5 p-4 rounded-xl border border-white/10">
+                                            <div class="col-span-2">
+                                                <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Email Khách Hàng</label>
+                                                <input type="text" x-model="dataGocPreview.email" class="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-orange-500 select-all">
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Sản Phẩm</label>
+                                                <select x-model="dataGocPreview.product" class="w-full bg-black border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-orange-300 focus:outline-none focus:border-orange-500">
+                                                    <option value="YTB">YTB</option>
+                                                    <option value="ChatGPT">ChatGPT</option>
+                                                    <option value="Netflix">Netflix</option>
+                                                    <option value="Canva">Canva</option>
+                                                    <option value="Google One">Google One</option>
+                                                    <option value="Spotify">Spotify</option>
+                                                    <option value="Office 365">Office 365</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Phân Loại</label>
+                                                <select x-model="dataGocPreview.category" class="w-full bg-black border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-emerald-300 focus:outline-none focus:border-emerald-500">
+                                                    <option value="FULL">FULL</option>
+                                                    <option value="PLUS">PLUS</option>
+                                                    <option value="NOM">NOM</option>
+                                                    <option value="ACC CẤP">ACC CẤP</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Ngày Mua Mới</label>
+                                                <input type="text" x-model="dataGocPreview.purchaseDate" @input="recalcDataGocExpiry()" class="w-full bg-black/40 border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none">
+                                            </div>
+                                            <div>
+                                                <label class="block text-[10px] font-extrabold text-gray-400 uppercase mb-1">Số Tháng</label>
+                                                <select x-model="dataGocPreview.months" @change="recalcDataGocExpiry()" class="w-full bg-black border border-white/15 rounded-lg px-3 py-1.5 text-xs font-bold text-blue-300 focus:outline-none focus:border-blue-500">
+                                                    <option x-show="!['1','2','3','6','9','12','18','24','36'].includes(String(dataGocPreview.months))" :value="dataGocPreview.months" x-text="dataGocPreview.months + ' tháng'"></option>
+                                                    <option value="1">1 tháng</option>
+                                                    <option value="2">2 tháng</option>
+                                                    <option value="3">3 tháng</option>
+                                                    <option value="6">6 tháng</option>
+                                                    <option value="9">9 tháng</option>
+                                                    <option value="12">12 tháng</option>
+                                                    <option value="18">18 tháng</option>
+                                                    <option value="24">24 tháng</option>
+                                                    <option value="36">36 tháng</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-span-2">
+                                                <div class="flex items-center justify-between mb-1">
+                                                    <label class="block text-[10px] font-extrabold text-orange-400 uppercase">Hạn Sử Dụng Mới (HSD)</label>
+                                                    <span class="text-[10px] font-bold text-orange-300/80 italic flex items-center gap-1">
+                                                        <i data-lucide="lock" class="w-3 h-3"></i> Tự động tính theo công thức, không gõ tay
+                                                    </span>
+                                                </div>
+                                                <input type="text" readonly disabled x-model="dataGocPreview.expiryDate" class="w-full bg-orange-500/20 border border-orange-500/50 rounded-lg px-3 py-2 text-base font-black text-orange-300 focus:outline-none shadow-inner cursor-not-allowed select-none">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <div class="mt-6 pt-4 border-t border-white/10 flex items-center justify-between">
+                                <div class="text-xs text-gray-400 font-medium">
+                                    Người thực hiện: <span class="font-bold text-white px-2 py-0.5 rounded bg-white/10" x-text="dataGocPreview ? dataGocPreview.operator : '-' "></span>
+                                </div>
+                                <button @click="submitDataGocRenew()" :disabled="!dataGocPreview || dataGocPreview.error || isUpdatingDataGoc"
+                                    class="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white px-6 py-3 rounded-xl font-extrabold text-sm shadow-xl shadow-orange-500/20 flex items-center gap-2 transition-all">
+                                    <i data-lucide="check-circle-2" class="w-5 h-5" x-show="!isUpdatingDataGoc"></i>
+                                    <i data-lucide="loader-2" class="w-5 h-5 animate-spin" x-show="isUpdatingDataGoc" x-cloak></i>
+                                    <span>Xác Nhận Cập Nhật DATAGoc</span>
+                                </button>
+                        </div>
+                    </div>
+                    </div>
+
+                    <!-- TAB 3: ĐỒNG BỘ HÀNG LOẠT (BULK AI SMART PASTE) -->
+                    <div x-show="dataGocActiveTab === 'bulk_ai'" class="space-y-6" x-cloak>
+                        <!-- Top Instruction & Paste Box -->
+                        <div class="bg-white p-6 rounded-2xl border border-gray-100 card-shadow">
+                            <div class="flex items-center gap-2 mb-3">
+                                <span class="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                                    <i data-lucide="layers" class="w-5 h-5"></i>
+                                </span>
+                                <h3 class="text-lg font-extrabold text-gray-900">Dán Hàng Loạt Từ Google Sheet "Tài Chính Goshop" / Excel / Zalo</h3>
+                            </div>
+                            <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3.5 mb-4 text-xs text-emerald-900">
+                                <div class="font-extrabold flex items-center gap-1.5 mb-1.5 text-emerald-800">
+                                    <i data-lucide="info" class="w-4 h-4 text-emerald-600"></i>
+                                    <span>HƯỚNG DẪN COPY HÀNG LOẠT SIÊU NHANH TỪ SHEET TÀI CHÍNH:</span>
+                                </div>
+                                <ul class="list-disc list-inside space-y-1 text-gray-700 ml-1">
+                                    <li><strong>Copy trực tiếp từ Google Sheet:</strong> Bôi đen nhiều dòng trong sheet Tài Chính (ví dụ cột <code class="bg-white text-emerald-700 px-1.5 py-0.5 rounded font-mono border border-emerald-200">Date | NTT/MDH | Phân loại | Email | Gói | Duration | SKU | CTV</code>) rồi bấm Ctrl+V / Cmd+V dán thẳng vào ô bên dưới.</li>
+                                    <li><strong>AI học chuẩn định dạng của bạn:</strong> Tự động nhận diện Đơn mới / Gia hạn (cột Phân loại), thông minh loại bỏ email người lên đơn (<code class="bg-white text-gray-600 px-1 py-0.5 rounded font-mono border border-emerald-200">dncryptox@...</code>, <code class="bg-white text-gray-600 px-1 py-0.5 rounded font-mono border border-emerald-200">baomap...</code>), chỉ bóc tách chuẩn xác <strong>Email Khách Hàng, Sản Phẩm, Số Tháng, HSD mới</strong>!</li>
+                                </ul>
+                            </div>
+                            <textarea x-model="dataGocBulkInput" @input="parseDataGocBulkInput()" rows="6"
+                                placeholder="Dán danh sách nhiều dòng từ Google Sheet vào đây (Ví dụ):
+
+05/07/2026	dncryptox@gmail.com	Gia hạn	Vanhoangstkt@gmail.com	YoutubePlus-6	6	YoutubePlus-6	Tuan
+05/07/2026	dncryptox@gmail.com	Gia hạn	chatgpthoctap2025@gmail.com	YoutubePlus-6	6	YoutubePlus-6	Tuan
+08/07/2026	Dnc - ORD608080	New	bincute2k113@gmail.com	lưu trữ đám mây 5TB-	12	Lưu trữ đám mây	Dnc
+08/07/2026	Dnc - ORD454675	New	anhvt1995@gmail.com	lưu trữ đám mây 5TB-	12	Lưu trữ đám mây	Dnc"
+                                class="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-xs font-mono focus:bg-white focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all leading-relaxed"></textarea>
+                            <div class="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+                                <span class="flex items-center gap-1.5 font-bold text-emerald-600">
+                                    <i data-lucide="check-circle" class="w-4 h-4"></i>
+                                    AI đã đọc được: <span class="font-black text-emerald-700 underline text-sm" x-text="dataGocBulkList.length"></span> dòng hợp lệ
+                                </span>
+                                <button x-show="dataGocBulkInput" @click="dataGocBulkInput = ''; dataGocBulkList = [];" class="text-gray-400 hover:text-red-500 font-bold underline" x-cloak>Xóa trắng</button>
+                            </div>
+                        </div>
+
+                        <!-- Bulk Preview Table -->
+                        <div x-show="dataGocBulkList.length > 0" class="bg-gradient-to-br from-slate-900 via-gray-900 to-black text-white p-6 rounded-2xl shadow-2xl border border-white/10" x-cloak>
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-5 pb-4 border-b border-white/10">
+                                <div class="flex items-center gap-2">
+                                    <i data-lucide="cpu" class="w-6 h-6 text-emerald-400 animate-pulse"></i>
+                                    <div>
+                                        <h3 class="text-lg font-black tracking-wide text-white uppercase">Danh Sách Phân Tích Hàng Loạt (<span x-text="dataGocBulkList.length"></span> Khách)</h3>
+                                        <p class="text-[11px] text-gray-400">Kiểm tra lại danh sách trước khi bấm đồng bộ vào sheet DATAGoc</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <label class="flex items-center gap-2 text-xs font-bold text-gray-300 cursor-pointer bg-white/5 hover:bg-white/10 px-3.5 py-2 rounded-xl border border-white/10 transition-all">
+                                        <input type="checkbox" x-model="bulkAutoOverwrite" class="rounded border-gray-600 text-emerald-500 focus:ring-0">
+                                        <span>Tự động xác nhận cộng dồn nếu trùng Email</span>
+                                    </label>
+                                    <button @click="submitDataGocBulk()" :disabled="isUpdatingBulk || dataGocBulkList.length === 0"
+                                        class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl font-black text-sm transition-all shadow-xl shadow-emerald-500/20 flex items-center gap-2">
+                                        <i data-lucide="send" class="w-4 h-4" :class="isUpdatingBulk ? 'animate-spin' : ''"></i>
+                                        <span x-text="isUpdatingBulk ? 'Đang đồng bộ...' : '🚀 Đồng Bộ Tất Cả Vào DATAGoc'"></span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="overflow-x-auto max-h-[550px] overflow-y-auto rounded-xl border border-white/10">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead class="bg-white/10 sticky top-0 text-gray-300 uppercase font-extrabold backdrop-blur-md">
+                                        <tr>
+                                            <th class="p-3">#</th>
+                                            <th class="p-3">Mã Đơn / NTT</th>
+                                            <th class="p-3">Email Khách Hàng</th>
+                                            <th class="p-3">Sản Phẩm</th>
+                                            <th class="p-3">Phân Loại</th>
+                                            <th class="p-3">Số Tháng</th>
+                                            <th class="p-3">Chế Độ</th>
+                                            <th class="p-3">HSD Mới (Khóa)</th>
+                                            <th class="p-3">Trạng Thái</th>
+                                            <th class="p-3 text-center">Xóa</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-white/10 font-medium">
+                                        <template x-for="(row, idx) in dataGocBulkList" :key="idx">
+                                            <tr class="hover:bg-white/5 transition-all" :class="row.status === 'success' ? 'bg-emerald-950/30' : (row.warning ? 'bg-amber-950/20' : '')">
+                                                <td class="p-3 text-gray-400 font-bold" x-text="idx + 1"></td>
+                                                <td class="p-3">
+                                                    <input type="text" x-model="row.orderCode" class="bg-black/40 border border-white/15 rounded-lg px-2 py-1.5 text-xs font-mono font-bold text-amber-300 w-32 focus:border-emerald-500 focus:outline-none">
+                                                </td>
+                                                <td class="p-3">
+                                                    <input type="text" x-model="row.email" @input="recalcBulkRow(row)" class="bg-black/40 border border-white/15 rounded-lg px-2.5 py-1.5 text-xs font-bold text-white w-52 focus:border-emerald-500 focus:outline-none">
+                                                </td>
+                                                <td class="p-3">
+                                                    <select x-model="row.product" class="bg-black border border-white/15 rounded-lg px-2.5 py-1.5 text-xs font-bold text-orange-300 w-32 focus:outline-none">
+                                                        <option value="YTB">YTB</option>
+                                                        <option value="ChatGPT">ChatGPT</option>
+                                                        <option value="Netflix">Netflix</option>
+                                                        <option value="Canva">Canva</option>
+                                                        <option value="Google One">Google One</option>
+                                                        <option value="Spotify">Spotify</option>
+                                                        <option value="Office 365">Office 365</option>
+                                                    </select>
+                                                </td>
+                                                <td class="p-3">
+                                                    <select x-model="row.category" class="bg-black border border-white/15 rounded-lg px-2.5 py-1.5 text-xs font-bold text-emerald-300 w-24 focus:outline-none">
+                                                        <option value="FULL">FULL</option>
+                                                        <option value="PLUS">PLUS</option>
+                                                        <option value="NOM">NOM</option>
+                                                        <option value="ACC CẤP">ACC CẤP</option>
+                                                    </select>
+                                                </td>
+                                                <td class="p-3">
+                                                    <select x-model="row.months" @change="recalcBulkRow(row)" class="bg-black border border-white/15 rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-300 w-24 focus:outline-none">
+                                                        <option value="1">1 thg</option>
+                                                        <option value="2">2 thg</option>
+                                                        <option value="3">3 thg</option>
+                                                        <option value="6">6 thg</option>
+                                                        <option value="9">9 thg</option>
+                                                        <option value="12">12 thg</option>
+                                                        <option value="24">24 thg</option>
+                                                        <option value="36">36 thg</option>
+                                                    </select>
+                                                </td>
+                                                <td class="p-3">
+                                                    <span class="px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider"
+                                                        :class="row.mode === 'new' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-orange-500/20 text-orange-300 border border-orange-500/30'"
+                                                        x-text="row.mode === 'new' ? 'Đơn Mới' : 'Gia Hạn'"></span>
+                                                </td>
+                                                <td class="p-3">
+                                                    <span class="font-mono font-black text-amber-300 bg-amber-500/10 px-2.5 py-1.5 rounded-lg border border-amber-500/30 flex items-center gap-1.5 w-fit">
+                                                        <i data-lucide="lock" class="w-3.5 h-3.5 text-amber-400 flex-shrink-0"></i>
+                                                        <span x-text="row.expiryDate || '-'"></span>
+                                                    </span>
+                                                </td>
+                                                <td class="p-3">
+                                                    <div class="flex items-center gap-1.5">
+                                                        <template x-if="row.status === 'pending'">
+                                                            <span class="text-gray-300 font-semibold flex items-center gap-1">
+                                                                <span x-show="row.warning" class="text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20" :title="row.warning">⚠️ Trùng email</span>
+                                                                <span x-show="!row.warning" class="text-gray-400">Sẵn sàng</span>
+                                                            </span>
+                                                        </template>
+                                                        <template x-if="row.status === 'processing'">
+                                                            <span class="text-blue-400 font-bold flex items-center gap-1 animate-pulse">
+                                                                <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Đang xử lý...
+                                                            </span>
+                                                        </template>
+                                                        <template x-if="row.status === 'success'">
+                                                            <span class="text-emerald-400 font-extrabold flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                                                <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Thành công
+                                                            </span>
+                                                        </template>
+                                                        <template x-if="row.status === 'error'">
+                                                            <span class="text-red-400 font-bold flex items-center gap-1 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20" :title="row.errorMsg">
+                                                                <i data-lucide="x-circle" class="w-3.5 h-3.5"></i> <span x-text="row.errorMsg || 'Lỗi'"></span>
+                                                            </span>
+                                                        </template>
+                                                    </div>
+                                                </td>
+                                                <td class="p-3 text-center">
+                                                    <button @click="dataGocBulkList.splice(idx, 1)" class="text-gray-500 hover:text-red-400 p-1.5 transition-all rounded hover:bg-white/10">
+                                                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 4: ĐỐI CHIẾU SỰ THAY ĐỔI APP_DATA VS DATAGOC -->
+                    <div x-show="dataGocActiveTab === 'diff_appdata' && currentUserRole === 'admin'" class="space-y-6" x-cloak>
+                        <!-- Stats & Bulk Action Banner -->
+                        <div class="bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden border border-white/10">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+                                <div>
+                                    <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-indigo-200 text-xs font-bold mb-2">
+                                        <i data-lucide="git-compare" class="w-3.5 h-3.5"></i>
+                                        <span>ĐỐI CHIẾU DỮ LIỆU GỐC & CẬP NHẬT LIÊN TỤC</span>
+                                    </div>
+                                    <h3 class="text-xl font-black tracking-tight">Đối Chiếu Thay Đổi: APP_DATA vs DATAGoc</h3>
+                                    <p class="text-xs text-indigo-200 mt-1 max-w-xl">Hệ thống tự động so sánh dữ liệu mới cập nhật trong <span class="font-bold text-white">APP_DATA</span> với kho dữ liệu gốc <span class="font-bold text-white">DATAGoc</span>. Bạn (Admin DNC) kiểm tra và bấm xác nhận để cập nhật đồng bộ.</p>
+                                </div>
+
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <button @click="calculateAppDataDiff()" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all border border-white/15">
+                                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                                        <span>Tính Toán Lại</span>
+                                    </button>
+                                    <button @click="syncBulkAppDataDiff()" :disabled="isSyncingAppDataToGoc || filteredAppDataDiffList.filter(i => i.status === 'new' || i.status === 'modified').length === 0"
+                                        class="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all">
+                                        <i data-lucide="check-check" class="w-4 h-4" :class="isSyncingAppDataToGoc ? 'animate-spin' : ''"></i>
+                                        <span x-text="isSyncingAppDataToGoc ? 'Đang cập nhật lên DATAGoc...' : ('🚀 Duyệt Tất Cả (' + appDataDiffList.filter(i => i.status === 'new' || i.status === 'modified').length + ' thay đổi)')"></span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Stat Pill Cards -->
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6 relative z-10">
+                                <div @click="appDataDiffFilter = 'all_changes'" class="bg-white/10 hover:bg-white/15 cursor-pointer transition-all p-3.5 rounded-2xl border border-white/10" :class="appDataDiffFilter === 'all_changes' ? 'ring-2 ring-white' : ''">
+                                    <div class="text-[11px] font-bold text-indigo-200 uppercase">Cần Cập Nhật</div>
+                                    <div class="text-2xl font-black mt-1 text-white" x-text="appDataDiffList.filter(i => i.status === 'new' || i.status === 'modified').length"></div>
+                                </div>
+                                <div @click="appDataDiffFilter = 'new'" class="bg-emerald-500/20 hover:bg-emerald-500/30 cursor-pointer transition-all p-3.5 rounded-2xl border border-emerald-400/30" :class="appDataDiffFilter === 'new' ? 'ring-2 ring-emerald-400' : ''">
+                                    <div class="text-[11px] font-bold text-emerald-300 uppercase">🆕 Khách Hàng Mới</div>
+                                    <div class="text-2xl font-black mt-1 text-emerald-200" x-text="appDataDiffList.filter(i => i.status === 'new').length"></div>
+                                </div>
+                                <div @click="appDataDiffFilter = 'modified'" class="bg-amber-500/20 hover:bg-amber-500/30 cursor-pointer transition-all p-3.5 rounded-2xl border border-amber-400/30" :class="appDataDiffFilter === 'modified' ? 'ring-2 ring-amber-400' : ''">
+                                    <div class="text-[11px] font-bold text-amber-300 uppercase">🔄 Có Thay Đổi (HSD/Tháng)</div>
+                                    <div class="text-2xl font-black mt-1 text-amber-200" x-text="appDataDiffList.filter(i => i.status === 'modified').length"></div>
+                                </div>
+                                <div @click="appDataDiffFilter = 'unchanged'" class="bg-white/5 hover:bg-white/10 cursor-pointer transition-all p-3.5 rounded-2xl border border-white/10" :class="appDataDiffFilter === 'unchanged' ? 'ring-2 ring-white' : ''">
+                                    <div class="text-[11px] font-bold text-gray-300 uppercase">✅ Khớp Hoàn Toàn</div>
+                                    <div class="text-2xl font-black mt-1 text-gray-200" x-text="appDataDiffList.filter(i => i.status === 'unchanged').length"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Filter & Search Bar -->
+                        <div class="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-gray-100 card-shadow">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button @click="appDataDiffFilter = 'all_changes'" :class="appDataDiffFilter === 'all_changes' ? 'bg-indigo-600 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    Cần Cập Nhật (<span x-text="appDataDiffList.filter(i => i.status === 'new' || i.status === 'modified').length"></span>)
+                                </button>
+                                <button @click="appDataDiffFilter = 'new'" :class="appDataDiffFilter === 'new' ? 'bg-emerald-600 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    🆕 Khách Mới (<span x-text="appDataDiffList.filter(i => i.status === 'new').length"></span>)
+                                </button>
+                                <button @click="appDataDiffFilter = 'modified'" :class="appDataDiffFilter === 'modified' ? 'bg-amber-600 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    🔄 Thay Đổi (<span x-text="appDataDiffList.filter(i => i.status === 'modified').length"></span>)
+                                </button>
+                                <button @click="appDataDiffFilter = 'unchanged'" :class="appDataDiffFilter === 'unchanged' ? 'bg-gray-800 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    ✅ Đã Khớp (<span x-text="appDataDiffList.filter(i => i.status === 'unchanged').length"></span>)
+                                </button>
+                                <button @click="appDataDiffFilter = 'all'" :class="appDataDiffFilter === 'all' ? 'bg-purple-600 text-white font-extrabold' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 font-bold'" class="px-3.5 py-1.5 rounded-xl text-xs transition-all">
+                                    Tất Cả (<span x-text="appDataDiffList.length"></span>)
+                                </button>
+                            </div>
+
+                            <div class="relative w-full md:w-72">
+                                <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                                <input type="text" x-model.debounce.300ms="appDataDiffSearch" placeholder="Tìm email hoặc mail phụ..."
+                                    class="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white font-medium">
+                            </div>
+                        </div>
+
+                        <!-- Diff Table -->
+                        <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                            <div class="overflow-x-auto max-h-[620px]">
+                                <table class="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr class="bg-gray-50/95 border-b border-gray-200/80 text-[11px] font-extrabold text-gray-500 uppercase tracking-wider sticky top-0 z-10 backdrop-blur-md">
+                                            <th class="py-3.5 px-4 w-28">Trạng Thái</th>
+                                            <th class="py-3.5 px-4">Email Khách Hàng</th>
+                                            <th class="py-3.5 px-4">Thông tin DATAGoc (Hiện Tại)</th>
+                                            <th class="py-3.5 px-4">Thông tin APP_DATA (Mới Nhất)</th>
+                                            <th class="py-3.5 px-4">Chi Tiết Sự Khác Biệt</th>
+                                            <th class="py-3.5 px-4 text-center w-36">Thao Tác Duyệt</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 font-medium">
+                                        <template x-if="filteredAppDataDiffList.length === 0">
+                                            <tr>
+                                                <td colspan="6" class="py-16 text-center text-gray-400">
+                                                    <i data-lucide="check-circle" class="w-10 h-10 mx-auto mb-2 text-emerald-400"></i>
+                                                    <span>Không tìm thấy khách hàng nào trong nhóm bộ lọc này.</span>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                        <template x-for="(item, idx) in filteredAppDataDiffList" :key="idx">
+                                            <tr class="hover:bg-indigo-50/30 transition-colors" :class="item.status === 'new' ? 'bg-emerald-50/30' : (item.status === 'modified' ? 'bg-amber-50/20' : '')">
+                                                <td class="py-3.5 px-4">
+                                                    <span x-show="item.status === 'new'" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase">
+                                                        🆕 MỚI THÊM
+                                                    </span>
+                                                    <span x-show="item.status === 'modified'" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black bg-amber-100 text-amber-800 border border-amber-200 uppercase">
+                                                        🔄 THAY ĐỔI
+                                                    </span>
+                                                    <span x-show="item.status === 'unchanged'" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold bg-gray-100 text-gray-600 border border-gray-200 uppercase">
+                                                        ✅ KHỚP
+                                                    </span>
+                                                </td>
+                                                <td class="py-3.5 px-4">
+                                                    <div class="font-extrabold text-gray-900 cursor-pointer hover:text-indigo-600 hover:underline select-all text-sm"
+                                                        @click="copyToClipboard(item.email, 'Email')" title="Bấm để copy Email" x-text="item.email"></div>
+                                                    <template x-if="item.subEmail && item.subEmail !== '-'">
+                                                        <div class="text-[11px] text-indigo-600 font-bold mt-0.5 cursor-pointer hover:underline"
+                                                            @click="copyToClipboard(item.subEmail, 'Mail phụ')" x-text="'Phụ: ' + item.subEmail"></div>
+                                                    </template>
+                                                </td>
+                                                <td class="py-3.5 px-4">
+                                                    <div class="space-y-1 text-gray-600">
+                                                        <div><span class="text-gray-400">HSD:</span> <span class="font-bold text-gray-800" x-text="item.oldExpiryDate || '--'"></span></div>
+                                                        <div><span class="text-gray-400">Gói:</span> <span class="font-bold text-gray-800" x-text="item.oldProduct || '--'"></span></div>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3.5 px-4">
+                                                    <div class="space-y-1">
+                                                        <div><span class="text-gray-400">HSD mới:</span> <span class="font-black text-indigo-700" x-text="item.expiryDate || '--'"></span></div>
+                                                        <div><span class="text-gray-400">Gói mới:</span> <span class="font-bold text-emerald-700" x-text="item.product || '--'"></span></div>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3.5 px-4">
+                                                    <div class="flex flex-wrap gap-1.5">
+                                                        <template x-for="(reason, rIdx) in item.diffReasons" :key="rIdx">
+                                                            <span class="px-2 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-800 border border-indigo-100 inline-block" x-text="reason"></span>
+                                                        </template>
+                                                    </div>
+                                                </td>
+                                                <td class="py-3.5 px-4 text-center">
+                                                    <template x-if="item.status !== 'unchanged'">
+                                                        <button @click="syncSingleAppDataDiff(item)" :disabled="isSyncingAppDataToGoc"
+                                                            class="bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl font-extrabold text-xs transition-all shadow-sm flex items-center justify-center gap-1.5 mx-auto">
+                                                            <i data-lucide="check" class="w-3.5 h-3.5"></i>
+                                                            <span>Duyệt Cập Nhật</span>
+                                                        </button>
+                                                    </template>
+                                                    <template x-if="item.status === 'unchanged'">
+                                                        <span class="text-gray-400 font-medium italic">Đã đồng bộ</span>
+                                                    </template>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>

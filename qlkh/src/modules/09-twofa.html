@@ -1,0 +1,86 @@
+                <div x-show="activeModule === 'twofa' && isModuleAllowed('twofa')" x-cloak>
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">Quản Lý 2FA Tài Khoản Gốc</h1>
+                            <p class="text-sm text-gray-500 mt-1">Đồng bộ từ sheet <span class="font-bold text-indigo-600">2FA</span> (Mail | 2fa) — bấm OTP để lấy mã 6 số ngay lập tức.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button @click="fetchSheetData()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 border border-indigo-200 px-4 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all">
+                                <i data-lucide="rotate-cw" class="w-4 h-4"></i> Đồng Bộ Sheet
+                            </button>
+                            <button @click="openAddTwofaModal()" class="self-start sm:self-auto bg-primary hover:bg-orange-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold shadow-lg shadow-primary/20 flex items-center gap-2 transition-all">
+                                <i data-lucide="plus" class="w-4 h-4"></i>
+                                <span>Thêm Thủ Công</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-gray-100 card-shadow p-5 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
+                        <div class="relative w-full sm:max-w-xs">
+                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                            <input type="text" x-model.debounce.300ms="twofaSearchQuery" placeholder="Tìm ID hoặc Tên tài khoản..." class="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-primary transition-all">
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead class="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                    <tr>
+                                        <th class="px-6 py-4">#</th>
+                                        <th class="px-6 py-4">Mail</th>
+                                        <th class="px-6 py-4">Nguồn</th>
+                                        <th class="px-6 py-4">Lần lấy gần nhất</th>
+                                        <th class="px-6 py-4 text-right">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <template x-for="(item, idx) in filteredTwofaList" :key="item.id">
+                                        <tr class="hover:bg-gray-50 transition-all group">
+                                            <td class="px-6 py-4 text-xs text-gray-400" x-text="idx + 1"></td>
+                                            <td class="px-6 py-4">
+                                                <p class="text-sm font-bold text-gray-900 select-all cursor-pointer hover:text-primary" @click="copyToClipboard(item.email, 'Email')" x-text="item.email"></p>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span class="text-[10px] font-bold px-2 py-0.5 rounded border"
+                                                    :class="item.fromSheet ? 'bg-indigo-50 border-indigo-200 text-indigo-600' : 'bg-gray-100 border-gray-200 text-gray-500'"
+                                                    x-text="item.fromSheet ? 'Sheet' : 'Thủ công'"></span>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span class="text-xs" :class="item.lastUsed === 'Chưa sử dụng' ? 'text-gray-400' : 'text-green-600 font-bold'" x-text="item.lastUsed"></span>
+                                            </td>
+                                            <td class="px-6 py-4 text-right">
+                                                <div class="flex items-center justify-end gap-2">
+                                                    <button @click="copyTwofaCode(item)" class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-indigo-200" title="Lấy & Copy Mã OTP 6 số">
+                                                        <i data-lucide="key" class="w-3.5 h-3.5"></i>
+                                                        <span>Lấy OTP</span>
+                                                    </button>
+                                                    <template x-if="!item.fromSheet">
+                                                        <button @click="openEditTwofaModal(item)" class="text-gray-400 hover:text-blue-600 transition-all p-1.5 rounded hover:bg-blue-50">
+                                                            <i data-lucide="edit-2" class="w-4 h-4"></i>
+                                                        </button>
+                                                    </template>
+                                                    <template x-if="!item.fromSheet">
+                                                        <button @click="deleteTwofa(item.id)" class="text-gray-400 hover:text-red-600 transition-all p-1.5 rounded hover:bg-red-50">
+                                                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                        </button>
+                                                    </template>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <template x-if="filteredTwofaList.length === 0">
+                                        <tr>
+                                            <td colspan="4" class="px-6 py-12 text-center text-gray-400">
+                                                <div class="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                                                    <i data-lucide="key" class="w-6 h-6 text-gray-300"></i>
+                                                </div>
+                                                <p class="text-sm">Chưa có tài khoản nào trong danh sách 2FA.</p>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
