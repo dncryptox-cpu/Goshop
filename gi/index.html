@@ -4,12 +4,18 @@
 <meta charset="utf-8">
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>GO INTELLIGENCE · Tài khoản AI chính hãng</title>
+<title>GO INTELLIGENCE · Tài khoản AI giá tốt</title>
 <meta name="description" content="ChatGPT, Claude, Gemini, CapCut… giá tốt, giao ngay, bảo hành suốt thời hạn. Ví nạp sẵn, hạng thành viên giảm giá.">
 <meta name="theme-color" content="#0F1115">
+<meta property="og:type" content="website">
+<meta property="og:title" content="GO INTELLIGENCE · Tài khoản AI giá tốt">
+<meta property="og:description" content="ChatGPT, CapCut, Gemini, YouTube Premium… giao nhanh, bảo hành trọn gói. Trả bằng ví rẻ hơn.">
+<meta property="og:image" content="https://godnc.com/gi/og.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
-<link rel="stylesheet" href="app.css?v=12">
+<link rel="stylesheet" href="app.css?v=13">
 <style>
 .login-btn{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:999px;border:0;background:var(--ink);color:var(--bg);font-weight:700;font-size:14px}
 .foot{margin:36px 16px 24px;padding:18px;border-radius:16px;background:var(--card);border:1px solid var(--line);font-size:13px;color:var(--mute);line-height:1.6;display:flex;flex-direction:column;gap:10px}
@@ -143,9 +149,9 @@ nav.tab{grid-template-columns:repeat(6,1fr)}
 <div class="toast" id="toast" role="status"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
-<script src="config.js?v=12"></script>
-<script src="common.js?v=12"></script>
-<script src="quick.js?v=12"></script>
+<script src="config.js?v=13"></script>
+<script src="common.js?v=13"></script>
+<script src="quick.js?v=13"></script>
 <script>
 // ======================= STATE =======================
 const S = { user: null, me: null, cat: { tier: null, bank: null, products: [] }, settings: {}, orders: [], ledger: [],
@@ -189,15 +195,43 @@ const needLogin = () => { if (S.user) return false; toast('Đăng nhập hoặc 
 // ======================= NAV =======================
 const VIEWS = ['home', 'product', 'pay', 'done', 'wallet', 'tier', 'pack', 'orders', 'help'];
 const TABMAP = { product: 'home', done: 'orders', pay: 'orders' };
-function go(v) {
+// Link riêng cho từng màn: #wallet, #pack…; sản phẩm: #p/capcut-pro/1-thang (chia sẻ được, nút Back của điện thoại quay lại đúng màn trước)
+const slug = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+function hashFor(v) {
+  if (v === 'product' && S.cur) { const x = S.cur.variants.find(y => y.id === S.vid); return '#p/' + slug(S.cur.name) + (x && x !== S.cur.variants[0] ? '/' + slug(x.label) : ''); }
+  return v === 'home' ? '' : '#' + v;
+}
+function syncUrl(v, replace) {
+  if (v === 'pay' || v === 'done') return;
+  const url = location.pathname + location.search + hashFor(v);
+  if (url === location.pathname + location.search + location.hash) return;
+  history[replace ? 'replaceState' : 'pushState'](null, '', url);
+}
+function go(v, o = {}) {
   if (!VIEWS.includes(v)) v = 'home';
   if (v !== 'pay') stopPoll('order');
   S.view = v;
   document.querySelectorAll('.view').forEach(x => x.classList.toggle('on', x.id === 'v-' + v));
   document.querySelectorAll('nav.tab button[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === (TABMAP[v] || v)));
-  if (['home', 'wallet', 'tier', 'pack', 'orders', 'help'].includes(v)) history.replaceState(null, '', location.pathname + location.search + (v === 'home' ? '' : '#' + v));
+  if (!o.fromPop) syncUrl(v, o.replace);
   window.scrollTo(0, 0); render();
   if (v === 'pack') loadPack();
+}
+// Mở theo link: #p/<sản phẩm>[/<gói>] hoặc #<màn>
+function route(o = {}) {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h.startsWith('p/')) {
+    const [ps, vs] = h.slice(2).split('/');
+    const p = (S.cat.products || []).find(x => slug(x.name) === ps);
+    if (p) { S.cur = p; const v = vs && p.variants.find(x => slug(x.label) === vs); S.vid = (v || p.variants[0]).id; return go('product', o); }
+    return go('home', Object.assign({}, o, { replace: true, fromPop: false }));
+  }
+  go(VIEWS.includes(h) && !['product', 'pay', 'done'].includes(h) ? h : 'home', o);
+}
+window.addEventListener('popstate', () => { closeSheet && closeSheet(); route({ fromPop: true }); });
+function shareProduct() {
+  const url = location.origin + location.pathname + hashFor('product');
+  if (navigator.share) navigator.share({ title: S.cur.name, url }).catch(() => {}); else copyText(url);
 }
 
 // ======================= RENDER: CHUNG =======================
@@ -246,7 +280,7 @@ function renderHome() {
     <span class="old mono">${vnd(v.list_price)}</span><span class="new mono">${vnd(v.pay)} <span style="font-size:12px">−${v.age_off}%</span></span>
     <span class="dl">HSD đến ${fds(v.lot_expires_at)} · còn ${daysLeft(v.lot_expires_at)} ngày</span></button>`).join('');
   const C = window.GI_CONFIG;
-  $('#foot').innerHTML = `<div><b>GO INTELLIGENCE</b> · Tài khoản AI & tiện ích chính hãng, giá tốt.</div>
+  $('#foot').innerHTML = `<div><b>GO INTELLIGENCE</b> · Tài khoản AI & tiện ích giá tốt, bảo hành trọn gói.</div>
     <div><b>Bảo hành:</b> lỗi trong thời hạn sử dụng được đổi tài khoản mới miễn phí. Không bảo hành khi tự đổi mật khẩu hoặc chia sẻ thông tin đăng nhập.</div>
     <div><b>Ví GO:</b> số dư chỉ dùng để mua hàng tại GO INTELLIGENCE, không quy đổi thành tiền mặt. Đơn không giao được sẽ hoàn tiền vào ví.</div>
     <div><b>Thanh toán:</b> quét QR ngân hàng (đã có sẵn số tiền và nội dung) hoặc trừ ví. Shop xác nhận chuyển khoản trong vài phút (8h–23h). Ghi sai nội dung vui lòng liên hệ hỗ trợ kèm ảnh giao dịch.</div>
@@ -281,8 +315,8 @@ function renderProduct() {
       : (instant ? `Còn ${v.stock} trong kho, giao ngay. HSD đến <b>${fd(exp)}</b>.` : 'Tạm hết hàng sẵn. Vẫn đặt được, shop giao trong ~30 phút.');
   const icls = !instant ? 'manual' : v.kind;
   $('#pbody').innerHTML = `<div class="pwrap"><div>
-    ${cover(p, true)}<div class="phead"><div><h1>${esc(p.name)}</h1><div style="font-size:14px;color:var(--mute);margin-top:4px">${esc(p.description)}</div></div></div>
-    <div class="plans">${p.variants.map(x => `<button class="plan ${x.id === v.id ? 'on' : ''}" onclick="S.vid='${x.id}';renderProduct()">
+    ${cover(p, true)}<div class="phead"><div style="flex:1;min-width:0"><div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px"><h1>${esc(p.name)}</h1><button class="sw-btn" onclick="shareProduct()" aria-label="Chia sẻ link sản phẩm" style="flex:none;margin-top:6px">Chia sẻ link</button></div><div style="font-size:14px;color:var(--mute);margin-top:4px">${esc(p.description)}</div></div></div>
+    <div class="plans">${p.variants.map(x => `<button class="plan ${x.id === v.id ? 'on' : ''}" onclick="S.vid='${x.id}';syncUrl('product',true);renderProduct()">
       <b>${esc(x.label)}</b><span class="mono">${vnd(x.base)}</span>${wpay(x) < x.pay ? `<em style="color:var(--accent-text)">ví ${vnd(wpay(x))}</em>` : ''}
       ${x.kind === 'fixed' && x.stock > 0 ? `<em>còn ${daysLeft(x.lot_expires_at)} ngày${x.age_off ? ' · −' + x.age_off + '%' : ''}</em>` : x.kind === 'manual' ? '<em style="color:#BFD0FF">shop xử lý</em>' : x.stock > 0 ? '<em style="color:#99F6E4">giao ngay</em>' : '<em style="color:#BFD0FF">đặt trước</em>'}</button>`).join('')}</div>
     <div class="info ${icls}">${CHECK('currentColor')}<div>${info}</div></div>
@@ -687,7 +721,7 @@ async function init() {
   const { data } = await sb.auth.getSession(); S.user = data && data.session ? data.session.user : null;
   sb.auth.onAuthStateChange((_ev, session) => { const u = session ? session.user : null; if ((u && u.id) !== (S.user && S.user.id)) { S.user = u; refreshAll(); } });
   await refreshAll();
-  const h = location.hash.slice(1); if (VIEWS.includes(h)) go(h);
+  route({ replace: true });
 }
 init().catch(e => { console.error(e); fatal(errText(e)); });
 </script>

@@ -3,7 +3,7 @@
 window.GI_CONFIG = {
   SUPABASE_URL: 'https://zmhvuudpqwvnbwzcegap.supabase.co',
   SUPABASE_ANON_KEY: 'sb_publishable_2rYunBCifMDQalBLzw3_Tg_uz-WCXVL',
-  SUPPORT_URL: '',            // link Zalo/Messenger hỗ trợ, vd 'https://zalo.me/09xxxxxxxx'
+  SUPPORT_URL: 'https://zalo.me/0398057191',            // link Zalo/Messenger hỗ trợ, vd 'https://zalo.me/09xxxxxxxx'
   BRAND: 'GO INTELLIGENCE',
   // API trang renew (Apps Script) — dùng cho tab "Gói": thông tin gói YouTube + lịch sử fix theo email khách
   RENEW_API: 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec'
