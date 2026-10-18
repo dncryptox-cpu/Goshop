@@ -332,6 +332,13 @@
                     <span>Nhật Ký Lệnh</span>
                 </button>
 
+                <button @click="switchView('REVIEW')"
+                    :class="currentView === 'REVIEW' ? 'bg-emerald-600 text-white shadow' : 'text-slate-400 hover:text-white'"
+                    class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
+                    <i data-lucide="eye" class="w-4 h-4"></i>
+                    <span>Học Chart</span>
+                </button>
+
                 <button @click="switchView('CALCULATOR')"
                     :class="currentView === 'CALCULATOR' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-white'"
                     class="px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2">
@@ -1070,6 +1077,99 @@
 
         </div>
 
+        <!-- VIEW: HỌC CHART — feed review lại lệnh cũ, mỗi ngày 1 insight -->
+        <div x-show="currentView === 'REVIEW'" class="max-w-xl mx-auto space-y-5" x-cloak>
+            <div class="flex items-end justify-between gap-3">
+                <div>
+                    <h3 class="text-lg font-outfit font-black text-white">Học Chart</h3>
+                    <p class="text-xs text-slate-400">Mỗi ngày nhìn lại chart cũ — ghi 1 insight mới.</p>
+                </div>
+                <div class="text-right shrink-0">
+                    <div class="font-mono font-black text-emerald-400 text-lg" x-text="reviewStreak + ' ngày'"></div>
+                    <div class="text-[10px] text-slate-500 uppercase tracking-wider">chuỗi review</div>
+                </div>
+            </div>
+
+            <div class="flex gap-2 text-xs font-bold">
+                <button @click="reviewFilter = 'ALL'" :class="reviewFilter === 'ALL' ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400'" class="px-3 py-1.5 rounded-lg">Tất cả</button>
+                <button @click="reviewFilter = 'TODO'" :class="reviewFilter === 'TODO' ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400'" class="px-3 py-1.5 rounded-lg">Chưa xem hôm nay</button>
+                <button @click="reviewFilter = 'LOSS'" :class="reviewFilter === 'LOSS' ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-400'" class="px-3 py-1.5 rounded-lg">Lệnh thua</button>
+            </div>
+
+            <div x-show="reviewTrades.length === 0" class="glass-panel rounded-2xl p-8 text-center text-sm text-slate-400">
+                Chưa có lệnh nào có ảnh chart. Thêm ảnh khi ghi lệnh để review ở đây.
+            </div>
+
+            <template x-for="(trade, idx) in reviewTrades" :key="trade.id">
+                <article x-data="{ draft: '', saving: false }" class="glass-panel rounded-2xl overflow-hidden border"
+                    :class="trade.id === todayPickId ? 'border-emerald-500/50 shadow-[0_0_25px_rgba(16,185,129,0.15)]' : 'border-white/10'">
+                    <div x-show="trade.id === todayPickId" class="px-4 py-1.5 bg-emerald-500/15 text-emerald-300 text-[11px] font-bold uppercase tracking-wider">Chart của hôm nay</div>
+
+                    <!-- Header -->
+                    <div class="flex items-center justify-between px-4 pt-3 pb-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="font-outfit font-black text-white" x-text="trade.pair"></span>
+                            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                                :class="trade.direction === 'LONG' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'" x-text="trade.direction"></span>
+                            <span class="text-xs text-slate-500 font-mono truncate" x-text="fmtDateVN(trade.date)"></span>
+                        </div>
+                        <span class="text-xs font-mono font-black shrink-0"
+                            :class="trade.status === 'WIN' ? 'text-emerald-400' : trade.status === 'LOSS' ? 'text-rose-400' : 'text-slate-400'"
+                            x-text="trade.status + ' ' + ((trade.rAchieved > 0 ? '+' : '') + Number(trade.rAchieved || 0).toFixed(2)) + 'R'"></span>
+                    </div>
+
+                    <!-- Ảnh: vuốt ngang -->
+                    <div class="flex overflow-x-auto snap-x snap-mandatory bg-black/40">
+                        <template x-for="img in tradeImages(trade)" :key="img.tf">
+                            <div class="snap-center shrink-0 w-full relative cursor-zoom-in" @click="inspectTrade(trade, img.idx)">
+                                <img :src="img.src" loading="lazy" class="w-full max-h-[420px] object-contain">
+                                <span class="absolute top-2 left-2 text-[10px] font-bold font-mono bg-black/70 text-white px-2 py-0.5 rounded" x-text="img.tf + (tradeImages(trade).length > 1 ? ' · vuốt →' : '')"></span>
+                            </div>
+                        </template>
+                    </div>
+
+                    <div class="px-4 py-3 space-y-3">
+                        <!-- Ghi chú lúc vào lệnh -->
+                        <p x-show="trade.note" class="text-sm text-slate-300">
+                            <span class="text-[10px] uppercase font-bold text-slate-500 mr-1">Lúc vào lệnh:</span>
+                            <span x-text="trade.note"></span>
+                        </p>
+                        <div class="text-[11px] text-slate-500 font-mono"
+                            x-text="'Entry ' + trade.entryPrice + ' · SL ' + trade.stopLoss + ' · TP ' + trade.takeProfit + ' · R:R ' + trade.rrRatio + (trade.setupTag ? ' · ' + trade.setupTag : '')"></div>
+
+                        <!-- Insights theo ngày -->
+                        <div class="space-y-2 border-t border-white/10 pt-3" x-show="insightsFor(trade.id).length">
+                            <button x-show="insightsFor(trade.id).length > 3 && !insightExpanded[trade.id]" @click="insightExpanded = { ...insightExpanded, [trade.id]: true }"
+                                class="text-xs text-slate-400 hover:text-white" x-text="'Xem tất cả ' + insightsFor(trade.id).length + ' insight'"></button>
+                            <template x-for="ins in (insightExpanded[trade.id] ? insightsFor(trade.id) : insightsFor(trade.id).slice(-3))" :key="ins.id">
+                                <div class="group flex gap-2 text-sm">
+                                    <div class="shrink-0 w-16 text-[10px] font-mono text-slate-500 pt-0.5 leading-tight">
+                                        <div x-text="fmtDateVN(ins.created_at)"></div>
+                                        <div class="text-slate-600" x-text="'+' + daysBetween(trade.date, ins.created_at) + ' ngày'"></div>
+                                    </div>
+                                    <p class="flex-1 text-slate-200 whitespace-pre-line" x-text="ins.body"></p>
+                                    <button @click="deleteInsight(ins)" class="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 text-xs shrink-0" title="Xoá">✕</button>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- Viết insight hôm nay -->
+                        <form @submit.prevent="if (!saving && draft.trim()) { saving = true; if (await addInsight(trade, draft)) { draft = ''; $refs.ta.style.height = 'auto'; } saving = false; }" class="flex gap-2 items-end">
+                            <textarea x-ref="ta" x-model="draft" rows="1"
+                                @input="$el.style.height = 'auto'; $el.style.height = $el.scrollHeight + 'px'"
+                                @keydown.enter.meta.prevent="$el.form.requestSubmit()" @keydown.enter.ctrl.prevent="$el.form.requestSubmit()"
+                                :placeholder="reviewedToday(trade.id) ? 'Thêm ý nữa...' : 'Hôm nay nhìn lại chart này thấy gì?'"
+                                class="flex-1 bg-card border border-white/10 rounded-xl px-3 py-2 text-sm text-white resize-none focus:outline-none focus:border-emerald-500"></textarea>
+                            <button type="submit" :disabled="!draft.trim() || saving"
+                                class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-bold px-3 py-2 rounded-xl shrink-0"
+                                x-text="saving ? '...' : 'Lưu'"></button>
+                        </form>
+                        <div x-show="reviewedToday(trade.id)" class="text-[10px] text-emerald-500 font-bold">✓ Đã review hôm nay</div>
+                    </div>
+                </article>
+            </template>
+        </div>
+
         <!-- VIEW 4: SETTINGS -->
         <div x-show="currentView === 'SETTINGS'" class="space-y-5" x-cloak>
             <!-- Header -->
@@ -1247,6 +1347,12 @@
             <span>Nhật Ký</span>
         </button>
 
+        <button @click="switchView('REVIEW')"
+            :class="currentView === 'REVIEW' ? 'text-emerald-400' : 'text-slate-500'"
+            class="flex-1 flex flex-col items-center gap-1 py-3 text-[9px] font-bold transition-colors">
+            <i data-lucide="eye" class="w-5 h-5"></i>
+            <span>Học Chart</span>
+        </button>
         <button @click="switchView('CALCULATOR')"
             :class="currentView === 'CALCULATOR' ? 'text-blue-400' : 'text-slate-500'"
             class="flex-1 flex flex-col items-center gap-1 py-3 text-[9px] font-bold transition-colors">
@@ -1810,6 +1916,9 @@
                 inputUsername: '',
                 inputPasscode: '',
                 inputPasscode2: '',
+                insights: {},
+                insightExpanded: {},
+                reviewFilter: 'ALL',
                 signupMode: false,
                 loginError: false,
                 loginErrorMsg: '',
@@ -2122,6 +2231,102 @@
                     }
                 },
 
+                // ───────── HỌC CHART (trade_insights) ─────────
+                localDay(d) {
+                    const x = d ? new Date(d) : new Date();
+                    return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+                },
+
+                fmtDateVN(d) {
+                    if (!d) return '';
+                    const s = String(d).length <= 10 ? String(d) : this.localDay(d);
+                    const [y, m, dd] = s.split('-');
+                    return `${dd}/${m}/${y.slice(2)}`;
+                },
+
+                daysBetween(fromDate, toTs) {
+                    const a = new Date(String(fromDate).slice(0, 10) + 'T00:00:00');
+                    const b = new Date(this.localDay(toTs) + 'T00:00:00');
+                    return Math.max(0, Math.round((b - a) / 86400000));
+                },
+
+                tradeImages(t) {
+                    return [['HTF', t.imgHtf, 0], ['MTF', t.imgMtf, 1], ['LTF', t.imgLtf, 2]]
+                        .filter(([, src]) => typeof src === 'string' && src)
+                        .map(([tf, src, idx]) => ({ tf, src, idx }));
+                },
+
+                insightsFor(tradeId) {
+                    return this.insights[tradeId] || [];
+                },
+
+                reviewedToday(tradeId) {
+                    const today = this.localDay();
+                    return this.insightsFor(tradeId).some(i => this.localDay(i.created_at) === today);
+                },
+
+                get reviewTrades() {
+                    const withImg = this.trades.filter(t => t.synced !== false && this.isUuid(t.id) && this.tradeImages(t).length);
+                    let list = withImg;
+                    if (this.reviewFilter === 'TODO') list = list.filter(t => !this.reviewedToday(t.id));
+                    if (this.reviewFilter === 'LOSS') list = list.filter(t => t.status === 'LOSS');
+                    const pick = this.todayPickId;
+                    return [...list].sort((a, b) => (b.id === pick) - (a.id === pick) || String(b.date).localeCompare(String(a.date)));
+                },
+
+                // Chart của hôm nay: lệnh ít được review nhất (không tính hôm nay), cố định trong ngày
+                get todayPickId() {
+                    const today = this.localDay();
+                    const cands = this.trades.filter(t => this.isUuid(t.id) && this.tradeImages(t).length);
+                    if (!cands.length) return null;
+                    const before = id => this.insightsFor(id).filter(i => this.localDay(i.created_at) !== today);
+                    const hash = s => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+                    return [...cands].sort((a, b) =>
+                        before(a.id).length - before(b.id).length ||
+                        hash(today + a.id) - hash(today + b.id)
+                    )[0].id;
+                },
+
+                get reviewStreak() {
+                    const days = new Set(Object.values(this.insights).flat().map(i => this.localDay(i.created_at)));
+                    let n = 0;
+                    const d = new Date();
+                    if (!days.has(this.localDay(d))) d.setDate(d.getDate() - 1); // hôm nay chưa viết vẫn giữ chuỗi
+                    while (days.has(this.localDay(d))) { n++; d.setDate(d.getDate() - 1); }
+                    return n;
+                },
+
+                async loadInsights() {
+                    if (!this.userId) return;
+                    const { data, error } = await sb.from('trade_insights').select('*').order('created_at', { ascending: true });
+                    if (error) { console.warn('Tải insight lỗi:', error.message); return; }
+                    const map = {};
+                    for (const r of data) (map[r.trade_id] = map[r.trade_id] || []).push(r);
+                    this.insights = map;
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async addInsight(trade, text) {
+                    const body = String(text || '').trim();
+                    if (!body) return false;
+                    try {
+                        const { data, error } = await sb.from('trade_insights').insert({ trade_id: trade.id, body }).select().single();
+                        if (error) throw error;
+                        this.insights = { ...this.insights, [trade.id]: [...this.insightsFor(trade.id), data] };
+                        return true;
+                    } catch(err) {
+                        alert('⚠️ Chưa lưu được insight: ' + err.message);
+                        return false;
+                    }
+                },
+
+                async deleteInsight(ins) {
+                    if (!confirm('Xoá insight này?')) return;
+                    const { error } = await sb.from('trade_insights').delete().eq('id', ins.id);
+                    if (error) return alert('❌ Xoá thất bại: ' + error.message);
+                    this.insights = { ...this.insights, [ins.trade_id]: this.insightsFor(ins.trade_id).filter(i => i.id !== ins.id) };
+                },
+
                 async lockApp() {
                     try { await sb.auth.signOut(); } catch(e) {}
                     this.isLocked = true;
@@ -2130,6 +2335,7 @@
                     this.traderUsername = '';
                     this.googleApiKey = '';
                     this.trades = [];
+                    this.insights = {};
                 },
 
                 // ───────── CÀI ĐẶT (bảng profiles) ─────────
@@ -3225,6 +3431,9 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         }
                         if (viewName === 'ANALYTICS') {
                             setTimeout(() => this.renderAnalyticsChart(), 100);
+                        }
+                        if (viewName === 'REVIEW') {
+                            this.loadInsights();
                         }
                     }
                     this.$nextTick(() => lucide.createIcons());

@@ -98,3 +98,18 @@ create policy "trade images update own" on storage.objects for update to authent
   using (bucket_id = 'trade-images' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "trade images delete own" on storage.objects for delete to authenticated
   using (bucket_id = 'trade-images' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- 4. INSIGHTS: mỗi ngày nhìn lại chart cũ → 1 ghi chú mới (tab "Học Chart")
+create table if not exists public.trade_insights (
+  id         uuid primary key default gen_random_uuid(),
+  trade_id   uuid not null references public.trades(id) on delete cascade,
+  user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  body       text not null check (char_length(body) between 1 and 4000),
+  created_at timestamptz not null default now()
+);
+create index if not exists trade_insights_user_idx on public.trade_insights (user_id, trade_id, created_at);
+alter table public.trade_insights enable row level security;
+drop policy if exists "own insights" on public.trade_insights;
+create policy "own insights" on public.trade_insights for all
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id and exists (select 1 from public.trades t where t.id = trade_id and t.user_id = auth.uid()));
