@@ -11,6 +11,7 @@
 <style>
 #app{padding-bottom:24px}
 @media(min-width:1024px){#app{display:block;max-width:1240px}.views{padding:8px 24px 48px}}
+.tag.ok{background:var(--accent-soft);color:var(--accent-text)}.tag.warn{background:#2A2310;color:var(--gold)}.tag.bad{background:#3A2414;color:#FDBA8C}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 16px 16px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
 .kpi small{display:block;font-size:12px;color:var(--mute)}.kpi b{font-size:22px}
@@ -68,12 +69,12 @@ function render() {
     <div class="kpi ${Number(rc.diff) ? 'bad' : ''}"><small>Đối soát ví (phải = 0)</small><b class="mono">${vnd(rc.diff || 0)}</b></div>
     <div class="kpi"><small>Tổng số dư khách</small><b class="mono">${vnd(rc.sum_balance || 0)}</b></div>`;
   const todo = todoN();
-  const tabs = [['todo', 'Việc cần làm', todo], ['products', 'Sản phẩm'], ['stock', 'Kho'], ['new', '+ Thêm sản phẩm'], ['customers', 'Khách'], ['orders', 'Tra đơn']];
+  const tabs = [['todo', 'Việc cần làm', todo], ['products', 'Sản phẩm'], ['stock', 'Kho'], ['new', '+ Thêm sản phẩm'], ['topups', 'Lịch sử nạp'], ['customers', 'Khách'], ['orders', 'Tra đơn']];
   $('#atabs').innerHTML = tabs.map(([k, l, n]) => `<button class="chip ${A.tab === k ? 'on' : ''}" onclick="tab('${k}')">${l}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('');
-  $('#abody').innerHTML = ({ todo: vTodo, products: vProducts, stock: vStock, new: vWizard, customers: vCustomers, orders: vOrders })[A.tab]();
+  $('#abody').innerHTML = ({ todo: vTodo, products: vProducts, stock: vStock, new: vWizard, customers: vCustomers, orders: vOrders, topups: vTopups })[A.tab]();
   if (A.tab === 'new') wzMarginAll();
 }
-function tab(k) { A.tab = k; if (k === 'new' && !A.wz) wzReset(); if (k === 'stock') loadStock().then(render); else render(); }
+function tab(k) { if (k === 'topups') A.tpAll = null; A.tab = k; if (k === 'new' && !A.wz) wzReset(); if (k === 'stock') loadStock().then(render); else render(); }
 
 // ---------- 1. Việc cần làm ----------
 const todoN = () => A.orders.filter(o => o.status === 'processing' || o.status === 'unpaid').length + (A.topups || []).length + A.txs.length;
@@ -266,6 +267,35 @@ async function wzFinish() {
     toast(`Đã bật bán ${w.name}${n ? ` · ${n} tài khoản vào kho` : ''}${bad ? ` · loại ${bad} dòng lỗi` : ''}`);
     A.wz = null; A.tab = 'products'; await loadProducts(); render();
   } catch (e) { toast(errText(e)); btn.disabled = false; btn.textContent = 'Bật bán ngay'; }
+}
+
+// ---------- Lịch sử nạp ví (mọi khách) ----------
+const TP_ST = { pending: ['Chờ duyệt', 'warn'], approved: ['Đã cộng', 'ok'], rejected: ['Từ chối', 'bad'] };
+async function loadTopups() {
+  const { data, error } = await sb.from('topup_requests').select('*, profiles(email, pay_code)').order('created_at', { ascending: false }).limit(300);
+  if (error) return toast(errText(error));
+  A.tpAll = data || []; render();
+}
+function vTopups() {
+  if (!A.tpAll) { loadTopups(); return '<p class="sub">Đang tải…</p>'; }
+  const f = A.tpF || 'all', q = (A.tpQ || '').toLowerCase();
+  const list = A.tpAll.filter(t => (f === 'all' || t.status === f) && (!q || String(t.profiles && t.profiles.email || '').toLowerCase().includes(q)));
+  const now = new Date(), day = now.toDateString(), mon = now.getFullYear() + '-' + now.getMonth();
+  const ok = A.tpAll.filter(t => t.status === 'approved');
+  const sum = a => a.reduce((x, t) => x + Number(t.amount || 0), 0);
+  const today = ok.filter(t => new Date(t.decided_at || t.created_at).toDateString() === day);
+  const month = ok.filter(t => { const d = new Date(t.decided_at || t.created_at); return d.getFullYear() + '-' + d.getMonth() === mon; });
+  return `<div class="kpis" style="margin:0 0 14px"><div class="kpi"><small>Khách nạp hôm nay</small><b class="mono">${vnd(sum(today))}</b><small>${today.length} lượt</small></div>
+      <div class="kpi"><small>Khách nạp tháng này</small><b class="mono">${vnd(sum(month))}</b><small>${month.length} lượt</small></div></div>
+    <div class="form"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      ${[['all', 'Tất cả'], ['approved', 'Đã cộng'], ['pending', 'Chờ duyệt'], ['rejected', 'Từ chối']].map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" onclick="A.tpF='${k}';render()">${l}</button>`).join('')}
+      <input class="inp" style="flex:1 1 200px" placeholder="Lọc theo email khách" value="${esc(A.tpQ || '')}" oninput="A.tpQ=this.value;clearTimeout(A._tq);A._tq=setTimeout(()=>{render();const i=document.querySelector('#abody input[placeholder^=Lọc]');i&&(i.focus(),i.setSelectionRange(i.value.length,i.value.length))},250)">
+      <button class="btn sm" onclick="A.tpAll=null;render()">Tải lại</button></div></div>
+    <div class="tw" style="margin-top:12px"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Khách báo</th><th>Đã cộng (gồm thưởng)</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead><tbody>
+    ${list.map(t => { const st = TP_ST[t.status] || [t.status, '']; return `<tr><td class="mono">${ftime(t.created_at)}</td><td>${esc(t.profiles ? t.profiles.email : '')}<br><small class="mono" style="color:var(--dim)">${esc(t.profiles ? t.profiles.pay_code : '')}</small></td>
+      <td class="mono">${vnd(t.amount)}</td><td class="mono">${t.credited ? vnd(t.credited) : '—'}</td><td><span class="tag ${st[1]}">${st[0]}</span></td><td>${esc(t.note || '')}</td></tr>`; }).join('') || '<tr><td colspan="6"><p class="sub">Chưa có lượt nạp.</p></td></tr>'}
+    </tbody></table></div>
+    <p class="sub" style="margin-top:10px">Cộng/trừ tay bằng "Điều chỉnh ví" không nằm ở đây: xem trong tab Khách → bấm vào khách.</p>`;
 }
 
 // ---------- 5. Khách ----------
