@@ -915,8 +915,8 @@
         </h3>
         <template x-if="swap.f.customers.length===0"><div class="mute">Fam này không có email khách.</div></template>
         <template x-for="c in swap.f.customers" :key="c.row">
-          <div class="cus">
-            <input type="checkbox" :value="c.email" x-model="swap.sel">
+          <div class="cus" :style="swap.archive.includes(c.email) ? 'opacity:.55' : ''">
+            <input type="checkbox" :value="c.email" x-model="swap.sel" :disabled="swap.archive.includes(c.email)">
             <div class="grow">
               <div class="mono ellip" x-text="c.email"></div>
               <div class="mute" style="font-size:12px">
@@ -925,7 +925,8 @@
               </div>
             </div>
             <span class="copied" x-show="swap.copied.includes(c.email)">đã copy ✓</span>
-            <button class="btn sm" @click="copyCus(c.email)">Copy</button>
+            <button class="btn sm" :class="swap.archive.includes(c.email) ? 'pri' : ''" @click="toggleArchive(c.email)" title="Khách không vào → cất data xuống cuối sheet, không mời, để trống slot mời khách khác" x-text="swap.archive.includes(c.email) ? 'Không vào → cất ✓' : 'Không vào'"></button>
+            <button class="btn sm" @click="copyCus(c.email)" x-show="!swap.archive.includes(c.email)">Copy</button>
           </div>
         </template>
       </div>
@@ -933,7 +934,7 @@
       <div class="step">
         <h3><span class="num">4</span>Ghi chú cho admin <span class="mute" style="font-weight:400;font-size:13px">(không bắt buộc)</span></h3>
         <input type="text" x-model="swap.note" placeholder="vd: khách X báo đổi mail, FR này hơi lag…" style="width:100%">
-        <div class="mute" style="font-size:12px;margin-top:6px" x-show="swap.sel.length < 5" x-text="'Mời ' + swap.sel.length + '/5 → còn ' + (5 - swap.sel.length) + ' slot trống. Webapp sẽ tự báo admin để xếp khách vào.'"></div>
+        <div class="mute" style="font-size:12px;margin-top:6px" x-show="swap.sel.length < 5" x-text="'Mời ' + swap.sel.length + '/5 → còn ' + (5 - swap.sel.length) + ' slot trống.' + (swap.archive.length ? ' ' + swap.archive.length + ' khách không vào sẽ được cất xuống cuối sheet (Chờ xếp).' : '') + ' Webapp sẽ tự báo admin để xếp khách vào.'"></div>
       </div>
 
       <div class="foot">
@@ -1433,10 +1434,15 @@ function app() {
         + '\nBạn chọn gói nào nhắn mình nha, cảm ơn bạn!';
     },
 
+    toggleArchive(e) {
+      const s = this.swap;
+      if (s.archive.includes(e)) { s.archive = s.archive.filter(x => x !== e); if (!s.sel.includes(e)) s.sel.push(e); }
+      else { s.archive.push(e); s.sel = s.sel.filter(x => x !== e); }
+    },
     openSwap(f) {
       this.swapError = ''; this.confirming = false; this.lastDone = '';
       this.swap = {
-        f, fr: this.frs[0] || null, copied: [], newTwofa: '', note: '',
+        f, fr: this.frs[0] || null, copied: [], newTwofa: '', note: '', archive: [],
         sel: f.customers.filter(c => c.daysLeft === null || c.daysLeft >= 0).map(c => c.email),
       };
       this.tickOtp();
@@ -1628,10 +1634,10 @@ function app() {
       try {
         const r = await this.api({
           action: 'complete', rn: s.f.rn, stockRow: s.f.stockRow, oldEmail: s.f.email,
-          fr: s.fr.fr, frRow: s.fr.row, frEmail: s.fr.email, invited: s.sel, twofa: s.fr.twofa ? '' : s.newTwofa, note: s.note,
+          fr: s.fr.fr, frRow: s.fr.row, frEmail: s.fr.email, invited: s.sel, archive: s.archive, twofa: s.fr.twofa ? '' : s.newTwofa, note: s.note,
         });
         this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách, trạng thái ' + r.status + '.' + (r.closedTickets ? ' Đã đóng ' + r.closedTickets + ' ticket báo lỗi.' : '')
-;
+          + (r.archived && r.archived.length ? ' Đã cất ' + r.archived.length + ' khách không vào xuống cuối sheet (' + r.archived.map(a => a.email + ' → dòng ' + a.archRow).join(', ') + ', "Chờ xếp"). Slot để trống chờ mời.' : '');
         this.lastActionId = r.actionId || '';
         const zaloOf = e => { const x = s.f.report && s.f.report.reporters.find(p => p.email === String(e).toLowerCase()); return x ? x.zalo : ''; };
         this.notify = { rn: r.rn, url: r.fixUrl || FIXYTB_URL, sent: [], items: s.f.customers.filter(c => s.sel.includes(c.email)).map(c => ({ email: c.email, ctv: c.ctv, zalo: zaloOf(c.email) })) };
