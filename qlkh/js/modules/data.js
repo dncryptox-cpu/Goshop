@@ -24,7 +24,7 @@ QLKH.define('data', {
         today: ['datagoc', 'products', 'famrenew', 'transactions'],
         pnl_calculator: ['sheets', 'transactions'],
         lai_lo: ['transactions'],
-        capcut: ['transactions', 'stockcc'],
+        san_pham: ['transactions'],
         manual_other_orders: ['sheets', 'datagoc'],
         data_goc: ['datagoc', 'sheets'],
         fam_spot: ['sheets'],
@@ -143,6 +143,7 @@ QLKH.define('data', {
         for (let i = 0; i < maxCols; i++) {
             let h = rows[headerIndex][i] || '';
             h = h === '' ? `Col_${i}` : h;
+            if (/^\d+$/.test(h)) h = `#${h}`; // tên cột là số sẽ bị JS xếp lên đầu Object.keys → lệch vị trí
             if (seen.has(h)) h = `${h}_${i}`;
             seen.add(h);
             headers.push(h);
@@ -171,7 +172,7 @@ QLKH.define('data', {
 
     // ---------- Nhóm dữ liệu ----------
     // Bộ nhớ đệm cục bộ: hiện dữ liệu cũ ngay, rồi thay bằng dữ liệu mới khi tải xong.
-    CACHE_KEY: 'qlkh_cache_v1',
+    CACHE_KEY: 'qlkh_cache_v2',
     readCache() {
         try { return JSON.parse(localStorage.getItem(this.CACHE_KEY) || '{}'); } catch (e) { return {}; }
     },
@@ -200,18 +201,29 @@ QLKH.define('data', {
         this.invalidateCaches();
     },
 
+    // Cột A..O của DATA(YTB) và DATA(GCC) (hai tab cùng bố cục, nhưng tiêu đề khác nhau / bị gviz bỏ trống).
+    TX_COLUMNS: ['Date', 'ID/Mã', 'Phân loại', 'Email', 'Sản phẩm', 'Duration', 'SKU', 'CTV', 'HH', 'Cost', 'Phát sinh', 'Price', 'Profit', 'HSD', 'MRR'],
+    normalizeTx(list, tab) {
+        return list.map(r => {
+            const v = r._rawVals || [];
+            const o = {};
+            this.TX_COLUMNS.forEach((name, i) => { o[name] = v[i] || ''; });
+            Object.defineProperty(o, '_tab', { value: tab, enumerable: false });
+            Object.defineProperty(o, '_line', { value: r._line, enumerable: false });
+            return o;
+        });
+    },
+
     async loadTransactions() {
         const [ytb, gcc] = await Promise.all([
             this.gvizCsv(this.CONFIG.TRANSACTION_SHEET_ID, 'DATA(YTB)'),
             this.gvizCsv(this.CONFIG.TRANSACTION_SHEET_ID, 'DATA(GCC)')
         ]);
-        const tag = (list, tab) => list.forEach(r => Object.defineProperty(r, '_tab', { value: tab, enumerable: false }));
-        tag(ytb, 'DATA(YTB)'); tag(gcc, 'DATA(GCC)');
-        window._rawDb.DATA_YTB = [...ytb, ...gcc];
+        window._rawDb.DATA_YTB = [...this.normalizeTx(ytb, 'DATA(YTB)'), ...this.normalizeTx(gcc, 'DATA(GCC)')];
         this.calculateGlobalProfit();
         this.syncNotificationsFromTransactions();
         if (this.activeModule === 'pnl_calculator') this.$nextTick(() => this.renderProfitChart());
-        if (this.activeModule === 'capcut') this.$nextTick(() => this.renderCapcutChart());
+        if (this.activeModule === 'san_pham') this.$nextTick(() => this.renderProductChart());
         this.writeCache({ DATA_YTB: window._rawDb.DATA_YTB });
         this.invalidateCaches();
     },

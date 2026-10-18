@@ -1,16 +1,29 @@
-// capcut.js — tab "CapCut": tổng quan bán hàng, khách sắp hết hạn, danh sách khách, giá đang bán, kho tài khoản.
-// Nguồn: các dòng CapCut trong DATA(YTB) + DATA(GCC) (dùng chung llAllRows) và tab "Stock CC" của sheet tài chính.
+// sanpham.js — tab "Sản Phẩm": tổng quan bán hàng theo sản phẩm (mặc định tất cả, lọc từng sản phẩm),
+// khách cần nhắn, danh sách khách, giá đang bán; riêng CapCut có thêm kho tài khoản (tab Stock CC).
+// Nguồn: DATA(YTB) + DATA(GCC) (dùng chung llAllRows).
 (() => {
-const memo = { src: null, due: null, out: [] }; // ngoài Alpine, tính lại khi dữ liệu đổi
-QLKH.define('capcut', {
-    ccView: 'todo',          // todo | customers | stock
+const memo = { src: null, due: null, product: null, out: [] }; // ngoài Alpine, tính lại khi dữ liệu đổi
+QLKH.define('sanpham', {
+    ccProduct: 'all',        // 'all' hoặc tên sản phẩm (CapCut, YouTube, ChatGPT…)
+    ccView: 'todo',          // todo | customers | stock (stock chỉ có với CapCut)
     ccSearch: '',
     ccStatus: 'all',         // all | active | due | lapsed | lost
     ccOpen: null,            // khách đang mở lịch sử
     ccStock: [],             // tài khoản kho (không giữ mật khẩu)
     ccDueDays: 14,
 
-    get ccRows() { return this.llAllRows.filter(r => r.family === 'CapCut'); },
+    get ccRows() { return this.ccProduct === 'all' ? this.llAllRows : this.llAllRows.filter(r => r.family === this.ccProduct); },
+
+    // Tên hiển thị trong tin nhắn cho khách
+    PRODUCT_NAMES: { CapCut: 'CapCut Pro', YouTube: 'YouTube Premium', ChatGPT: 'ChatGPT Plus', Canva: 'Canva Pro', 'Google One': 'Google One', Spotify: 'Spotify Premium', Netflix: 'Netflix', Adobe: 'Adobe' },
+
+    ccSetProduct(p) {
+        this.ccProduct = p;
+        this.ccOpen = null;
+        if (this.ccView === 'stock' && p !== 'CapCut') this.ccView = 'todo';
+        if (p === 'CapCut') this.ensureData(['stockcc']);
+        this.$nextTick(() => this.renderProductChart());
+    },
 
     ccToday() { const t = new Date(); t.setHours(0, 0, 0, 0); return t; },
     ccDays(iso) { if (!iso) return null; const d = new Date(iso + 'T00:00:00'); return Math.round((d - this.ccToday()) / 86400000); },
@@ -26,12 +39,13 @@ QLKH.define('capcut', {
 
     get ccCustomers() {
         const src = this.llAllRows;
-        if (memo.src === src && memo.due === this.ccDueDays) return memo.out;
+        if (memo.src === src && memo.due === this.ccDueDays && memo.product === this.ccProduct) return memo.out;
         const map = new Map();
         for (const r of this.ccRows) {
             const id = this.ccKey(r);
-            if (!map.has(id.key)) map.set(id.key, { key: id.key, label: id.label, hasEmail: id.hasEmail, orders: [] });
-            map.get(id.key).orders.push(r);
+            const key = r.family + '|' + id.key;
+            if (!map.has(key)) map.set(key, { key, person: id.key, label: id.label, hasEmail: id.hasEmail, family: r.family, orders: [] });
+            map.get(key).orders.push(r);
         }
         const out = [...map.values()].map(c => {
             c.orders.sort((a, b) => a.date.localeCompare(b.date));
@@ -47,7 +61,7 @@ QLKH.define('capcut', {
                 sku: last.sku, ctv: last.ctv,
             };
         });
-        memo.src = src; memo.due = this.ccDueDays; memo.out = out;
+        memo.src = src; memo.due = this.ccDueDays; memo.product = this.ccProduct; memo.out = out;
         return out;
     },
 
@@ -58,7 +72,8 @@ QLKH.define('capcut', {
         const cur = rows.filter(r => inRange(r, 30, -1)), prev = rows.filter(r => inRange(r, 60, 30));
         const matured = cs.filter(c => this.ccDays(c.orders[0].expiry) !== null && this.ccDays(c.orders[0].expiry) < 0);
         return {
-            customers: cs.length,
+            customers: new Set(cs.map(c => c.person)).size,
+            subscriptions: cs.length,
             active: cs.filter(c => c.status === 'active' || c.status === 'due').length,
             due: cs.filter(c => c.status === 'due').length,
             lapsed: cs.filter(c => c.status === 'lapsed').length,
@@ -90,7 +105,7 @@ QLKH.define('capcut', {
         const q = this.ccSearch.trim().toLowerCase();
         return this.ccCustomers
             .filter(c => this.ccStatus === 'all' || c.status === this.ccStatus || (this.ccStatus === 'active' && c.status === 'due'))
-            .filter(c => !q || [c.label, c.sku, c.ctv, ...c.orders.map(o => o.customer)].join(' ').toLowerCase().includes(q))
+            .filter(c => !q || [c.label, c.sku, c.ctv, c.family, ...c.orders.map(o => o.customer)].join(' ').toLowerCase().includes(q))
             .sort((a, b) => (b.expiry || '').localeCompare(a.expiry || ''));
     },
 
@@ -98,12 +113,26 @@ QLKH.define('capcut', {
     get ccPrices() {
         const m = new Map();
         [...this.ccRows].sort((a, b) => a.date.localeCompare(b.date)).forEach(r => {
-            const x = m.get(r.sku) || { sku: r.sku, orders: 0, active: 0 };
+            const x = m.get(r.sku) || { sku: r.sku, family: r.family, orders: 0, active: 0 };
             x.orders++; x.price = r.price; x.cost = r.cost; x.profit = r.profit; x.date = r.date;
             m.set(r.sku, x);
         });
         this.ccCustomers.forEach(c => { if ((c.status === 'active' || c.status === 'due') && m.has(c.sku)) m.get(c.sku).active++; });
-        return [...m.values()].sort((a, b) => b.orders - a.orders);
+        // gói còn khách dùng lên trước, rồi gói bán nhiều
+        return [...m.values()].sort((a, b) => b.active - a.active || b.orders - a.orders);
+    },
+
+    // Khi xem tất cả: từng sản phẩm đóng góp bao nhiêu
+    get ccByProduct() {
+        const m = new Map();
+        const t = this.ccToday().getTime();
+        this.llAllRows.forEach(r => {
+            const x = m.get(r.family) || { family: r.family, orders: 0, revenue: 0, profit: 0, profit30: 0 };
+            x.orders++; x.revenue += r.price; x.profit += r.profit;
+            if (new Date(r.date + 'T00:00:00').getTime() > t - 30 * 864e5) x.profit30 += r.profit;
+            m.set(r.family, x);
+        });
+        return [...m.values()].sort((a, b) => b.profit - a.profit);
     },
 
     get ccMonthly() {
@@ -117,7 +146,7 @@ QLKH.define('capcut', {
         return [...m.values()].sort((a, b) => a.month.localeCompare(b.month));
     },
 
-    renderCapcutChart() {
+    renderProductChart() {
         const el = document.getElementById('ccChart');
         if (!el || !window.Chart) return;
         const data = this.ccMonthly;
@@ -148,10 +177,11 @@ QLKH.define('capcut', {
     ccMessage(c) {
         const p = this.ccPrices.find(x => x.sku === c.sku);
         const months = (c.sku.match(/-(\d+)$/) || [])[1];
+        const name = this.PRODUCT_NAMES[c.family] || c.family;
         const when = c.daysLeft > 0 ? `sẽ hết hạn sau ${c.daysLeft} ngày (${this.ccFmtDate(c.expiry)})`
             : c.daysLeft === 0 ? `hết hạn hôm nay (${this.ccFmtDate(c.expiry)})` : `đã hết hạn từ ${this.ccFmtDate(c.expiry)}`;
         const price = p && p.price ? ` Phí gia hạn ${months ? months + ' tháng' : ''}: ${Math.round(p.price).toLocaleString('vi-VN')}đ.` : '';
-        return `Chào bạn, tài khoản CapCut Pro của bạn ${when}.${price} Bạn muốn gia hạn tiếp thì nhắn mình để giữ nguyên tài khoản và dự án nhé!`;
+        return `Chào bạn, gói ${name} của bạn ${when}.${price} Bạn muốn gia hạn tiếp thì nhắn mình để giữ nguyên tài khoản nhé!`;
     },
 
     async ccCopyMessage(c) {

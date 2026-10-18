@@ -1,20 +1,32 @@
-                <!-- Module: CapCut — tổng quan, việc cần làm, khách, giá, kho -->
-                <div x-show="activeModule === 'capcut' && isModuleAllowed('capcut')" x-cloak class="space-y-6">
+                <!-- Module: Sản Phẩm — tổng quan mọi sản phẩm, lọc từng sản phẩm -->
+                <div x-show="activeModule === 'san_pham' && isModuleAllowed('san_pham')" x-cloak class="space-y-6">
                     <div class="flex flex-wrap items-end justify-between gap-3">
                         <div>
-                            <h1 class="text-2xl font-bold text-gray-900">CapCut Pro</h1>
+                            <h1 class="text-2xl font-bold text-gray-900" x-text="ccProduct === 'all' ? 'Tổng quan sản phẩm' : (PRODUCT_NAMES[ccProduct] || ccProduct)"></h1>
                             <p class="text-sm text-gray-500 mt-1" x-show="ccRows.length"
                                x-text="ccStats.customers + ' khách · ' + ccRows.length + ' đơn · tổng lãi ' + llVnd(ccStats.totalProfit) + ' trên ' + llVnd(ccStats.totalRevenue) + ' doanh thu'"></p>
                         </div>
-                        <button type="button" @click="activeModule = 'lai_lo'; llProduct = 'CapCut'; llMonth = 'all'"
+                        <button type="button" @click="activeModule = 'lai_lo'; llProduct = ccProduct; llMonth = 'all'"
                                 class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
                             Lãi lỗ từng đơn <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
                         </button>
                     </div>
 
+                    <!-- Lọc sản phẩm -->
+                    <div class="flex flex-wrap gap-2" x-show="llAllRows.length">
+                        <template x-for="p in [{ name: 'all', n: llAllRows.length }, ...llFamilies]" :key="p.name">
+                            <button type="button" @click="ccSetProduct(p.name)"
+                                    :class="ccProduct === p.name ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'"
+                                    class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                                <span x-text="p.name === 'all' ? 'Tất cả' : p.name"></span>
+                                <span class="text-[10px] opacity-60" x-text="p.n"></span>
+                            </button>
+                        </template>
+                    </div>
+
                     <template x-if="!ccRows.length">
                         <div class="bg-white rounded-xl border border-gray-100 p-10 text-center text-sm text-gray-400"
-                             x-text="dataStatus('transactions') === 'error' ? 'Không tải được sheet tài chính.' : (dataStatus('transactions') === 'ready' ? 'Chưa có đơn CapCut nào.' : 'Đang tải sheet tài chính…')"></div>
+                             x-text="dataStatus('transactions') === 'error' ? 'Không tải được sheet tài chính.' : (dataStatus('transactions') === 'ready' ? 'Chưa có đơn nào của sản phẩm này.' : 'Đang tải sheet tài chính…')"></div>
                     </template>
 
                     <div x-show="ccRows.length" class="space-y-6">
@@ -44,6 +56,33 @@
                             </div>
                         </div>
 
+                        <!-- 1b. Từng sản phẩm (khi xem tất cả) -->
+                        <div x-show="ccProduct === 'all'" class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
+                            <div class="px-5 pt-5 pb-3">
+                                <h2 class="font-bold text-gray-900 text-sm">Từng sản phẩm</h2>
+                                <p class="text-xs text-gray-500 mt-0.5">Bấm một dòng để xem riêng sản phẩm đó</p>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs tabular-nums">
+                                    <thead class="bg-gray-50 text-[10px] font-bold uppercase text-gray-400">
+                                        <tr><th class="text-left px-5 py-2">Sản phẩm</th><th class="text-right px-3 py-2">Đơn</th><th class="text-right px-3 py-2">Doanh thu</th><th class="text-right px-3 py-2">Lãi</th><th class="text-right px-3 py-2">Biên</th><th class="text-right px-5 py-2">Lãi 30 ngày</th></tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-50">
+                                        <template x-for="p in ccByProduct" :key="p.family">
+                                            <tr class="hover:bg-gray-50 cursor-pointer" @click="ccSetProduct(p.family)">
+                                                <td class="px-5 py-2 font-bold text-gray-900" x-text="p.family"></td>
+                                                <td class="px-3 py-2 text-right" x-text="p.orders"></td>
+                                                <td class="px-3 py-2 text-right" x-text="llVnd(p.revenue)"></td>
+                                                <td class="px-3 py-2 text-right font-bold" :class="p.profit < 0 ? 'text-red-600' : 'text-emerald-600'" x-text="llVnd(p.profit)"></td>
+                                                <td class="px-3 py-2 text-right text-gray-500" x-text="llPct(p.revenue ? p.profit / p.revenue : null)"></td>
+                                                <td class="px-5 py-2 text-right" x-text="llVnd(p.profit30)"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
                         <!-- 2. Biểu đồ theo tháng + giá đang bán -->
                         <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
                             <div class="xl:col-span-2 bg-white rounded-xl border border-gray-100 card-shadow p-5 min-w-0">
@@ -56,14 +95,15 @@
                                     <h2 class="font-bold text-gray-900 text-sm">Giá đang bán</h2>
                                     <p class="text-xs text-gray-500 mt-0.5">Theo đơn gần nhất của từng gói</p>
                                 </div>
+                                <div class="max-h-72 overflow-y-auto">
                                 <table class="w-full text-xs tabular-nums">
-                                    <thead class="bg-gray-50 text-[10px] font-bold uppercase text-gray-400">
+                                    <thead class="bg-gray-50 text-[10px] font-bold uppercase text-gray-400 sticky top-0">
                                         <tr><th class="text-left px-4 py-2">Gói</th><th class="text-right px-2 py-2">Bán</th><th class="text-right px-2 py-2">Vốn</th><th class="text-right px-4 py-2">Lãi</th></tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-50">
                                         <template x-for="p in ccPrices" :key="p.sku">
                                             <tr :title="'Đơn gần nhất ' + ccFmtDate(p.date) + ' · ' + p.orders + ' đơn · ' + p.active + ' khách đang dùng'">
-                                                <td class="px-4 py-2"><span class="font-bold text-gray-900" x-text="p.sku"></span> <span class="text-gray-400" x-text="'· ' + p.active + ' đang dùng'"></span></td>
+                                                <td class="px-4 py-2"><p class="font-bold text-gray-900" x-text="p.sku"></p><p class="text-[10px] text-gray-400" x-text="p.active + ' đang dùng'"></p></td>
                                                 <td class="px-2 py-2 text-right" x-text="llVnd(p.price)"></td>
                                                 <td class="px-2 py-2 text-right text-gray-500" x-text="llVnd(p.cost)"></td>
                                                 <td class="px-4 py-2 text-right font-bold" :class="p.profit > 0 ? 'text-emerald-600' : 'text-red-600'" x-text="llVnd(p.profit)"></td>
@@ -71,13 +111,14 @@
                                         </template>
                                     </tbody>
                                 </table>
+                                </div>
                             </div>
                         </div>
 
                         <!-- 3. Việc cần làm / Khách / Kho -->
                         <div class="bg-white rounded-xl border border-gray-100 card-shadow overflow-hidden">
                             <div class="px-4 pt-4 flex flex-wrap gap-1 border-b border-gray-100">
-                                <template x-for="t in [['todo', 'Cần nhắn (' + ccTodo.length + ')'], ['customers', 'Khách hàng (' + ccStats.customers + ')'], ['stock', 'Kho tài khoản' + (ccStock.length ? ' (' + ccStock.length + ')' : '')]]" :key="t[0]">
+                                <template x-for="t in [['todo', 'Cần nhắn (' + ccTodo.length + ')'], ['customers', 'Khách hàng (' + ccStats.subscriptions + ')'], ...(ccProduct === 'CapCut' ? [['stock', 'Kho tài khoản' + (ccStock.length ? ' (' + ccStock.length + ')' : '')]] : [])]" :key="t[0]">
                                     <button type="button" @click="ccView = t[0]" :class="ccView === t[0] ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-800'"
                                             class="px-3 pb-3 text-sm font-bold border-b-2 -mb-px" x-text="t[1]"></button>
                                 </template>
@@ -92,7 +133,7 @@
                                         <div class="px-5 py-3 flex flex-wrap items-center gap-3">
                                             <div class="min-w-0 flex-1">
                                                 <button type="button" @click="copyToClipboard(c.label, 'khách')" class="text-sm font-bold text-gray-900 hover:text-primary truncate max-w-full text-left" x-text="c.label"></button>
-                                                <p class="text-[11px] text-gray-500" x-text="c.sku + ' · mua ' + c.count + ' lần · đã chi ' + llVnd(c.spent) + ' · CTV ' + (c.ctv || '—')"></p>
+                                                <p class="text-[11px] text-gray-500" x-text="(ccProduct === 'all' ? c.family + ' · ' : '') + c.sku + ' · mua ' + c.count + ' lần · đã chi ' + llVnd(c.spent) + ' · CTV ' + (c.ctv || '—')"></p>
                                             </div>
                                             <div class="text-right shrink-0">
                                                 <p class="text-xs font-bold text-gray-700" x-text="ccFmtDate(c.expiry)"></p>
@@ -158,7 +199,7 @@
                             </div>
 
                             <!-- Kho tài khoản -->
-                            <div x-show="ccView === 'stock'">
+                            <div x-show="ccView === 'stock' && ccProduct === 'CapCut'">
                                 <template x-if="!ccStock.length">
                                     <div class="py-10 text-center text-sm text-gray-400" x-text="dataStatus('stockcc') === 'loading' ? 'Đang tải tab Stock CC…' : 'Không đọc được tab Stock CC.'"></div>
                                 </template>

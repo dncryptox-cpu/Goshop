@@ -10,7 +10,7 @@ QLKH.define('auth', {
     accountsList: [],
     _accountsPromise: null,
 
-    STAFF_BLOCKED: ['pnl_calculator', 'lai_lo', 'capcut', 'global_profit', 'pricing_catalog', 'twofa', 'promocodes', 'account'],
+    STAFF_BLOCKED: ['pnl_calculator', 'lai_lo', 'san_pham', 'global_profit', 'pricing_catalog', 'twofa', 'promocodes', 'account'],
     SESSION_KEY: 'qlkh_session',
     SESSION_DAYS: 7,
 
