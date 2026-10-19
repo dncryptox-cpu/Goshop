@@ -69,12 +69,12 @@ function render() {
     <div class="kpi ${Number(rc.diff) ? 'bad' : ''}"><small>Đối soát ví (phải = 0)</small><b class="mono">${vnd(rc.diff || 0)}</b></div>
     <div class="kpi"><small>Tổng số dư khách</small><b class="mono">${vnd(rc.sum_balance || 0)}</b></div>`;
   const todo = todoN();
-  const tabs = [['todo', 'Việc cần làm', todo], ['products', 'Sản phẩm'], ['stock', 'Kho'], ['new', '+ Thêm sản phẩm'], ['topups', 'Lịch sử nạp'], ['customers', 'Khách'], ['orders', 'Tra đơn']];
+  const tabs = [['todo', 'Việc cần làm', todo], ['orders', 'Đơn hàng'], ['report', 'Báo cáo'], ['topups', 'Lịch sử nạp'], ['customers', 'Khách'], ['products', 'Sản phẩm'], ['stock', 'Kho'], ['new', '+ Thêm sản phẩm']];
   $('#atabs').innerHTML = tabs.map(([k, l, n]) => `<button class="chip ${A.tab === k ? 'on' : ''}" onclick="tab('${k}')">${l}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('');
-  $('#abody').innerHTML = ({ todo: vTodo, products: vProducts, stock: vStock, new: vWizard, customers: vCustomers, orders: vOrders, topups: vTopups })[A.tab]();
+  $('#abody').innerHTML = ({ todo: vTodo, products: vProducts, stock: vStock, new: vWizard, customers: vCustomers, orders: vOrders, topups: vTopups, report: vReport })[A.tab]();
   if (A.tab === 'new') wzMarginAll();
 }
-function tab(k) { if (k === 'topups') A.tpAll = null; A.tab = k; if (k === 'new' && !A.wz) wzReset(); if (k === 'stock') loadStock().then(render); else render(); }
+function tab(k) { if (k === 'topups') A.tpAll = null; if (k === 'orders' || k === 'report') A.ordAll = null; if (k === 'report') A.rep = null; if (k === 'customers' && !A.custLoaded) loadCustList(); A.tab = k; if (k === 'new' && !A.wz) wzReset(); if (k === 'stock') loadStock().then(render); else render(); }
 
 // ---------- 1. Việc cần làm ----------
 const todoN = () => A.orders.filter(o => o.status === 'processing' || o.status === 'unpaid').length + (A.topups || []).length + A.txs.length;
@@ -299,16 +299,31 @@ function vTopups() {
 }
 
 // ---------- 5. Khách ----------
+async function loadCustList() {
+  A.custLoaded = true;
+  const col = A.cS === 'spent' ? 'spent' : A.cS === 'balance' ? 'balance' : 'created_at';
+  const { data } = await sb.from('profiles').select('*').order(col, { ascending: false }).limit(100);
+  A.cust = data || []; A.custSel = null; render();
+}
 function vCustomers() {
-  const c = A.custSel;
-  return `<div class="form"><div class="act" style="display:flex;gap:8px"><input class="inp" id="cq" placeholder="Tìm email khách" onkeydown="if(event.key==='Enter')findCust()"><button class="btn sm" onclick="findCust()">Tìm</button></div></div>
-  <div style="margin-top:12px">${A.cust.map(u => `<button class="orow" onclick="selCust('${u.id}')"><div class="x"><b>${esc(u.email)}</b><small class="mono">${esc(u.pay_code)} · số dư ${vnd(u.balance)} · chi ${vnd(u.spent)}${u.zalo ? ' · Zalo ' + esc(u.zalo) : ''}</small></div></button>`).join('')}</div>
+  const c = A.custSel, srt = A.cS || 'new';
+  return `<div class="form"><div class="act" style="display:flex;gap:8px;flex-wrap:wrap"><input class="inp" id="cq" style="flex:1 1 200px" placeholder="Tìm email khách" onkeydown="if(event.key==='Enter')findCust()"><button class="btn sm" onclick="findCust()">Tìm</button>
+    ${[['new', 'Mới đăng ký'], ['spent', 'Chi nhiều nhất'], ['balance', 'Số dư cao']].map(([k, l]) => `<button class="chip ${srt === k ? 'on' : ''}" onclick="A.cS='${k}';loadCustList()">${l}</button>`).join('')}</div></div>
+  <div style="margin-top:12px">${A.cust.map(u => `<button class="orow" onclick="selCust('${u.id}')"><div class="x"><b>${esc(u.email)}</b><small class="mono">${esc(u.pay_code)} · số dư ${vnd(u.balance)} · chi ${vnd(u.spent)}${u.zalo || u.phone ? ' · Zalo ' + esc(u.zalo || u.phone) : ''} · từ ${fd(u.created_at)}${u.user_metadata && u.user_metadata.quick ? '' : ''}</small></div></button>`).join('') || '<p class="sub">Chưa có khách.</p>'}</div>
   ${c ? `<div class="acard"><div class="hd"><div><b>${esc(c.email)}</b><br><small>Số dư <b class="mono" style="color:var(--ink)">${vnd(c.balance)}</b> · tổng chi ${vnd(c.spent)} · mã nạp ${esc(c.pay_code)}</small></div></div>
     <div class="act"><input class="inp" id="adj" type="number" step="1000" placeholder="+50000 hoặc -20000"><input class="inp" id="adjn" placeholder="Lý do (bắt buộc)"><button class="btn sm" onclick="adjust('${c.id}')">Điều chỉnh ví</button></div>
+    <div style="margin:10px 0 4px;font-weight:700">Đơn của khách</div>
+    <div class="hist" style="padding:0">${(A.custOrders || []).map(o => `<div class="hrow"><div>${esc(o.product_name)} · ${esc(o.variant_label)}<small>${esc(o.code)} · ${ftime(o.created_at)} · ${(OST[o.status] || [o.status])[0]}${o.expires_at ? ' · HSD ' + fd(o.expires_at) : ''}</small></div><div class="mono">${vnd(o.amount)}</div></div>`).join('') || '<p class="sub">Chưa có đơn</p>'}</div>
+    <div style="margin:10px 0 4px;font-weight:700">Sổ ví</div>
     <div class="hist" style="padding:0">${A.custLedger.map(h => `<div class="hrow"><div>${esc(h.note || h.kind)}<small>${ftime(h.created_at)} · ${esc(h.ref || '')}</small></div><div class="mono ${h.delta > 0 ? 'plus-amt' : 'minus-amt'}">${h.delta > 0 ? '+' : '−'}${vnd(Math.abs(h.delta))}</div></div>`).join('') || '<p class="sub">Chưa có giao dịch</p>'}</div></div>` : ''}`;
 }
 async function findCust() { const q = $('#cq').value.trim(); const { data } = await sb.from('profiles').select('*').ilike('email', `%${q}%`).limit(20); A.cust = data || []; A.custSel = null; render(); $('#cq').value = q; }
-async function selCust(id) { A.custSel = A.cust.find(u => u.id === id); const { data } = await sb.from('wallet_ledger').select('*').eq('user_id', id).order('created_at', { ascending: false }).limit(30); A.custLedger = data || []; render(); }
+async function selCust(id) {
+  A.custSel = A.cust.find(u => u.id === id);
+  const [l, o] = await Promise.all([sb.from('wallet_ledger').select('*').eq('user_id', id).order('created_at', { ascending: false }).limit(30),
+    sb.from('orders').select('code, product_name, variant_label, amount, status, expires_at, created_at').eq('user_id', id).order('created_at', { ascending: false }).limit(30)]);
+  A.custLedger = l.data || []; A.custOrders = o.data || []; render();
+}
 async function adjust(id) {
   const d = Number($('#adj').value), n = $('#adjn').value.trim(); if (!d) return toast('Nhập số tiền'); if (!n) return toast(GI_ERR.NOTE_REQUIRED);
   if (!confirm(`${d > 0 ? 'Cộng' : 'Trừ'} ${vnd(Math.abs(d))} ví khách?`)) return;
@@ -316,21 +331,94 @@ async function adjust(id) {
   const { data } = await sb.from('profiles').select('*').eq('id', id).single(); A.cust = A.cust.map(u => u.id === id ? data : u); await selCust(id); refresh();
 }
 
-// ---------- 6. Tra đơn ----------
-function vOrders() {
-  return `<div class="form"><div style="display:flex;gap:8px"><input class="inp" id="oq" placeholder="Mã đơn GI… hoặc email nâng cấp" onkeydown="if(event.key==='Enter')findOrder()"><button class="btn sm" onclick="findOrder()">Tìm</button></div></div><div id="ores" style="margin-top:12px"></div>`;
+// ---------- 6. Đơn hàng (tất cả) ----------
+const OST = { unpaid: ['Chờ tiền', 'warn'], processing: ['Cần giao', 'warn'], done: ['Đã giao', 'ok'], expired: ['Quá giờ giữ', 'bad'], cancelled: ['Đã huỷ', 'bad'] };
+async function loadOrdersAll() {
+  const { data, error } = await sb.from('orders').select('*, profiles(email, zalo, phone)').order('created_at', { ascending: false }).limit(1000);
+  if (error) { toast(errText(error)); A.ordAll = []; } else A.ordAll = data || [];
+  render();
 }
-async function findOrder() {
-  const q = $('#oq').value.trim(); if (!q) return;
-  let r = sb.from('orders').select('*').order('created_at', { ascending: false }).limit(30);
-  r = /^GI\d+$/i.test(q) ? r.eq('code', q.toUpperCase()) : r.ilike('customer_email', `%${q}%`);
-  const { data } = await r;
-  $('#ores').innerHTML = (data || []).map(o => `<div class="acard"><div class="hd"><div><b>${esc(o.code)} · ${esc(o.product_name)} · ${esc(o.variant_label)}</b><br><small class="mono">${vnd(o.amount)} · ${o.pay_method} · ${o.status} · tạo ${ftime(o.created_at)}${o.expires_at ? ' · HSD ' + fd(o.expires_at) : ''}</small></div></div>
-    ${o.cred_login ? `<small class="mono">${esc(o.cred_login)} / ${esc(o.cred_password)}</small>` : ''}${o.admin_note ? `<small>Ghi chú: ${esc(o.admin_note)}</small>` : ''}</div>`).join('') || '<p class="sub">Không thấy.</p>';
+const oEmail = o => (o.profiles && o.profiles.email) || '';
+const oZalo = o => (o.profiles && (o.profiles.zalo || o.profiles.phone)) || '';
+function orderMsg(o) {
+  return `Đơn ${o.code}: ${o.product_name} · ${o.variant_label}` + (o.cred_login ? `\nTài khoản: ${o.cred_login}\nMật khẩu: ${o.cred_password || ''}` : '') + (o.customer_email ? `\nEmail đã nâng/mời: ${o.customer_email}` : '') + (o.expires_at ? `\nHạn dùng đến: ${fd(o.expires_at)}` : '') + `\nXem lại bất cứ lúc nào: godnc.com/gi/#orders`;
+}
+function vOrders() {
+  if (!A.ordAll) { loadOrdersAll(); return '<p class="sub">Đang tải…</p>'; }
+  const f = A.oF || 'all', q = (A.oQ || '').trim().toLowerCase();
+  const cnt = k => A.ordAll.filter(o => o.status === k).length;
+  const list = A.ordAll.filter(o => (f === 'all' || o.status === f) && (!q || [o.code, oEmail(o), o.customer_email, o.product_name, o.variant_label, o.cred_login].some(x => String(x || '').toLowerCase().includes(q))));
+  return `<div class="form"><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      ${[['all', 'Tất cả', A.ordAll.length], ['processing', 'Cần giao', cnt('processing')], ['unpaid', 'Chờ tiền', cnt('unpaid')], ['done', 'Đã giao', cnt('done')], ['expired', 'Quá giờ giữ', cnt('expired')], ['cancelled', 'Đã huỷ', cnt('cancelled')]].map(([k, l, n]) => `<button class="chip ${f === k ? 'on' : ''}" onclick="A.oF='${k}';A.oOpen=null;render()">${l}${n ? `<span class="n">${n}</span>` : ''}</button>`).join('')}
+      <input class="inp" id="oq" style="flex:1 1 220px" placeholder="Tìm mã GI…, email khách, sản phẩm, tài khoản đã giao" value="${esc(A.oQ || '')}" oninput="A.oQ=this.value;clearTimeout(A._oq);A._oq=setTimeout(()=>{render();const i=$('#oq');i&&(i.focus(),i.setSelectionRange(i.value.length,i.value.length))},250)">
+      <button class="btn sm" onclick="A.ordAll=null;render()">Tải lại</button></div></div>
+    <div class="tw" style="margin-top:12px"><table><thead><tr><th>Thời gian</th><th>Mã</th><th>Khách</th><th>Sản phẩm · gói</th><th>Tiền</th><th>Trả</th><th>Trạng thái</th><th>HSD</th></tr></thead><tbody>
+    ${list.slice(0, 300).map(o => { const st = OST[o.status] || [o.status, '']; const open = A.oOpen === o.id; const dl = o.expires_at ? daysLeft(o.expires_at) : null;
+      return `<tr style="cursor:pointer" onclick="A.oOpen=${open ? 'null' : o.id};render()"><td class="mono">${ftime(o.created_at)}</td><td class="mono"><b>${esc(o.code)}</b></td><td>${esc(oEmail(o))}${oZalo(o) ? `<br><small class="mono" style="color:var(--dim)">${esc(oZalo(o))}</small>` : ''}</td>
+        <td>${esc(o.product_name)} · ${esc(o.variant_label)}</td><td class="mono">${vnd(o.amount)}</td><td>${o.pay_method === 'wallet' ? 'Ví' : 'QR'}</td><td><span class="tag ${st[1]}">${st[0]}</span></td>
+        <td class="mono">${o.expires_at ? fd(o.expires_at) + (dl !== null ? `<br><small style="color:${dl < 0 ? '#FDBA8C' : dl <= 7 ? 'var(--gold)' : 'var(--dim)'}">${dl < 0 ? 'hết ' + (-dl) + ' ngày' : 'còn ' + dl + ' ngày'}</small>` : '') : '—'}</td></tr>
+      ${open ? `<tr><td colspan="8"><div class="acard" style="margin:0">
+        <small class="mono">Tạo ${ftime(o.created_at)}${o.paid_at ? ' · trả ' + ftime(o.paid_at) : ''}${o.delivered_at ? ' · giao ' + ftime(o.delivered_at) : ''} · giá gốc ${vnd(o.list_price)}${o.age_off ? ' · giảm hạn ' + o.age_off + '%' : ''}${o.tier_off ? ' · giảm hạng ' + o.tier_off + '%' : ''}${o.cashback ? ' · hoàn ví ' + vnd(o.cashback) : ''}</small>
+        ${o.cred_login ? `<div class="mono" style="margin-top:8px">Tài khoản: <b>${esc(o.cred_login)}</b> · Mật khẩu: <b>${esc(o.cred_password || '')}</b></div>` : ''}
+        ${o.customer_email ? `<div style="margin-top:6px">Email khách cần nâng/mời: <b>${esc(o.customer_email)}</b></div>` : ''}
+        ${o.admin_note ? `<div style="margin-top:6px;color:var(--mute)">Ghi chú: ${esc(o.admin_note)}</div>` : ''}
+        <div class="row-act" style="margin-top:10px">
+          ${o.status === 'unpaid' || o.status === 'expired' ? `<button class="btn sm gold" onclick="event.stopPropagation();markPaid(${o.id}).then(()=>{A.ordAll=null;render()})">Đã nhận tiền</button><button class="btn sm ghost" onclick="event.stopPropagation();cancelOrder(${o.id}).then(()=>{A.ordAll=null;render()})">Huỷ</button>` : ''}
+          ${o.status === 'processing' ? `<button class="btn sm" onclick="event.stopPropagation();tab('todo')">Giao ở Việc cần làm</button><button class="btn sm ghost" onclick="event.stopPropagation();cancelOrder(${o.id}).then(()=>{A.ordAll=null;render()})">Huỷ & hoàn ví</button>` : ''}
+          ${o.status === 'done' ? `<button class="btn sm" onclick="event.stopPropagation();copyText(orderMsg(A.ordAll.find(x=>x.id===${o.id})))">Copy tin gửi khách</button>` : ''}
+          ${oZalo(o) ? `<a class="btn sm ghost" style="text-decoration:none" href="https://zalo.me/${esc(String(oZalo(o)).replace(/\D/g, ''))}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Mở Zalo khách</a>` : ''}
+        </div></div></td></tr>` : ''}`; }).join('') || '<tr><td colspan="8"><p class="sub">Không có đơn.</p></td></tr>'}
+    </tbody></table></div>${list.length > 300 ? `<p class="sub">Đang hiện 300/${list.length} đơn, gõ tìm để lọc.</p>` : ''}`;
 }
 
-// ---------- khởi động ----------
-window.GI_onAuth = () => location.reload();
+// ---------- 7. Báo cáo ----------
+async function loadReport() {
+  const since = new Date(Date.now() - 120 * DAY).toISOString();
+  const [o, t, l] = await Promise.all([
+    A.ordAll ? { data: A.ordAll } : sb.from('orders').select('*, profiles(email, zalo, phone)').order('created_at', { ascending: false }).limit(1000),
+    sb.from('topup_requests').select('amount, credited, status, decided_at, created_at').eq('status', 'approved').gte('created_at', since).limit(2000),
+    sb.from('wallet_ledger').select('delta, kind, created_at').in('kind', ['bonus', 'cashback']).gte('created_at', since).limit(5000)]);
+  A.ordAll = o.data || []; A.rep = { tops: t.data || [], gifts: l.data || [] }; render();
+}
+function vReport() {
+  if (!A.rep) { loadReport(); return '<p class="sub">Đang tải…</p>'; }
+  const per = A.rP || 'month', now = new Date();
+  const start = per === 'today' ? new Date(now.getFullYear(), now.getMonth(), now.getDate()) : per === '7d' ? new Date(Date.now() - 7 * DAY) : per === 'month' ? new Date(now.getFullYear(), now.getMonth(), 1) : new Date(0);
+  const inP = d => d && toDate(d) >= start;
+  const sold = A.ordAll.filter(o => (o.status === 'done' || o.status === 'processing') && inP(o.paid_at || o.created_at));
+  const cost = o => { const { v } = vById(o.variant_id); return v ? Number(v.cost || 0) : 0; };
+  const rev = sold.reduce((x, o) => x + Number(o.amount), 0), gross = sold.reduce((x, o) => x + Number(o.amount) - cost(o), 0);
+  const viaQr = sold.filter(o => o.pay_method === 'qr').reduce((x, o) => x + Number(o.amount), 0);
+  const topIn = A.rep.tops.filter(t => inP(t.decided_at || t.created_at)).reduce((x, t) => x + Number(t.amount), 0);
+  const gifts = A.rep.gifts.filter(g => inP(g.created_at)).reduce((x, g) => x + Number(g.delta), 0);
+  const by = {}; sold.forEach(o => { const k = o.product_name + ' · ' + o.variant_label; const r = by[k] || (by[k] = { n: 0, rev: 0, gp: 0 }); r.n++; r.rev += Number(o.amount); r.gp += Number(o.amount) - cost(o); });
+  const top = Object.entries(by).sort((a, b) => b[1].rev - a[1].rev);
+  // sắp hết hạn / mới hết hạn: để nhắc gia hạn
+  const exp = A.ordAll.filter(o => o.status === 'done' && o.expires_at).map(o => ({ o, d: daysLeft(o.expires_at) }));
+  const soon = exp.filter(x => x.d >= 0 && x.d <= 7).sort((a, b) => a.d - b.d), late = exp.filter(x => x.d < 0 && x.d >= -14).sort((a, b) => b.d - a.d);
+  const remind = x => `<tr><td>${esc(oEmail(x.o))}${oZalo(x.o) ? `<br><small class="mono" style="color:var(--dim)">${esc(oZalo(x.o))}</small>` : ''}</td><td>${esc(x.o.product_name)} · ${esc(x.o.variant_label)}</td><td class="mono">${fd(x.o.expires_at)}<br><small style="color:${x.d < 0 ? '#FDBA8C' : 'var(--gold)'}">${x.d < 0 ? 'hết ' + (-x.d) + ' ngày' : x.d === 0 ? 'hết hôm nay' : 'còn ' + x.d + ' ngày'}</small></td>
+    <td><div class="row-act"><button class="btn sm" onclick="copyText(renewMsg(${x.o.id}))">Copy tin nhắc</button>${oZalo(x.o) ? `<a class="btn sm ghost" style="text-decoration:none" target="_blank" rel="noopener" href="https://zalo.me/${esc(String(oZalo(x.o)).replace(/\D/g, ''))}">Zalo</a>` : ''}</div></td></tr>`;
+  return `<div class="form"><div style="display:flex;gap:8px;flex-wrap:wrap">${[['today', 'Hôm nay'], ['7d', '7 ngày'], ['month', 'Tháng này'], ['all', 'Tất cả']].map(([k, l]) => `<button class="chip ${per === k ? 'on' : ''}" onclick="A.rP='${k}';render()">${l}</button>`).join('')}<button class="btn sm" style="margin-left:auto" onclick="A.rep=null;A.ordAll=null;render()">Tải lại</button></div></div>
+    <div class="kpis" style="margin:14px 0">
+      <div class="kpi"><small>Doanh thu bán hàng</small><b class="mono">${vnd(rev)}</b><small>${sold.length} đơn · QR ${vnd(viaQr)} · ví ${vnd(rev - viaQr)}</small></div>
+      <div class="kpi"><small>Lãi gộp (bán − giá nhập)</small><b class="mono">${vnd(gross)}</b><small>${rev ? Math.round(gross / rev * 100) : 0}% doanh thu</small></div>
+      <div class="kpi"><small>Đã tặng (thưởng nạp + hoàn ví)</small><b class="mono">${vnd(gifts)}</b><small>lãi sau tặng ≈ ${vnd(gross - gifts)}</small></div>
+      <div class="kpi"><small>Tiền khách nạp ví</small><b class="mono">${vnd(topIn)}</b><small>tiền vào thật = QR + nạp ví = ${vnd(viaQr + topIn)}</small></div></div>
+    <div class="h2" style="margin:6px 0 8px">Bán chạy <small>theo doanh thu</small></div>
+    <div class="tw"><table><thead><tr><th>Sản phẩm · gói</th><th>Số đơn</th><th>Doanh thu</th><th>Lãi gộp</th></tr></thead><tbody>
+      ${top.map(([k, r]) => `<tr><td>${esc(k)}</td><td class="mono">${r.n}</td><td class="mono">${vnd(r.rev)}</td><td class="mono" style="color:${r.gp > 0 ? 'var(--accent-text)' : '#FDBA8C'}">${vnd(r.gp)}</td></tr>`).join('') || '<tr><td colspan="4"><p class="sub">Chưa có đơn trong khoảng này.</p></td></tr>'}</tbody></table></div>
+    <div class="h2" style="margin:20px 0 8px">Sắp hết hạn · nhắc gia hạn <small>${soon.length} đơn trong 7 ngày tới</small></div>
+    <div class="tw"><table><thead><tr><th>Khách</th><th>Sản phẩm</th><th>Hạn dùng</th><th></th></tr></thead><tbody>${soon.map(remind).join('') || '<tr><td colspan="4"><p class="sub">Không có.</p></td></tr>'}</tbody></table></div>
+    <div class="h2" style="margin:20px 0 8px">Mới hết hạn · mời mua lại <small>${late.length} đơn trong 14 ngày qua</small></div>
+    <div class="tw"><table><thead><tr><th>Khách</th><th>Sản phẩm</th><th>Hạn dùng</th><th></th></tr></thead><tbody>${late.map(remind).join('') || '<tr><td colspan="4"><p class="sub">Không có.</p></td></tr>'}</tbody></table></div>
+    <p class="sub" style="margin-top:10px">Lãi gộp tính theo giá nhập hiện tại trong tab Sản phẩm. Doanh thu trả bằng ví là tiền khách đã nạp trước, nên "tiền vào thật" = QR + nạp ví.</p>`;
+}
+function renewMsg(id) {
+  const o = A.ordAll.find(x => x.id === id); if (!o) return '';
+  const d = daysLeft(o.expires_at);
+  return `Chào bạn, gói ${o.product_name} (${o.variant_label}) của bạn ${d < 0 ? 'đã hết hạn ngày ' + fd(o.expires_at) : 'sẽ hết hạn ngày ' + fd(o.expires_at)}. Gia hạn nhanh tại godnc.com/gi (trả bằng ví rẻ hơn), hoặc nhắn shop để được hỗ trợ nhé!`;
+}
+
 async function init() {
   if (GI_INIT_ERROR) return fatal(GI_INIT_ERROR.message);
   const { data } = await sb.auth.getSession(); A.user = data && data.session ? data.session.user : null;
