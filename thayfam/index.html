@@ -299,7 +299,81 @@
           <button class="chip" :class="ahead===7 && 'on'" @click="ahead=7; load()">+7 ngày tới</button>
         </div>
         <template x-if="tab==='due' && !searchOn() && !loading && due.length===0"><div class="empty">Không có RN nào đến hạn.</div></template>
-        <template x-if="searchOn() && !searching && results.length===0"><div class="empty">Không tìm thấy fam nào.</div></template>
+        <template x-if="searchOn() && archHits.length">
+          <div style="margin-bottom:12px">
+            <div class="mute" style="font-size:13px;margin-bottom:6px">Khách đang cất ở cuối sheet DATA (không ở fam nào):</div>
+            <template x-for="a in archHits" :key="a.row">
+              <div class="card">
+                <div class="row">
+                  <div class="grow" style="min-width:0">
+                    <div class="mono ellip" x-text="a.email"></div>
+                    <div class="mute" style="font-size:13px" x-text="(a.note || 'Đã cất') + ' · dòng ' + a.row + ' · HSD ' + (a.hsd || '—') + (a.daysLeft !== null && a.daysLeft < 0 ? ' (hết hạn)' : '') + ' · CTV ' + (a.ctv || '—') + (a.mailPhu ? ' · mail phụ ' + a.mailPhu : '')"></div>
+                  </div>
+                  <button class="btn sm pri" x-show="can('move') && can('slots') && pick.row !== a.row" @click="findSlot({ rn: '' }, a)">Tìm fam để mời lại</button>
+                </div>
+                <template x-if="pick.row === a.row">
+            <div class="card pk" style="margin-top:10px">
+              <div x-show="pick.loading" class="mute" style="font-size:13px">Đang tìm fam còn slot…</div>
+              <div x-show="!pick.loading && !pick.list.length" class="row"><span class="grow mute" style="font-size:13px">Không còn fam nào có slot (đã bỏ fam đến hạn, bị chặn mời, hết lượt mời tuần).</span><button class="btn sm" @click="pick = { row: null, list: [] }">Đóng</button></div>
+              <template x-if="!pick.loading && pick.list.length">
+                <div>
+                  <div class="row" style="gap:8px">
+                    <div class="grow"><b>Tìm fam cho <span class="mono" x-text="pick.email"></span></b>
+                      <div class="mute" style="font-size:13px"><b x-text="cur().rn"></b> <span x-text="'· ' + (cur().renew ? 'renew ' + cur().renew + ', còn ' + cur().days + ' ngày' : 'chưa có ngày renew') + ' · đã mời ' + cur().used + ' lời trong 7 ngày · fam ' + (pick.i + 1) + '/' + pick.list.length"></span></div>
+                    </div>
+                    <button class="btn sm" x-show="pick.list.length > 1" @click="nextPick()">Fam khác →</button>
+                    <button class="btn sm" @click="pick = { row: null, list: [] }">✕</button>
+                  </div>
+
+                  <div class="pk-step"><span class="pk-n">1</span><div class="grow">
+                    <b>Đăng nhập fam</b>
+                    <div style="font-size:14px">
+                      <span class="mono cp" title="Bấm để copy" @click="copy(cur().fam.email, 'Đã copy email chủ fam')" x-text="cur().fam.email"></span>
+                      · Pass <span class="mono cp" @click="copy(cur().fam.pass, 'Đã copy pass')" x-text="cur().fam.pass || '—'"></span>
+                      <span x-show="cur().fam.mkp"> · MKP <span class="mono cp" @click="copy(cur().fam.mkp, 'Đã copy MKP')" x-text="cur().fam.mkp"></span></span>
+                      · 2FA <b class="mono" :class="cur().fam.twofa && 'cp'" @click="cur().fam.twofa && copy(slotOtp.P, 'Đã copy mã 2FA')" x-text="cur().fam.twofa ? (slotOtp.P || '······') : 'không'"></b>
+                      · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
+                    </div>
+                  </div></div>
+
+                  <div class="pk-step"><span class="pk-n">2</span><div class="grow">
+                    <b>So với nhóm Gia đình</b> <span class="mute" style="font-size:12px">(tiện thì đánh dấu ai đã vào / chưa vào)</span>
+                    <template x-for="r in cur().fam.rows" :key="r.row">
+                      <div class="row pk-mem" :class="r.row === cur().row && 'on'">
+                        <span class="mono" x-text="r.masked ? '(khách CTV khác)' : (r.email || '(trống)')"></span>
+                        <span class="pk-tag" x-show="r.row === cur().row">slot này</span>
+                        <span class="mute grow" style="font-size:12px" x-text="shortSt(r)"></span>
+                        <template x-if="r.email && can('markJoined')">
+                          <span style="display:flex;gap:4px">
+                            <button class="btn sm" :class="r.state==='joined' && 'pri'" @click="pickMark(r, 'in')" :disabled="!!r.mkBusy">Đã vào</button>
+                            <button class="btn sm" :class="r.state==='nojoin' && 'pri'" @click="pickMark(r, 'out')" :disabled="!!r.mkBusy">Chưa vào</button>
+                          </span>
+                        </template>
+                      </div>
+                    </template>
+                  </div></div>
+
+                  <div class="pk-step"><span class="pk-n">3</span><div class="grow">
+                    <b x-show="!cur().replace">Mời <span class="mono" x-text="pick.email"></span> vào nhóm</b>
+                    <b x-show="cur().replace">Xoá lời mời <span class="mono" x-text="cur().replace"></span>, rồi mời <span class="mono" x-text="pick.email"></span></b>
+                    <div class="mute" style="font-size:12px" x-show="cur().replace" x-text="cur().replace + ' sẽ được chép xuống cuối sheet DATA, không mất data.'"></div>
+                    <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
+                      <button class="btn pri" @click="pickOk()" :disabled="!!mv.busy || !!pick.blocking" x-text="mv.busy ? 'Đang chuyển…' : (pick.confirm ? 'Bấm lần nữa để lưu' : '✓ Mời được → chuyển vào ' + cur().rn)"></button>
+                      <button class="btn" @click="pickBlocked(!!cur().replace)" :disabled="!!pick.blocking || !!mv.busy" x-text="pick.blocking ? '…' : (pick.blockConfirm === 'y' ? 'Bấm lần nữa' : '✗ Google chặn mời → fam khác')"></button>
+                    </div>
+                    <div class="mute" style="font-size:12px;margin-top:6px" x-show="cur().replace">Bấm ✗ khi đã xoá lời mời của <span x-text="cur().replace"></span> mà không mời được ai: khách cũ cất xuống cuối sheet (Chờ xếp), slot thành trống. Chưa xoá ai thì <a href="#" @click.prevent="pickBlocked(false)" x-text="pick.blockConfirm === 'n' ? 'bấm lần nữa' : 'chỉ ghi chặn, giữ nguyên khách'"></a>.</div>
+                    <label class="mute" style="font-size:12px;display:block;margin-top:6px" x-show="me.role==='admin'"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')"> Ghi luôn vào gốc</label>
+                  </div></div>
+                </div>
+              </template>
+              <div class="err" style="margin:6px 0 0" x-show="mv.error" x-text="mv.error"></div>
+            </div>
+          </template>
+              </div>
+            </template>
+          </div>
+        </template>
+        <template x-if="searchOn() && !searching && results.length===0 && !archHits.length"><div class="empty">Không tìm thấy fam nào.</div></template>
         <template x-for="f in (searchOn() ? results : (tab==='report' ? reported : due))" :key="f.rn">
           <div class="card" style="padding:0">
             <div class="row" style="padding:12px 14px">
@@ -1029,7 +1103,7 @@ function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
-    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
+    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
       'Đang xử lý lỗi': ['YouTube Premium: shop đang xử lý nhóm của bạn', 'Chào bạn,\n\nNhóm YouTube Premium của email {email} đang được shop xử lý. Bạn xem trạng thái tại: https://godnc.com/fixytb/?email={email}\n\nXong shop sẽ báo lại ngay. Cảm ơn bạn đã kiên nhẫn!'],
@@ -1078,7 +1152,7 @@ function app() {
       if (!this.can('all')) return;
       try {
         const d = await this.api({ action: 'all' });
-        this.allFams = d.items; this.allStale = false; this.snapSave('all', d.items);
+        this.allFams = d.items; this.allArch = d.archive || null; this.allStale = false; this.snapSave('all', d.items); if (d.archive) this.snapSave('arch', d.archive);
         if (this.searchOn()) this.doSearch();
       } catch (e) {}
     },
@@ -1091,7 +1165,7 @@ function app() {
       const sl = this.snapGet('slots');
       if (sl) { this.slots = sl.items.map(f => Object.assign(f, { check: false, mark: {}, saving: false })); this.slotLimit = sl.limit; this.slotPendingH = sl.pendingHours; }
       const w = this.snapGet('week'); if (w) this.wk = w;
-      const al = this.snapGet('all'); if (al) this.allFams = al;
+      const al = this.snapGet('all'); if (al) this.allFams = al; const aa = this.snapGet('arch'); if (aa) this.allArch = aa;
     },
 
     async api(body) {
@@ -1304,7 +1378,7 @@ function app() {
       if (!p.confirm) { p.confirm = true; setTimeout(() => { if (this.pick === p) p.confirm = false; }, 4000); return; }
       this.mv = { row: t.row, email: p.email, invited: !!p.invited, replace: t.replace, confirm: true };
       await this.doMove(null, { row: t.row });
-      if (!this.mv.error) this.pick = { row: null, list: [] };
+      if (!this.mv.error) { this.archHits = this.archHits.filter(x => x.row !== p.row); if (this.allArch) this.allArch = this.allArch.filter(x => x.row !== p.row); this.pick = { row: null, list: [] }; }
       else p.confirm = false;
     },
     livePhu(v) { const t = String(v || '').trim(); return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) && !/h[uủ]y/i.test(t) ? t : ''; },
@@ -1566,8 +1640,8 @@ function app() {
     searchOn() { return this.can('search') && this.q.trim().length >= 2; },
     async doSearch() {
       const q = this.q.trim();
-      if (q.length < 2) { this.results = []; return; }
-      if (this.allFams && !this.allStale) {
+      if (q.length < 2) { this.results = []; this.archHits = []; return; }
+      if (this.allFams && this.allArch && !this.allStale) {
         const lq = q.toLowerCase(), lc = x => String(x || '').toLowerCase(), items = [];
         this.allFams.forEach(f => {
           const rn = lc(f.rn);
@@ -1577,10 +1651,11 @@ function app() {
           if (this.me.role === 'ctv' ? hit.length : (hitRn || hitOwner || hit.length)) items.push(Object.assign({}, f, { hit: hit }));
         });
         this.results = items.slice(0, 30); this.searchTotal = items.length;
+        this.archHits = this.allArch.filter(a => lc(a.email).indexOf(lq) >= 0 || lc(a.mailPhu).indexOf(lq) >= 0).slice(0, 20);
         return;
       }
       this.searching = true;
-      try { const d = await this.api({ action: 'search', q }); if (this.q.trim() === q) { this.results = d.items; this.searchTotal = d.total; } }
+      try { const d = await this.api({ action: 'search', q }); if (this.q.trim() === q) { this.results = d.items; this.searchTotal = d.total; this.archHits = d.archived || []; } }
       catch (e) { this.error = e.message; }
       this.searching = false;
     },
