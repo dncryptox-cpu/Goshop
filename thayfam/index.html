@@ -354,9 +354,10 @@
                   </div></div>
 
                   <div class="pk-step"><span class="pk-n">3</span><div class="grow">
-                    <b x-show="!cur().replace">Mời <span class="mono" x-text="pick.email"></span> vào nhóm</b>
-                    <b x-show="cur().replace">Xoá lời mời <span class="mono" x-text="cur().replace"></span>, rồi mời <span class="mono" x-text="pick.email"></span></b>
+                    <b x-show="!cur().replace">Mời <span class="mono" x-text="pickTo()"></span> vào nhóm</b>
+                    <b x-show="cur().replace">Xoá lời mời <span class="mono" x-text="cur().replace"></span>, rồi mời <span class="mono" x-text="pickTo()"></span></b>
                     <div class="mute" style="font-size:12px" x-show="cur().replace" x-text="cur().replace + ' sẽ được chép xuống cuối sheet DATA, không mất data.'"></div>
+                    <label class="row" style="gap:6px;margin-top:6px;font-size:13px;flex-wrap:wrap"><input type="checkbox" x-model="pick.usePhu"> Mời bằng mail phụ <input type="text" x-show="pick.usePhu" x-model="pick.phu" placeholder="mail phụ của khách" style="flex:1;min-width:200px"><span class="mute" x-show="pick.usePhu" style="font-size:12px;width:100%">Slot ghi mail phụ ở cột Email khách, mail chính lưu ở cột Mail phụ. HSD, CTV giữ nguyên.</span></label>
                     <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
                       <button class="btn pri" @click="pickOk()" :disabled="!!mv.busy || !!pick.blocking" x-text="mv.busy ? 'Đang chuyển…' : (pick.confirm ? 'Bấm lần nữa để lưu' : '✓ Mời được → chuyển vào ' + cur().rn)"></button>
                       <button class="btn" @click="pickBlocked(!!cur().replace)" :disabled="!!pick.blocking || !!mv.busy" x-text="pick.blocking ? '…' : (pick.blockConfirm === 'y' ? 'Bấm lần nữa' : '✗ Google chặn mời → fam khác')"></button>
@@ -541,9 +542,10 @@
                         </div></div>
 
                         <div class="pk-step"><span class="pk-n">3</span><div class="grow">
-                          <b x-show="!cur().replace">Mời <span class="mono" x-text="pick.email"></span> vào nhóm</b>
-                          <b x-show="cur().replace">Xoá lời mời <span class="mono" x-text="cur().replace"></span>, rồi mời <span class="mono" x-text="pick.email"></span></b>
+                          <b x-show="!cur().replace">Mời <span class="mono" x-text="pickTo()"></span> vào nhóm</b>
+                          <b x-show="cur().replace">Xoá lời mời <span class="mono" x-text="cur().replace"></span>, rồi mời <span class="mono" x-text="pickTo()"></span></b>
                           <div class="mute" style="font-size:12px" x-show="cur().replace" x-text="cur().replace + ' sẽ được chép xuống cuối sheet DATA, không mất data.'"></div>
+                          <label class="row" style="gap:6px;margin-top:6px;font-size:13px;flex-wrap:wrap"><input type="checkbox" x-model="pick.usePhu"> Mời bằng mail phụ <input type="text" x-show="pick.usePhu" x-model="pick.phu" placeholder="mail phụ của khách" style="flex:1;min-width:200px"><span class="mute" x-show="pick.usePhu" style="font-size:12px;width:100%">Slot ghi mail phụ ở cột Email khách, mail chính lưu ở cột Mail phụ. HSD, CTV giữ nguyên.</span></label>
                           <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap">
                             <button class="btn pri" @click="pickOk()" :disabled="!!mv.busy || !!pick.blocking" x-text="mv.busy ? 'Đang chuyển…' : (pick.confirm ? 'Bấm lần nữa để lưu' : '✓ Mời được → chuyển vào ' + cur().rn)"></button>
                             <button class="btn" @click="pickBlocked(!!cur().replace)" :disabled="!!pick.blocking || !!mv.busy" x-text="pick.blocking ? '…' : (pick.blockConfirm === 'y' ? 'Bấm lần nữa' : '✗ Google chặn mời → fam khác')"></button>
@@ -1315,9 +1317,10 @@ function app() {
       this.mailBusy = false;
     },
     cur() { return this.pick.list[this.pick.i] || {}; },
+    pickTo() { const p = this.pick; return p.usePhu && String(p.phu || '').trim() ? String(p.phu).trim() : p.email; },
     async findSlot(f, c) {
       this.mv = {}; this.em = {};
-      this.pick = { row: c.row, email: c.email, list: [], i: 0, loading: true, invited: false, confirm: false };
+      this.pick = { row: c.row, email: c.email, list: [], i: 0, loading: true, invited: false, confirm: false, usePhu: false, phu: this.livePhu(c.mailPhu) };
       await this.loadSlots();
       const lab = { free: 'trống', reuse: 'khách hết hạn (chép xuống cuối DATA)', nojoin: 'khách chưa vào (chép xuống cuối DATA)', pending: 'đã mời ≥2 ngày, chưa xác nhận vào → kiểm tra: chưa vào thì thế, đã vào thì tick' };
       const list = [];
@@ -1376,7 +1379,8 @@ function app() {
     async doPick() {
       const p = this.pick, t = this.cur();
       if (!p.confirm) { p.confirm = true; setTimeout(() => { if (this.pick === p) p.confirm = false; }, 4000); return; }
-      this.mv = { row: t.row, email: p.email, invited: !!p.invited, replace: t.replace, confirm: true };
+      if (p.usePhu && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(p.phu || '').trim())) { this.mv = { error: 'Nhập mail phụ đúng định dạng.' }; p.confirm = false; return; }
+      this.mv = { row: t.row, email: p.email, asEmail: p.usePhu ? String(p.phu).trim() : '', invited: !!p.invited, replace: t.replace, confirm: true };
       await this.doMove(null, { row: t.row });
       if (!this.mv.error) { this.archHits = this.archHits.filter(x => x.row !== p.row); if (this.allArch) this.allArch = this.allArch.filter(x => x.row !== p.row); this.pick = { row: null, list: [] }; }
       else p.confirm = false;
@@ -1503,13 +1507,13 @@ function app() {
       if (!m.confirm) { m.confirm = true; setTimeout(() => { if (this.mv === m) m.confirm = false; }, 4000); return; }
       m.busy = true;
       try {
-        const body = { action: 'move', email: m.email.trim(), toRow: r.row, invited: !!m.invited, force: !!m.force, replace: !!m.replace, replaceEmail: m.replace || '', autoSync: this.me.role === 'admin' && this.autoSync };
+        const body = { action: 'move', email: m.email.trim(), toRow: r.row, invited: !!m.invited, force: !!m.force, replace: !!m.replace, replaceEmail: m.replace || '', asEmail: m.asEmail || '', autoSync: this.me.role === 'admin' && this.autoSync };
         const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
         if (res.limit) { m.error = res.error; m.force = this.me.role === 'admin'; }
         else if (!res.ok) m.error = res.error;
         else {
           this.lastActionId = res.actionId;
-          this.lastDone = '✓ Đã chuyển ' + res.email + ': ' + res.from + ' → ' + res.to + (res.invited ? ' (đã mời)' : ' (chưa mời)') + (res.overwrote ? ', ' + res.overwrote + ' đã chép xuống cuối sheet DATA' : '') + '. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
+          this.lastDone = '✓ Đã chuyển ' + res.email + (res.asEmail ? ' (mời bằng mail phụ ' + res.asEmail + ', mail chính lưu ở cột Mail phụ)' : '') + ': ' + res.from + ' → ' + res.to + (res.invited ? ' (đã mời)' : ' (chưa mời)') + (res.overwrote ? ', ' + res.overwrote + ' đã chép xuống cuối sheet DATA' : '') + '. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
           this.mv = {};
           await this.autoSyncAfter(res);
           this.afterWrite();
