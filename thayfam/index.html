@@ -1047,6 +1047,9 @@
             <span class="k">2FA</span>
             <span class="row"><span class="otp mono" x-text="frSecret() ? (otp.fr || '------') : 'chưa cài'"></span><span class="bar" x-show="frSecret()"><i :style="'width:' + otpPct + '%'"></i></span></span>
             <button class="btn sm" @click="copy(otp.fr)" :disabled="!frSecret()">Copy</button>
+            <span class="k">Renew</span>
+            <span class="row" style="gap:8px"><input type="date" :value="swapRenewIso()" @change="swap.renewEdit = $event.target.value" style="width:170px"><span class="mute" style="font-size:12px" x-text="swap.renewEdit ? 'đã sửa tay' : (swap.fr.renew ? 'lấy từ FamRenew (FR đã nâng trước)' : 'mặc định: ngày này tháng sau')"></span></span>
+            <button class="btn sm" x-show="swap.renewEdit" @click="swap.renewEdit = ''">Bỏ sửa</button>
           </div>
         </template>
         <template x-if="swap.fr && !swap.fr.twofa && !swap.noFr">
@@ -1172,7 +1175,7 @@
         <template x-if="confirming && !swap.noFr">
           <div style="flex:1">
             <div style="font-size:13px;margin-bottom:8px">
-              Ghi <b x-text="swap.fr.email"></b> vào <b x-text="swap.f.rn"></b> (Bản sao Kho TK), Renew = ngày này tháng sau,
+              Ghi <b x-text="swap.fr.email"></b> vào <b x-text="swap.f.rn"></b> (Bản sao Kho TK), Renew = <b x-text="swapRenew()"></b>,
               đánh dấu đã mời <b x-text="swap.sel.length"></b> khách. Trạng thái → <b x-text="swap.sel.length >= 5 ? 'FULL' : 'Còn slot'"></b>.<span x-show="!swap.fr.twofa"> Ghi 2FA vào FamRenew H của <b x-text="swap.fr.fr"></b>.</span>
             </div>
             <div class="row">
@@ -1708,6 +1711,17 @@ function app() {
       });
       return out.sort((a, b) => b.n - a.n || b.days - a.days);
     },
+    swapRenewIso() {
+      const s = this.swap; if (!s) return '';
+      if (s.renewEdit) return s.renewEdit;
+      const p = s.fr && s.fr.renew ? s.fr.renew.split('/') : null;
+      if (p && p.length === 3) return p[2] + '-' + p[1] + '-' + p[0];
+      const t = new Date(), y = t.getFullYear(), m = t.getMonth() + 1, d = t.getDate();
+      const ny = m === 12 ? y + 1 : y, nm = m === 12 ? 1 : m + 1;
+      const lastN = new Date(ny, nm, 0).getDate();
+      return ny + '-' + String(nm).padStart(2, '0') + '-' + String(Math.min(d, lastN)).padStart(2, '0');
+    },
+    swapRenew() { const p = this.swapRenewIso().split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; },
     async retireFam() {
       const s = this.swap;
       if (!s.retireConfirm) { s.retireConfirm = true; setTimeout(() => { if (this.swap === s) s.retireConfirm = false; }, 4000); return; }
@@ -1729,7 +1743,7 @@ function app() {
     openSwap(f) {
       this.swapError = ''; this.confirming = false; this.lastDone = '';
       this.swap = {
-        f, fr: this.frs[0] || null, copied: [], newTwofa: '', note: '', archive: [], noFr: false, retireConfirm: false,
+        f, fr: this.frs[0] || null, copied: [], newTwofa: '', note: '', archive: [], renewEdit: '', noFr: false, retireConfirm: false,
         sel: f.customers.filter(c => c.daysLeft === null || c.daysLeft >= 0).map(c => c.email),
       };
       this.tickOtp();
@@ -1741,7 +1755,7 @@ function app() {
       if (!this.swap.fr) return;
       this.skipped.push(this.swap.fr.row);
       this.frs = this.frs.filter(x => x.row !== this.swap.fr.row);
-      this.swap.fr = this.frs[0] || null;
+      this.swap.fr = this.frs[0] || null; this.swap.renewEdit = '';
       this.swap.newTwofa = '';
       this.tickOtp();
     },
@@ -1922,7 +1936,7 @@ function app() {
       try {
         const r = await this.api({
           action: 'complete', rn: s.f.rn, stockRow: s.f.stockRow, oldEmail: s.f.email,
-          fr: s.fr.fr, frRow: s.fr.row, frEmail: s.fr.email, invited: s.sel, archive: s.archive, twofa: s.fr.twofa ? '' : s.newTwofa, note: s.note,
+          fr: s.fr.fr, frRow: s.fr.row, frEmail: s.fr.email, invited: s.sel, archive: s.archive, renew: this.swapRenew(), twofa: s.fr.twofa ? '' : s.newTwofa, note: s.note,
         });
         this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách, trạng thái ' + r.status + '.' + (r.closedTickets ? ' Đã đóng ' + r.closedTickets + ' ticket báo lỗi.' : '')
           + (r.archived && r.archived.length ? ' Đã cất ' + r.archived.length + ' khách không vào xuống cuối sheet (' + r.archived.map(a => a.email + ' → dòng ' + a.archRow).join(', ') + ', "Chờ xếp"). Slot để trống chờ mời.' : '');
