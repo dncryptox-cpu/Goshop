@@ -1022,9 +1022,23 @@
           <span class="badge ok" x-text="swap.fr ? swap.fr.fr : 'Hết FR'"></span>
           <span class="sp" style="flex:1"></span>
           <button class="btn sm" @click="skipFr()" x-show="swap.fr && !swap.noFr" :disabled="saving">Bỏ qua FR này</button>
-          <button class="btn sm" :class="swap.noFr && 'pri'" @click="swap.noFr = !swap.noFr; confirming = false; pick = { row: null, list: [] }" title="Không lấy FR mới: chuyển từng khách sang fam đang dư slot, xong thì đóng fam cũ" x-text="swap.noFr ? 'Đang chuyển sang fam dư slot ✓' : 'Không dùng FR'"></button>
+          <button class="btn sm" :class="swap.noFr && 'pri'" @click="swap.noFr = !swap.noFr; confirming = false; pick = { row: null, list: [] }; if (swap.noFr) loadSlots()" title="Không lấy FR mới: chuyển từng khách sang fam đang dư slot, xong thì đóng fam cũ" x-text="swap.noFr ? 'Đang chuyển sang fam dư slot ✓' : 'Không dùng FR'"></button>
         </h3>
-        <template x-if="swap.noFr"><div class="mute" style="font-size:13px">Không dùng FR mới. Ở bước 3 bấm <b>Chuyển fam</b> từng khách để mời vào fam đang dư slot. Chuyển hết thì bấm <b>Đóng fam</b> ở dưới.</div></template>
+        <template x-if="swap.noFr">
+          <div>
+            <div class="mute" style="font-size:13px;margin-bottom:8px">Không dùng FR mới. Ở bước 3 bấm <b>Chuyển fam</b> từng khách để mời vào fam dư slot. Chuyển hết thì bấm <b>Đóng fam</b> ở dưới.</div>
+            <div x-show="slotsLoading && !slots.length" class="mute" style="font-size:13px">Đang tải fam dư slot…</div>
+            <div style="font-size:13px;margin-bottom:6px" x-show="slots.length"><b x-text="roomFams().reduce((n, x) => n + x.n, 0) + ' slot'"></b> ở <b x-text="roomFams().length + ' fam'"></b> (renew còn ≥7 ngày, không bị chặn mời) · cần <b x-text="swap.f.customers.filter(c => !(c.daysLeft !== null && c.daysLeft < 0)).length"></b> slot</div>
+            <template x-for="x in roomFams()" :key="x.rn">
+              <div class="row" style="font-size:13px;padding:4px 0;border-top:1px solid var(--line)">
+                <b style="width:70px" x-text="x.rn"></b>
+                <span class="mute" style="width:110px" x-text="'còn ' + x.days + ' ngày'"></span>
+                <span class="grow" x-text="x.n + ' slot: ' + x.kinds"></span>
+              </div>
+            </template>
+            <div x-show="slots.length && !roomFams().length" class="mute" style="font-size:13px">Không có fam nào dư slot với renew còn ≥7 ngày.</div>
+          </div>
+        </template>
         <template x-if="swap.fr && !swap.noFr">
           <div class="kv">
             <span class="k">Email</span><span class="mono ellip" x-text="swap.fr.email"></span><button class="btn sm" @click="copy(swap.fr.email)">Copy</button>
@@ -1682,6 +1696,18 @@ function app() {
         + '\nBạn chọn gói nào nhắn mình nha, cảm ơn bạn!';
     },
 
+    roomFams() {
+      const lab = { free: 'trống', reuse: 'hết hạn', nojoin: 'chưa vào', pending: 'chờ check' }, me = this.swap && this.swap.f ? this.swap.f.rn : '';
+      const out = [];
+      (this.slots || []).forEach(x => {
+        if (x.rn === me || x.blockedUntil || x.days == null || x.days < 7) return;
+        const rs = x.rows.filter(r => lab[r.state] && !(r.state === 'pending' && !(r.hours >= 48)));
+        if (!rs.length) return;
+        const cnt = {}; rs.forEach(r => { cnt[lab[r.state]] = (cnt[lab[r.state]] || 0) + 1; });
+        out.push({ rn: x.rn, days: x.days, n: rs.length, kinds: Object.keys(cnt).map(k => cnt[k] + ' ' + k).join(', ') });
+      });
+      return out.sort((a, b) => b.n - a.n || b.days - a.days);
+    },
     async retireFam() {
       const s = this.swap;
       if (!s.retireConfirm) { s.retireConfirm = true; setTimeout(() => { if (this.swap === s) s.retireConfirm = false; }, 4000); return; }
