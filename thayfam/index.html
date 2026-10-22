@@ -60,6 +60,7 @@
   .badge.st-other{background:color-mix(in srgb,var(--mute) 18%,transparent);color:var(--ink);font-weight:600}
   .badge.st-del{background:var(--bad);color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
   .badge.st-scan{background:#7b3fc4;color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
+  .day-h{font-size:13px;font-weight:700;color:var(--mute);margin:16px 2px 6px;text-transform:uppercase;letter-spacing:.03em}
   .card.fs-del{border-left:5px solid var(--bad)}
   .card.fs-scan{border-left:5px solid #7b3fc4}
   .grow{flex:1;min-width:0}
@@ -401,13 +402,19 @@
           </div>
         </template>
         <template x-if="searchOn() && !searching && results.length===0 && !archHits.length"><div class="empty">Không tìm thấy fam nào.</div></template>
-        <template x-for="f in (searchOn() ? results : (tab==='report' ? reported : due))" :key="f.rn">
+        <template x-for="(f, i) in famList()" :key="f.rn">
+          <div>
+          <div class="day-h" x-show="tab==='due' && !searchOn() && (i === 0 || dayGroup(f) !== dayGroup(famList()[i - 1]))" x-text="dayGroup(f)"></div>
           <div class="card" :class="f.famState ? (f.famState.state === 'deleted' ? 'fs-del' : 'fs-scan') : ''" style="padding:0">
             <div class="row" style="padding:12px 14px">
               <button class="btn sm xp" @click="toggleOpen(f.rn)" :aria-expanded="isOpen(f.rn)" x-text="expanded(f) ? '▾' : '▸'" title="Xem nhanh"></button>
               <div class="rn" x-text="f.rn"></div>
               <button class="btn sm" x-show="can('sendMail') && f.customers && f.customers.length" @click="mailFam(f)" title="Chọn / bỏ chọn cả fam để gửi mail" x-text="famMailed(f) ? '✉ bỏ fam' : '✉ cả fam'"></button>
               <div class="grow">
+                <div x-show="f.famState" style="margin-bottom:4px">
+                  <span class="badge st-del" x-show="f.famState && f.famState.state === 'deleted'" :title="f.famState ? 'Đánh dấu ' + f.famState.at + ' · ' + f.famState.by : ''" x-text="'🗑 ĐÃ XOÁ NHÓM · chờ mời FR' + (f.famState ? ' (' + f.famState.at + ')' : '')"></span>
+                  <span class="badge st-scan" x-show="f.famState && f.famState.state === 'scanned'" :title="f.famState ? 'Đánh dấu ' + f.famState.at + ' · ' + f.famState.by : ''" x-text="'⚠ BỊ QUÉT' + (f.famState ? ' (' + f.famState.at + ')' : '')"></span>
+                </div>
                 <div class="mono ellip" x-text="f.email"></div>
                 <div class="mute" style="font-size:13px">
                   Renew <span x-text="f.renew"></span> · <span x-text="activeCount(f)"></span>/<span x-text="f.customers.length"></span> khách còn hạn
@@ -415,8 +422,6 @@
                   <span class="badge bad" style="margin-left:4px" x-show="f.blockedUntil" x-text="'⛔ chặn mời đến ' + f.blockedUntil"></span>
                 </div>
               </div>
-              <span class="badge st-del" x-show="f.famState && f.famState.state === 'deleted'" :title="f.famState ? 'Đánh dấu ' + f.famState.at + ' · ' + f.famState.by : ''" x-text="'🗑 ĐÃ XOÁ NHÓM · chờ mời FR' + (f.famState ? ' (' + f.famState.at + ')' : '')"></span>
-              <span class="badge st-scan" x-show="f.famState && f.famState.state === 'scanned'" :title="f.famState ? 'Đánh dấu ' + f.famState.at + ' · ' + f.famState.by : ''" x-text="'⚠ BỊ QUÉT' + (f.famState ? ' (' + f.famState.at + ')' : '')"></span>
               <span class="badge bad" x-show="f.report && f.report.reporters.length" x-text="'🚨 ' + (f.report ? f.report.reporters.length : 0) + ' báo lỗi'"></span>
               <span class="badge warn" x-show="f.report && f.report.reinvites.length" x-text="'🔁 ' + (f.report ? f.report.reinvites.length : 0) + ' cần mời lại'"></span>
               <span class="badge" :class="f.daysToRenew<0 ? 'bad' : (f.daysToRenew===0 ? 'warn' : '')" x-text="f.daysToRenew===null ? f.status : renewLabel(f.daysToRenew)"></span>
@@ -603,6 +608,7 @@
                 </template>
               </div>
             </template>
+          </div>
           </div>
         </template>
       </section>
@@ -1704,6 +1710,16 @@ function app() {
     },
     isReporter(f, email) { return !!(f.report && f.report.reporters.some(r => r.email === String(email).toLowerCase())); },
     activeCount(f) { return f.customers.filter(c => c.daysLeft === null || c.daysLeft >= 0).length; },
+    famList() { return this.searchOn() ? this.results : (this.tab === 'report' ? this.reported : this.due); },
+    dayGroup(f) {
+      if (f.famState) return f.famState.state === 'deleted' ? '🗑 Đã xoá nhóm · chờ mời FR' : '⚠ Bị quét';
+      const d = f.daysToRenew;
+      if (d === null || d === undefined) return 'Chưa có ngày renew';
+      if (d < 0) return 'Quá hạn';
+      const w = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'], p = String(f.renew).split('/');
+      const dt = p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : null;
+      return (d === 0 ? 'Hôm nay' : d === 1 ? 'Ngày mai' : 'Còn ' + d + ' ngày') + ' · ' + (dt ? w[dt.getDay()] + ' ' : '') + f.renew;
+    },
     renewLabel(d) { return d < 0 ? 'Quá ' + (-d) + ' ngày' : (d === 0 ? 'Hôm nay' : 'Còn ' + d + ' ngày'); },
     ctvList() { return [...new Set(this.renewals.map(r => r.ctv).filter(Boolean))].sort(); },
     filteredRenewals() { return this.ctvFilter ? this.renewals.filter(r => r.ctv === this.ctvFilter) : this.renewals; },
