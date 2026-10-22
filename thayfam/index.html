@@ -407,8 +407,7 @@
         <template x-if="searchOn() && !searching && results.length===0 && !archHits.length"><div class="empty">Không tìm thấy fam nào.</div></template>
         <template x-for="(f, i) in famList()" :key="f.rn">
           <div>
-          <div class="day-h row" style="gap:10px" x-show="tab==='due' && !searchOn() && (i === 0 || dayGroup(f) !== dayGroup(famList()[i - 1]))"><span x-text="dayGroup(f)"></span>
-            <button class="btn sm pri" style="text-transform:none;letter-spacing:0" x-show="f.famState && f.famState.state === 'deleted' && can('complete') && can('move') && can('retire')" @click="openGom()" x-text="'Gom ' + due.filter(x => x.famState && x.famState.state === 'deleted').length + ' fam đã xoá → mời chung'"></button></div>
+          <div class="day-h row" style="gap:10px" x-show="tab==='due' && !searchOn() && (i === 0 || dayGroup(f) !== dayGroup(famList()[i - 1]))"><span x-text="dayGroup(f)"></span></div>
           <div class="card" :class="f.famState ? (f.famState.state === 'deleted' ? 'fs-del' : 'fs-scan') : ''" style="padding:0">
             <div class="row" style="padding:12px 14px">
               <button class="btn sm xp" @click="toggleOpen(f.rn)" :aria-expanded="isOpen(f.rn)" x-text="expanded(f) ? '▾' : '▸'" title="Xem nhanh"></button>
@@ -1049,89 +1048,6 @@
 </div>
 
 
-<!-- PANEL GOM FAM ĐÃ XOÁ -->
-<template x-if="gom">
-  <div class="ov">
-    <div class="wrap">
-      <header>
-        <button class="btn sm" @click="gom = null" :disabled="!!gom.busy">← Quay lại</button>
-        <h1>Gom fam đã xoá</h1>
-        <div class="sp"></div>
-        <span class="badge" x-text="gom.total + ' khách · ' + gom.fams.length + ' fam'"></span>
-      </header>
-      <div class="err" x-show="gom.error" x-text="gom.error"></div>
-      <div class="card" x-show="gom.loading">Đang tải fam dư slot…</div>
-      <template x-if="!gom.loading">
-        <div>
-          <div class="card" style="font-size:14px">
-            <b>1. Chọn khách mời lại</b> <span class="mute" style="font-size:12px">(bỏ tick khách không gia hạn: data cất xuống cuối sheet chờ mời lại, slot nhường khách khác)</span>
-            <template x-for="f in gom.fams" :key="f.rn">
-              <div style="margin-top:6px">
-                <b x-text="f.rn"></b> <span class="mute" style="font-size:12px" x-text="'renew ' + f.renew"></span>
-                <template x-for="c in f.customers.filter(x => !x.masked && !(x.daysLeft !== null && x.daysLeft < 0))" :key="c.row">
-                  <label class="row" style="gap:8px;font-size:13px;padding:2px 0 2px 12px"><input type="checkbox" :checked="gom.sel[c.row]" :disabled="gom.started" @change="gom.sel[c.row] = $event.target.checked; gomPlan()"><span class="mono grow" x-text="c.email"></span><span class="mute" :style="c.daysLeft !== null && c.daysLeft < 1 ? 'color:var(--bad)' : ''" x-text="'HSD ' + (c.hsd || '—')"></span></label>
-                </template>
-              </div>
-            </template>
-            <div style="margin-top:8px"><b x-text="'→ Mời ' + gom.total + ' khách: ' + gom.groups.length + ' fam chính (cần ' + gom.groups.length + ' FR' + (gom.groups.length > frs.length ? ', chỉ còn ' + frs.length + '!' : '') + ')' + (gom.room.length ? ' + ' + gom.room.length + ' fam dư slot' : '')"></b></div>
-            <div class="mute" style="font-size:12px">Fam chính giữ khách của nó; khách fam khác lấp vào slot trống / slot khách không mời. Fam hết khách tự đóng. Làm từng thẻ: mời xong bấm <b>Mời xong → ghi</b>.</div>
-          </div>
-          <template x-for="(d, di) in gom.drops" :key="'d' + di">
-            <div class="card" :style="d.done ? 'opacity:.6' : ''">
-              <div class="row" style="gap:8px"><b x-text="d.f.rn + ': không mời ai → cất ' + d.off.length + ' khách, đóng fam'"></b><span class="sp" style="flex:1"></span><span class="badge ok" x-show="d.done">✓ đã ghi</span>
-                <button class="btn sm pri" x-show="!d.done" @click="gomRun(d)" :disabled="!!gom.busy" x-text="gom.busy === d ? (gom.step || 'Đang ghi…') : (d.confirm ? 'Bấm lần nữa' : 'Ghi')"></button></div>
-            </div>
-          </template>
-
-          <template x-for="(g, gi) in gom.room" :key="'r' + gi">
-            <div class="card" :style="g.done ? 'opacity:.6' : ''">
-              <div class="row" style="gap:8px"><b x-text="'Fam dư slot: ' + g.fam.rn"></b><span class="mute" x-text="'· còn ' + g.fam.days + ' ngày · ' + g.items.length + ' khách'"></span><span class="sp" style="flex:1"></span><span class="badge ok" x-show="g.done">✓ đã ghi</span></div>
-              <div style="font-size:14px;margin:6px 0">
-                <span class="mono cp" @click="copy(g.fam.email, 'Đã copy email')" x-text="g.fam.email"></span> · Pass <span class="mono cp" @click="copy(g.fam.pass, 'Đã copy pass')" x-text="g.fam.pass || '—'"></span>
-                · 2FA <b class="mono cp" @click="copy(slotOtp['GR' + g.fam.rn], 'Đã copy mã')" x-text="g.fam.twofa ? (slotOtp['GR' + g.fam.rn] || '······') : 'không'"></b>
-                · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
-              </div>
-              <template x-for="it in g.items" :key="it.c.row">
-                <label class="row" style="gap:8px;font-size:14px;padding:3px 0"><input type="checkbox" x-model="it.ok" :disabled="g.done"><span class="mono grow" x-text="it.c.email"></span><span class="mute" style="font-size:12px" x-text="(it.host ? 'đang ở ' : 'từ ') + it.from + ' · HSD ' + (it.c.hsd || '—')"></span><button class="btn sm" @click.prevent="copy(it.c.email, 'Đã copy')">Copy</button></label>
-              </template>
-              <div class="row" style="gap:8px;margin-top:6px" x-show="!g.done">
-                <button class="btn sm" @click="copy(g.items.map(x => x.c.email).join(', '), 'Đã copy ' + g.items.length + ' email')">Copy tất cả</button>
-                <span class="sp" style="flex:1"></span>
-                <button class="btn sm pri" @click="gomRun(g)" :disabled="!!gom.busy" x-text="gom.busy === g ? (gom.step || 'Đang ghi…') : (g.confirm ? 'Bấm lần nữa để ghi' : 'Mời xong → ghi')"></button>
-              </div>
-            </div>
-          </template>
-
-          <template x-for="(g, gi) in gom.groups" :key="'g' + gi">
-            <div class="card" :style="g.done ? 'opacity:.6' : ''">
-              <div class="row" style="gap:8px"><b x-text="'FR ' + (gi + 1) + ': fam chính ' + g.host.rn"></b><span class="mute" style="font-size:12px" x-show="g.off.length" x-text="'· cất ' + g.off.map(c => c.email).join(', ')"></span><span class="mute" x-text="'· ' + g.items.length + '/5 khách'"></span><span class="sp" style="flex:1"></span><span class="badge ok" x-show="g.done">✓ đã ghi</span></div>
-              <template x-if="g.fr">
-                <div style="font-size:14px;margin:6px 0">
-                  <span class="badge ok" x-text="g.fr.fr"></span>
-                  <span class="mono cp" @click="copy(g.fr.email, 'Đã copy email')" x-text="g.fr.email"></span> · Pass <span class="mono cp" @click="copy(g.fr.pass, 'Đã copy pass')" x-text="g.fr.pass"></span>
-                  <span x-show="g.fr.mkp"> · MKP <span class="mono cp" @click="copy(g.fr.mkp, 'Đã copy MKP')" x-text="g.fr.mkp"></span></span>
-                  · 2FA <b class="mono cp" @click="copy(slotOtp['GF' + gi], 'Đã copy mã')" x-text="(g.fr.twofa || g.twofa) ? (slotOtp['GF' + gi] || '······') : 'chưa cài'"></b>
-                  · Renew <input type="date" :value="g.renewIso" @change="g.renewIso = $event.target.value" style="width:150px" :disabled="g.done">
-                  <div x-show="!g.fr.twofa && !g.done" style="margin-top:6px"><input type="text" x-model="g.twofa" placeholder="FR chưa có 2FA: dán secret vào đây" class="mono" style="width:100%"></div>
-                </div>
-              </template>
-              <div class="err" x-show="!g.fr">Hết FR cho nhóm này.</div>
-              <template x-for="it in g.items" :key="it.c.row">
-                <label class="row" style="gap:8px;font-size:14px;padding:3px 0"><input type="checkbox" x-model="it.ok" :disabled="g.done"><span class="mono grow" x-text="it.c.email"></span><span class="mute" style="font-size:12px" x-text="(it.host ? 'đang ở ' : 'từ ') + it.from + ' · HSD ' + (it.c.hsd || '—')"></span><button class="btn sm" @click.prevent="copy(it.c.email, 'Đã copy')">Copy</button></label>
-              </template>
-              <div class="row" style="gap:8px;margin-top:6px" x-show="!g.done">
-                <button class="btn sm" @click="copy(g.items.map(x => x.c.email).join(', '), 'Đã copy ' + g.items.length + ' email')">Copy tất cả</button>
-                <span class="sp" style="flex:1"></span>
-                <button class="btn sm pri" @click="gomRun(g)" :disabled="!!gom.busy || !g.fr || (!g.fr.twofa && !/^[a-z2-7 ]{16,}$/i.test(String(g.twofa || '').trim()))" x-text="gom.busy === g ? (gom.step || 'Đang ghi…') : (g.confirm ? 'Bấm lần nữa để ghi' : 'Mời xong → ghi')"></button>
-              </div>
-            </div>
-          </template>
-          <div class="card" x-show="gom.log.length"><b>Đã làm</b><template x-for="(l, li) in gom.log" :key="li"><div style="font-size:13px" x-text="l"></div></template></div>
-        </div>
-      </template>
-    </div>
-  </div>
-</template>
 <!-- PANEL THAY FAM -->
 <template x-if="swap">
   <div class="ov">
@@ -1377,7 +1293,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
-    tab: 'due', ahead: 2, dueDay: '', syncInfo: '', gom: null, loading: false, error: '', lastDone: '', notify: null,
+    tab: 'due', ahead: 2, dueDay: '', syncInfo: '', loading: false, error: '', lastDone: '', notify: null,
     slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
@@ -1973,107 +1889,6 @@ function app() {
       } catch (e) { this.error = e.message; }
       f.fsBusy = false;
     },
-    async openGom() {
-      const fams = this.due.filter(f => f.famState && f.famState.state === 'deleted');
-      const sel = {};
-      fams.forEach(f => f.customers.forEach(c => { if (!c.masked && !(c.daysLeft !== null && c.daysLeft < 0)) sel[c.row] = c.daysLeft === null || c.daysLeft >= 1; }));
-      this.gom = { fams, sel, total: 0, room: [], groups: [], drops: [], loading: true, busy: null, step: '', error: '', log: [], started: false };
-      await this.loadSlots();
-      this.gom.loading = false;
-      this.gomPlan();
-    },
-    // Lập kế hoạch: fam chính (thay FR) giữ khách của nó, khách fam khác lấp slot trống của fam chính rồi tới fam dư slot; fam cho khách hết khách thì đóng
-    gomPlan() {
-      const g = this.gom; if (!g || g.started) return;
-      const live = c => !c.masked && !(c.daysLeft !== null && c.daysLeft < 0);
-      const info = g.fams.map(f => ({ f, inv: f.customers.filter(c => live(c) && g.sel[c.row]), off: f.customers.filter(c => live(c) && !g.sel[c.row]) }));
-      g.total = info.reduce((n, x) => n + x.inv.length, 0);
-      const gomRns = g.fams.map(f => f.rn), rooms = [];
-      (this.slots || []).forEach(x => {
-        if (gomRns.includes(x.rn) || x.blockedUntil || x.days == null || x.days < 7) return;
-        x.rows.forEach(r => { if (r.state === 'free' || r.state === 'reuse') rooms.push({ fam: x, row: r.row }); });
-      });
-      rooms.sort((a, b) => b.fam.days - a.fam.days);
-      // số fam chính tối thiểu: chọn fam đông khách mời nhất trước
-      const order = info.filter(x => x.inv.length).sort((a, b) => b.inv.length - a.inv.length);
-      let H = 0; while (H < order.length && H * 5 + rooms.length < g.total) H++;
-      const hosts = order.slice(0, H), donors = order.slice(H);
-      const frs = this.frs.slice();
-      const iso = fr => { const p = fr && fr.renew ? fr.renew.split('/') : null; if (p && p.length === 3) return p[2] + '-' + p[1] + '-' + p[0]; const t = new Date(); t.setMonth(t.getMonth() + 1); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
-      g.groups = hosts.map(h => {
-        const keepRows = h.inv.map(c => c.row);
-        const freeRows = (h.f.slots || []).map(sl => sl.row).filter(r => !keepRows.includes(r));
-        const fr = frs.shift() || null;
-        return { host: h.f, fr, twofa: '', renewIso: iso(fr), freeRows, off: h.off, items: h.inv.map(c => ({ c, from: h.f.rn, fromF: h.f, host: true, ok: true })), done: false, confirm: false };
-      });
-      g.room = [];
-      const queue = []; donors.forEach(d => d.inv.forEach(c => queue.push({ c, from: d.f.rn, fromF: d.f })));
-      queue.forEach(q => {
-        const grp = g.groups.find(x => x.freeRows.length);
-        if (grp) { grp.items.push(Object.assign(q, { host: false, to: grp.freeRows.shift(), ok: true })); return; }
-        const rm = rooms.shift();
-        if (!rm) return;
-        let rg = g.room.find(y => y.fam.rn === rm.fam.rn);
-        if (!rg) { rg = { fam: rm.fam, items: [], done: false, confirm: false }; g.room.push(rg); }
-        rg.items.push(Object.assign(q, { to: rm.row, ok: true }));
-      });
-      // fam cho khách / fam không mời ai: cất khách không mời, rồi đóng (khi tất cả khách đã chuyển xong)
-      g.left = {}; info.forEach(x => { g.left[x.f.rn] = hosts.includes(x) ? 0 : x.inv.length; });
-      g.offOf = {}; info.forEach(x => { g.offOf[x.f.rn] = x.off; });
-      g.drops = info.filter(x => !x.inv.length).map(x => ({ f: x.f, off: x.off, done: false, confirm: false }));
-    },
-    async gomCloseDonor(f) {
-      const g = this.gom;
-      for (const c of (g.offOf[f.rn] || [])) {
-        const v = await this.api({ action: 'vacate', row: c.row, email: c.email, reason: 'không gia hạn, chờ mời lại' });
-        g.log.push('↓ ' + c.email + ' (' + f.rn + ') cất xuống cuối sheet, dòng ' + v.archRow);
-      }
-      const rt = await this.api({ action: 'retire', rn: f.rn, stockRow: f.stockRow });
-      g.log.push('🗑 ' + f.rn + ': ' + rt.status);
-    },
-    async gomRun(grp) {
-      const g = this.gom;
-      if (!grp.confirm) { grp.confirm = true; setTimeout(() => { grp.confirm = false; }, 4000); return; }
-      grp.confirm = false; g.busy = grp; g.error = ''; g.started = true;
-      const iso2 = v => { const p = String(v || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; };
-      try {
-        if (grp.f) {   // fam không mời ai: cất khách rồi đóng
-          g.step = 'Đóng ' + grp.f.rn + '…';
-          await this.gomCloseDonor(grp.f);
-        } else {
-          if (grp.host) {
-            g.step = 'Thay ' + grp.host.rn + '…';
-            const own = grp.items.filter(it => it.host);
-            const r = await this.api({ action: 'complete', rn: grp.host.rn, stockRow: grp.host.stockRow, oldEmail: grp.host.email, fr: grp.fr.fr, frRow: grp.fr.row, frEmail: grp.fr.email,
-              invited: own.filter(it => it.ok).map(it => it.c.email),
-              archive: own.filter(it => !it.ok).map(it => it.c.email).concat(grp.off.map(c => c.email)),
-              renew: iso2(grp.renewIso), twofa: grp.fr.twofa ? '' : String(grp.twofa).trim(), note: 'Gom fam đã xoá' });
-            g.log.push('✓ ' + grp.host.rn + ' → ' + grp.fr.fr + ' (' + grp.fr.email + '), renew ' + r.renew + (grp.off.length ? ', cất ' + grp.off.map(c => c.email).join(', ') : ''));
-            this.frs = this.frs.filter(x => x.row !== grp.fr.row);
-          }
-          const moving = grp.items.filter(it => !it.host);
-          const dest = grp.host ? grp.host.rn : grp.fam.rn;
-          for (let k = 0; k < moving.length; k++) {
-            const it = moving[k];
-            g.step = (k + 1) + '/' + moving.length + ' ' + it.c.email;
-            if (it.ok) {
-              await this.api({ action: 'move', email: it.c.email, toRow: it.to, invited: true });
-              g.log.push('✓ ' + it.c.email + ': ' + it.from + ' → ' + dest);
-            } else {
-              const v = await this.api({ action: 'vacate', row: it.c.row, email: it.c.email, reason: 'không mời được khi gom' });
-              g.log.push('↓ ' + it.c.email + ' cất xuống cuối sheet (dòng ' + v.archRow + ')');
-            }
-            g.left[it.from]--;
-            if (g.left[it.from] === 0) { g.step = 'Đóng ' + it.from + '…'; await this.gomCloseDonor(it.fromF); }
-          }
-        }
-        grp.done = true;
-        if (this.syncInfo) g.log.push(this.syncInfo);
-        const doneRns = g.fams.filter(f => g.left[f.rn] === 0 && (g.groups.some(x => x.done && x.host.rn === f.rn) || g.log.some(l => l.indexOf('🗑 ' + f.rn + ':') === 0))).map(f => f.rn);
-        this.due = this.due.filter(x => !doneRns.includes(x.rn));
-      } catch (e) { g.error = e.message + ' — các bước đã làm ở mục "Đã làm", hoàn tác ở tab Lịch sử.'; }
-      g.busy = null; g.step = '';
-    },
     async retireFam() {
       const s = this.swap;
       if (!s.retireConfirm) { s.retireConfirm = true; setTimeout(() => { if (this.swap === s) s.retireConfirm = false; }, 4000); return; }
@@ -2327,12 +2142,6 @@ function app() {
       if (this.tab === 'slots' && this.slotFilter === 'mp') {
         const m = {};
         for (const f of this.mp.items) if (f.twofa) m['M' + f.rn] = await totp(f.twofa);
-        this.slotOtp = { ...this.slotOtp, ...m };
-      }
-      if (this.gom && !this.gom.loading) {
-        const m = {};
-        for (const g of this.gom.room) if (g.fam.twofa) m['GR' + g.fam.rn] = await totp(g.fam.twofa);
-        for (let i = 0; i < this.gom.groups.length; i++) { const g = this.gom.groups[i], sec = g.fr && (g.fr.twofa || String(g.twofa || '').trim()); if (sec) { try { m['GF' + i] = await totp(sec); } catch (e) {} } }
         this.slotOtp = { ...this.slotOtp, ...m };
       }
       if (this.tab === 'blocks') {
