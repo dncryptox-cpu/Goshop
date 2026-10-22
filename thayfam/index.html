@@ -55,6 +55,13 @@
   .badge.bad{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
   .badge.warn{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
   .badge.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+  .badge.st-full{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok);font-weight:600}
+  .badge.st-slot{background:color-mix(in srgb,#2f6fd6 16%,transparent);color:#2f6fd6;font-weight:600}
+  .badge.st-other{background:color-mix(in srgb,var(--mute) 18%,transparent);color:var(--ink);font-weight:600}
+  .badge.st-del{background:var(--bad);color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
+  .badge.st-scan{background:#7b3fc4;color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
+  .card.fs-del{border-left:5px solid var(--bad)}
+  .card.fs-scan{border-left:5px solid #7b3fc4}
   .grow{flex:1;min-width:0}
   .ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .chips{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
@@ -395,7 +402,7 @@
         </template>
         <template x-if="searchOn() && !searching && results.length===0 && !archHits.length"><div class="empty">Không tìm thấy fam nào.</div></template>
         <template x-for="f in (searchOn() ? results : (tab==='report' ? reported : due))" :key="f.rn">
-          <div class="card" style="padding:0">
+          <div class="card" :class="f.famState ? (f.famState.state === 'deleted' ? 'fs-del' : 'fs-scan') : ''" style="padding:0">
             <div class="row" style="padding:12px 14px">
               <button class="btn sm xp" @click="toggleOpen(f.rn)" :aria-expanded="isOpen(f.rn)" x-text="expanded(f) ? '▾' : '▸'" title="Xem nhanh"></button>
               <div class="rn" x-text="f.rn"></div>
@@ -403,9 +410,13 @@
               <div class="grow">
                 <div class="mono ellip" x-text="f.email"></div>
                 <div class="mute" style="font-size:13px">
-                  Renew <span x-text="f.renew"></span> · <span x-text="activeCount(f)"></span>/<span x-text="f.customers.length"></span> khách còn hạn · <span x-text="f.status"></span>
+                  Renew <span x-text="f.renew"></span> · <span x-text="activeCount(f)"></span>/<span x-text="f.customers.length"></span> khách còn hạn
+                  <span class="badge" :class="stClass(f.status)" style="margin-left:4px" x-text="f.status || '—'"></span>
+                  <span class="badge bad" style="margin-left:4px" x-show="f.blockedUntil" x-text="'⛔ chặn mời đến ' + f.blockedUntil"></span>
                 </div>
               </div>
+              <span class="badge st-del" x-show="f.famState && f.famState.state === 'deleted'" :title="f.famState ? 'Đánh dấu ' + f.famState.at + ' · ' + f.famState.by : ''" x-text="'🗑 ĐÃ XOÁ NHÓM · chờ mời FR' + (f.famState ? ' (' + f.famState.at + ')' : '')"></span>
+              <span class="badge st-scan" x-show="f.famState && f.famState.state === 'scanned'" :title="f.famState ? 'Đánh dấu ' + f.famState.at + ' · ' + f.famState.by : ''" x-text="'⚠ BỊ QUÉT' + (f.famState ? ' (' + f.famState.at + ')' : '')"></span>
               <span class="badge bad" x-show="f.report && f.report.reporters.length" x-text="'🚨 ' + (f.report ? f.report.reporters.length : 0) + ' báo lỗi'"></span>
               <span class="badge warn" x-show="f.report && f.report.reinvites.length" x-text="'🔁 ' + (f.report ? f.report.reinvites.length : 0) + ' cần mời lại'"></span>
               <span class="badge" :class="f.daysToRenew<0 ? 'bad' : (f.daysToRenew===0 ? 'warn' : '')" x-text="f.daysToRenew===null ? f.status : renewLabel(f.daysToRenew)"></span>
@@ -450,6 +461,9 @@
                 <div class="peek-own mute">
                   Pass <span class="mono cp" title="Bấm để copy" @click="copy(f.pass, 'Đã copy pass')" x-text="f.pass || '—'"></span> · MKP <span class="mono cp" title="Bấm để copy" @click="copy(f.mkp, 'Đã copy MKP')" x-text="f.mkp || '—'"></span> · 2FA <b class="mono" :class="f.twofa && 'cp'" title="Bấm để copy mã" @click="f.twofa && copy(slotOtp['S' + f.rn], 'Đã copy mã 2FA')" x-text="f.twofa ? (slotOtp['S' + f.rn] || '······') : 'không'"></b> · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
                   <button class="btn sm" style="margin-left:8px" x-show="can('markJoined') && f.customers.length" @click="f.check = !f.check; f.mark = {}" x-text="f.check ? 'Đóng kiểm tra' : 'Kiểm tra fam'"></button>
+                  <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'deleted')" @click="setFamState(f, 'deleted')" :disabled="!!f.fsBusy" title="Đã đăng nhập fam cũ và xoá nhóm gia đình, sẽ lấy FR mời khách sau">🗑 Đã xoá nhóm</button>
+                  <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'scanned')" @click="setFamState(f, 'scanned')" :disabled="!!f.fsBusy" title="Fam bị Google quét">⚠ Bị quét</button>
+                  <button class="btn sm" x-show="can('famState') && f.famState" @click="setFamState(f, '')" :disabled="!!f.fsBusy">Bỏ đánh dấu</button>
                   <button class="btn sm" x-show="can('inviteBlocked')" @click="blockInvite(f)" :disabled="!!f.blocking || !!f.blockedUntil" title="Google báo hết lượt mời (You've reached the family invitation limit): ghi Chặn mời, hẹn mời lại sau vài ngày" x-text="f.blockedUntil ? 'Chặn mời đến ' + f.blockedUntil : (f.blocking ? '…' : (f.blockConfirm ? 'Bấm lần nữa' : 'Google chặn mời'))"></button>
                 </div>
                 <div class="row" x-show="f.check" style="margin:6px 0">
@@ -1001,7 +1015,10 @@
       <div class="err" x-show="swapError" x-text="swapError"></div>
 
       <div class="step">
-        <h3><span class="num">1</span>Đăng nhập RN cũ → xoá nhóm gia đình</h3>
+        <h3><span class="num">1</span>Đăng nhập RN cũ → xoá nhóm gia đình
+          <span style="flex:1"></span>
+          <button class="btn sm" x-show="can('famState')" @click="setFamState(swap.f, 'deleted', true)" :disabled="!!swap.f.fsBusy" title="Mới xoá nhóm, chưa mời: lưu lại, fam hiện nổi bật trên đầu danh sách để mời FR sau">Đã xoá nhóm → mời FR sau</button>
+        </h3>
         <div class="kv">
           <span class="k">Email</span><span class="mono ellip" x-text="swap.f.email"></span><button class="btn sm" @click="copy(swap.f.email)">Copy</button>
           <span class="k">Pass</span><span class="mono ellip" x-text="swap.f.pass"></span><button class="btn sm" @click="copy(swap.f.pass)">Copy</button>
@@ -1722,6 +1739,19 @@ function app() {
       return ny + '-' + String(nm).padStart(2, '0') + '-' + String(Math.min(d, lastN)).padStart(2, '0');
     },
     swapRenew() { const p = this.swapRenewIso().split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; },
+    stClass(st) { return st === 'FULL' ? 'st-full' : (st === 'Còn slot' ? 'st-slot' : 'st-other'); },
+    async setFamState(f, state, closeSwap) {
+      f.fsBusy = true; this.error = '';
+      try {
+        const r = await this.api({ action: 'famState', rn: f.rn, state: state });
+        const v = state ? { state: state, at: r.at, by: r.by } : null;
+        [this.due, this.results, this.reported, this.allFams || []].forEach(list => list.forEach(x => { if (x.rn === f.rn) x.famState = v; }));
+        f.famState = v;
+        this.toast = f.rn + ': ' + (state === 'deleted' ? 'đã xoá nhóm, chờ mời FR' : state === 'scanned' ? 'bị quét' : 'bỏ đánh dấu'); setTimeout(() => this.toast = '', 1800);
+        if (closeSwap) this.swap = null;
+      } catch (e) { this.error = e.message; }
+      f.fsBusy = false;
+    },
     async retireFam() {
       const s = this.swap;
       if (!s.retireConfirm) { s.retireConfirm = true; setTimeout(() => { if (this.swap === s) s.retireConfirm = false; }, 4000); return; }
