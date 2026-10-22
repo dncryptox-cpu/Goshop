@@ -1133,6 +1133,7 @@
           <button class="btn sm" @click="copySelected()" :disabled="!swap.sel.length" x-text="'Copy ' + swap.sel.length + ' email đã chọn'"></button>
         </h3>
         <template x-if="swap.f.customers.length===0"><div class="mute">Fam này không có email khách.</div></template>
+        <datalist id="subc"><template x-for="x in subCands()" :key="x.rn + x.row"><option :value="x.email" x-text="(x.deleted ? '🗑 ' : '') + x.rn + ' · HSD ' + (x.hsd || '—')"></option></template></datalist>
         <template x-for="c in swap.f.customers" :key="c.row">
           <div>
           <div class="cus" :style="swap.archive.includes(c.email) || c.moved ? 'opacity:.55' : ''">
@@ -1149,6 +1150,11 @@
             <button class="btn sm" @click="copyCus(c.email)" x-show="!swap.archive.includes(c.email)">Copy</button>
             <span class="badge ok" x-show="c.moved" x-text="'→ ' + c.moved + ' ✓'"></span>
             <button class="btn sm pri" x-show="swap.noFr && !c.moved && pick.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="findSlot(swap.f, c)">Chuyển fam</button>
+          </div>
+          <div class="row" style="gap:8px;padding:0 0 8px 34px;font-size:13px" x-show="!swap.noFr && (swap.archive.includes(c.email) || (c.daysLeft !== null && c.daysLeft < 0 && !swap.sel.includes(c.email)))">
+            <span class="mute">Thế khách khác vào slot này:</span>
+            <input type="text" list="subc" class="mono grow" style="min-width:220px" placeholder="chọn khách fam đã xoá / gõ email" :value="swap.sub[c.row] || ''" @change="setSub(c.row, $event.target.value)">
+            <span class="mute" style="font-size:12px" x-text="subFrom(swap.sub[c.row])"></span>
           </div>
                 <template x-if="swap.noFr && pick.row === c.row">
             <div class="card pk" style="margin-top:10px">
@@ -1224,6 +1230,16 @@
         </template>
       </div>
 
+      <div class="step" x-show="!swap.noFr && (swap.f.slots || []).some(x => !x.email)" style="margin-top:-8px">
+        <template x-for="sl in (swap.f.slots || []).filter(x => !x.email)" :key="sl.row">
+          <div class="row" style="gap:8px;font-size:13px;padding:4px 0">
+            <span class="mute" x-text="'Slot trống (dòng ' + sl.row + '): thế khách vào'"></span>
+            <input type="text" list="subc" class="mono grow" style="min-width:220px" placeholder="chọn khách fam đã xoá / gõ email" :value="swap.sub[sl.row] || ''" @change="setSub(sl.row, $event.target.value)">
+            <span class="mute" style="font-size:12px" x-text="subFrom(swap.sub[sl.row])"></span>
+          </div>
+        </template>
+      </div>
+
       <div class="step">
         <h3><span class="num">4</span>Ghi chú cho admin <span class="mute" style="font-weight:400;font-size:13px">(không bắt buộc)</span></h3>
         <input type="text" x-model="swap.note" placeholder="vd: khách X báo đổi mail, FR này hơi lag…" style="width:100%">
@@ -1241,7 +1257,7 @@
           <div style="flex:1">
             <div style="font-size:13px;margin-bottom:8px">
               Ghi <b x-text="swap.fr.email"></b> vào <b x-text="swap.f.rn"></b> (Bản sao Kho TK), Renew = <b x-text="swapRenew()"></b>,
-              đánh dấu đã mời <b x-text="swap.sel.length"></b> khách. Trạng thái → <b x-text="swap.sel.length >= 5 ? 'FULL' : 'Còn slot'"></b>.<span x-show="!swap.fr.twofa"> Ghi 2FA vào FamRenew H của <b x-text="swap.fr.fr"></b>.</span>
+              đánh dấu đã mời <b x-text="swap.sel.length"></b> khách<span x-show="Object.keys(swap.sub).length" x-text="', thế ' + Object.keys(swap.sub).length + ' khách từ fam khác vào'"></span>. Trạng thái → <b x-text="swap.sel.length >= 5 ? 'FULL' : 'Còn slot'"></b>.<span x-show="!swap.fr.twofa"> Ghi 2FA vào FamRenew H của <b x-text="swap.fr.fr"></b>.</span>
             </div>
             <div class="row">
               <button class="btn" @click="confirming=false" :disabled="saving">Huỷ</button>
@@ -1902,6 +1918,24 @@ function app() {
       } catch (e) { this.swapError = e.message; }
       this.saving = false;
     },
+    // Khách có thể thế vào slot trống của fam đang thay: ưu tiên fam đã xoá nhóm, rồi các fam đến hạn khác
+    subCands() {
+      const s = this.swap; if (!s) return [];
+      const used = Object.values(s.sub || {}).map(x => String(x).toLowerCase());
+      const out = [];
+      this.due.filter(f => f.rn !== s.f.rn).forEach(f => (f.customers || []).forEach(c => {
+        if (!c.email || c.masked || (c.daysLeft !== null && c.daysLeft < 0) || used.includes(c.email.toLowerCase())) return;
+        out.push({ email: c.email, rn: f.rn, row: c.row, hsd: c.hsd, deleted: !!(f.famState && f.famState.state === 'deleted'), f });
+      }));
+      return out.sort((a, b) => (b.deleted ? 1 : 0) - (a.deleted ? 1 : 0));
+    },
+    subFrom(e) {
+      if (!e) return '';
+      const lc = String(e).toLowerCase();
+      for (const f of this.due) { const c = (f.customers || []).find(x => x.email && x.email.toLowerCase() === lc); if (c) return 'từ ' + f.rn + (f.famState && f.famState.state === 'deleted' ? ' (đã xoá nhóm)' : ''); }
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? 'tìm trong Kho TK lúc ghi' : 'email chưa đúng';
+    },
+    setSub(row, v) { const s = this.swap; const t = String(v || '').trim(); if (t) s.sub[row] = t; else delete s.sub[row]; s.sub = { ...s.sub }; },
     toggleArchive(e) {
       const s = this.swap;
       if (s.archive.includes(e)) { s.archive = s.archive.filter(x => x !== e); if (!s.sel.includes(e)) s.sel.push(e); }
@@ -1910,7 +1944,7 @@ function app() {
     openSwap(f) {
       this.swapError = ''; this.confirming = false; this.lastDone = '';
       this.swap = {
-        f, fr: this.frs[0] || null, copied: [], newTwofa: '', note: '', archive: [], renewEdit: '', noFr: false, retireConfirm: false,
+        f, fr: this.frs[0] || null, copied: [], newTwofa: '', note: '', archive: [], renewEdit: '', sub: {}, noFr: false, retireConfirm: false,
         sel: f.customers.filter(c => c.daysLeft === null || c.daysLeft >= 0).map(c => c.email),
       };
       this.tickOtp();
@@ -2108,6 +2142,25 @@ function app() {
         this.lastDone = '✓ ' + r.rn + ': ' + r.oldEmail + ' → ' + r.newEmail + ' (' + r.fr + '), renew ' + r.renew + ', mời ' + r.invited + '/' + r.customers + ' khách, trạng thái ' + r.status + '.' + (r.closedTickets ? ' Đã đóng ' + r.closedTickets + ' ticket báo lỗi.' : '')
           + (r.archived && r.archived.length ? ' Đã cất ' + r.archived.length + ' khách không vào xuống cuối sheet (' + r.archived.map(a => a.email + ' → dòng ' + a.archRow).join(', ') + ', "Chờ xếp"). Slot để trống chờ mời.' : '');
         this.lastActionId = r.actionId || '';
+        // Thế khách khác vào slot trống / slot vừa cất
+        const subs = Object.entries(s.sub || {}).filter(([row, e]) => e);
+        if (subs.length) {
+          const done = [], fail = [], donors = new Set();
+          for (const [row, e] of subs) {
+            try {
+              const m = await this.api({ action: 'move', email: e, toRow: Number(row), invited: true });
+              done.push(m.email + ' (' + m.from + ')');
+              const df = this.due.find(f => f.rn === m.from); if (df) { df.customers = df.customers.filter(c => c.email.toLowerCase() !== m.email.toLowerCase()); donors.add(df); }
+            } catch (err) { fail.push(e + ': ' + err.message); }
+          }
+          this.lastDone += ' Thế vào: ' + (done.join(', ') || 'không ai') + '.' + (fail.length ? ' LỖI: ' + fail.join('; ') : '');
+          // Fam đã xoá nhóm cho hết khách còn hạn → đóng luôn
+          for (const df of donors) {
+            if (!(df.famState && df.famState.state === 'deleted')) continue;
+            if (df.customers.some(c => !(c.daysLeft !== null && c.daysLeft < 0))) continue;
+            try { const rt = await this.api({ action: 'retire', rn: df.rn, stockRow: df.stockRow }); this.lastDone += ' ' + df.rn + ': ' + rt.status + '.'; this.due = this.due.filter(x => x.rn !== df.rn); } catch (err) {}
+          }
+        }
         const zaloOf = e => { const x = s.f.report && s.f.report.reporters.find(p => p.email === String(e).toLowerCase()); return x ? x.zalo : ''; };
         this.notify = { rn: r.rn, url: r.fixUrl || FIXYTB_URL, sent: [], items: s.f.customers.filter(c => s.sel.includes(c.email)).map(c => ({ email: c.email, ctv: c.ctv, zalo: zaloOf(c.email) })) };
         if (!this.notify.items.length) this.notify = null;
