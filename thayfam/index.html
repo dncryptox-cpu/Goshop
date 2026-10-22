@@ -156,6 +156,7 @@
         </div>
         <div class="sp"></div>
         <button class="btn sm" @click="freshUntil = Date.now() + 20000; load(); if (slotsLoaded) loadSlots(); if (wk) loadWeek()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
+        <label class="btn sm" x-show="me.role==='admin'" style="display:flex;gap:6px;align-items:center;cursor:pointer" :style="autoSync ? 'border-color:var(--ok);color:var(--ok)' : ''" title="Bật: mọi thao tác của admin (thay fam, chuyển khách, đổi mail, cất/kick khách, đóng fam, đã mời) ghi luôn vào data gốc"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')" style="margin:0"> Ghi luôn vào gốc</label>
         <button class="btn sm" @click="logout()">Thoát</button>
       </header>
 
@@ -169,7 +170,7 @@
         <button class="btn sm" @click="tab='blocks'; loadBlocks()">Xem</button>
       </div>
       <div class="okbox row" x-show="lastDone">
-        <span class="grow" x-text="lastDone"></span>
+        <span class="grow"><span x-text="lastDone"></span><span x-show="syncInfo" :style="syncInfo.indexOf('⚠') === 0 ? 'color:var(--bad);font-weight:600' : 'color:var(--ok)'" x-text="' ' + syncInfo"></span></span>
         <template x-if="lastActionId">
           <button class="btn sm" @click="askUndo(lastActionId)" :disabled="!!undoBusy" x-text="undoConfirm===lastActionId ? 'Bấm lần nữa để hoàn tác' : 'Hoàn tác'"></button>
         </template>
@@ -1270,7 +1271,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
-    tab: 'due', ahead: 2, dueDay: '', loading: false, error: '', lastDone: '', notify: null,
+    tab: 'due', ahead: 2, dueDay: '', syncInfo: '', loading: false, error: '', lastDone: '', notify: null,
     slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
@@ -1338,9 +1339,13 @@ function app() {
 
     async api(body) {
       // các lệnh chỉ đọc (không làm cũ dữ liệu)
-      const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass, fresh: Date.now() < (this.freshUntil || 0) || undefined }) });
+      // Admin tick "Ghi luôn vào gốc": mọi thao tác ghi data đều đồng bộ sang gốc ngay
+      const sync = this.me.role === 'admin' && this.autoSync && ['move', 'swapMail', 'vacate', 'complete', 'retire', 'markInvited'].includes(body.action);
+      if (!READS.includes(body.action) && body.op !== 'list') this.syncInfo = '';
+      const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, autoSync: sync || body.autoSync || undefined, pass: this.pass, fresh: Date.now() < (this.freshUntil || 0) || undefined }) });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Lỗi không rõ');
+      if (data.sync) this.syncInfo = data.sync.ok ? '✓ Đã ghi luôn vào data gốc (' + (data.sync.cells || 0) + ' ô).' : '⚠ CHƯA ghi vào data gốc: ' + (data.sync.error || 'lỗi') + ' → vào tab Đồng bộ duyệt lại.';
       if (!READS.includes(body.action) && !(body.op === 'list') && !(body.action === 'pull' && !body.apply)) this.afterWrite(true);
       return data;
     },
@@ -1385,7 +1390,7 @@ function app() {
     async autoSyncAfter(res) {
       const id = res && res.actionId;
       if (this.me.role !== 'admin' || !this.autoSync || !id) return;
-      if (res.sync) { const r = res.sync; this.lastDone = this.lastDone.replace(/ Hoàn tác được.*$/, '') + (r.ok ? ' Đã ghi luôn vào data gốc (' + r.cells + ' ô).' : ' CHƯA ghi vào gốc: ' + (r.error || 'lỗi') + ' Vào tab Đồng bộ để xử lý.'); return; }
+      if (res.sync) return;   // đã hiện ở syncInfo
       try {
         const r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'sync', id: id, pass: this.pass }) }).then(x => x.json());
         this.lastDone = this.lastDone.replace(/ Hoàn tác được.*$/, '') + (r.ok ? ' Đã ghi luôn vào data gốc (' + r.cells + ' ô).' : ' CHƯA ghi vào gốc: ' + (r.error || 'lỗi') + ' Vào tab Đồng bộ để xử lý.');
