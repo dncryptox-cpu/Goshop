@@ -1133,7 +1133,7 @@
           <button class="btn sm" @click="copySelected()" :disabled="!swap.sel.length" x-text="'Copy ' + swap.sel.length + ' email đã chọn'"></button>
         </h3>
         <template x-if="swap.f.customers.length===0"><div class="mute">Fam này không có email khách.</div></template>
-        <datalist id="subc"><template x-for="x in subCands()" :key="x.rn + x.row"><option :value="x.email" x-text="(x.deleted ? '🗑 ' : '') + x.rn + ' · HSD ' + (x.hsd || '—')"></option></template></datalist>
+        <datalist id="subc"><template x-for="x in subCands()" :key="x.rn + x.row"><option :value="x.email" x-text="(x.deleted ? '🗑 ' + x.rn + ' · xoá ' + x.delAt : x.rn + ' · renew ' + (x.f.renew || '—')) + ' · HSD ' + (x.hsd || '—')"></option></template></datalist>
         <template x-for="c in swap.f.customers" :key="c.row">
           <div>
           <div class="cus" :style="swap.archive.includes(c.email) || c.moved ? 'opacity:.55' : ''">
@@ -1925,14 +1925,14 @@ function app() {
       const out = [];
       this.due.filter(f => f.rn !== s.f.rn).forEach(f => (f.customers || []).forEach(c => {
         if (!c.email || c.masked || (c.daysLeft !== null && c.daysLeft < 0) || used.includes(c.email.toLowerCase())) return;
-        out.push({ email: c.email, rn: f.rn, row: c.row, hsd: c.hsd, deleted: !!(f.famState && f.famState.state === 'deleted'), f });
+        out.push({ email: c.email, rn: f.rn, row: c.row, hsd: c.hsd, deleted: !!(f.famState && f.famState.state === 'deleted'), delAt: f.famState ? f.famState.at : '', f });
       }));
-      return out.sort((a, b) => (b.deleted ? 1 : 0) - (a.deleted ? 1 : 0));
+      return out.sort((a, b) => (b.deleted ? 1 : 0) - (a.deleted ? 1 : 0) || String(b.delAt).localeCompare(String(a.delAt)));
     },
     subFrom(e) {
       if (!e) return '';
       const lc = String(e).toLowerCase();
-      for (const f of this.due) { const c = (f.customers || []).find(x => x.email && x.email.toLowerCase() === lc); if (c) return 'từ ' + f.rn + (f.famState && f.famState.state === 'deleted' ? ' (đã xoá nhóm)' : ''); }
+      for (const f of this.due) { const c = (f.customers || []).find(x => x.email && x.email.toLowerCase() === lc); if (c) return 'từ ' + f.rn + (f.famState && f.famState.state === 'deleted' ? ' (đã xoá nhóm ' + f.famState.at + ')' : ''); }
       return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) ? 'tìm trong Kho TK lúc ghi' : 'email chưa đúng';
     },
     setSub(row, v) { const s = this.swap; const t = String(v || '').trim(); if (t) s.sub[row] = t; else delete s.sub[row]; s.sub = { ...s.sub }; },
