@@ -669,7 +669,25 @@
         <template x-if="slotsLoaded && slotFilter !== 'mp' && !filteredSlots().length"><div class="empty">Không có fam nào.</div></template>
         <template x-if="slotFilter === 'mp'">
           <div>
-            <div class="mute" style="font-size:13px;margin-bottom:10px"><b>Chỉ để soi, webapp không sửa gì.</b> Đỏ = email khách trùng 2 chỗ hoặc mail phụ đang là khách ở dòng khác (gần như chắc chắn dư slot). Vàng = có mail phụ chưa ghi "hủy" (có thể nhân viên cũ đã mời cả mail phụ). Bạn đăng nhập fam, so với nhóm Gia đình rồi tự xoá / đổi.</div>
+            <div class="mute" style="font-size:13px;margin-bottom:10px"><b>Webapp không tự sửa gì</b> (chỉ ghi khi bạn bấm Gộp). Đỏ = email khách trùng 2 chỗ hoặc mail phụ đang là khách ở dòng khác (gần như chắc chắn dư slot). Vàng = có mail phụ chưa ghi "hủy" (có thể nhân viên cũ đã mời cả mail phụ). Bạn đăng nhập fam, so với nhóm Gia đình rồi tự xoá / đổi.</div>
+            <template x-if="(mp.merges || []).length">
+              <div class="card" style="border-color:var(--warn)">
+                <b x-text="'Gộp dòng thiếu data (' + mp.merges.length + ' cặp)'"></b>
+                <div class="mute" style="font-size:12px;margin-bottom:6px">Dòng chỉ có email (thiếu Ngày mua / Số tháng) + dòng có đủ data mà Mail phụ ghi đúng email đó. <b>Chọn giữ slot nào</b> rồi bấm Gộp. Giữ slot thiếu data: slot đó nhận Ngày mua, Số tháng, CTV của dòng kia, Mail phụ = mail cũ; dòng kia cất xuống cuối sheet. Giữ slot có data: dòng chỉ có email cất xuống cuối, slot trống.</div>
+                <template x-for="m in mp.merges" :key="m.bare.row + '_' + m.data.row">
+                  <div style="padding:8px 0;border-top:1px solid var(--line)">
+                    <label class="row" style="gap:8px;cursor:pointer;font-size:13px"><input type="radio" :name="'mg' + m.bare.row + '_' + m.data.row" value="bare" x-model="m.keep" :disabled="!!m.done">
+                      <span class="grow"><b x-text="m.bare.rn"></b> dòng <span x-text="m.bare.row"></span> · <span class="mono" x-text="m.bare.email"></span> <span class="badge warn">thiếu data</span></span></label>
+                    <label class="row" style="gap:8px;cursor:pointer;font-size:13px;margin-top:4px"><input type="radio" :name="'mg' + m.bare.row + '_' + m.data.row" value="data" x-model="m.keep" :disabled="!!m.done || m.data.arch">
+                      <span class="grow"><b x-text="m.data.rn"></b> dòng <span x-text="m.data.row"></span> · <span class="mono" x-text="m.data.email"></span> <span class="mute" x-text="'· HSD ' + m.data.hsd + ' · CTV ' + (m.data.ctv || '—') + ' · mail phụ ' + m.data.mailPhu + (m.data.arch ? ' · đang ở vùng lưu (không có slot)' : '')"></span></span></label>
+                    <div class="row" style="gap:8px;margin-top:6px">
+                      <span class="grow" style="font-size:12px" :style="m.done ? 'color:var(--ok)' : ''" x-text="m.done || (m.keep ? '' : 'Chưa chọn giữ slot nào')"></span>
+                      <button class="btn sm pri" x-show="!m.done" @click="doMerge(m)" :disabled="!m.keep || m.busy" x-text="m.busy ? 'Đang gộp…' : (m.confirm ? 'Bấm lần nữa để gộp' : 'Gộp')"></button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
             <template x-if="mp.loading"><div class="empty">Đang tải…</div></template>
             <template x-if="mp.loaded && !mp.items.length"><div class="empty">Không thấy điểm đáng ngờ nào.</div></template>
             <template x-for="f in mp.items" :key="f.rn">
@@ -1340,7 +1358,7 @@ function app() {
     async api(body) {
       // các lệnh chỉ đọc (không làm cũ dữ liệu)
       // Admin tick "Ghi luôn vào gốc": mọi thao tác ghi data đều đồng bộ sang gốc ngay
-      const sync = this.me.role === 'admin' && this.autoSync && ['move', 'swapMail', 'vacate', 'complete', 'retire', 'markInvited'].includes(body.action);
+      const sync = this.me.role === 'admin' && this.autoSync && ['move', 'swapMail', 'vacate', 'complete', 'retire', 'markInvited', 'merge'].includes(body.action);
       if (!READS.includes(body.action) && body.op !== 'list') this.syncInfo = '';
       const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, autoSync: sync || body.autoSync || undefined, pass: this.pass, fresh: Date.now() < (this.freshUntil || 0) || undefined }) });
       const data = await res.json();
@@ -1564,9 +1582,19 @@ function app() {
       else p.confirm = false;
     },
     livePhu(v) { const t = String(v || '').trim(); return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) && !/h[uủ]y/i.test(t) ? t : ''; },
+    async doMerge(m) {
+      if (!m.confirm) { m.confirm = true; setTimeout(() => { m.confirm = false; }, 4000); return; }
+      m.confirm = false; m.busy = true; this.error = '';
+      try {
+        const r = await this.api({ action: 'merge', bareRow: m.bare.row, bareEmail: m.bare.email, dataRow: m.data.row, dataEmail: m.data.email, keep: m.keep });
+        m.done = '✓ Giữ ' + r.keptEmail + (r.archRow ? '. Dòng kia cất xuống cuối sheet (dòng ' + r.archRow + ')' : '') + (r.freed ? ', slot ' + r.freed + ' thành trống' : '') + '. Hoàn tác ở tab Lịch sử.';
+        this.lastActionId = r.actionId || '';
+      } catch (e) { this.error = e.message; }
+      m.busy = false;
+    },
     async loadMp() {
       this.mp = { items: this.mp.items || [], loading: true, loaded: this.mp.loaded };
-      try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, loading: false, loaded: true }; }
+      try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, merges: (d.merges || []).map(m => Object.assign(m, { keep: '', busy: false, confirm: false, done: '' })), loading: false, loaded: true }; }
       catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng Soi mail phụ: dán Code.gs mới rồi Deploy → New version.' : e.message; this.mp.loading = false; }
     },
     async loadWeek() {
