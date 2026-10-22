@@ -311,9 +311,17 @@
         <div class="mute" style="font-size:13px;margin-bottom:10px" x-show="tab==='report' && !searchOn()">Fam có khách báo lỗi hoặc khách báo không thấy lời mời, chưa thay fam sau lần báo. Thay fam xong hoặc bấm "Đã mời lại" thì tự biến mất.</div>
         <template x-if="tab==='report' && !searchOn() && !loading && reported.length===0"><div class="empty">Không có khách nào đang báo lỗi.</div></template>
         <div class="chips" x-show="!searchOn() && tab==='due'">
-          <button class="chip" :class="ahead===0 && 'on'" @click="ahead=0; load()">Hôm nay & quá hạn</button>
-          <button class="chip" :class="ahead===3 && 'on'" @click="ahead=3; load()">+3 ngày tới</button>
-          <button class="chip" :class="ahead===7 && 'on'" @click="ahead=7; load()">+7 ngày tới</button>
+          <button class="chip" :class="ahead===0 && 'on'" @click="ahead=0; dueDay=''; load()">Hôm nay & quá hạn</button>
+          <button class="chip" :class="ahead===3 && 'on'" @click="ahead=3; dueDay=''; load()">+3 ngày tới</button>
+          <button class="chip" :class="ahead===7 && 'on'" @click="ahead=7; dueDay=''; load()">+7 ngày tới</button>
+          <button class="chip" :class="ahead===14 && 'on'" @click="ahead=14; dueDay=''; load()">+14 ngày tới</button>
+        </div>
+        <div class="chips" x-show="!searchOn() && tab==='due' && dueGroups().length > 1">
+          <span class="mute" style="font-size:13px;align-self:center">Renew:</span>
+          <button class="chip" :class="!dueDay && 'on'" @click="dueDay=''" x-text="'Tất cả (' + due.length + ')'"></button>
+          <template x-for="g in dueGroups()" :key="g.key">
+            <button class="chip" :class="dueDay===g.key && 'on'" @click="dueDay = dueDay===g.key ? '' : g.key" x-text="g.label + ' (' + g.n + ')'"></button>
+          </template>
         </div>
         <template x-if="tab==='due' && !searchOn() && !loading && due.length===0"><div class="empty">Không có RN nào đến hạn.</div></template>
         <template x-if="searchOn() && archHits.length">
@@ -1251,7 +1259,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
-    tab: 'due', ahead: 0, loading: false, error: '', lastDone: '', notify: null,
+    tab: 'due', ahead: 0, dueDay: '', loading: false, error: '', lastDone: '', notify: null,
     slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
@@ -1710,7 +1718,25 @@ function app() {
     },
     isReporter(f, email) { return !!(f.report && f.report.reporters.some(r => r.email === String(email).toLowerCase())); },
     activeCount(f) { return f.customers.filter(c => c.daysLeft === null || c.daysLeft >= 0).length; },
-    famList() { return this.searchOn() ? this.results : (this.tab === 'report' ? this.reported : this.due); },
+    famList() {
+      if (this.searchOn()) return this.results;
+      if (this.tab === 'report') return this.reported;
+      return this.dueDay ? this.due.filter(f => this.dayKey(f) === this.dueDay) : this.due;
+    },
+    dayKey(f) { return f.famState ? 'fs-' + f.famState.state : (f.daysToRenew == null ? 'none' : (f.daysToRenew < 0 ? 'late' : f.renew)); },
+    dueGroups() {
+      const out = [], idx = {};
+      this.due.forEach(f => {
+        const k = this.dayKey(f);
+        if (!(k in idx)) {
+          const d = f.daysToRenew;
+          const label = f.famState ? (f.famState.state === 'deleted' ? '🗑 Đã xoá nhóm' : '⚠ Bị quét') : (k === 'none' ? 'Chưa có ngày' : k === 'late' ? 'Quá hạn' : (d === 0 ? 'Hôm nay' : d === 1 ? 'Mai' : String(f.renew).slice(0, 5)));
+          idx[k] = out.length; out.push({ key: k, label: label, n: 0 });
+        }
+        out[idx[k]].n++;
+      });
+      return out;
+    },
     dayGroup(f) {
       if (f.famState) return f.famState.state === 'deleted' ? '🗑 Đã xoá nhóm · chờ mời FR' : '⚠ Bị quét';
       const d = f.daysToRenew;
