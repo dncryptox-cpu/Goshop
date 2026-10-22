@@ -311,16 +311,9 @@
         <div class="mute" style="font-size:13px;margin-bottom:10px" x-show="tab==='report' && !searchOn()">Fam có khách báo lỗi hoặc khách báo không thấy lời mời, chưa thay fam sau lần báo. Thay fam xong hoặc bấm "Đã mời lại" thì tự biến mất.</div>
         <template x-if="tab==='report' && !searchOn() && !loading && reported.length===0"><div class="empty">Không có khách nào đang báo lỗi.</div></template>
         <div class="chips" x-show="!searchOn() && tab==='due'">
-          <button class="chip" :class="ahead===0 && 'on'" @click="ahead=0; dueDay=''; load()">Hôm nay & quá hạn</button>
-          <button class="chip" :class="ahead===3 && 'on'" @click="ahead=3; dueDay=''; load()">+3 ngày tới</button>
-          <button class="chip" :class="ahead===7 && 'on'" @click="ahead=7; dueDay=''; load()">+7 ngày tới</button>
-          <button class="chip" :class="ahead===14 && 'on'" @click="ahead=14; dueDay=''; load()">+14 ngày tới</button>
-        </div>
-        <div class="chips" x-show="!searchOn() && tab==='due' && dueGroups().length > 1">
-          <span class="mute" style="font-size:13px;align-self:center">Renew:</span>
           <button class="chip" :class="!dueDay && 'on'" @click="dueDay=''" x-text="'Tất cả (' + due.length + ')'"></button>
           <template x-for="g in dueGroups()" :key="g.key">
-            <button class="chip" :class="dueDay===g.key && 'on'" @click="dueDay = dueDay===g.key ? '' : g.key" x-text="g.label + ' (' + g.n + ')'"></button>
+            <button class="chip" :class="dueDay===g.key && 'on'" @click="dueDay = dueDay===g.key ? '' : g.key" :disabled="!g.n" x-text="g.label + ' (' + g.n + ')'"></button>
           </template>
         </div>
         <template x-if="tab==='due' && !searchOn() && !loading && due.length===0"><div class="empty">Không có RN nào đến hạn.</div></template>
@@ -1259,7 +1252,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
-    tab: 'due', ahead: 0, dueDay: '', loading: false, error: '', lastDone: '', notify: null,
+    tab: 'due', ahead: 2, dueDay: '', loading: false, error: '', lastDone: '', notify: null,
     slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
@@ -1340,7 +1333,7 @@ function app() {
       this.loading = true; this.error = '';
       try {
         const d = await this.api({ action: 'dashboard', ahead: this.ahead });
-        if (!this.ahead) this.snapSave('dash', d);
+        this.snapSave('dash', d);
         this.today = d.today; this.due = d.due; this.reported = d.reported || []; this.renewals = d.renewals;
         this.me = d.me || { name: 'Admin', role: 'admin', perms: [] };
         if (d.openNotes !== null && d.openNotes !== undefined) this.openNotes = d.openNotes;
@@ -1723,29 +1716,21 @@ function app() {
       if (this.tab === 'report') return this.reported;
       return this.dueDay ? this.due.filter(f => this.dayKey(f) === this.dueDay) : this.due;
     },
-    dayKey(f) { return f.famState ? 'fs-' + f.famState.state : (f.daysToRenew == null ? 'none' : (f.daysToRenew < 0 ? 'late' : f.renew)); },
-    dueGroups() {
-      const out = [], idx = {};
-      this.due.forEach(f => {
-        const k = this.dayKey(f);
-        if (!(k in idx)) {
-          const d = f.daysToRenew;
-          const label = f.famState ? (f.famState.state === 'deleted' ? '🗑 Đã xoá nhóm' : '⚠ Bị quét') : (k === 'none' ? 'Chưa có ngày' : k === 'late' ? 'Quá hạn' : (d === 0 ? 'Hôm nay' : d === 1 ? 'Mai' : String(f.renew).slice(0, 5)));
-          idx[k] = out.length; out.push({ key: k, label: label, n: 0 });
-        }
-        out[idx[k]].n++;
-      });
-      return out;
-    },
-    dayGroup(f) {
-      if (f.famState) return f.famState.state === 'deleted' ? '🗑 Đã xoá nhóm · chờ mời FR' : '⚠ Bị quét';
+    dayKey(f) {
+      if (f.famState) return 'fs-' + f.famState.state;
       const d = f.daysToRenew;
-      if (d === null || d === undefined) return 'Chưa có ngày renew';
-      if (d < 0) return 'Quá hạn';
-      const w = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'], p = String(f.renew).split('/');
-      const dt = p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]) : null;
-      return (d === 0 ? 'Hôm nay' : d === 1 ? 'Ngày mai' : 'Còn ' + d + ' ngày') + ' · ' + (dt ? w[dt.getDay()] + ' ' : '') + f.renew;
+      return d == null ? 'none' : d < 0 ? 'late' : d === 0 ? 'd0' : d === 1 ? 'd1' : 'd2';
     },
+    dueGroups() {
+      const dd = n => { const t = new Date(); t.setDate(t.getDate() + n); return String(t.getDate()).padStart(2, '0') + '/' + String(t.getMonth() + 1).padStart(2, '0'); };
+      const g = [];
+      if (this.due.some(f => f.famState && f.famState.state === 'deleted')) g.push({ key: 'fs-deleted', label: '🗑 Đã xoá nhóm' });
+      if (this.due.some(f => f.famState && f.famState.state === 'scanned')) g.push({ key: 'fs-scanned', label: '⚠ Bị quét' });
+      g.push({ key: 'late', label: 'Quá hạn' }, { key: 'd0', label: 'Hôm nay ' + dd(0) }, { key: 'd1', label: 'Ngày mai ' + dd(1) }, { key: 'd2', label: 'Ngày kia ' + dd(2) });
+      g.forEach(x => { x.n = this.due.filter(f => this.dayKey(f) === x.key).length; });
+      return g;
+    },
+    dayGroup(f) { const k = this.dayKey(f), g = this.dueGroups().find(x => x.key === k); return g ? g.label : 'Khác'; },
     renewLabel(d) { return d < 0 ? 'Quá ' + (-d) + ' ngày' : (d === 0 ? 'Hôm nay' : 'Còn ' + d + ' ngày'); },
     ctvList() { return [...new Set(this.renewals.map(r => r.ctv).filter(Boolean))].sort(); },
     filteredRenewals() { return this.ctvFilter ? this.renewals.filter(r => r.ctv === this.ctvFilter) : this.renewals; },
