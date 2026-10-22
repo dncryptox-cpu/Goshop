@@ -60,9 +60,6 @@
   .badge.st-other{background:color-mix(in srgb,var(--mute) 18%,transparent);color:var(--ink);font-weight:600}
   .badge.st-del{background:var(--bad);color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
   .badge.st-scan{background:#7b3fc4;color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
-  .delck{display:flex;align-items:center;gap:5px;font-size:13px;padding:4px 9px;border:1px solid var(--line);border-radius:8px;cursor:pointer;white-space:nowrap;user-select:none}
-  .delck.on{background:var(--bad);color:#fff;border-color:var(--bad);font-weight:600}
-  .delck input{margin:0}
   .day-h{font-size:13px;font-weight:700;color:var(--mute);margin:16px 2px 6px;text-transform:uppercase;letter-spacing:.03em}
   .card.fs-del{border-left:5px solid var(--bad)}
   .card.fs-scan{border-left:5px solid #7b3fc4}
@@ -413,7 +410,6 @@
             <div class="row" style="padding:12px 14px">
               <button class="btn sm xp" @click="toggleOpen(f.rn)" :aria-expanded="isOpen(f.rn)" x-text="expanded(f) ? '▾' : '▸'" title="Xem nhanh"></button>
               <div class="rn" x-text="f.rn"></div>
-              <label class="delck" x-show="can('famState')" :class="f.famState && f.famState.state === 'deleted' && 'on'" title="Đã đăng nhập fam cũ và xoá nhóm gia đình, mời FR sau"><input type="checkbox" :checked="!!(f.famState && f.famState.state === 'deleted')" :disabled="!!f.fsBusy" @change="setFamState(f, $event.target.checked ? 'deleted' : '')"> Đã xoá nhóm</label>
               <button class="btn sm" x-show="can('sendMail') && f.customers && f.customers.length" @click="mailFam(f)" title="Chọn / bỏ chọn cả fam để gửi mail" x-text="famMailed(f) ? '✉ bỏ fam' : '✉ cả fam'"></button>
               <div class="grow">
                 <div x-show="f.famState" style="margin-bottom:4px">
@@ -471,11 +467,29 @@
                 <div class="peek-own mute">
                   Pass <span class="mono cp" title="Bấm để copy" @click="copy(f.pass, 'Đã copy pass')" x-text="f.pass || '—'"></span> · MKP <span class="mono cp" title="Bấm để copy" @click="copy(f.mkp, 'Đã copy MKP')" x-text="f.mkp || '—'"></span> · 2FA <b class="mono" :class="f.twofa && 'cp'" title="Bấm để copy mã" @click="f.twofa && copy(slotOtp['S' + f.rn], 'Đã copy mã 2FA')" x-text="f.twofa ? (slotOtp['S' + f.rn] || '······') : 'không'"></b> · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
                   <button class="btn sm" style="margin-left:8px" x-show="can('markJoined') && f.customers.length" @click="f.check = !f.check; f.mark = {}" x-text="f.check ? 'Đóng kiểm tra' : 'Kiểm tra fam'"></button>
-                  <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'deleted')" @click="setFamState(f, 'deleted')" :disabled="!!f.fsBusy" title="Đã đăng nhập fam cũ và xoá nhóm gia đình, sẽ lấy FR mời khách sau">🗑 Đã xoá nhóm</button>
+                  <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'deleted')" @click="openDel(f)" :disabled="!!f.fsBusy" title="Đã đăng nhập fam cũ và xoá nhóm gia đình, sẽ lấy FR mời khách sau">🗑 Đã xoá nhóm</button>
                   <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'scanned')" @click="setFamState(f, 'scanned')" :disabled="!!f.fsBusy" title="Fam bị Google quét">⚠ Bị quét</button>
                   <button class="btn sm" x-show="can('famState') && f.famState" @click="setFamState(f, '')" :disabled="!!f.fsBusy">Bỏ đánh dấu</button>
                   <button class="btn sm" x-show="can('inviteBlocked')" @click="blockInvite(f)" :disabled="!!f.blocking || !!f.blockedUntil" title="Google báo hết lượt mời (You've reached the family invitation limit): ghi Chặn mời, hẹn mời lại sau vài ngày" x-text="f.blockedUntil ? 'Chặn mời đến ' + f.blockedUntil : (f.blocking ? '…' : (f.blockConfirm ? 'Bấm lần nữa' : 'Google chặn mời'))"></button>
                 </div>
+                <template x-if="f.del">
+                  <div class="card" style="margin:8px 0;border-color:var(--bad)">
+                    <b>Xoá nhóm <span x-text="f.rn"></span>: khách nào đã join?</b>
+                    <div class="mute" style="font-size:12px;margin-bottom:6px">Khách <b>không join</b> sẽ được cất xuống cuối sheet DATA (Chờ xếp), slot để trống mời sau. Khách đã join giữ nguyên để mời lại vào FR mới.</div>
+                    <template x-for="c in f.customers.filter(x => !(x.daysLeft !== null && x.daysLeft < 0) && !x.masked)" :key="c.row">
+                      <div class="row" style="gap:6px;padding:4px 0;border-top:1px solid var(--line)">
+                        <span class="mono grow ellip" x-text="c.email"></span>
+                        <button class="btn sm" :class="f.del.m[c.row] !== 'out' && 'pri'" @click="f.del.m[c.row] = 'in'">Đã join</button>
+                        <button class="btn sm" :class="f.del.m[c.row] === 'out' && 'pri'" style="" @click="f.del.m[c.row] = 'out'">Không join</button>
+                      </div>
+                    </template>
+                    <div class="row" style="gap:8px;margin-top:8px">
+                      <span class="grow mute" style="font-size:13px" x-text="Object.values(f.del.m).filter(v => v === 'out').length + ' khách không join sẽ được cất'"></span>
+                      <button class="btn sm" @click="f.del = null" :disabled="f.del.busy">Huỷ</button>
+                      <button class="btn sm pri" @click="saveDel(f)" :disabled="f.del.busy" x-text="f.del.busy || 'Lưu: đã xoá nhóm'"></button>
+                    </div>
+                  </div>
+                </template>
                 <div class="row" x-show="f.check" style="margin:6px 0">
                   <span class="grow mute" style="font-size:13px" x-text="'Mở trang Gia đình, bấm Đã vào / Chưa vào cho từng khách. ' + markCount(f, 'in') + ' đã vào · ' + markCount(f, 'out') + ' chưa vào'"></span>
                   <button class="btn sm pri" @click="saveCheck(f)" :disabled="!Object.keys(f.mark || {}).length || !!f.saving" x-text="f.saving ? 'Đang lưu…' : 'Lưu kiểm tra'"></button>
@@ -1585,6 +1599,28 @@ function app() {
         r.hsd = x.hsd; r.gh = null;
         this.lastDone = x.email + ' · ' + r.done; this.lastActionId = x.actionId || '';
       } catch (e) { this.error = e.message; if (r.gh) r.gh.busy = false; }
+    },
+    openDel(f) { f.del = f.del ? null : { m: {}, busy: '' }; },
+    async saveDel(f) {
+      const d = f.del; this.error = '';
+      const outs = f.customers.filter(c => d.m[c.row] === 'out');
+      const done = [];
+      try {
+        for (let k = 0; k < outs.length; k++) {
+          const c = outs[k];
+          d.busy = 'Đang cất ' + (k + 1) + '/' + outs.length + '…';
+          const r = await this.api({ action: 'vacate', row: c.row, email: c.email, reason: 'không join, xoá nhóm' });
+          await this.autoSyncAfter(r);
+          done.push(c.email + ' → dòng ' + r.archRow);
+          f.customers = f.customers.filter(x => x.row !== c.row);
+          if (f.slots) f.slots = f.slots.map(x => x.row === c.row ? { row: x.row, email: '' } : x);
+          if (f.status === 'FULL') f.status = 'Còn slot';
+        }
+        d.busy = 'Đang lưu…';
+        await this.setFamState(f, 'deleted');
+        this.lastDone = '✓ ' + f.rn + ': đã xoá nhóm, chờ mời FR.' + (done.length ? ' Cất ' + done.length + ' khách không join xuống cuối sheet DATA (' + done.join(', ') + '), slot để trống mời sau.' : ' Tất cả khách đã join.');
+        f.del = null;
+      } catch (e) { this.error = e.message + (done.length ? ' (đã cất: ' + done.join(', ') + ')' : ''); d.busy = ''; }
     },
     async noJoinCus(f, c) {
       if (c.nj !== 'confirm') { c.nj = 'confirm'; setTimeout(() => { if (c.nj === 'confirm') c.nj = ''; }, 4000); return; }
