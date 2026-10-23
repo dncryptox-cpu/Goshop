@@ -480,8 +480,23 @@
                   <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'deleted')" @click="openDel(f)" :disabled="!!f.fsBusy" title="Đã đăng nhập fam cũ và xoá nhóm gia đình, sẽ lấy FR mời khách sau">🗑 Đã xoá nhóm</button>
                   <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'scanned')" @click="setFamState(f, 'scanned')" :disabled="!!f.fsBusy" title="Fam bị Google quét">⚠ Bị quét</button>
                   <button class="btn sm" x-show="can('famState') && f.famState" @click="setFamState(f, '')" :disabled="!!f.fsBusy">Bỏ đánh dấu</button>
+                  <button class="btn sm pri" x-show="can('move') && can('retire') && f.famState && f.famState.state === 'deleted'" @click="f.mg = f.mg ? null : { to: '', busy: '', confirm: false }" title="Chuyển hết khách còn hạn sang 1 fam đã xoá khác còn đủ slot, rồi đóng fam này">Gộp sang fam khác</button>
                   <button class="btn sm" x-show="can('inviteBlocked')" @click="blockInvite(f)" :disabled="!!f.blocking || !!f.blockedUntil" title="Google báo hết lượt mời (You've reached the family invitation limit): ghi Chặn mời, hẹn mời lại sau vài ngày" x-text="f.blockedUntil ? 'Chặn mời đến ' + f.blockedUntil : (f.blocking ? '…' : (f.blockConfirm ? 'Bấm lần nữa' : 'Google chặn mời'))"></button>
                 </div>
+                <template x-if="f.mg">
+                  <div class="card" style="margin:8px 0;border-color:var(--ok)">
+                    <b x-text="'Gộp ' + mgCus(f).length + ' khách của ' + f.rn + ' sang fam đã xoá khác'"></b>
+                    <div class="mute" style="font-size:12px;margin-bottom:6px">Khách chuyển vào slot trống của fam đích (chưa đánh dấu đã mời, mời khi thay FR fam đó). Xong thì <span x-text="f.rn"></span> đóng lại (Đã chuyển hết).</div>
+                    <template x-for="d in mgTargets(f)" :key="d.rn">
+                      <div class="row" style="gap:8px;padding:4px 0;border-top:1px solid var(--line);font-size:13px">
+                        <b style="width:70px" x-text="d.rn"></b>
+                        <span class="grow mute" x-text="'xoá ' + d.famState.at + ' · renew ' + d.renew + ' · ' + mgFree(d).length + ' slot trống'"></span>
+                        <button class="btn sm pri" @click="mergeFam(f, d)" :disabled="!!f.mg.busy" x-text="f.mg.busy && f.mg.to === d.rn ? f.mg.busy : (f.mg.confirm && f.mg.to === d.rn ? 'Bấm lần nữa' : 'Gộp vào ' + d.rn)"></button>
+                      </div>
+                    </template>
+                    <div class="mute" style="font-size:13px" x-show="!mgTargets(f).length">Không có fam đã xoá nào còn đủ slot trống.</div>
+                  </div>
+                </template>
                 <template x-if="f.del">
                   <div class="card" style="margin:8px 0;border-color:var(--bad)">
                     <b>Xoá nhóm <span x-text="f.rn"></span>: khách nào đã join?</b>
@@ -1686,6 +1701,30 @@ function app() {
         r.hsd = x.hsd; r.gh = null;
         this.lastDone = x.email + ' · ' + r.done; this.lastActionId = x.actionId || '';
       } catch (e) { this.error = e.message; if (r.gh) r.gh.busy = false; }
+    },
+    mgCus(f) { return f.customers.filter(c => !c.masked && !(c.daysLeft !== null && c.daysLeft < 0)); },
+    mgFree(d) { return (d.slots || []).filter(x => !x.email || (x.daysLeft !== null && x.daysLeft < 0)).map(x => x.row); },
+    mgTargets(f) { const n = this.mgCus(f).length; return this.due.filter(d => d.rn !== f.rn && d.famState && d.famState.state === 'deleted' && this.mgFree(d).length >= n).sort((a, b) => this.mgFree(a).length - this.mgFree(b).length); },
+    async mergeFam(f, d) {
+      const m = f.mg;
+      if (!(m.confirm && m.to === d.rn)) { m.to = d.rn; m.confirm = true; setTimeout(() => { m.confirm = false; }, 4000); return; }
+      m.confirm = false; this.error = '';
+      const cus = this.mgCus(f), free = this.mgFree(d), done = [];
+      try {
+        for (let k = 0; k < cus.length; k++) {
+          m.busy = 'Chuyển ' + (k + 1) + '/' + cus.length + '…';
+          const r = await this.api({ action: 'move', email: cus[k].email, toRow: free[k], invited: false });
+          done.push(cus[k].email);
+          const sl = (d.slots || []).find(x => x.row === free[k]); if (sl) Object.assign(sl, { email: cus[k].email, hsd: cus[k].hsd, daysLeft: cus[k].daysLeft });
+          d.customers.push(Object.assign({}, cus[k], { row: free[k] }));
+          f.customers = f.customers.filter(c => c.row !== cus[k].row);
+        }
+        m.busy = 'Đóng ' + f.rn + '…';
+        const rt = await this.api({ action: 'retire', rn: f.rn, stockRow: f.stockRow });
+        this.lastDone = '✓ Gộp ' + f.rn + ' → ' + d.rn + ': ' + (done.join(', ') || 'không có khách') + '. ' + f.rn + ': ' + rt.status + '. Hoàn tác ở tab Lịch sử.';
+        this.lastActionId = rt.actionId || '';
+        this.due = this.due.filter(x => x.rn !== f.rn);
+      } catch (e) { this.error = e.message + (done.length ? ' (đã chuyển: ' + done.join(', ') + ')' : ''); m.busy = ''; }
     },
     openDel(f) { f.del = f.del ? null : { m: {}, busy: '' }; },
     async saveDel(f) {
