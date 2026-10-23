@@ -480,7 +480,8 @@
                   <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'deleted')" @click="openDel(f)" :disabled="!!f.fsBusy" title="Đã đăng nhập fam cũ và xoá nhóm gia đình, sẽ lấy FR mời khách sau">🗑 Đã xoá nhóm</button>
                   <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'scanned')" @click="setFamState(f, 'scanned')" :disabled="!!f.fsBusy" title="Fam bị Google quét">⚠ Bị quét</button>
                   <button class="btn sm" x-show="can('famState') && f.famState" @click="setFamState(f, '')" :disabled="!!f.fsBusy">Bỏ đánh dấu</button>
-                  <button class="btn sm pri" x-show="can('move') && can('retire') && f.famState && f.famState.state === 'deleted'" @click="f.mg = f.mg ? null : { to: '', busy: '', confirm: false }" title="Chuyển hết khách còn hạn sang 1 fam đã xoá khác còn đủ slot, rồi đóng fam này">Gộp sang fam khác</button>
+                  <button class="btn sm pri" x-show="can('move') && can('retire') && f.famState && f.famState.state === 'deleted' && mgCus(f).length" @click="f.mg = f.mg ? null : { to: '', busy: '', confirm: false }" title="Chuyển hết khách còn hạn sang 1 fam đã xoá khác còn đủ slot, rồi đóng fam này">Gộp sang fam khác</button>
+                  <button class="btn sm pri" x-show="can('retire') && f.famState && f.famState.state === 'deleted' && !mgCus(f).length" @click="emptyFam(f)" :disabled="!!f.rtBusy" x-text="f.rtBusy ? 'Đang ghi…' : (f.rtConfirm ? 'Bấm lần nữa' : 'Hết khách → đưa về Trống')"></button>
                   <button class="btn sm" x-show="can('inviteBlocked')" @click="blockInvite(f)" :disabled="!!f.blocking || !!f.blockedUntil" title="Google báo hết lượt mời (You've reached the family invitation limit): ghi Chặn mời, hẹn mời lại sau vài ngày" x-text="f.blockedUntil ? 'Chặn mời đến ' + f.blockedUntil : (f.blocking ? '…' : (f.blockConfirm ? 'Bấm lần nữa' : 'Google chặn mời'))"></button>
                 </div>
                 <template x-if="f.mg">
@@ -1705,6 +1706,16 @@ function app() {
     mgCus(f) { return f.customers.filter(c => !c.masked && !(c.daysLeft !== null && c.daysLeft < 0)); },
     mgFree(d) { return (d.slots || []).filter(x => !x.email || (x.daysLeft !== null && x.daysLeft < 0)).map(x => x.row); },
     mgTargets(f) { const n = this.mgCus(f).length; return this.due.filter(d => d.rn !== f.rn && d.famState && d.famState.state === 'deleted' && this.mgFree(d).length >= n).sort((a, b) => this.mgFree(a).length - this.mgFree(b).length); },
+    async emptyFam(f) {
+      if (!f.rtConfirm) { f.rtConfirm = true; setTimeout(() => { f.rtConfirm = false; }, 4000); return; }
+      f.rtConfirm = false; f.rtBusy = true; this.error = '';
+      try {
+        const rt = await this.api({ action: 'retire', rn: f.rn, stockRow: f.stockRow });
+        this.lastDone = '✓ ' + f.rn + ': ' + rt.status + '. Hoàn tác ở tab Lịch sử.'; this.lastActionId = rt.actionId || '';
+        this.due = this.due.filter(x => x.rn !== f.rn);
+      } catch (e) { this.error = e.message; }
+      f.rtBusy = false;
+    },
     async mergeFam(f, d) {
       const m = f.mg;
       if (!(m.confirm && m.to === d.rn)) { m.to = d.rn; m.confirm = true; setTimeout(() => { m.confirm = false; }, 4000); return; }
