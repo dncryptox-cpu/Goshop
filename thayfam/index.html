@@ -1121,11 +1121,18 @@
             <button class="btn sm" x-show="swap.renewEdit" @click="swap.renewEdit = ''">Bỏ sửa</button>
           </div>
         </template>
-        <template x-if="swap.fr && !swap.fr.twofa && !swap.noFr">
+        <template x-if="swap.fr && !swap.fr.twofa && !swap.noFr && swap.fr.ccTwofa && !swap.editTwofa">
+          <div class="row" style="margin-top:10px;gap:8px;font-size:13px;color:var(--ok)">
+            <span class="grow">🔒 2FA lấy từ sheet Cậu Chuột (khớp email + pass), đã khoá. Hoàn tất sẽ ghi vào FamRenew cột H của <b x-text="swap.fr.fr"></b>.</span>
+            <a href="#" class="mute" style="font-size:12px" @click.prevent="swap.editTwofa = true">Sửa tay</a>
+          </div>
+        </template>
+        <template x-if="swap.fr && !swap.fr.twofa && !swap.noFr && (!swap.fr.ccTwofa || swap.editTwofa)">
           <div style="margin-top:10px">
             <div style="font-size:13px;margin-bottom:6px"><b>FR này chưa có 2FA.</b> Vào tài khoản → Bảo mật → Xác minh 2 bước → Ứng dụng xác thực → "Không quét được?" → dán secret vào đây. Mã 6 số ở trên tự hiện để nhập lại cho Google.</div>
             <input type="text" x-model="swap.newTwofa" @input="tickOtp()" placeholder="vd: abcd efgh ijkl mnop qrst uvwx yz23 4567" style="width:100%" class="mono">
-            <div style="font-size:12px;margin-top:4px" :style="twofaOk() ? 'color:var(--ok)' : 'color:var(--mute)'" x-text="(swap.fr.ccTwofa && swap.newTwofa === swap.fr.ccTwofa ? '✓ Lấy từ sheet Cậu Chuột (khớp email + pass). ' : '') + (twofaOk() ? 'Khi bấm Hoàn tất, secret sẽ được ghi vào FamRenew cột H của ' + swap.fr.fr + ' và vào bản sao Kho TK.' : 'Bắt buộc nhập trước khi Hoàn tất.')"></div>
+            <div style="font-size:12px;margin-top:4px" :style="twofaOk() ? 'color:var(--ok)' : 'color:var(--mute)'" x-text="twofaOk() ? 'Khi bấm Hoàn tất, secret sẽ được ghi vào FamRenew cột H của ' + swap.fr.fr + ' và vào bản sao Kho TK.' : 'Bắt buộc nhập trước khi Hoàn tất.'"></div>
+            <a href="#" class="mute" style="font-size:12px" x-show="swap.fr.ccTwofa" @click.prevent="swap.newTwofa = swap.fr.ccTwofa; swap.editTwofa = false">↺ Dùng lại 2FA Cậu Chuột</a>
           </div>
         </template>
         <template x-if="!swap.fr && !swap.noFr"><div class="mute">Không còn FR mới (nằm dưới dòng RN cuối cùng, cột C và Trạng thái trống).</div></template>
@@ -1949,7 +1956,7 @@ function app() {
     openSwap(f) {
       this.swapError = ''; this.confirming = false; this.lastDone = '';
       this.swap = {
-        f, fr: this.frs[0] || null, copied: [], newTwofa: (this.frs[0] && this.frs[0].ccTwofa) || '', note: '', archive: [], renewEdit: '', sub: {}, noFr: false, retireConfirm: false,
+        f, fr: this.frs[0] || null, copied: [], newTwofa: (this.frs[0] && this.frs[0].ccTwofa) || '', note: '', archive: [], renewEdit: '', sub: {}, editTwofa: false, noFr: false, retireConfirm: false,
         sel: f.customers.filter(c => c.daysLeft === null || c.daysLeft >= 0).map(c => c.email),
       };
       this.tickOtp();
@@ -1961,7 +1968,7 @@ function app() {
       if (!this.swap.fr) return;
       this.skipped.push(this.swap.fr.row);
       this.frs = this.frs.filter(x => x.row !== this.swap.fr.row);
-      this.swap.fr = this.frs[0] || null; this.swap.renewEdit = ''; this.swap.newTwofa = (this.swap.fr && this.swap.fr.ccTwofa) || '';
+      this.swap.fr = this.frs[0] || null; this.swap.renewEdit = ''; this.swap.newTwofa = (this.swap.fr && this.swap.fr.ccTwofa) || ''; this.swap.editTwofa = false;
       this.swap.newTwofa = '';
       this.tickOtp();
     },
