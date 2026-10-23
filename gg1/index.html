@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GG1 · Google One gia đình</title>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<style>
+  :root{--bg:#f6f6f3;--card:#fff;--ink:#1b1b18;--mute:#6d6d66;--line:#e4e3dc;--acc:#1f6f4a;--warn:#b4540a;--bad:#b42318;--ok:#1f6f4a;--chip:#efeee8;--blue:#2f6fd6}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141413;--card:#1d1d1b;--ink:#ecebe4;--mute:#9b9a92;--line:#2f2f2b;--acc:#3fa673;--warn:#e3913f;--bad:#ef6b5e;--ok:#57c08a;--chip:#262623;--blue:#6ea0f0}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  button,input,select{font:inherit}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px}
+  header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  h1{font-size:22px;margin:0}
+  .sp{flex:1}
+  .mute{color:var(--mute)}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 12px;white-space:nowrap;cursor:pointer;text-decoration:none}
+  td .form{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+  .btn.xs{padding:2px 8px;font-size:12px;border-radius:6px;color:var(--mute)}
+  .btn.xs:hover{color:var(--ink);border-color:var(--mute)}
+  .btn:disabled{opacity:.5;cursor:default}
+  input,select{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 9px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .chip{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:5px 12px;cursor:pointer;color:var(--ink)}
+  .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .badge{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--chip);white-space:nowrap}
+  .badge.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok);font-weight:600}
+  .badge.warn{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
+  .badge.bad{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+  .badge.blue{background:color-mix(in srgb,var(--blue) 15%,transparent);color:var(--blue);font-weight:600}
+  .id{font-weight:700;font-size:18px;min-width:56px}
+  .cp{cursor:pointer;border-bottom:1px dotted var(--mute)}
+  table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
+  th{text-align:left;font-weight:500;color:var(--mute);padding:5px 6px;border-bottom:1px solid var(--line)}
+  td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle}
+  td.acts{text-align:right;white-space:nowrap}
+  .form{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:8px}
+  .err{color:var(--bad);margin:8px 0}
+  .okbox{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ok);padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:14px}
+  @media (max-width:760px){ td.acts{white-space:normal} .hide-sm{display:none} }
+</style>
+</head>
+<body>
+<div class="wrap" x-data="gg()" x-init="init()">
+  <template x-if="!pass">
+    <div class="card" style="max-width:380px;margin:60px auto">
+      <b>Đăng nhập</b> <span class="mute">(mật khẩu như Thay Fam)</span>
+      <div class="row" style="margin-top:8px"><input type="password" x-model="passInput" @keydown.enter="login()" style="flex:1"><button class="btn pri" @click="login()">Vào</button></div>
+      <div class="err" x-show="error" x-text="error"></div>
+    </div>
+  </template>
+
+  <template x-if="pass">
+    <div>
+      <header>
+        <h1>GG1 · Google One gia đình</h1>
+        <span class="mute" style="font-size:13px" x-text="fams.length + ' fam · ' + activeCount() + ' khách đang dùng · ' + freeCount() + ' slot trống'"></span>
+        <div class="sp"></div>
+        <a class="btn" href="/thayfam/">← Thay Fam</a>
+        <a class="btn" x-show="sheetUrl" :href="sheetUrl" target="_blank" rel="noopener">Xem sheet</a>
+        <button class="btn" @click="load()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
+      </header>
+      <div class="okbox" x-show="done" x-text="done"></div>
+      <div class="err" x-show="error" x-text="error"></div>
+
+      <div class="row" style="margin-bottom:10px">
+        <input type="search" x-model="q" placeholder="Tìm email khách / email chủ fam / mã GG…" style="flex:1;min-width:240px">
+        <button class="btn pri" @click="famForm = famForm ? null : blankFam()">+ Thêm fam</button>
+      </div>
+
+      <template x-if="famForm">
+        <div class="card">
+          <b x-text="famForm.row ? 'Sửa ' + famForm.id : 'Thêm fam Google One'"></b>
+          <div class="form">
+            <input placeholder="Mã (để trống = tự đặt GGn)" x-model="famForm.id" style="width:150px" :disabled="!!famForm.row">
+            <input placeholder="Email chủ fam" x-model="famForm.email" style="width:240px" class="mono">
+            <input placeholder="Pass" x-model="famForm.pass" style="width:140px" class="mono">
+            <input placeholder="Mail khôi phục" x-model="famForm.mkp" style="width:220px" class="mono">
+            <input placeholder="2FA secret" x-model="famForm.twofa" style="width:260px" class="mono">
+            <select x-model="famForm.plan"><option>2TB</option><option>5TB</option><option>1TB</option><option>500GB</option></select>
+            <label class="mute" style="font-size:13px">Renew <input type="date" x-model="famForm.renewIso"></label>
+            <select x-model="famForm.status"><option>Hoạt động</option><option>Tạm dừng</option><option>Đã đóng</option></select>
+            <input placeholder="Ghi chú" x-model="famForm.note" style="flex:1;min-width:160px">
+            <button class="btn" @click="famForm = null">Huỷ</button>
+            <button class="btn pri" @click="saveFam()" :disabled="busy" x-text="busy ? 'Đang lưu…' : 'Lưu'"></button>
+          </div>
+        </div>
+      </template>
+
+      <div class="chips">
+        <button class="chip" :class="view==='fam' && 'on'" @click="view='fam'" x-text="'Fam (' + fams.length + ')'"></button>
+        <button class="chip" :class="view==='due' && 'on'" @click="view='due'" x-text="'Sắp hết hạn ≤10 ngày (' + dueList().length + ')'"></button>
+        <button class="chip" :class="view==='loose' && 'on'" @click="view='loose'" x-text="'Đã rời / ngoài fam (' + loose.length + ')'"></button>
+      </div>
+
+      <!-- FAM -->
+      <template x-if="view==='fam'">
+        <div>
+          <template x-if="!loading && !fams.length"><div class="card mute">Chưa có fam nào. Bấm <b>+ Thêm fam</b>.</div></template>
+          <template x-for="f in shownFams()" :key="f.id">
+            <div class="card" :style="f.status !== 'Hoạt động' ? 'opacity:.6' : ''">
+              <div class="row">
+                <span class="id" x-text="f.id"></span>
+                <span class="badge blue" x-text="f.plan"></span>
+                <span class="badge" :class="f.customers.length >= max ? 'ok' : 'warn'" x-text="f.customers.length + '/' + max + ' khách'"></span>
+                <span class="badge" x-show="f.status !== 'Hoạt động'" x-text="f.status"></span>
+                <span class="badge" :class="f.renewDays !== null && f.renewDays <= 3 ? 'bad' : ''" x-show="f.renew" x-text="'Renew ' + f.renew + (f.renewDays !== null ? ' · còn ' + f.renewDays + ' ngày' : '')"></span>
+                <div class="sp"></div>
+                <button class="btn xs" @click="famForm = editFam(f)">Sửa fam</button>
+                <button class="btn xs" @click="f.open = !f.open" x-text="f.open ? 'Ẩn TK' : 'TK chủ'"></button>
+              </div>
+              <div class="mono" style="margin-top:4px">
+                <span class="cp" @click="copy(f.email)" x-text="f.email"></span>
+                <template x-if="f.open"><span> · Pass <span class="cp" @click="copy(f.pass)" x-text="f.pass || '—'"></span> · MKP <span class="cp" @click="copy(f.mkp)" x-text="f.mkp || '—'"></span> · 2FA <b class="cp" @click="copy(otp[f.id])" x-text="f.twofa ? (otp[f.id] || '······') : 'không'"></b> · <a href="https://one.google.com/family" target="_blank" rel="noopener">Gia đình ↗</a></span></template>
+              </div>
+              <div class="mute" style="font-size:12px" x-show="f.note" x-text="f.note"></div>
+              <table x-show="f.customers.length">
+                <thead><tr><th>Khách</th><th>CTV</th><th>Mua</th><th>HSD</th><th>Còn</th><th>Trạng thái</th><th></th></tr></thead>
+                <tbody>
+                  <template x-for="c in f.customers" :key="c.row">
+                    <tr :style="hit(c) ? 'background:color-mix(in srgb,var(--warn) 10%,transparent)' : ''">
+                      <td class="mono"><span class="cp" @click="copy(c.email)" x-text="c.email"></span><div class="mute" style="font-size:12px" x-show="c.mailPhu || c.note" x-text="[c.mailPhu && 'phụ: ' + c.mailPhu, c.note].filter(Boolean).join(' · ')"></div>
+                        <template x-if="c.rn"><div class="form">
+                          <b style="font-size:13px">Gia hạn</b>
+                          <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="c.rn.months===m && 'on'" @click="c.rn.months=m" x-text="m + 'th'"></button></template>
+                          <span class="mute" style="font-size:13px">tặng</span><input type="number" min="0" style="width:64px" x-model.number="c.rn.bonus"><span class="mute" style="font-size:13px">ngày</span>
+                          <label class="mute" style="font-size:13px" x-show="c.daysLeft !== null && c.daysLeft < 0"><input type="checkbox" x-model="c.rn.fromToday"> tính từ hôm nay</label>
+                          <select x-model="c.rn.sku"><option value="">Không ghi tài chính</option><template x-for="s in skus" :key="s.sku"><option :value="s.sku" x-text="s.sku + ' · ' + s.price.toLocaleString('vi-VN') + 'đ'"></option></template></select>
+                          <button class="btn" @click="c.rn = null">Huỷ</button>
+                          <button class="btn pri" @click="renew(f, c)" :disabled="busy" x-text="busy ? '…' : 'Ghi gia hạn'"></button>
+                        </div></template>
+                        <template x-if="c.ed"><div class="form">
+                          <input type="date" x-model="c.ed.buyIso" title="Ngày mua"><input type="number" min="1" style="width:64px" x-model.number="c.ed.months" title="Số tháng">
+                          <input placeholder="CTV" x-model="c.ed.ctv" style="width:90px"><input placeholder="Mail phụ" x-model="c.ed.mailPhu" class="mono" style="width:200px"><input placeholder="Ghi chú" x-model="c.ed.note" style="width:160px">
+                          <select x-model="c.ed.fam"><template x-for="x in fams" :key="x.id"><option :value="x.id" x-text="x.id + ' (' + x.customers.length + '/' + max + ')'"></option></template></select>
+                          <button class="btn" @click="c.ed = null">Huỷ</button>
+                          <button class="btn pri" @click="saveEdit(f, c)" :disabled="busy" x-text="busy ? '…' : 'Lưu'"></button>
+                        </div></template>
+                      </td>
+                      <td x-text="c.ctv || '—'"></td>
+                      <td class="hide-sm" x-text="c.buy"></td>
+                      <td x-text="c.hsd || '—'"></td>
+                      <td :style="c.daysLeft !== null && c.daysLeft < 0 ? 'color:var(--bad)' : (c.daysLeft !== null && c.daysLeft <= 10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft === null ? '—' : (c.daysLeft < 0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + 'n')"></td>
+                      <td><span class="badge" :class="c.status === 'Đang dùng' ? 'ok' : (c.status === 'Chờ mời' ? 'warn' : '')" x-text="c.status"></span></td>
+                      <td class="acts">
+                        <button class="btn xs" x-show="c.status !== 'Đang dùng'" @click="setStatus(c, 'Đang dùng')">Đã vào</button>
+                        <button class="btn xs" x-show="c.status === 'Chờ mời'" @click="setStatus(c, 'Đã mời')">Đã mời</button>
+                        <button class="btn xs" @click="c.rn = c.rn ? null : { months: c.months || 1, bonus: 0, fromToday: c.daysLeft !== null && c.daysLeft < -7, sku: '' }">Gia hạn</button>
+                        <button class="btn xs" @click="c.ed = c.ed ? null : editCus(c)">Sửa / chuyển</button>
+                        <button class="btn xs" style="color:var(--bad)" @click="leave(c)" x-text="c.cf ? 'Bấm lần nữa' : 'Rời fam'"></button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <template x-if="f.customers.length < max && f.status === 'Hoạt động'">
+                <div>
+                  <button class="btn xs" style="margin-top:8px" x-show="!f.add" @click="f.add = blankCus(f)" x-text="'+ Thêm khách (' + (max - f.customers.length) + ' slot trống)'"></button>
+                  <template x-if="f.add"><div class="form">
+                    <input placeholder="Email khách" x-model="f.add.email" class="mono" style="width:240px">
+                    <label class="mute" style="font-size:13px">Mua <input type="date" x-model="f.add.buyIso"></label>
+                    <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="f.add.months===m && 'on'" @click="f.add.months=m" x-text="m + 'th'"></button></template>
+                    <input placeholder="CTV" x-model="f.add.ctv" style="width:90px" list="ctvs">
+                    <select x-model="f.add.status"><option>Đã mời</option><option>Chờ mời</option><option>Đang dùng</option></select>
+                    <select x-model="f.add.sku"><option value="">Không ghi tài chính</option><template x-for="s in skus" :key="s.sku"><option :value="s.sku" x-text="s.sku + ' · ' + s.price.toLocaleString('vi-VN') + 'đ'"></option></template></select>
+                    <input placeholder="Ghi chú" x-model="f.add.note" style="width:150px">
+                    <button class="btn" @click="f.add = null">Huỷ</button>
+                    <button class="btn pri" @click="addCus(f)" :disabled="busy" x-text="busy ? '…' : 'Thêm'"></button>
+                  </div></template>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- SẮP HẾT HẠN -->
+      <template x-if="view==='due'">
+        <div>
+          <template x-if="!dueList().length"><div class="card mute">Không có khách nào sắp hết hạn.</div></template>
+          <template x-for="x in dueList()" :key="x.c.row">
+            <div class="card row">
+              <div style="flex:1;min-width:0"><div class="mono" x-text="x.c.email"></div><div class="mute" style="font-size:13px" x-text="x.f.id + ' · HSD ' + x.c.hsd + ' · CTV ' + (x.c.ctv || '—')"></div></div>
+              <span class="badge" :class="x.c.daysLeft < 0 ? 'bad' : 'warn'" x-text="x.c.daysLeft < 0 ? 'Hết hạn ' + (-x.c.daysLeft) + ' ngày' : (x.c.daysLeft === 0 ? 'Hết hạn hôm nay' : 'Còn ' + x.c.daysLeft + ' ngày')"></span>
+              <button class="btn xs" @click="copy(remindMsg(x.c), 'Đã copy tin nhắn')">Copy tin nhắn</button>
+              <button class="btn xs" @click="view='fam'; q = x.c.email">Mở để gia hạn</button>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- RỜI FAM -->
+      <template x-if="view==='loose'">
+        <div>
+          <template x-if="!loose.length"><div class="card mute">Không có.</div></template>
+          <template x-for="c in loose" :key="c.row">
+            <div class="card row">
+              <div style="flex:1;min-width:0"><div class="mono" x-text="c.email"></div><div class="mute" style="font-size:13px" x-text="(c.fam || '—') + ' · ' + c.status + ' · HSD ' + (c.hsd || '—') + ' · CTV ' + (c.ctv || '—')"></div></div>
+              <select x-model="c.to"><option value="">Chọn fam để thêm lại</option><template x-for="x in fams.filter(x => x.customers.length < max && x.status === 'Hoạt động')" :key="x.id"><option :value="x.id" x-text="x.id + ' (' + x.customers.length + '/' + max + ')'"></option></template></select>
+              <button class="btn xs" :disabled="!c.to || busy" @click="rejoin(c)">Thêm lại (Chờ mời)</button>
+            </div>
+          </template>
+        </div>
+      </template>
+      <datalist id="ctvs"><option>Dnc</option><option>Tuan</option><option>Vương</option><option>Lộc</option></datalist>
+    </div>
+  </template>
+</div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return ''; } }
+function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
+const iso = s => { const p = String(s || '').split('/'); return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : ''; };
+const dmy = s => { const p = String(s || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : ''; };
+const todayIso = () => { const t = new Date(); return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); };
+
+function gg() {
+  return {
+    pass: lsGet('thayfam_pass') || '', passInput: '', fams: [], loose: [], skus: [], max: 5, sheetUrl: '',
+    loading: false, busy: false, error: '', done: '', q: '', view: 'fam', famForm: null, otp: {},
+    init() { if (this.pass) this.load(); setInterval(() => this.tickOtp(), 1000); },
+    async api(body) {
+      const r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || 'Lỗi không rõ');
+      return r;
+    },
+    async login() { this.pass = this.passInput; this.error = ''; await this.load(); if (!this.error) lsSet('thayfam_pass', this.pass); else this.pass = ''; },
+    async load() {
+      this.loading = true; this.error = '';
+      try {
+        const d = await this.api({ action: 'gg_list' });
+        const open = new Set(this.fams.filter(f => f.open).map(f => f.id));
+        this.fams = d.fams.map(f => Object.assign(f, { open: open.has(f.id), add: null })); this.loose = d.loose; this.skus = d.skus || []; this.max = d.max; this.sheetUrl = d.sheetUrl;
+      } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng GG1: dán Code.gs mới rồi Triển khai → phiên bản mới.' : e.message; }
+      this.loading = false;
+    },
+    activeCount() { return this.fams.reduce((n, f) => n + f.customers.length, 0); },
+    freeCount() { return this.fams.filter(f => f.status === 'Hoạt động').reduce((n, f) => n + Math.max(0, this.max - f.customers.length), 0); },
+    hit(c) { const q = this.q.trim().toLowerCase(); return q.length >= 3 && (c.email.toLowerCase().includes(q) || (c.mailPhu || '').toLowerCase().includes(q)); },
+    shownFams() {
+      const q = this.q.trim().toLowerCase();
+      const list = q.length < 2 ? this.fams : this.fams.filter(f => f.id.toLowerCase() === q || f.email.toLowerCase().includes(q) || f.customers.some(c => this.hit(c)));
+      return list.slice().sort((a, b) => (a.status === 'Hoạt động' ? 0 : 1) - (b.status === 'Hoạt động' ? 0 : 1));
+    },
+    dueList() {
+      const out = [];
+      this.fams.forEach(f => f.customers.forEach(c => { if (c.daysLeft !== null && c.daysLeft <= 10 && c.daysLeft >= -30) out.push({ f, c }); }));
+      return out.sort((a, b) => a.c.daysLeft - b.c.daysLeft);
+    },
+    remindMsg(c) {
+      return 'Chào bạn, gói dịch vụ lưu trữ của email ' + c.email + (c.daysLeft < 0 ? ' đã hết hạn ngày ' : ' sẽ hết hạn ngày ') + c.hsd + '.\nBạn muốn gia hạn thì nhắn shop nhé, cảm ơn bạn!';
+    },
+    blankFam() { return { row: 0, id: '', email: '', pass: '', mkp: '', twofa: '', plan: '2TB', renewIso: '', status: 'Hoạt động', note: '' }; },
+    editFam(f) { return { row: f.row, id: f.id, email: f.email, pass: f.pass, mkp: f.mkp, twofa: f.twofa, plan: f.plan, renewIso: iso(f.renew), status: f.status, note: f.note }; },
+    blankCus(f) { return { fam: f.id, email: '', buyIso: todayIso(), months: 12, ctv: '', status: 'Đã mời', sku: '', note: '' }; },
+    editCus(c) { return { fam: c.fam, buyIso: iso(c.buy), months: c.months, ctv: c.ctv, mailPhu: c.mailPhu, note: c.note }; },
+    async run(fn, msg) { this.busy = true; this.error = ''; this.done = ''; try { const r = await fn(); this.done = typeof msg === 'function' ? msg(r) : msg; await this.load(); } catch (e) { this.error = e.message; } this.busy = false; },
+    saveFam() { const f = this.famForm; this.run(() => this.api({ action: 'gg_fam', fam: { ...f, renew: dmy(f.renewIso) } }), r => '✓ Đã lưu fam ' + r.id).then(() => { if (!this.error) this.famForm = null; }); },
+    addCus(f) { const a = f.add; this.run(() => this.api({ action: 'gg_cus', cus: { ...a, email: a.email.trim(), buy: dmy(a.buyIso) }, finance: a.sku }), r => '✓ ' + a.email + ' → ' + f.id + ', HSD ' + r.hsd + (r.finance ? ' · tài chính dòng ' + r.finance.row + ' (' + r.finance.price.toLocaleString('vi-VN') + 'đ)' : '')); },
+    saveEdit(f, c) { const e = c.ed; this.run(() => this.api({ action: 'gg_cus', cus: { row: c.row, fam: e.fam, email: c.email, buy: dmy(e.buyIso), months: e.months, ctv: e.ctv, status: c.status, mailPhu: e.mailPhu, note: e.note } }), r => '✓ Đã sửa ' + c.email + (e.fam !== f.id ? ' (chuyển sang ' + e.fam + ')' : '') + ', HSD ' + r.hsd); },
+    renew(f, c) { const x = c.rn; this.run(() => this.api({ action: 'gg_renew', row: c.row, email: c.email, months: x.months, bonusDays: x.bonus || 0, base: x.fromToday ? 'today' : 'hsd', finance: x.sku }), r => '✓ Gia hạn ' + c.email + ': ' + (r.oldHsd || '?') + ' → ' + r.hsd + (r.finance ? ' · tài chính dòng ' + r.finance.row + ' (' + r.finance.price.toLocaleString('vi-VN') + 'đ)' : '')); },
+    setStatus(c, s) { this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: s }), '✓ ' + c.email + ': ' + s); },
+    leave(c) { if (!c.cf) { c.cf = true; setTimeout(() => { c.cf = false; }, 4000); return; } this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: 'Rời fam' }), '✓ ' + c.email + ' rời fam (giữ data, xem ở mục Đã rời).'); },
+    rejoin(c) { this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: 'Chờ mời', toFam: c.to }), '✓ ' + c.email + ' → ' + c.to + ' (Chờ mời)'); },
+    copy(t, msg) { if (!t) return; navigator.clipboard.writeText(String(t)); this.done = msg || 'Đã copy'; setTimeout(() => { if (this.done === (msg || 'Đã copy')) this.done = ''; }, 1500); },
+    async tickOtp() { const m = {}; for (const f of this.fams) if (f.open && f.twofa) m[f.id] = await totp(f.twofa); this.otp = m; },
+  };
+}
+function base32(s) {
+  const a = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', c = String(s).toUpperCase().replace(/[^A-Z2-7]/g, '');
+  let bits = '', out = [];
+  for (const ch of c) bits += a.indexOf(ch).toString(2).padStart(5, '0');
+  for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
+  return new Uint8Array(out);
+}
+async function totp(secret) {
+  try {
+    const key = base32(secret); if (!key.length) return '';
+    const counter = Math.floor(Date.now() / 30000), buf = new ArrayBuffer(8), v = new DataView(buf);
+    v.setUint32(0, Math.floor(counter / 2 ** 32)); v.setUint32(4, counter >>> 0);
+    const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+    const h = new Uint8Array(await crypto.subtle.sign('HMAC', k, buf)), o = h[h.length - 1] & 15;
+    return String(((h[o] & 127) << 24 | h[o + 1] << 16 | h[o + 2] << 8 | h[o + 3]) % 1e6).padStart(6, '0');
+  } catch (e) { return ''; }
+}
+</script>
+</body>
+</html>
