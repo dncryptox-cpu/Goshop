@@ -60,6 +60,8 @@
   .badge.st-other{background:color-mix(in srgb,var(--mute) 18%,transparent);color:var(--ink);font-weight:600}
   .badge.st-del{background:var(--bad);color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
   .badge.st-scan{background:#7b3fc4;color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
+  .acts{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .acts:empty{display:none}
   .day-h{font-size:13px;font-weight:700;color:var(--mute);margin:16px 2px 6px;text-transform:uppercase;letter-spacing:.03em}
   .card.fs-del{border-left:5px solid var(--bad)}
   .card.fs-scan{border-left:5px solid #7b3fc4}
@@ -498,13 +500,14 @@
                 </div>
                 <template x-if="f.customers.length===0"><div class="mute" style="font-size:13px">Không có email khách.</div></template>
                 <table x-show="f.customers.length || (f.slots || []).some(x => !x.email)">
-                  <thead><tr><th>Thành viên</th><th>CTV</th><th>HSD</th><th>Còn</th><th class="hide-sm" x-show="me.role !== 'outsource'">Mail phụ</th><th></th></tr></thead>
+                  <thead><tr><th>Thành viên</th><th>CTV</th><th>HSD</th><th>Còn</th><th class="hide-sm" x-show="me.role !== 'outsource'">Mail phụ</th></tr></thead>
                   <tbody>
                     <template x-for="c in f.customers" :key="c.row">
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
                         <td class="mono"><input type="checkbox" x-show="can('sendMail')" style="margin-right:6px" :checked="!!mailSel[lcm(c.email)]" @change="toggleMail(c.email, f.rn, c.hsd)" title="Chọn để gửi mail"><span x-text="c.masked ? '(khách CTV khác)' : c.email" :class="c.masked && 'mute'"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span><span class="badge" x-show="mailLog[lcm(c.email)]" style="margin-left:6px;cursor:pointer" :title="mailTip(c.email)" @click="mailInfo = mailInfo === lcm(c.email) ? '' : lcm(c.email)" x-text="'✉ ' + (mailLog[lcm(c.email)] || {}).at"></span><div class="mute" style="font-size:12px;white-space:pre-wrap;font-family:inherit" x-show="mailInfo && mailInfo === lcm(c.email)" x-text="mailTip(c.email)"></div>
                         <div class="mute" style="font-size:12px" x-show="pick.row === c.row">↓ đang tìm fam cho khách này</div>
                         <div class="mute" style="font-size:12px;color:var(--bad)" x-show="c.nojoin" x-text="'Chưa vào nhóm (kiểm tra ' + c.nojoin + ') · khi cần thì Đổi khách'"></div>
+                        <div class="acts"><button class="btn sm" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked && !(c.daysLeft !== null && c.daysLeft < 0)" @click="noJoinCus(f, c)" :disabled="!!c.nj" title="Khách không join nhóm: cất data xuống cuối sheet DATA (Chờ xếp), slot để trống mời sau" x-text="c.nj === 'busy' ? '…' : (c.nj === 'confirm' ? 'Bấm lần nữa' : 'Không join → cất')"></button><button class="btn sm" x-show="can('move') && !c.masked && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn sm" x-show="can('move') && !c.masked && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn sm" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn sm" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked" @click="kickCus(f, c)" :disabled="!!c.kicking" title="Khách không gia hạn: đã xoá khỏi nhóm Gia đình → cất xuống cuối sheet DATA (giữ data), slot thành trống, fam chuyển Còn slot" x-text="c.kicking ? '…' : (c.kickConfirm ? 'Bấm lần nữa' : 'Kick')"></button><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: livePhu(c.mailPhu), invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></div>
                         <div x-show="f.check && c.email" style="display:flex;gap:4px;margin-top:4px">
                           <button class="btn sm" :class="(f.mark||{})[c.email]==='in' && 'pri'" @click="setMark(f, c.email, 'in')">Đã vào</button>
                           <button class="btn sm" :class="(f.mark||{})[c.email]==='out' && 'pri'" @click="setMark(f, c.email, 'out')">Chưa vào</button>
@@ -536,12 +539,12 @@
                         <td x-text="c.hsd || '—'"></td>
                         <td :style="c.daysLeft!==null && c.daysLeft<0 ? 'color:var(--bad)' : (c.daysLeft!==null && c.daysLeft<=10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft===null ? '—' : (c.daysLeft<0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + ' ngày')"></td>
                         <td class="hide-sm mono" x-show="me.role !== 'outsource'" x-text="c.mailPhu || '—'"></td>
-                        <td style="text-align:right;white-space:nowrap"><button class="btn sm" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked && !(c.daysLeft !== null && c.daysLeft < 0)" @click="noJoinCus(f, c)" :disabled="!!c.nj" title="Khách không join nhóm: cất data xuống cuối sheet DATA (Chờ xếp), slot để trống mời sau" x-text="c.nj === 'busy' ? '…' : (c.nj === 'confirm' ? 'Bấm lần nữa' : 'Không join → cất')"></button><button class="btn sm" x-show="can('move') && !c.masked && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn sm" x-show="can('move') && !c.masked && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn sm" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn sm" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked" @click="kickCus(f, c)" :disabled="!!c.kicking" title="Khách không gia hạn: đã xoá khỏi nhóm Gia đình → cất xuống cuối sheet DATA (giữ data), slot thành trống, fam chuyển Còn slot" x-text="c.kicking ? '…' : (c.kickConfirm ? 'Bấm lần nữa' : 'Kick')"></button><button class="btn sm" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: livePhu(c.mailPhu), invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></td>
                       </tr>
                     </template>
                     <template x-for="sl in (f.slots || []).filter(x => !x.email)" :key="'e' + sl.row">
                       <tr>
                         <td class="mono"><span class="mute">(trống)</span>
+                        <div class="acts"><button class="btn sm" x-show="can('move') && mv.row !== sl.row" @click="mv = { row: sl.row, email: '', invited: false }">Chuyển khách vào</button></div>
                         <template x-if="mv.row === sl.row">
                           <div class="mv">
                             <input type="text" x-model="mv.email" placeholder="Email khách cần chuyển vào (đang ở fam khác)" class="mono">
@@ -553,7 +556,6 @@
                           </div>
                         </template></td>
                         <td></td><td></td><td></td><td class="hide-sm" x-show="me.role !== 'outsource'"></td>
-                        <td style="text-align:right"><button class="btn sm" x-show="can('move') && mv.row !== sl.row" @click="mv = { row: sl.row, email: '', invited: false }">Chuyển khách vào</button></td>
                       </tr>
                     </template>
                   </tbody>
