@@ -275,6 +275,24 @@ function hashPassword(password) {
   return digest.map(byte => (byte < 0 ? byte + 256 : byte).toString(16).padStart(2, '0')).join('');
 }
 
+// Token = HMAC(user | password hash, khoá bí mật trong Script Properties).
+// Đổi mật khẩu → token cũ mất hiệu lực. Muốn đăng xuất mọi thiết bị: xoá FIRE5Y_SECRET trong Script Properties.
+function authSecret_() {
+  const p = PropertiesService.getScriptProperties();
+  let s = p.getProperty('FIRE5Y_SECRET');
+  if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); p.setProperty('FIRE5Y_SECRET', s); }
+  return s;
+}
+function makeToken_(u) {
+  const sig = Utilities.computeHmacSha256Signature(String(u.username) + '|' + String(u.passwordHash), authSecret_());
+  return Utilities.base64EncodeWebSafe(sig);
+}
+function verifyToken_(user, token) {
+  if (!user || !token) return false;
+  const u = getUserRecord(user);
+  return !!u && makeToken_(u) === token;
+}
+
 function getUserRecord(user) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheetUsers = ss.getSheetByName(SHEET_USERS);
@@ -339,6 +357,14 @@ function doPost(e) {
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
 
+    // --- Cổng bảo vệ: mọi lệnh (trừ login) phải kèm token do login cấp ---
+    if (action === 'add_user') {
+      const adminKey = PropertiesService.getScriptProperties().getProperty('FIRE5Y_ADMIN_KEY');
+      if (!adminKey || data.adminKey !== adminKey) return respondJSON({ status: "error", code: "AUTH", message: "Không có quyền tạo tài khoản." });
+    } else if (action !== 'login') {
+      if (!verifyToken_(data.user, data.token)) return respondJSON({ status: "error", code: "AUTH", message: "Phiên đăng nhập không hợp lệ, hãy đăng nhập lại." });
+    }
+
     // --- Authentication ---
     if (action === 'login') {
       const uInfo = getUserRecord(data.user);
@@ -347,6 +373,7 @@ function doPost(e) {
         return respondJSON({
           status: "success",
           user: uInfo.username,
+          token: makeToken_(uInfo),
           sheetUrl: uInfo.sheetUrl || "",
           geminiKey: uInfo.geminiKey || ""
         });
@@ -389,6 +416,9 @@ function doPost(e) {
     if (action === 'add_transactions_batch') {
       return handleAddTransactionsBatch(data);
     }
+
+    if (action === 'upsert_transactions') return handleUpsertTransactions(data);
+    if (action === 'delete_transactions') return handleDeleteTransactions(data);
 
     if (action === 'get_transactions') {
       return handleGetTransactions(data);
@@ -450,7 +480,7 @@ function handleAddTransactionsBatch(data) {
     const timeBase = Utilities.formatDate(now, ss.getSpreadsheetTimeZone() || "GMT+7", "yyyyMMddHHmmss");
 
     const rowsToAppend = items.map((item, index) => {
-      const id = timeBase + String(index + 1).padStart(3, '0');
+      const id = item.id ? String(item.id) : timeBase + String(index + 1).padStart(3, '0');
       const dateStr = item.date || Utilities.formatDate(now, ss.getSpreadsheetTimeZone() || "GMT+7", "yyyy-MM-dd");
       const type = item.type === 'Thu' ? 'Thu' : 'Chi';
       const amount = Number(item.amount) || 0;
@@ -491,7 +521,7 @@ function handleGetTransactions(data) {
   if (lastRow < 2) return respondJSON({ status: "success", data: [] });
 
   const raw = sheetData.getRange(2, 1, lastRow - 1, 9).getValues();
-  const list = raw.map(row => ({
+  const list = raw.filter(row => String(row[8]).trim() !== 'Cancelled' && row[0] !== '').map(row => ({
     id: String(row[0]),
     date: row[1] instanceof Date ? Utilities.formatDate(row[1], "GMT+7", "yyyy-MM-dd") : String(row[1]),
     type: row[2],
@@ -929,4 +959,194 @@ function checkSystemStatus() {
 
 function respondJSON(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ==========================================
+// 7. FIRE5Y APP v3 — ĐỒNG BỘ SỬA/XOÁ THEO ID
+// ==========================================
+// App v3 tự sinh ID cho mỗi khoản và gửi kèm. upsert: ID đã có thì ghi đè dòng đó, chưa có thì thêm dòng mới.
+// delete: không xoá dòng, chỉ đặt Trạng thái = Cancelled (số dư và báo cáo đều bỏ qua dòng Cancelled).
+
+function txRow_(item, tz) {
+  return [
+    String(item.id),
+    item.date || Utilities.formatDate(new Date(), tz, "yyyy-MM-dd"),
+    item.type === 'Thu' ? 'Thu' : 'Chi',
+    Number(item.amount) || 0,
+    item.category || 'Khác',
+    item.account || 'Tiền mặt',
+    item.description || '',
+    item.source || 'FIRE5Y app',
+    item.status || 'Confirmed'
+  ];
+}
+
+function idRowMap_(sheet) {
+  const last = getRealLastRow(sheet, 1);
+  const map = {};
+  if (last < 2) return { map: map, last: last };
+  const ids = sheet.getRange(2, 1, last - 1, 1).getValues();
+  ids.forEach((r, i) => { if (r[0] !== '') map[String(r[0])] = i + 2; });
+  return { map: map, last: last };
+}
+
+function handleUpsertTransactions(data) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(8000)) return respondJSON({ status: "error", message: "Sheet đang bận ghi, thử lại sau vài giây." });
+  try {
+    const items = (data.items || []).filter(it => it && it.id);
+    if (!items.length) return respondJSON({ status: "success", updated: 0, added: 0 });
+    const ss = getTargetSpreadsheet(data.user);
+    const sheet = ss.getSheetByName(SHEET_DATA);
+    if (!sheet) throw new Error("Không tìm thấy tab Dữ liệu.");
+    const tz = ss.getSpreadsheetTimeZone() || "GMT+7";
+    const idx = idRowMap_(sheet);
+    const toAppend = [];
+    let updated = 0;
+    items.forEach(it => {
+      const row = txRow_(it, tz);
+      const r = idx.map[String(it.id)];
+      if (r) { sheet.getRange(r, 1, 1, 9).setValues([row]); updated++; }
+      else { toAppend.push(row); idx.map[String(it.id)] = -1; }
+    });
+    if (toAppend.length) sheet.getRange(idx.last + 1, 1, toAppend.length, 9).setValues(toAppend);
+    recalculateAccountBalances(ss);
+    return respondJSON({ status: "success", updated: updated, added: toAppend.length });
+  } catch (err) {
+    return respondJSON({ status: "error", message: err.toString() });
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+function handleDeleteTransactions(data) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(8000)) return respondJSON({ status: "error", message: "Sheet đang bận ghi, thử lại sau vài giây." });
+  try {
+    const ids = (data.ids || []).map(String);
+    if (!ids.length) return respondJSON({ status: "success", cancelled: 0 });
+    const ss = getTargetSpreadsheet(data.user);
+    const sheet = ss.getSheetByName(SHEET_DATA);
+    if (!sheet) throw new Error("Không tìm thấy tab Dữ liệu.");
+    const idx = idRowMap_(sheet);
+    let n = 0;
+    ids.forEach(id => { const r = idx.map[id]; if (r) { sheet.getRange(r, 9).setValue('Cancelled'); n++; } });
+    recalculateAccountBalances(ss);
+    return respondJSON({ status: "success", cancelled: n });
+  } catch (err) {
+    return respondJSON({ status: "error", message: err.toString() });
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
+}
+
+// ==========================================
+// 8. FIRE5Y — NHẮC GHI CHÉP & TỔNG KẾT QUA TELEGRAM
+// ==========================================
+// Cài một lần trong Project Settings → Script Properties:
+//   TG_BOT_TOKEN  = token của bot (vd bot myagent)
+//   TG_CHAT_ID    = chat id nhận tin
+//   FIRE5Y_USER   = tên đăng nhập FIRE5Y (để biết đọc Sheet nào)
+// Sau đó chạy hàm setupFire5yTriggers() một lần.
+
+const TRANSFER_CAT = 'Chuyển khoản';
+
+function setupFire5yTriggers() {
+  const names = ['fire5yDailyReminder', 'fire5yWeeklySummary', 'fire5yMonthlySummary'];
+  ScriptApp.getProjectTriggers().forEach(t => { if (names.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('fire5yDailyReminder').timeBased().everyDays(1).atHour(21).nearMinute(0).inTimezone('Asia/Ho_Chi_Minh').create();
+  ScriptApp.newTrigger('fire5yWeeklySummary').timeBased().onWeekDay(ScriptApp.WeekDay.SUNDAY).atHour(20).inTimezone('Asia/Ho_Chi_Minh').create();
+  ScriptApp.newTrigger('fire5yMonthlySummary').timeBased().onMonthDay(1).atHour(8).inTimezone('Asia/Ho_Chi_Minh').create();
+  sendTelegram_('✅ FIRE5Y đã bật: nhắc ghi chép 21h mỗi ngày, tổng kết tuần tối Chủ nhật, tổng kết tháng sáng ngày 1.');
+}
+
+function sendTelegram_(text) {
+  const p = PropertiesService.getScriptProperties();
+  const token = p.getProperty('TG_BOT_TOKEN'), chat = p.getProperty('TG_CHAT_ID');
+  if (!token || !chat) throw new Error('Thiếu TG_BOT_TOKEN hoặc TG_CHAT_ID trong Script Properties');
+  UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ chat_id: chat, text: text, parse_mode: 'HTML', disable_web_page_preview: true })
+  });
+}
+
+function fire5yRows_() {
+  const user = PropertiesService.getScriptProperties().getProperty('FIRE5Y_USER');
+  const ss = getTargetSpreadsheet(user);
+  const sheet = ss.getSheetByName(SHEET_DATA);
+  if (!sheet) return [];
+  const last = getRealLastRow(sheet, 1);
+  if (last < 2) return [];
+  return sheet.getRange(2, 1, last - 1, 9).getValues()
+    .filter(r => r[0] !== '' && String(r[8]).trim() !== 'Cancelled')
+    .map(r => ({
+      date: r[1] instanceof Date ? Utilities.formatDate(r[1], 'GMT+7', 'yyyy-MM-dd') : String(r[1]).slice(0, 10),
+      type: String(r[2]).trim(), amount: Number(r[3]) || 0, category: String(r[4] || 'Khác'), account: String(r[5] || '')
+    }));
+}
+
+function ymd_(d) { return Utilities.formatDate(d, 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd'); }
+function money_(n) { return Math.round(n).toLocaleString('vi-VN') + 'đ'; }
+function short_(n) {
+  const a = Math.abs(n), s = n < 0 ? '-' : '';
+  if (a >= 1e6) return s + (Math.round(a / 1e5) / 10).toString().replace('.', ',') + 'tr';
+  if (a >= 1e3) return s + Math.round(a / 1e3) + 'k';
+  return s + Math.round(a);
+}
+
+function fire5yDailyReminder() {
+  const today = ymd_(new Date());
+  const rows = fire5yRows_().filter(r => r.date === today && r.category !== TRANSFER_CAT);
+  if (rows.length) return; // hôm nay đã ghi → không làm phiền
+  sendTelegram_('📝 <b>FIRE5Y</b>: hôm nay bạn chưa ghi khoản nào.\nMở app ghi nhanh 1 phút: https://godnc.com/fire5y/');
+}
+
+function periodStats_(rows, from, to) {
+  const list = rows.filter(r => r.date >= from && r.date <= to && r.category !== TRANSFER_CAT);
+  let thu = 0, chi = 0; const byCat = {}, byDay = {};
+  list.forEach(r => {
+    if (r.type === 'Thu') thu += r.amount;
+    else { chi += r.amount; byCat[r.category] = (byCat[r.category] || 0) + r.amount; byDay[r.date] = (byDay[r.date] || 0) + r.amount; }
+  });
+  const top = Object.keys(byCat).map(k => [k, byCat[k]]).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const maxDay = Object.keys(byDay).sort((a, b) => byDay[b] - byDay[a])[0];
+  return { thu: thu, chi: chi, top: top, maxDay: maxDay, maxDayAmt: maxDay ? byDay[maxDay] : 0, count: list.length };
+}
+
+function summaryText_(title, cur, prev) {
+  const rate = cur.thu ? Math.round((cur.thu - cur.chi) / cur.thu * 100) : null;
+  const diff = prev.chi ? Math.round((cur.chi - prev.chi) / prev.chi * 100) : null;
+  let t = '📊 <b>' + title + '</b>\n';
+  t += 'Thu: ' + money_(cur.thu) + '\nChi: ' + money_(cur.chi);
+  if (diff !== null) t += ' (' + (diff >= 0 ? '+' : '') + diff + '% so với kỳ trước)';
+  t += '\nĐể dành: ' + money_(cur.thu - cur.chi) + (rate !== null ? ' · ' + rate + '%' : '');
+  if (cur.top.length) t += '\n\nChi nhiều nhất:\n' + cur.top.map(c => '• ' + c[0] + ': ' + short_(c[1])).join('\n');
+  if (cur.maxDay) t += '\n\nNgày tiêu nhiều nhất: ' + cur.maxDay.slice(8) + '/' + cur.maxDay.slice(5, 7) + ' (' + short_(cur.maxDayAmt) + ')';
+  if (!cur.count) t += '\n\nKỳ này chưa có khoản nào được ghi.';
+  return t;
+}
+
+function fire5yWeeklySummary() {
+  const now = new Date();
+  const dow = (now.getDay() + 6) % 7; // T2 = 0
+  const mon = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  const pMon = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() - 7);
+  const pSun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() - 1);
+  const rows = fire5yRows_();
+  const cur = periodStats_(rows, ymd_(mon), ymd_(now));
+  const prev = periodStats_(rows, ymd_(pMon), ymd_(pSun));
+  sendTelegram_(summaryText_('Tổng kết tuần ' + ymd_(mon).slice(8) + '/' + ymd_(mon).slice(5, 7) + ' – ' + ymd_(now).slice(8) + '/' + ymd_(now).slice(5, 7), cur, prev));
+}
+
+function fire5yMonthlySummary() {
+  // chạy ngày 1 → tổng kết tháng vừa qua
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const last = new Date(now.getFullYear(), now.getMonth(), 0);
+  const pFirst = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const pLast = new Date(now.getFullYear(), now.getMonth() - 1, 0);
+  const rows = fire5yRows_();
+  const cur = periodStats_(rows, ymd_(first), ymd_(last));
+  const prev = periodStats_(rows, ymd_(pFirst), ymd_(pLast));
+  sendTelegram_(summaryText_('Tổng kết tháng ' + (first.getMonth() + 1) + '/' + first.getFullYear(), cur, prev));
 }
