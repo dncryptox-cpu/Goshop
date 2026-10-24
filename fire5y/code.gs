@@ -31,6 +31,11 @@ const SHEET_CRYPTO_PORTFOLIO = 'Portfolio_Crypto';
  */
 function createNewMasterSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  // CHỐT CHẶN: hàm này XOÁ SẠCH mọi tab. Chỉ chạy trên Sheet trống.
+  const _d = ss.getSheetByName(SHEET_DATA), _u = ss.getSheetByName(SHEET_USERS);
+  if ((_d && getRealLastRow(_d, 1) > 1) || (_u && getRealLastRow(_u, 1) > 1)) {
+    throw new Error('Sheet đã có dữ liệu, không chạy createNewMasterSheet để tránh xoá mất dữ liệu.');
+  }
   
   // --- 1. Tab "NguoiDung" ---
   let sheetUsers = getOrCreateSheet(ss, SHEET_USERS);
