@@ -43,6 +43,17 @@
   .form{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:8px}
   .err{color:var(--bad);margin:8px 0}
   .okbox{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ok);padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:14px}
+  table.ed td{padding:4px 6px}
+  input.ghost,select.ghost{border-color:transparent;background:transparent;padding:3px 5px}
+  input.ghost:hover,select.ghost:hover{border-color:var(--line)}
+  input.ghost:focus,select.ghost:focus{border-color:var(--acc);background:var(--card);outline:none}
+  input.ghost::placeholder{color:var(--line)}
+  select.st{font-size:12.5px;border-radius:10px;font-weight:600}
+  select.st.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 13%,transparent)}
+  select.st.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 13%,transparent)}
+  tr.sv{opacity:.55}
+  tr.nw td{background:color-mix(in srgb,var(--acc) 4%,transparent)}
+  tr.nw input,tr.nw select{padding:3px 6px}
   @media (max-width:760px){ td.acts{white-space:normal} .hide-sm{display:none} }
 </style>
 </head>
@@ -71,69 +82,8 @@
 
       <div class="row" style="margin-bottom:10px">
         <input type="search" x-model="q" placeholder="Tìm email khách / email chủ fam / mã GG…" style="flex:1;min-width:240px">
-        <button class="btn pri" @click="openQa('')">+ Thêm khách</button>
-        <button class="btn" @click="famForm = famForm ? null : blankFam()">+ Thêm fam</button>
+        <button class="btn pri" @click="famForm = famForm ? null : blankFam()">+ Thêm fam</button>
       </div>
-
-      <!-- THÊM KHÁCH NHANH: dán gì cũng được → tự lọc email → tự xếp fam còn slot -->
-      <template x-if="qa">
-        <div class="card" @keydown.ctrl.enter="qaSave()" @keydown.meta.enter="qaSave()">
-          <div class="row"><b>Thêm khách</b><span class="mute" style="font-size:13px">dán email / tin nhắn Zalo / dòng sheet — tự lọc email, tự xếp vào fam còn trống</span><div class="sp"></div><button class="btn xs" @click="qa = null">Đóng</button></div>
-          <textarea x-ref="qaText" x-model="qa.text" rows="3" class="mono" placeholder="vd: abc@gmail.com, xyz@gmail.com …" style="width:100%;margin-top:8px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card);color:var(--ink);resize:vertical"></textarea>
-          <div class="row" style="margin-top:6px">
-            <label class="mute" style="font-size:13px">Mua <input type="date" x-model="qa.buyIso"></label>
-            <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="qa.months===m && 'on'" @click="qa.months=m" x-text="m + 'th'"></button></template>
-            <input placeholder="CTV" x-model="qa.ctv" style="width:90px" list="ctvs">
-            <select x-model="qa.status"><option>Đã mời</option><option>Chờ mời</option><option>Đang dùng</option></select>
-            <select x-model="qa.sku"><option value="">Không ghi tài chính</option><template x-for="s in skus" :key="s.sku"><option :value="s.sku" x-text="s.sku + ' · ' + s.price.toLocaleString('vi-VN') + 'đ'"></option></template></select>
-            <input placeholder="Ghi chú" x-model="qa.note" style="width:150px">
-          </div>
-          <table x-show="qaRows().length">
-            <thead><tr><th></th><th>Email</th><th>Vào fam</th><th></th></tr></thead>
-            <tbody>
-              <template x-for="r in qaRows()" :key="r.email">
-                <tr :style="r.off ? 'opacity:.5' : ''">
-                  <td style="width:28px"><input type="checkbox" :checked="!r.off" @change="qa.off[r.email] = !$event.target.checked"></td>
-                  <td class="mono" x-text="r.email"></td>
-                  <td><select :value="r.fam" @change="qa.pick[r.email] = $event.target.value" :disabled="r.off">
-                    <option value="">— hết slot —</option>
-                    <template x-for="x in activeFams()" :key="x.id"><option :value="x.id" :selected="x.id === r.fam" x-text="x.id + ' (' + x.customers.length + '/' + max + ')'"></option></template>
-                  </select></td>
-                  <td><span class="badge" :class="r.bad ? 'bad' : 'warn'" x-show="r.warn" x-text="r.warn"></span></td>
-                </tr>
-              </template>
-            </tbody>
-          </table>
-          <div class="row" style="margin-top:8px">
-            <span class="mute" style="font-size:13px" x-text="qaRows().length ? qaReady().length + ' khách sẽ thêm · HSD = mua + ' + qa.months + ' tháng' : 'Chưa thấy email nào'"></span>
-            <div class="sp"></div>
-            <button class="btn" x-show="qa.added.length" @click="copy(qa.added.join(', '), 'Đã copy ' + qa.added.length + ' email — dán vào ô mời Google One')" x-text="'Copy ' + qa.added.length + ' email vừa thêm'"></button>
-            <button class="btn pri" @click="qaSave()" :disabled="busy || !qaReady().length" x-text="busy ? 'Đang thêm…' : 'Thêm ' + qaReady().length + ' khách (Ctrl+Enter)'"></button>
-          </div>
-        </div>
-      </template>
-
-      <template x-if="famForm">
-        <div class="card">
-          <b x-text="famForm.row ? 'Sửa ' + famForm.id : 'Thêm fam Google One'"></b>
-          <div class="form" style="border-style:solid;background:color-mix(in srgb,var(--ok) 5%,transparent)">
-            <input placeholder="Dán nhanh cả dòng: email  pass  mail khôi phục  2FA (copy từ sheet, cách nhau bằng tab / | / dấu cách)" style="flex:1;min-width:300px" class="mono" @paste.prevent="quickFam($event.clipboardData.getData('text'))" @change="quickFam($event.target.value); $event.target.value=''">
-          </div>
-          <div class="form" @paste="pasteSplit($event)">
-            <input placeholder="Mã (để trống = tự đặt GGn)" x-model="famForm.id" style="width:150px" :disabled="!!famForm.row">
-            <input placeholder="Email chủ fam" x-model="famForm.email" style="width:240px" class="mono">
-            <input placeholder="Pass" x-model="famForm.pass" style="width:140px" class="mono">
-            <input placeholder="Mail khôi phục" x-model="famForm.mkp" style="width:220px" class="mono">
-            <input placeholder="2FA secret" x-model="famForm.twofa" style="width:260px" class="mono">
-            <select x-model="famForm.plan"><option>2TB</option><option>5TB</option><option>1TB</option><option>500GB</option></select>
-            <label class="mute" style="font-size:13px">Renew <input type="date" x-model="famForm.renewIso"></label>
-            <select x-model="famForm.status"><option>Hoạt động</option><option>Tạm dừng</option><option>Đã đóng</option></select>
-            <input placeholder="Ghi chú" x-model="famForm.note" style="flex:1;min-width:160px">
-            <button class="btn" @click="famForm = null">Huỷ</button>
-            <button class="btn pri" @click="saveFam()" :disabled="busy" x-text="busy ? 'Đang lưu…' : 'Lưu'"></button>
-          </div>
-        </div>
-      </template>
 
       <div class="chips">
         <button class="chip" :class="view==='fam' && 'on'" @click="view='fam'" x-text="'Fam (' + fams.length + ')'"></button>
@@ -154,26 +104,25 @@
                 <span class="badge" x-show="f.status !== 'Hoạt động'" x-text="f.status"></span>
                 <span class="badge" :class="f.renewDays !== null && f.renewDays <= 3 ? 'bad' : ''" x-show="f.renew" x-text="'Renew ' + f.renew + (f.renewDays !== null ? ' · còn ' + f.renewDays + ' ngày' : '')"></span>
                 <div class="sp"></div>
-                <template x-if="pending(f).length">
-                  <span class="row" style="gap:6px">
-                    <button class="btn xs" @click="copy(pending(f).map(c => c.email).join(', '), 'Đã copy ' + pending(f).length + ' email chờ vào')" x-text="'Copy ' + pending(f).length + ' email chờ vào'"></button>
-                    <button class="btn xs" style="color:var(--ok)" @click="allJoined(f)" :disabled="busy" x-text="'✓ Tất cả đã vào'"></button>
-                  </span>
-                </template>
+                <button class="btn xs" x-show="pending(f).length" @click="copy(pending(f).map(c => c.email).join(', '), 'Đã copy ' + pending(f).length + ' email chờ vào')" x-text="'Copy ' + pending(f).length + ' email chờ vào'"></button>
+                <button class="btn xs" style="color:var(--ok)" x-show="pending(f).length" @click="allJoined(f)" :disabled="busy">✓ Tất cả đã vào</button>
                 <button class="btn xs" @click="famForm = editFam(f)">Sửa fam</button>
-                <button class="btn xs" @click="f.open = !f.open" x-text="f.open ? 'Ẩn TK' : 'TK chủ'"></button>
               </div>
-              <div class="mono" style="margin-top:4px">
-                <span class="cp" @click="copy(f.email)" x-text="f.email"></span>
-                <template x-if="f.open"><span> · Pass <span class="cp" @click="copy(f.pass)" x-text="f.pass || '—'"></span> · MKP <span class="cp" @click="copy(f.mkp)" x-text="f.mkp || '—'"></span> · 2FA <b class="cp" @click="copy(otp[f.id])" x-text="f.twofa ? (otp[f.id] || '······') : 'không'"></b> · <a href="https://one.google.com/family" target="_blank" rel="noopener">Gia đình ↗</a></span></template>
+              <div class="mute" style="font-size:13px;margin-top:4px">
+                <span class="mono cp" style="color:var(--ink)" title="Bấm để copy" @click="copy(f.email, 'Đã copy email chủ')" x-text="f.email"></span>
+                · Pass <span class="mono cp" title="Bấm để copy" @click="copy(f.pass, 'Đã copy pass')" x-text="f.pass || '—'"></span>
+                · MKP <span class="mono cp" title="Bấm để copy" @click="copy(f.mkp, 'Đã copy MKP')" x-text="f.mkp || '—'"></span>
+                · 2FA <b class="mono" :class="f.twofa && 'cp'" style="color:var(--ink)" title="Bấm để copy mã" @click="f.twofa && copy(otp[f.id], 'Đã copy mã 2FA')" x-text="f.twofa ? (otp[f.id] || '······') : 'không'"></b>
+                · <a href="https://one.google.com/family" target="_blank" rel="noopener">Gia đình ↗</a>
               </div>
               <div class="mute" style="font-size:12px" x-show="f.note" x-text="f.note"></div>
-              <table x-show="f.customers.length">
-                <thead><tr><th>Khách</th><th>CTV</th><th>Mua</th><th>HSD</th><th>Còn</th><th>Trạng thái</th><th></th></tr></thead>
+              <table class="ed">
+                <thead><tr><th>Khách</th><th>CTV</th><th>Mua</th><th>Tháng</th><th>HSD</th><th>Còn</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
                   <template x-for="c in f.customers" :key="c.row">
-                    <tr :style="hit(c) ? 'background:color-mix(in srgb,var(--warn) 10%,transparent)' : ''">
-                      <td class="mono"><span class="cp" @click="copy(c.email)" x-text="c.email"></span><div class="mute" style="font-size:12px" x-show="c.mailPhu || c.note" x-text="[c.mailPhu && 'phụ: ' + c.mailPhu, c.note].filter(Boolean).join(' · ')"></div>
+                    <tr :class="c.sv && 'sv'" :style="hit(c) ? 'background:color-mix(in srgb,var(--warn) 10%,transparent)' : ''">
+                      <td class="mono"><span class="cp" @click="copy(c.email)" x-text="c.email"></span>
+                        <div class="row" style="gap:4px;flex-wrap:nowrap"><input class="ghost" placeholder="mail phụ" x-model="c.mailPhu" @change="saveCus(c)" style="width:150px"><input class="ghost" placeholder="ghi chú" x-model="c.note" @change="saveCus(c)" style="width:120px"></div>
                         <template x-if="c.rn"><div class="form">
                           <b style="font-size:13px">Gia hạn</b>
                           <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="c.rn.months===m && 'on'" @click="c.rn.months=m" x-text="m + 'th'"></button></template>
@@ -183,35 +132,36 @@
                           <button class="btn" @click="c.rn = null">Huỷ</button>
                           <button class="btn pri" @click="renew(f, c)" :disabled="busy" x-text="busy ? '…' : 'Ghi gia hạn'"></button>
                         </div></template>
-                        <template x-if="c.ed"><div class="form">
-                          <input type="date" x-model="c.ed.buyIso" title="Ngày mua"><input type="number" min="1" style="width:64px" x-model.number="c.ed.months" title="Số tháng">
-                          <input placeholder="CTV" x-model="c.ed.ctv" style="width:90px"><input placeholder="Mail phụ" x-model="c.ed.mailPhu" class="mono" style="width:200px"><input placeholder="Ghi chú" x-model="c.ed.note" style="width:160px">
-                          <select x-model="c.ed.fam"><template x-for="x in fams" :key="x.id"><option :value="x.id" x-text="x.id + ' (' + x.customers.length + '/' + max + ')'"></option></template></select>
-                          <button class="btn" @click="c.ed = null">Huỷ</button>
-                          <button class="btn pri" @click="saveEdit(f, c)" :disabled="busy" x-text="busy ? '…' : 'Lưu'"></button>
-                        </div></template>
                       </td>
-                      <td x-text="c.ctv || '—'"></td>
-                      <td class="hide-sm" x-text="c.buy"></td>
+                      <td><input class="ghost" x-model="c.ctv" list="ctvs" @change="saveCus(c)" style="width:64px"></td>
+                      <td><input class="ghost" type="date" :value="iso(c.buy)" @change="c.buy = dmy($event.target.value); saveCus(c)"></td>
+                      <td><input class="ghost" type="number" min="1" x-model.number="c.months" @change="saveCus(c)" style="width:52px"></td>
                       <td x-text="c.hsd || '—'"></td>
                       <td :style="c.daysLeft !== null && c.daysLeft < 0 ? 'color:var(--bad)' : (c.daysLeft !== null && c.daysLeft <= 10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft === null ? '—' : (c.daysLeft < 0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + 'n')"></td>
-                      <td><span class="badge" :class="c.status === 'Đang dùng' ? 'ok' : (c.status === 'Chờ mời' ? 'warn' : '')" x-text="c.status"></span></td>
+                      <td><select class="ghost st" :class="c.status === 'Đang dùng' ? 'ok' : 'warn'" x-model="c.status" @change="saveStatus(c)"><option>Đang dùng</option><option>Đã mời</option><option>Chờ mời</option></select></td>
                       <td class="acts">
-                        <button class="btn xs" x-show="c.status !== 'Đang dùng'" @click="setStatus(c, 'Đang dùng')">Đã vào</button>
-                        <button class="btn xs" x-show="c.status === 'Chờ mời'" @click="setStatus(c, 'Đã mời')">Đã mời</button>
                         <button class="btn xs" @click="c.rn = c.rn ? null : { months: c.months || 1, bonus: 0, fromToday: c.daysLeft !== null && c.daysLeft < -7, sku: '' }">Gia hạn</button>
-                        <button class="btn xs" @click="c.ed = c.ed ? null : editCus(c)">Sửa / chuyển</button>
+                        <select class="btn xs" style="width:72px" title="Chuyển sang fam khác" @change="moveCus(c, $event.target.value); $event.target.value = ''"><option value="">Chuyển</option><template x-for="x in fams.filter(x => x.id !== f.id && x.status === 'Hoạt động')" :key="x.id"><option :value="x.id" x-text="x.id + ' (' + x.customers.length + '/' + max + ')'"></option></template></select>
                         <button class="btn xs" style="color:var(--bad)" @click="leave(c)" x-text="c.cf ? 'Bấm lần nữa' : 'Rời fam'"></button>
                       </td>
                     </tr>
                   </template>
+                  <!-- slot trống: gõ / dán email rồi Enter -->
+                  <template x-for="(n, i) in f.nw" :key="i">
+                    <tr class="nw">
+                      <td><input class="mono" :placeholder="'+ email khách, Enter — còn ' + (max - f.customers.length) + ' slot'" x-model="n.email" @keydown.enter.prevent="addRow(f, n)" @paste="$nextTick(() => /\s|,/.test(n.email.trim()) && addRow(f, n))" style="width:100%"></td>
+                      <td><input x-model="n.ctv" list="ctvs" placeholder="CTV" style="width:64px"></td>
+                      <td><input type="date" x-model="n.buyIso" style="width:130px"></td>
+                      <td><input type="number" min="1" x-model.number="n.months" style="width:52px"></td>
+                      <td class="mute" x-text="n.email ? hsdOf(n) : ''"></td>
+                      <td></td>
+                      <td><select x-model="n.status"><option>Đã mời</option><option>Chờ mời</option><option>Đang dùng</option></select></td>
+                      <td class="acts"><select class="btn xs" x-model="n.sku" title="Ghi tài chính"><option value="">Không ghi TC</option><template x-for="s in skus" :key="s.sku"><option :value="s.sku" x-text="s.sku"></option></template></select>
+                        <button class="btn xs pri" x-show="n.email" @click="addRow(f, n)" :disabled="busy">Thêm</button></td>
+                    </tr>
+                  </template>
                 </tbody>
               </table>
-              <template x-if="f.customers.length < max && f.status === 'Hoạt động'">
-                <div>
-                  <button class="btn xs" style="margin-top:8px" @click="openQa(f.id)" x-text="'+ Thêm khách vào ' + f.id + ' (' + (max - f.customers.length) + ' slot trống)'"></button>
-                </div>
-              </template>
             </div>
           </template>
         </div>
@@ -261,7 +211,7 @@ const todayIso = () => { const t = new Date(); return t.getFullYear() + '-' + St
 function gg() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '', fams: [], loose: [], skus: [], max: 5, sheetUrl: '',
-    loading: false, busy: false, error: '', done: '', q: '', view: 'fam', famForm: null, qa: null, otp: {},
+    loading: false, busy: false, error: '', done: '', q: '', view: 'fam', famForm: null, otp: {},
     init() { if (this.pass) this.load(); setInterval(() => this.tickOtp(), 1000); },
     async api(body) {
       const r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
@@ -273,8 +223,7 @@ function gg() {
       this.loading = true; this.error = '';
       try {
         const d = await this.api({ action: 'gg_list' });
-        const open = new Set(this.fams.filter(f => f.open).map(f => f.id));
-        this.fams = d.fams.map(f => Object.assign(f, { open: open.has(f.id) })); this.loose = d.loose; this.skus = d.skus || []; this.max = d.max; this.sheetUrl = d.sheetUrl;
+        this.fams = d.fams.map(f => Object.assign(f, { nw: f.status === 'Hoạt động' ? (d.max > f.customers.length ? [this.blankRow()] : []) : [] })); this.loose = d.loose; this.skus = d.skus || []; this.max = d.max; this.sheetUrl = d.sheetUrl;
       } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng GG1: dán Code.gs mới rồi Triển khai → phiên bản mới.' : e.message; }
       this.loading = false;
     },
@@ -296,7 +245,6 @@ function gg() {
     },
     blankFam() { return { row: 0, id: '', email: '', pass: '', mkp: '', twofa: '', plan: '2TB', renewIso: '', status: 'Hoạt động', note: '' }; },
     editFam(f) { return { row: f.row, id: f.id, email: f.email, pass: f.pass, mkp: f.mkp, twofa: f.twofa, plan: f.plan, renewIso: iso(f.renew), status: f.status, note: f.note }; },
-    editCus(c) { return { fam: c.fam, buyIso: iso(c.buy), months: c.months, ctv: c.ctv, mailPhu: c.mailPhu, note: c.note }; },
     async run(fn, msg) { this.busy = true; this.error = ''; this.done = ''; try { const r = await fn(); this.done = typeof msg === 'function' ? msg(r) : msg; await this.load(); } catch (e) { this.error = e.message; } this.busy = false; },
     // Dán 1 dòng copy từ sheet → tự tách email chủ / pass / mail khôi phục / 2FA / ngày renew
     quickFam(txt) {
@@ -320,66 +268,61 @@ function gg() {
     },
     pasteSplit(e) { const t = e.clipboardData.getData('text'); if (/\t|\|/.test(t)) { e.preventDefault(); this.quickFam(t); } },
     saveFam() { const f = this.famForm; this.run(() => this.api({ action: 'gg_fam', fam: { ...f, renew: dmy(f.renewIso) } }), r => '✓ Đã lưu fam ' + r.id).then(() => { if (!this.error) this.famForm = null; }); },
-    // ---- Thêm khách nhanh ----
-    openQa(prefer) {
-      const pref = JSON.parse(lsGet('gg1_qa') || '{}');
-      this.qa = { text: '', buyIso: todayIso(), months: pref.months || 12, ctv: pref.ctv || '', status: pref.status || 'Đã mời', sku: pref.sku || '', note: '', prefer, pick: {}, off: {}, added: [] };
-      this.$nextTick(() => this.$refs.qaText && this.$refs.qaText.focus());
+    // ---- sửa trực tiếp trong bảng ----
+    iso, dmy,
+    defs() { return JSON.parse(lsGet('gg1_def') || '{}'); },
+    blankRow() { const d = this.defs(); return { email: '', buyIso: todayIso(), months: d.months || 12, ctv: d.ctv || '', status: d.status || 'Đã mời', sku: d.sku || '' }; },
+    hsdOf(n) { const q = String(n.buyIso).split('-'); if (q.length !== 3) return ''; const d = new Date(+q[0], q[1] - 1, +q[2]); const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + (+n.months || 0)); d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); },
+    daysTo(h) { const p = String(h || '').split('/'); if (p.length !== 3) return null; const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(+p[2], p[1] - 1, +p[0]) - t) / 864e5); },
+    async saveCus(c, fam) {
+      c.sv = true; this.error = '';
+      try {
+        const r = await this.api({ action: 'gg_cus', cus: { row: c.row, fam: fam || c.fam, email: c.email, buy: c.buy, months: c.months, ctv: c.ctv, status: c.status, mailPhu: c.mailPhu, note: c.note } });
+        if (r.hsd) { c.hsd = r.hsd; c.daysLeft = this.daysTo(r.hsd); }
+        this.flash('✓ ' + c.email + (fam ? ' → ' + fam : '') + (r.hsd ? ' · HSD ' + r.hsd : ''));
+        if (fam) await this.load();
+      } catch (e) { this.error = c.email + ': ' + e.message; }
+      c.sv = false;
     },
-    activeFams() { return this.fams.filter(f => f.status === 'Hoạt động'); },
+    async saveStatus(c) {
+      c.sv = true; this.error = '';
+      try { await this.api({ action: 'gg_set', row: c.row, email: c.email, status: c.status }); this.flash('✓ ' + c.email + ': ' + c.status); }
+      catch (e) { this.error = c.email + ': ' + e.message; }
+      c.sv = false;
+    },
+    moveCus(c, fam) { if (fam) this.saveCus(c, fam); },
+    flash(m) { this.done = m; clearTimeout(this._ft); this._ft = setTimeout(() => { if (this.done === m) this.done = ''; }, 2500); },
     known() {
       const m = {};
-      this.fams.forEach(f => f.customers.forEach(c => { m[c.email.toLowerCase()] = { active: true, txt: 'Đã có ở ' + f.id }; if (c.mailPhu && c.mailPhu.includes('@')) m[c.mailPhu.toLowerCase()] = m[c.mailPhu.toLowerCase()] || { active: true, txt: 'Là mail phụ ở ' + f.id }; }));
-      this.loose.forEach(c => { const k = c.email.toLowerCase(); if (!m[k]) m[k] = { active: false, txt: 'Từng ở ' + (c.fam || '—') + ' (' + c.status + ') — nên dùng Thêm lại ở mục Đã rời' }; });
+      this.fams.forEach(f => f.customers.forEach(c => { m[c.email.toLowerCase()] = 'đã có ở ' + f.id; if (c.mailPhu && c.mailPhu.includes('@')) m[c.mailPhu.toLowerCase()] = m[c.mailPhu.toLowerCase()] || 'là mail phụ ở ' + f.id; }));
+      this.loose.forEach(c => { const k = c.email.toLowerCase(); if (!m[k]) m[k] = 'từng ở ' + (c.fam || '—') + ', dùng Thêm lại ở mục Đã rời'; });
       return m;
     },
-    qaRows() {
-      const qa = this.qa; if (!qa) return [];
-      const emails = [...new Set((String(qa.text).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map(x => x.toLowerCase()))];
-      const kn = this.known(), free = {};
-      const order = this.activeFams().slice().sort((a, b) => (a.id === qa.prefer ? -1 : b.id === qa.prefer ? 1 : 0) || a.id.localeCompare(b.id, undefined, { numeric: true }));
-      order.forEach(f => { free[f.id] = this.max - f.customers.length; });
-      const rows = emails.map(email => {
-        const k = kn[email], off = email in qa.off ? qa.off[email] : !!k;
-        return { email, off, fam: off ? '' : (qa.pick[email] || ''), warn: k ? k.txt : '', bad: !!(k && k.active) };
-      });
-      rows.forEach(r => { if (r.fam) free[r.fam] = (free[r.fam] || 0) - 1; });
-      rows.forEach(r => {
-        if (r.off) return;
-        if (r.fam) { if (free[r.fam] < 0 && !r.warn) { r.warn = r.fam + ' bị quá ' + this.max + ' khách'; r.bad = true; } return; }
-        const f = order.find(x => free[x.id] > 0);
-        if (f) { r.fam = f.id; free[f.id]--; } else { r.warn = 'Hết slot — thêm fam mới'; r.bad = true; }
-      });
-      return rows;
-    },
-    qaReady() { return this.qaRows().filter(r => !r.off && r.fam); },
-    qaSave() {
-      const qa = this.qa, list = this.qaReady(); if (!list.length || this.busy) return;
-      lsSet('gg1_qa', JSON.stringify({ months: qa.months, ctv: qa.ctv, status: qa.status, sku: qa.sku }));
+    addRow(f, n) {
+      if (this.busy) return;
+      const all = [...new Set((String(n.email).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map(x => x.toLowerCase()))];
+      if (!all.length) { this.error = 'Không thấy email hợp lệ'; return; }
+      const kn = this.known(), skip = all.filter(e => kn[e]).map(e => e + ' ' + kn[e]);
+      const list = all.filter(e => !kn[e]).slice(0, this.max - f.customers.length), over = all.filter(e => !kn[e]).slice(this.max - f.customers.length);
+      lsSet('gg1_def', JSON.stringify({ months: n.months, ctv: n.ctv, status: n.status, sku: n.sku }));
+      if (!list.length) { this.error = 'Không thêm: ' + skip.join(' · '); return; }
       this.run(async () => {
-        const ok = [], fail = [];
-        for (const r of list) {
-          try { const x = await this.api({ action: 'gg_cus', cus: { fam: r.fam, email: r.email, buyIso: qa.buyIso, buy: dmy(qa.buyIso), months: qa.months, ctv: qa.ctv, status: qa.status, sku: qa.sku, note: qa.note }, finance: qa.sku }); ok.push(r); r.hsd = x.hsd; }
-          catch (e) { fail.push(r.email + ': ' + e.message); }
-        }
-        qa.added = ok.map(r => r.email);
-        qa.text = fail.map(x => x.split(':')[0]).join('\n'); qa.pick = {}; qa.off = {};
-        if (fail.length) { await this.load(); throw new Error('Đã thêm ' + ok.length + ', lỗi ' + fail.length + ' → ' + fail.join(' · ')); }
+        const ok = [];
+        for (const em of list) { const r = await this.api({ action: 'gg_cus', cus: { fam: f.id, email: em, buyIso: n.buyIso, buy: dmy(n.buyIso), months: n.months, ctv: n.ctv, status: n.status, sku: n.sku, note: '' }, finance: n.sku }); ok.push(em); }
         return ok;
-      }, ok => '✓ Đã thêm ' + ok.length + ' khách: ' + ok.map(r => r.email + ' → ' + r.fam + ' (HSD ' + r.hsd + ')').join(', '));
+      }, ok => '✓ ' + f.id + ' +' + ok.length + ': ' + ok.join(', ') + (skip.length ? ' · Bỏ qua: ' + skip.join(' · ') : '') + (over.length ? ' · Hết slot, chưa thêm: ' + over.join(', ') : ''));
     },
     pending(f) { return f.customers.filter(c => c.status === 'Đã mời' || c.status === 'Chờ mời'); },
     allJoined(f) {
       const list = this.pending(f);
       this.run(async () => { for (const c of list) await this.api({ action: 'gg_set', row: c.row, email: c.email, status: 'Đang dùng' }); }, '✓ ' + f.id + ': ' + list.length + ' khách → Đang dùng');
     },
-    saveEdit(f, c) { const e = c.ed; this.run(() => this.api({ action: 'gg_cus', cus: { row: c.row, fam: e.fam, email: c.email, buy: dmy(e.buyIso), months: e.months, ctv: e.ctv, status: c.status, mailPhu: e.mailPhu, note: e.note } }), r => '✓ Đã sửa ' + c.email + (e.fam !== f.id ? ' (chuyển sang ' + e.fam + ')' : '') + ', HSD ' + r.hsd); },
     renew(f, c) { const x = c.rn; this.run(() => this.api({ action: 'gg_renew', row: c.row, email: c.email, months: x.months, bonusDays: x.bonus || 0, base: x.fromToday ? 'today' : 'hsd', finance: x.sku }), r => '✓ Gia hạn ' + c.email + ': ' + (r.oldHsd || '?') + ' → ' + r.hsd + (r.finance ? ' · tài chính dòng ' + r.finance.row + ' (' + r.finance.price.toLocaleString('vi-VN') + 'đ)' : '')); },
     setStatus(c, s) { this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: s }), '✓ ' + c.email + ': ' + s); },
     leave(c) { if (!c.cf) { c.cf = true; setTimeout(() => { c.cf = false; }, 4000); return; } this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: 'Rời fam' }), '✓ ' + c.email + ' rời fam (giữ data, xem ở mục Đã rời).'); },
     rejoin(c) { this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: 'Chờ mời', toFam: c.to }), '✓ ' + c.email + ' → ' + c.to + ' (Chờ mời)'); },
     copy(t, msg) { if (!t) return; navigator.clipboard.writeText(String(t)); this.done = msg || 'Đã copy'; setTimeout(() => { if (this.done === (msg || 'Đã copy')) this.done = ''; }, 1500); },
-    async tickOtp() { const m = {}; for (const f of this.fams) if (f.open && f.twofa) m[f.id] = await totp(f.twofa); this.otp = m; },
+    async tickOtp() { const m = {}; for (const f of this.fams) if (f.twofa) m[f.id] = await totp(f.twofa); this.otp = m; },
   };
 }
 function base32(s) {
