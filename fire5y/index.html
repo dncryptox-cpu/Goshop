@@ -1029,8 +1029,8 @@ async function push(silent){
   }
   finally { pushing = false; }
 }
-async function pull(){
-  toast('Đang tải từ Sheet…');
+async function pull(silent){
+  if (!silent) toast('Đang tải từ Sheet…');
   try {
     const [ds, tx, acc] = await Promise.all([api({action:'get_ds', user:S.sync.user}), api({action:'get_transactions', user:S.sync.user}), api({action:'get_accounts', user:S.sync.user}).catch(()=>({data:[]}))]);
     let addedC = 0, addedA = 0;
@@ -1049,8 +1049,8 @@ async function pull(){
       if (!t.transfer && !S.cats.some(c=>c.name===t.category)) S.cats.push({name:t.category, type:t.type, budget:0});
     }
     S.sync.last = Date.now(); save(); render();
-    toast(`Đã nhập ${added} khoản${addedC?`, ${addedC} danh mục`:''}${addedA?`, ${addedA} ví`:''} từ Sheet`);
-  } catch(e){ toast('Không tải được: ' + (e.message||'lỗi kết nối')); }
+    if (!silent || added) toast(`Đã nhận ${added} khoản${addedC?`, ${addedC} danh mục`:''}${addedA?`, ${addedA} ví`:''} từ Sheet`);
+  } catch(e){ if (!silent) toast('Không tải được: ' + (e.message||'lỗi kết nối')); }
 }
 
 /* ================= dữ liệu mẫu ================= */
@@ -1173,7 +1173,15 @@ try {
   $('#app').innerHTML = `<div class="card">Lỗi khi mở app: ${esc(err.message)}</div>`;
   console.error(err);
 }
-if (S.sync.user && !S.sample) push(true);
+// tự đồng bộ: đẩy thay đổi lên Sheet rồi kéo khoản mới (vd ghi qua Telegram) về — khi mở app và khi quay lại tab
+let lastSync = 0;
+async function autoSync(){
+  if (!S.sync.user || !S.sync.token || S.sample || Date.now() - lastSync < 30000) return;
+  lastSync = Date.now();
+  await push(true); await pull(true);
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
+autoSync();
 })();
 </script>
 

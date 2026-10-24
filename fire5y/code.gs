@@ -359,6 +359,9 @@ function doPost(e) {
       return respondJSON({ status: "error", message: "Payload dữ liệu không hợp lệ." });
     }
 
+    // Tin nhắn Telegram (webhook) — xác thực bằng tham số bí mật trên URL
+    if (e.parameter && e.parameter.tg) return handleTelegramUpdate_(e);
+
     const data = JSON.parse(e.postData.contents);
     const action = data.action;
 
@@ -1170,4 +1173,190 @@ function testTelegram() {
     payload: JSON.stringify({ chat_id: chat, text: '✅ FIRE5Y test kết nối Telegram' })
   });
   Logger.log('sendMessage: ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 300));
+}
+
+
+// ==========================================
+// 9. FIRE5Y — GHI CHÉP QUA TELEGRAM (nhắn bot → ghi vào tab Dữ liệu)
+// ==========================================
+// Cài một lần: chạy setupTelegramWebhook() (sau khi deploy bản có hàm này).
+// Cách nhắn: "50k cafe", "1tr2 giày mb", "+15tr doanh thu", nhiều dòng = nhiều khoản,
+// "hqua 120k ăn tối" = ghi cho hôm qua. Lệnh: /undo (huỷ lần ghi gần nhất), /help.
+
+const FIRE5Y_EXEC_URL = 'https://script.google.com/macros/s/AKfycbzm49bx5a2HCd1Bb9QX58aj3lxZET_WnJSri-46ynMAxOkWjtpsftQHlhdUWIga4tnq/exec';
+
+const TG_KEYWORDS_ = {
+  'Cà phê': ['cafe', 'ca phe', 'cf', 'coffee', 'tra sua', 'highlands', 'starbucks', 'nuoc ep', 'sinh to'],
+  'Ăn uống': ['an', 'com', 'pho', 'bun', 'banh mi', 'banh', 'lau', 'nuong', 'an trua', 'an toi', 'an sang', 'do an', 'grabfood', 'bun cha', 'hu tieu', 'mi', 'oc', 'hai san', 'di cho', 'sieu thi'],
+  'Đi lại': ['grab', 'xang', 'taxi', 'be', 'gui xe', 've may bay', 'xe khach', 'sua xe', 'xanh sm'],
+  'Nhà & hoá đơn': ['nha', 'tien nha', 'dien', 'nuoc', 'internet', 'wifi', 'gas', 'dien thoai', '4g'],
+  'Gói đăng ký': ['netflix', 'spotify', 'icloud', 'youtube', 'chatgpt', 'google one', 'claude', 'canva'],
+  'Trail & sức khoẻ': ['giay', 'gel', 'giai', 'race', 'vmm', 'gym', 'massage', 'chay', 'trail', 'dinh duong', 'vitamin'],
+  'Mua sắm': ['mua', 'shopee', 'lazada', 'tiki', 'quan ao', 'ao', 'quan'],
+  'Giải trí': ['phim', 'game', 'bia', 'nhau', 'karaoke', 'du lich'],
+  'Kinh doanh DNC': ['ctv', 'gia von', 'nhap slot', 'ads', 'quang cao', 'tk ytb', 'fam'],
+  'Doanh thu Premium': ['doanh thu', 'ban', 'khach', 'gia han', 'thu tien'],
+  'Thu khác': ['luong', 'thuong', 'lai', 'hoan tien', 'thu']
+};
+const TG_THU_CATS_ = ['Doanh thu Premium', 'Thu khác'];
+const TG_ACC_ALIAS_ = { 'tcb': 'techcombank', 'mb': 'mb bank', 'mbbank': 'mb bank', 'momo': 'momo', 'zalopay': 'zalopay', 'zalo': 'zalopay', 'tm': 'tien mat', 'cash': 'tien mat', 'tienmat': 'tien mat', 'hl': 'hyperliquid' };
+
+function tgStrip_(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function tgParseLine_(line) {
+  let s = String(line || '').trim(); if (!s) return null;
+  let forceThu = false;
+  if (s.charAt(0) === '+') { forceThu = true; s = s.slice(1).trim(); }
+  const pats = [
+    [/(\d+(?:[.,]\d+)?)\s*(?:tr|triệu|trieu|m)(\d{1,3})?(?!\p{L})/iu, m => parseFloat(m[1].replace(',', '.')) * 1e6 + (m[2] ? +m[2] * Math.pow(10, 6 - m[2].length) : 0)],
+    [/(\d+(?:[.,]\d+)?)\s*(?:k|nghìn|ngàn|nghin|ngan)(?!\p{L})/iu, m => parseFloat(m[1].replace(',', '.')) * 1e3],
+    [/\d{1,3}(?:[.,]\d{3})+(?!\d)/u, m => +m[0].replace(/[.,]/g, '')],
+    [/\d+(?:[.,]\d+)?/u, m => { const n = parseFloat(m[0].replace(',', '.')); return n < 1000 ? n * 1000 : n; }]
+  ];
+  for (const [re, fn] of pats) {
+    const m = s.match(re);
+    if (m) {
+      const note = (s.slice(0, m.index) + ' ' + s.slice(m.index + m[0].length)).replace(/\s+/g, ' ').replace(/^[-–:,\s]+|[-–:,\s]+$/g, '');
+      return { amount: Math.round(fn(m)), note: note, forceThu: forceThu };
+    }
+  }
+  return { amount: 0, note: s, forceThu: forceThu };
+}
+
+function tgGuessCat_(note) {
+  const padded = ' ' + tgStrip_(note) + ' ';
+  let best = null, bestLen = 0;
+  Object.keys(TG_KEYWORDS_).forEach(cat => TG_KEYWORDS_[cat].forEach(kw => {
+    if (padded.indexOf(' ' + kw + ' ') >= 0 && kw.length > bestLen) { best = cat; bestLen = kw.length; }
+  }));
+  return best;
+}
+
+// Tìm ví trong ghi chú (vd "mb", "tcb", "momo"), trả về tên ví + ghi chú đã bỏ chữ đó
+function tgPickAccount_(note, accounts, defAcc) {
+  const words = String(note).split(/\s+/);
+  for (let i = 0; i < words.length; i++) {
+    const w = tgStrip_(words[i]);
+    if (!w) continue;
+    const key = TG_ACC_ALIAS_[w] || w;
+    const generic = ['tien', 'bank', 'ngan', 'hang', 'mat', 'vi', 'san', 'trading', 'crypto'];
+    const hit = accounts.find(a => {
+      const n = tgStrip_(a);
+      if (n === key || (TG_ACC_ALIAS_[w] && n.indexOf(key) >= 0)) return true;
+      return n.split(/[^a-z0-9]+/).some(tok => tok.length >= 4 && generic.indexOf(tok) < 0 && tok === key);
+    });
+    if (hit) { words.splice(i, 1); return { account: hit, note: words.join(' ').trim() }; }
+  }
+  return { account: defAcc, note: note };
+}
+
+function handleTelegramUpdate_(e) {
+  const ok = ContentService.createTextOutput('ok');
+  try {
+    const props = PropertiesService.getScriptProperties();
+    const hook = props.getProperty('FIRE5Y_TG_HOOK');
+    if (!hook || e.parameter.tg !== hook) return ok;
+    const upd = JSON.parse(e.postData.contents);
+    const msg = upd.message;
+    if (!msg || !msg.text) return ok;
+    if (String(msg.chat.id) !== String(props.getProperty('TG_CHAT_ID')).trim()) return ok;
+
+    // Telegram gửi lại cùng một update khi chưa nhận được 200 → bỏ qua update đã xử lý
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) return ok;
+    try {
+      const last = Number(props.getProperty('FIRE5Y_TG_LAST_UPDATE') || 0);
+      if (upd.update_id <= last) return ok;
+      props.setProperty('FIRE5Y_TG_LAST_UPDATE', String(upd.update_id));
+      tgHandleText_(msg.text, upd.update_id, props);
+    } finally { lock.releaseLock(); }
+  } catch (err) {
+    try { sendTelegram_('⚠️ FIRE5Y lỗi khi ghi: ' + err.message); } catch (e2) {}
+  }
+  return ok;
+}
+
+function tgHandleText_(text, updateId, props) {
+  const t = String(text).trim();
+  const ss = getTargetSpreadsheet(props.getProperty('FIRE5Y_USER'));
+  const sheet = ss.getSheetByName(SHEET_DATA);
+  const tz = 'Asia/Ho_Chi_Minh';
+
+  if (/^\/(start|help)/i.test(t)) {
+    sendTelegram_('Nhắn khoản chi/thu để ghi vào FIRE5Y:\n• <code>50k cafe</code>\n• <code>1tr2 giày mb</code> (thêm tên ví: mb, tcb, momo, tm…)\n• <code>+15tr doanh thu</code> (dấu + = khoản thu)\n• <code>hqua 120k ăn tối</code> (ghi cho hôm qua)\n• Nhiều dòng = nhiều khoản\n• /undo — huỷ lần ghi gần nhất');
+    return;
+  }
+  if (/^\/undo/i.test(t)) {
+    const ids = JSON.parse(props.getProperty('FIRE5Y_TG_LAST_IDS') || '[]');
+    if (!ids.length) { sendTelegram_('Không có lần ghi nào để huỷ.'); return; }
+    const idx = idRowMap_(sheet);
+    let n = 0;
+    ids.forEach(id => { const r = idx.map[id]; if (r) { sheet.getRange(r, 9).setValue('Cancelled'); n++; } });
+    props.deleteProperty('FIRE5Y_TG_LAST_IDS');
+    recalculateAccountBalances(ss);
+    sendTelegram_('↩️ Đã huỷ ' + n + ' khoản vừa ghi.');
+    return;
+  }
+
+  let date = new Date();
+  let body = t;
+  const dm = tgStrip_(body).match(/^(hqua|hom qua|hq)\b/);
+  if (dm) { date = new Date(date.getTime() - 864e5); body = body.replace(/^\S+(\s+qua)?\s*/i, ''); }
+  const dateStr = Utilities.formatDate(date, tz, 'yyyy-MM-dd');
+
+  const accSheet = ss.getSheetByName(SHEET_ACCOUNTS);
+  const accounts = accSheet && getRealLastRow(accSheet, 1) > 1 ? accSheet.getRange(2, 1, getRealLastRow(accSheet, 1) - 1, 1).getValues().map(r => String(r[0]).trim()).filter(String) : [];
+  const defAcc = props.getProperty('FIRE5Y_TG_DEFAULT_ACC') || (accounts.indexOf('Tiền mặt') >= 0 ? 'Tiền mặt' : (accounts[0] || 'Tiền mặt'));
+
+  const items = [], bad = [];
+  body.split('\n').forEach((line, i) => {
+    const p = tgParseLine_(line);
+    if (!p) return;
+    if (!p.amount) { bad.push(line.trim()); return; }
+    const a = tgPickAccount_(p.note, accounts, defAcc);
+    const cat = tgGuessCat_(a.note);
+    const isThu = p.forceThu || (cat && TG_THU_CATS_.indexOf(cat) >= 0);
+    const category = cat && (TG_THU_CATS_.indexOf(cat) >= 0) === isThu ? cat : (isThu ? 'Thu khác' : 'Khác');
+    items.push({ id: 'tg' + updateId + '-' + (i + 1), date: dateStr, type: isThu ? 'Thu' : 'Chi', amount: p.amount, category: category, account: a.account, description: a.note, source: 'Telegram', status: 'Confirmed' });
+  });
+
+  if (!items.length) {
+    sendTelegram_('Không đọc được số tiền. Gõ kiểu <code>50k cafe</code> hoặc /help.');
+    return;
+  }
+  const start = getRealLastRow(sheet, 1) + 1;
+  sheet.getRange(start, 1, items.length, 9).setValues(items.map(it => txRow_(it, tz)));
+  recalculateAccountBalances(ss);
+  props.setProperty('FIRE5Y_TG_LAST_IDS', JSON.stringify(items.map(it => it.id)));
+
+  const todayChi = fire5yRows_().filter(r => r.date === Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd') && r.type === 'Chi' && r.category !== TRANSFER_CAT).reduce((s, r) => s + r.amount, 0);
+  let reply = '✅ Đã ghi ' + items.length + ' khoản' + (dm ? ' (hôm qua)' : '') + ':\n' +
+    items.map(it => (it.type === 'Thu' ? '+' : '−') + short_(it.amount) + ' · ' + it.category + ' · ' + it.account + (it.description ? ' · ' + it.description : '')).join('\n') +
+    '\nHôm nay đã chi: ' + short_(todayChi);
+  if (bad.length) reply += '\n⚠️ Bỏ qua (thiếu số tiền): ' + bad.join(', ');
+  reply += '\n/undo để huỷ';
+  sendTelegram_(reply);
+}
+
+// Chạy tay 1 lần sau khi deploy: gắn webhook của bot vào Apps Script này
+function setupTelegramWebhook() {
+  const p = PropertiesService.getScriptProperties();
+  const token = (p.getProperty('TG_BOT_TOKEN') || '').trim();
+  if (!token) throw new Error('Thiếu TG_BOT_TOKEN');
+  const info = JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/getWebhookInfo', { muteHttpExceptions: true }).getContentText());
+  const cur = (info.result && info.result.url) || '';
+  Logger.log('Webhook hiện tại: ' + (cur ? cur.replace(/tg=[^&]+/, 'tg=***') : '(trống)'));
+  if (cur && cur.indexOf(FIRE5Y_EXEC_URL) !== 0) {
+    throw new Error('Bot đang gắn webhook của hệ thống khác, không ghi đè. Gỡ webhook đó trước nếu muốn dùng cho FIRE5Y.');
+  }
+  let hook = p.getProperty('FIRE5Y_TG_HOOK');
+  if (!hook) { hook = Utilities.getUuid().replace(/-/g, ''); p.setProperty('FIRE5Y_TG_HOOK', hook); }
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/setWebhook', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ url: FIRE5Y_EXEC_URL + '?tg=' + hook, allowed_updates: ['message'], drop_pending_updates: true })
+  });
+  Logger.log('setWebhook: ' + r.getResponseCode() + ' ' + r.getContentText());
+  if (r.getResponseCode() === 200) sendTelegram_('🤖 Đã bật ghi chép qua Telegram. Nhắn <code>50k cafe</code> để thử, /help để xem cách gõ.');
 }
