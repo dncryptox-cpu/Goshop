@@ -1155,3 +1155,19 @@ function fire5yMonthlySummary() {
   const prev = periodStats_(rows, ymd_(pFirst), ymd_(pLast));
   sendTelegram_(summaryText_('Tổng kết tháng ' + (first.getMonth() + 1) + '/' + first.getFullYear(), cur, prev));
 }
+
+// Chạy tay để kiểm tra kết nối Telegram (không in token ra log)
+function testTelegram() {
+  const p = PropertiesService.getScriptProperties();
+  const token = (p.getProperty('TG_BOT_TOKEN') || '').trim(), chat = (p.getProperty('TG_CHAT_ID') || '').trim();
+  Logger.log('Có token: ' + !!token + ' | độ dài: ' + token.length + ' | có dấu hai chấm: ' + (token.indexOf(':') > 0));
+  Logger.log('Chat id: ' + chat);
+  if (!token) return;
+  const me = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/getMe', { muteHttpExceptions: true });
+  Logger.log('getMe: ' + me.getResponseCode() + ' ' + me.getContentText().slice(0, 300));
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ chat_id: chat, text: '✅ FIRE5Y test kết nối Telegram' })
+  });
+  Logger.log('sendMessage: ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 300));
+}
