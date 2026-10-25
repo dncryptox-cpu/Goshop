@@ -1282,10 +1282,11 @@ function handleTelegramUpdate_(e) {
       const last = Number(props.getProperty('FIRE5Y_TG_LAST_UPDATE') || 0);
       if (upd.update_id <= last) return ok;
       props.setProperty('FIRE5Y_TG_LAST_UPDATE', String(upd.update_id));
-      tgHandleText_(msg.text, upd.update_id, props);
+      tgHandleText_(msg.text, upd.update_id, props, msg.date);
     } finally { lock.releaseLock(); }
   } catch (err) {
-    try { sendTelegram_('⚠️ FIRE5Y lỗi khi ghi: ' + err.message); } catch (e2) {}
+    console.error(err.stack || err.message);
+    try { sendTelegram_('⚠️ FIRE5Y chưa xử lý được tin vừa nhắn: ' + err.message, true); } catch (e2) {}
   }
   return ok;
 }
@@ -1407,6 +1408,7 @@ function tgPoll() {
   try {
     const offset = Number(props.getProperty('FIRE5Y_TG_LAST_UPDATE') || 0) + 1;
     const res = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/getUpdates?timeout=0&allowed_updates=%5B%22message%22%5D&offset=' + offset, { muteHttpExceptions: true });
+    if (res.getResponseCode() === 409) return; // đang dùng webhook
     if (res.getResponseCode() !== 200) { console.error('getUpdates ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 200)); return; }
     const updates = JSON.parse(res.getContentText()).result || [];
     updates.forEach(u => {
@@ -1486,7 +1488,7 @@ function goshopDayMap_() {
       o.rev += price; o.cost += cost; o.comm += comm; o.misc += misc; o.profit += profit;
     });
   });
-  try { cache.put('GOSHOP_DAYMAP_V1', JSON.stringify(map), 300); } catch (e) {}
+  try { cache.put('GOSHOP_DAYMAP_V1', JSON.stringify(map), 1200); } catch (e) {}
   return map;
 }
 
@@ -1535,4 +1537,40 @@ function overviewText_(title, from, to) {
     t += '\n📈 <b>Trading</b>: ' + (net >= 0 ? '+' : '') + short_(net) + ' (lãi ' + short_(s.trading.thu) + ', lỗ ' + short_(s.trading.chi) + ')';
   }
   return t;
+}
+
+
+// ==========================================
+// 12. WEBHOOK NHANH (Telegram đẩy tin ngay) — thử trước rồi mới bật
+// ==========================================
+// Gọi đúng như Telegram gọi (POST vào web app, ẩn danh) để kiểm tra ghi trong ngữ cảnh web app.
+function tgWebhookSelfTest() {
+  const p = PropertiesService.getScriptProperties();
+  let hook = p.getProperty('FIRE5Y_TG_HOOK');
+  if (!hook) { hook = Utilities.getUuid().replace(/-/g, ''); p.setProperty('FIRE5Y_TG_HOOK', hook); }
+  const prev = p.getProperty('FIRE5Y_TG_LAST_UPDATE');
+  const fakeId = Number(prev || 0) + 1;
+  const t0 = Date.now();
+  const r = UrlFetchApp.fetch(FIRE5Y_EXEC_URL + '?tg=' + hook, {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true, followRedirects: false,
+    payload: JSON.stringify({ update_id: fakeId, message: { message_id: 1, date: Math.floor(Date.now() / 1000), chat: { id: Number(p.getProperty('TG_CHAT_ID')) }, text: '/homnay' } })
+  });
+  Logger.log('Mã trả về: ' + r.getResponseCode() + ' | thời gian: ' + (Date.now() - t0) + 'ms | LAST_UPDATE sau: ' + p.getProperty('FIRE5Y_TG_LAST_UPDATE'));
+  // trả lại mốc cũ để không bỏ sót tin thật
+  if (prev === null) p.deleteProperty('FIRE5Y_TG_LAST_UPDATE'); else p.setProperty('FIRE5Y_TG_LAST_UPDATE', prev);
+}
+
+// Bật webhook: tin tới là xử lý ngay. Telegram vẫn gửi lại vì Apps Script trả 302,
+// nhưng bản gửi lại bị bỏ qua nhờ chống trùng update_id. Trigger tgPoll được gỡ.
+function setupTelegramWebhookFast() {
+  const p = PropertiesService.getScriptProperties();
+  const token = (p.getProperty('TG_BOT_TOKEN') || '').trim();
+  let hook = p.getProperty('FIRE5Y_TG_HOOK');
+  if (!hook) { hook = Utilities.getUuid().replace(/-/g, ''); p.setProperty('FIRE5Y_TG_HOOK', hook); }
+  ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'tgPoll') ScriptApp.deleteTrigger(t); });
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/setWebhook', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    payload: JSON.stringify({ url: FIRE5Y_EXEC_URL + '?tg=' + hook, allowed_updates: ['message'], max_connections: 1 })
+  });
+  Logger.log('setWebhook: ' + r.getContentText());
 }
