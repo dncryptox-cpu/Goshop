@@ -1381,6 +1381,7 @@ function tgHandleText_(text, updateId, props, msgDate) {
 
 // Chạy tay 1 lần sau khi deploy: gắn webhook của bot vào Apps Script này
 function setupTelegramWebhook() {
+  throw new Error('Webhook vào Apps Script làm kẹt hàng đợi Telegram. Dùng setupTelegramPolling().');
   const p = PropertiesService.getScriptProperties();
   const token = (p.getProperty('TG_BOT_TOKEN') || '').trim();
   if (!token) throw new Error('Thiếu TG_BOT_TOKEN');
@@ -1572,6 +1573,9 @@ function tgWebhookSelfTest() {
 // Bật webhook: tin tới là xử lý ngay. Telegram vẫn gửi lại vì Apps Script trả 302,
 // nhưng bản gửi lại bị bỏ qua nhờ chống trùng update_id. Trigger tgPoll được gỡ.
 function setupTelegramWebhookFast() {
+  // KHÔNG DÙNG (25/10/2026): Apps Script luôn trả 302 → Telegram coi tin đầu hàng là lỗi, gửi lại mãi
+  // và chặn mọi tin phía sau (max_connections 1). Bot đã bị kẹt từ 10:49 tới 14:10. Dùng setupTelegramPolling().
+  throw new Error('Webhook vào Apps Script làm kẹt hàng đợi Telegram. Dùng setupTelegramPolling().');
   const p = PropertiesService.getScriptProperties();
   const token = (p.getProperty('TG_BOT_TOKEN') || '').trim();
   let hook = p.getProperty('FIRE5Y_TG_HOOK');
