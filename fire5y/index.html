@@ -94,6 +94,12 @@ h2{font-size:17px;font-weight:700}
 .day.future .d{color:var(--ink-3)}
 .day .inc{position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--gold)}
 .day .bill{position:absolute;top:5px;left:5px;width:6px;height:6px;border-radius:2px;border:1.5px solid var(--berry)}
+.daytip{position:fixed;z-index:30;width:260px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:10px 12px;font-size:13px;pointer-events:none;display:flex;flex-direction:column;gap:6px}
+.daytip .h{display:flex;justify-content:space-between;gap:8px;font-weight:600}
+.daytip .r{display:flex;justify-content:space-between;gap:10px;min-width:0}
+.daytip .r span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
+.daytip .r span:last-child{font-family:var(--f-mono);white-space:nowrap}
+.daytip .more{color:var(--ink-3);font-size:12px}
 .legend{display:flex;gap:10px;align-items:center;font-size:11px;color:var(--ink-3);flex-wrap:wrap}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
 
@@ -363,7 +369,7 @@ function render(){
   $('#app').innerHTML = v();
   if (UI.view==='cal') bindCal();
 }
-function go(v){ UI.view = v; try{sessionStorage.setItem('fire5y_view', v);}catch(e){} render(); window.scrollTo(0,0); }
+function go(v){ const tp = document.getElementById('daytip'); if (tp) tp.hidden = true; UI.view = v; try{sessionStorage.setItem('fire5y_view', v);}catch(e){} render(); window.scrollTo(0,0); }
 
 function sampleBanner(){
   return S.sample ? `<div class="banner"><span>Đang xem <b>dữ liệu mẫu</b> để thử app.</span><button data-act="clear-sample">Xoá mẫu, bắt đầu thật</button></div>` : '';
@@ -514,7 +520,35 @@ function catBars(list){
       <div class="bar-track"><div class="bar-fill ${cls}" style="width:${Math.min(100,pct*100).toFixed(1)}%"></div></div></div>`;
   }).join('')}</div></section>`;
 }
+function dayTipHtml(ds){
+  const list = S.tx.filter(t=>t.date===ds && !(t.transfer && t.type==='Thu'));
+  const d = parseD(ds), s = sums(list);
+  const head = `<div class="h"><span>${d.getDate()}/${d.getMonth()+1}</span><span class="num">${s.chi?'<span class="neg">−'+compact(s.chi)+'</span>':''}${s.thu?' <span class="pos">+'+compact(s.thu)+'</span>':''}</span></div>`;
+  if (!list.length) return head + '<div class="more">Chưa có khoản nào</div>';
+  const rows = list.slice(0,8).map(t => {
+    if (t.transfer) { const to = S.tx.find(x=>x.pair && x.pair===t.pair && x.id!==t.id); return `<div class="r"><span>${esc(t.account)} → ${esc(to?to.account:'?')}</span><span class="muted">${compact(t.amount)}</span></div>`; }
+    return `<div class="r"><span>${esc(t.note || t.category)} · ${esc(t.category)}</span><span class="${t.type==='Thu'?'pos':''}">${t.type==='Thu'?'+':'−'}${compact(t.amount)}</span></div>`;
+  }).join('');
+  return head + rows + (list.length > 8 ? `<div class="more">+${list.length-8} khoản nữa · bấm để xem hết</div>` : '');
+}
+function bindDayTips(){
+  if (!window.matchMedia || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  let tip = document.getElementById('daytip');
+  if (!tip) { tip = document.createElement('div'); tip.id = 'daytip'; tip.className = 'daytip'; tip.hidden = true; document.body.appendChild(tip); }
+  tip.hidden = true;
+  document.querySelectorAll('[data-day]').forEach(el => {
+    el.addEventListener('mouseenter', () => {
+      tip.innerHTML = dayTipHtml(el.dataset.day); tip.hidden = false;
+      const r = el.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+      let left = Math.min(Math.max(8, r.left + r.width/2 - tw/2), innerWidth - tw - 8);
+      let top = r.bottom + 6; if (top + th > innerHeight - 8) top = Math.max(8, r.top - th - 6);
+      tip.style.left = left + 'px'; tip.style.top = top + 'px';
+    });
+    el.addEventListener('mouseleave', () => { tip.hidden = true; });
+  });
+}
 function bindCal(){
+  bindDayTips();
   let lastTap = {ds:null, t:0};
   document.querySelectorAll('[data-day]').forEach(el => el.addEventListener('click', () => {
     const ds = el.dataset.day, t = Date.now();
