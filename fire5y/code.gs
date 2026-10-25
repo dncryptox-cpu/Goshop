@@ -1068,14 +1068,19 @@ function setupFire5yTriggers() {
   sendTelegram_('✅ FIRE5Y đã bật: nhắc ghi chép 21h mỗi ngày, tổng kết tuần tối Chủ nhật, tổng kết tháng sáng ngày 1.');
 }
 
-function sendTelegram_(text) {
+function sendTelegram_(text, plain) {
   const p = PropertiesService.getScriptProperties();
-  const token = p.getProperty('TG_BOT_TOKEN'), chat = p.getProperty('TG_CHAT_ID');
+  const token = (p.getProperty('TG_BOT_TOKEN') || '').trim(), chat = (p.getProperty('TG_CHAT_ID') || '').trim();
   if (!token || !chat) throw new Error('Thiếu TG_BOT_TOKEN hoặc TG_CHAT_ID trong Script Properties');
-  UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    payload: JSON.stringify({ chat_id: chat, text: text, parse_mode: 'HTML', disable_web_page_preview: true })
+  const body = { chat_id: chat, text: text, disable_web_page_preview: true };
+  if (!plain) body.parse_mode = 'HTML';
+  const r = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/sendMessage', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true, payload: JSON.stringify(body)
   });
+  if (r.getResponseCode() !== 200) {
+    console.error('Telegram sendMessage ' + r.getResponseCode() + ': ' + r.getContentText().slice(0, 300));
+    if (!plain) sendTelegram_(text.replace(/<[^>]+>/g, ''), true); // gửi lại dạng text thường
+  }
 }
 
 function fire5yRows_() {
@@ -1278,7 +1283,7 @@ function handleTelegramUpdate_(e) {
   return ok;
 }
 
-function tgHandleText_(text, updateId, props) {
+function tgHandleText_(text, updateId, props, msgDate) {
   const t = String(text).trim();
   const ss = getTargetSpreadsheet(props.getProperty('FIRE5Y_USER'));
   const sheet = ss.getSheetByName(SHEET_DATA);
@@ -1300,7 +1305,7 @@ function tgHandleText_(text, updateId, props) {
     return;
   }
 
-  let date = new Date();
+  let date = msgDate ? new Date(msgDate * 1000) : new Date();
   let body = t;
   const dm = tgStrip_(body).match(/^(hqua|hom qua|hq)\b/);
   if (dm) { date = new Date(date.getTime() - 864e5); body = body.replace(/^\S+(\s+qua)?\s*/i, ''); }
@@ -1359,4 +1364,51 @@ function setupTelegramWebhook() {
   });
   Logger.log('setWebhook: ' + r.getResponseCode() + ' ' + r.getContentText());
   if (r.getResponseCode() === 200) sendTelegram_('🤖 Đã bật ghi chép qua Telegram. Nhắn <code>50k cafe</code> để thử, /help để xem cách gõ.');
+}
+
+
+// ==========================================
+// 10. NHẬN TIN TELEGRAM BẰNG POLLING (thay webhook)
+// ==========================================
+// Webhook vào Apps Script luôn trả 302 nên Telegram gửi lại mãi. Polling mỗi phút bằng trigger thì ổn định:
+// chạy setupTelegramPolling() một lần — nó gỡ webhook và tạo trigger tgPoll mỗi phút.
+
+function tgPoll() {
+  const props = PropertiesService.getScriptProperties();
+  const token = (props.getProperty('TG_BOT_TOKEN') || '').trim();
+  const chat = (props.getProperty('TG_CHAT_ID') || '').trim();
+  if (!token) return;
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;
+  try {
+    const offset = Number(props.getProperty('FIRE5Y_TG_LAST_UPDATE') || 0) + 1;
+    const res = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/getUpdates?timeout=0&allowed_updates=%5B%22message%22%5D&offset=' + offset, { muteHttpExceptions: true });
+    if (res.getResponseCode() !== 200) { console.error('getUpdates ' + res.getResponseCode() + ': ' + res.getContentText().slice(0, 200)); return; }
+    const updates = JSON.parse(res.getContentText()).result || [];
+    updates.forEach(u => {
+      props.setProperty('FIRE5Y_TG_LAST_UPDATE', String(u.update_id)); // đánh dấu trước để lỗi không làm ghi lặp
+      const msg = u.message;
+      if (!msg || !msg.text || String(msg.chat.id) !== chat) return;
+      try {
+        tgHandleText_(msg.text, u.update_id, props, msg.date);
+      } catch (err) {
+        console.error(err.stack || err.message);
+        sendTelegram_('⚠️ FIRE5Y chưa ghi được "' + msg.text.slice(0, 60) + '": ' + err.message, true);
+      }
+    });
+  } finally { lock.releaseLock(); }
+}
+
+function setupTelegramPolling() {
+  const p = PropertiesService.getScriptProperties();
+  const token = (p.getProperty('TG_BOT_TOKEN') || '').trim();
+  if (!token) throw new Error('Thiếu TG_BOT_TOKEN');
+  const info = JSON.parse(UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/getWebhookInfo', { muteHttpExceptions: true }).getContentText()).result || {};
+  if (info.url && info.url.indexOf(FIRE5Y_EXEC_URL) !== 0) throw new Error('Bot đang gắn webhook của hệ thống khác, không gỡ.');
+  // gỡ webhook FIRE5Y + bỏ các tin đang kẹt (Telegram gửi lại vì lỗi 302)
+  const d = UrlFetchApp.fetch('https://api.telegram.org/bot' + token + '/deleteWebhook?drop_pending_updates=true', { muteHttpExceptions: true });
+  Logger.log('deleteWebhook: ' + d.getContentText());
+  ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'tgPoll') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('tgPoll').timeBased().everyMinutes(1).create();
+  sendTelegram_('🤖 FIRE5Y: đã chuyển sang nhận tin mỗi phút. Nhắn lại khoản chi để ghi (vd <code>40k đi chợ</code>), bot trả lời trong vòng 1 phút. /help xem cách gõ.');
 }
