@@ -696,11 +696,12 @@
         <template x-if="slotFilter === 'mp'">
           <div>
             <div class="mute" style="font-size:13px;margin-bottom:10px"><b>Webapp không tự sửa gì</b> (chỉ ghi khi bạn bấm Gộp). Đỏ = email khách trùng 2 chỗ hoặc mail phụ đang là khách ở dòng khác (gần như chắc chắn dư slot). Vàng = có mail phụ chưa ghi "hủy" (có thể nhân viên cũ đã mời cả mail phụ). Bạn đăng nhập fam, so với nhóm Gia đình rồi tự xoá / đổi.</div>
+            <input type="search" x-model="mpQ" placeholder="Tìm email / mail phụ / RN trong điểm đáng ngờ…" class="mono" style="width:100%;margin-bottom:10px">
             <template x-if="(mp.merges || []).length">
               <div class="card" style="border-color:var(--warn)">
-                <b x-text="'Gộp dòng thiếu data (' + mp.merges.length + ' cặp)'"></b>
+                <b x-text="'Gộp dòng thiếu data (' + mpMerges().length + (mpQ.trim().length >= 2 ? '/' + mp.merges.length : '') + ' cặp)'"></b>
                 <div class="mute" style="font-size:12px;margin-bottom:6px">Dòng chỉ có email (thiếu Ngày mua / Số tháng) + dòng có đủ data cùng email (vd ở fam cũ đã Banned) hoặc có Mail phụ ghi đúng email đó. <b>Chọn giữ slot nào</b> rồi bấm Gộp. Giữ slot thiếu data: slot đó nhận Ngày mua, Số tháng, CTV của dòng kia, Mail phụ = mail cũ; dòng kia xoá trắng. Giữ slot có data: dòng chỉ có email xoá trắng. Không chép xuống cuối sheet, data cũ nằm trong tab Lịch sử (Hoàn tác được).</div>
-                <template x-for="m in mp.merges" :key="m.bare.row + '_' + m.data.row">
+                <template x-for="m in mpMerges()" :key="m.bare.row + '_' + m.data.row">
                   <div style="padding:8px 0;border-top:1px solid var(--line)">
                     <label class="row" style="gap:8px;cursor:pointer;font-size:13px"><input type="radio" :name="'mg' + m.bare.row + '_' + m.data.row" value="bare" x-model="m.keep" :disabled="!!m.done">
                       <span class="grow"><b x-text="m.bare.rn"></b> dòng <span x-text="m.bare.row"></span> · <span class="mono" x-text="m.bare.email"></span> <span class="badge warn">thiếu data</span></span></label>
@@ -716,7 +717,7 @@
             </template>
             <template x-if="mp.loading"><div class="empty">Đang tải…</div></template>
             <template x-if="mp.loaded && !mp.items.length"><div class="empty">Không thấy điểm đáng ngờ nào.</div></template>
-            <template x-for="f in mp.items" :key="f.rn">
+            <template x-for="f in mpItems()" :key="f.rn">
               <div class="card">
                 <div class="row" style="gap:8px;flex-wrap:wrap">
                   <div class="rn" x-text="f.rn"></div>
@@ -1341,7 +1342,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
-    tab: 'due', ahead: 2, dueDay: '', syncInfo: '', loading: false, error: '', lastDone: '', notify: null,
+    tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', notify: null,
     slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
@@ -1664,6 +1665,9 @@ function app() {
       } catch (e) { this.error = e.message; }
       m.busy = false;
     },
+    mpHit(...xs) { const q = String(this.mpQ || '').trim().toLowerCase(); return q.length < 2 || xs.some(x => String(x || '').toLowerCase().includes(q)); },
+    mpMerges() { return (this.mp.merges || []).filter(m => this.mpHit(m.bare.email, m.bare.rn, m.data.email, m.data.rn, m.data.mailPhu)); },
+    mpItems() { return (this.mp.items || []).filter(f => this.mpHit(f.rn, f.email, ...(f.rows || []).flatMap(r => [r.email, r.mailPhu]))); },
     async loadMp() {
       this.mp = { items: this.mp.items || [], loading: true, loaded: this.mp.loaded };
       try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, merges: (d.merges || []).map(m => Object.assign(m, { keep: '', busy: false, confirm: false, done: '' })), loading: false, loaded: true }; }
