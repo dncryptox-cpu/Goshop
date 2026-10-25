@@ -408,7 +408,7 @@ function historyMonths(n){
 }
 
 /* ================= trạng thái UI ================= */
-const now0 = new Date();
+let now0 = new Date();
 const UI = {view:'cal', y:now0.getFullYear(), m:now0.getMonth(), sel:todayS()};
 UI.scope = 'all';
 try { const v = sessionStorage.getItem('fire5y_view'); if (v) UI.view = v; const sc = sessionStorage.getItem('fire5y_scope'); if (sc) UI.scope = sc; } catch(e) {}
@@ -711,7 +711,7 @@ function openAdd({date, edit} = {}){
   if (edit && edit.transfer) return openTransfer({edit});
   ADD.edit = edit || null;
   if (edit){ ADD.type = edit.type; ADD.cat = edit.category; ADD.date = edit.date; ADD.acc = edit.account; }
-  else { ADD.type = 'Chi'; ADD.cat = null; ADD.date = date || (UI.sel <= todayS() ? UI.sel : todayS()); ADD.acc = S.set.lastAcc; }
+  else { ADD.type = 'Chi'; ADD.cat = null; ADD.date = date || todayS(); ADD.acc = S.set.lastAcc; }
   if (!S.accounts.some(a=>a.name===ADD.acc)) ADD.acc = (S.accounts[0]||{}).name || 'Tiền mặt';
   openSheet(`<div class="grab"></div>
     <div class="row between"><h2>${edit ? 'Sửa khoản' : 'Ghi nhanh'}</h2>${edit?`<button class="btn ghost danger" data-act="del-tx">Xoá</button>`:''}</div>
@@ -1308,19 +1308,32 @@ async function pull(silent){
     for (const c of ds.data||[]) if (c.name && !S.cats.some(x=>x.name===c.name)) { S.cats.push({name:String(c.name), type:c.type==='Thu'?'Thu':'Chi', budget:+c.budget||0}); addedC++; }
     for (const a of acc.data||[]) if (a.name && !S.accounts.some(x=>x.name===a.name)) { S.accounts.push({name:String(a.name), initial:+a.initialBalance||0}); addedA++; }
     const haveSig = new Set(S.tx.map(sig)), haveId = new Set(S.tx.map(t=>t.id));
-    let added = 0;
+    let added = 0, changed = 0, removed = 0;
+    const live = new Set((tx.data||[]).filter(r => r.status !== 'Cancelled').map(r => String(r.id)));
+    const byId = {}; S.tx.forEach(t => byId[t.id] = t);
     for (const r of tx.data||[]) {
       if (!r.date || !r.amount || r.status === 'Cancelled') continue;
       const id = String(r.id);
       const t = {id, date:String(r.date).slice(0,10), type:r.type==='Thu'?'Thu':'Chi', amount:+r.amount, category:String(r.category||'Khác'), note:String(r.description||''), account:String(r.account||'Tiền mặt'), synced:true, up:true};
       if (t.category === TRANSFER_CAT) { t.transfer = true; t.pair = 'p' + id; }
+      const cur = byId[id];
+      if (cur && cur.synced && !cur.sample) {   // sửa ở nơi khác (Sheet, Telegram, máy khác) → nhận bản trên Sheet
+        const f = ['date','type','amount','category','note','account'];
+        if (f.some(k => String(cur[k]) !== String(t[k]))) { f.forEach(k => cur[k] = t[k]); changed++; }
+        continue;
+      }
       if (haveId.has(id) || haveSig.has(sig(t))) continue;
       haveSig.add(sig(t)); haveId.add(id); S.tx.push(t); added++;
       if (!S.accounts.some(a=>a.name===t.account)) { S.accounts.push({name:t.account, initial:0}); addedA++; }
       if (!t.transfer && !S.cats.some(c=>c.name===t.category)) S.cats.push({name:t.category, type:t.type, budget:0});
     }
+    if (live.size) {   // xoá ở nơi khác → bỏ trên máy (bảo vệ: Sheet trả rỗng thì không xoá gì)
+      const before = S.tx.length;
+      S.tx = S.tx.filter(t => !(t.up && t.synced && !t.sample && !live.has(t.id)));
+      removed = before - S.tx.length;
+    }
     S.sync.last = Date.now(); save(); render();
-    if (!silent || added) toast(`Đã nhận ${added} khoản${addedC?`, ${addedC} danh mục`:''}${addedA?`, ${addedA} ví`:''} từ Sheet`);
+    if (!silent || added || changed || removed) toast(`Từ Sheet: ${added} khoản mới${changed?`, ${changed} khoản đã sửa`:''}${removed?`, ${removed} khoản đã xoá`:''}${addedC?`, ${addedC} danh mục`:''}${addedA?`, ${addedA} ví`:''}`);
   } catch(e){ if (!silent) toast('Không tải được: ' + (e.message||'lỗi kết nối')); }
 }
 
@@ -1473,7 +1486,13 @@ async function autoSync(){
   lastSync = Date.now();
   await push(true); await pull(true); await syncState(); await fetchGoshop();
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
+// để tab qua đêm: sang ngày mới thì đưa lịch về hôm nay
+function checkNewDay(){
+  const t = todayS();
+  if (ymd(now0) !== t) { now0 = new Date(); UI.y = now0.getFullYear(); UI.m = now0.getMonth(); UI.sel = t; render(); }
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { checkNewDay(); autoSync(); } });
+setInterval(checkNewDay, 60*1000);
 autoSync();
 })();
 </script>
