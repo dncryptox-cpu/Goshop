@@ -7,7 +7,9 @@
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
 <style>
   :root{--bg:#f6f6f3;--card:#fff;--ink:#1b1b18;--mute:#6d6d66;--line:#e4e3dc;--acc:#1f6f4a;--warn:#b4540a;--bad:#b42318;--ok:#1f6f4a;--chip:#efeee8;--blue:#2f6fd6}
-  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#141413;--card:#1d1d1b;--ink:#ecebe4;--mute:#9b9a92;--line:#2f2f2b;--acc:#3fa673;--warn:#e3913f;--bad:#ef6b5e;--ok:#57c08a;--chip:#262623;--blue:#6ea0f0}}
+  @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){color-scheme:dark;--bg:#141413;--card:#1d1d1b;--ink:#ecebe4;--mute:#9b9a92;--line:#2f2f2b;--acc:#3fa673;--warn:#e3913f;--bad:#ef6b5e;--ok:#57c08a;--chip:#262623;--blue:#6ea0f0}}
+  :root{color-scheme:light dark}
+  a{color:var(--blue)}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
   button,input,select{font:inherit}
@@ -43,6 +45,8 @@
   .form{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:8px}
   .err{color:var(--bad);margin:8px 0}
   .okbox{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ok);padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:14px}
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.ed{min-width:820px}
   table.ed td{padding:4px 6px}
   input.ghost,select.ghost{border-color:transparent;background:transparent;padding:3px 5px}
   input.ghost:hover,select.ghost:hover{border-color:var(--line)}
@@ -85,6 +89,28 @@
         <button class="btn pri" @click="famForm = famForm ? null : blankFam()">+ Thêm fam</button>
       </div>
 
+      <template x-if="famForm">
+        <div class="card">
+          <b x-text="famForm.row ? 'Sửa ' + famForm.id : 'Thêm fam Google One'"></b>
+          <div class="form" style="border-style:solid;background:color-mix(in srgb,var(--ok) 5%,transparent)">
+            <input placeholder="Dán nhanh cả dòng: email  pass  mail khôi phục  2FA (copy từ sheet, cách nhau bằng tab / | / dấu cách)" style="flex:1;min-width:300px" class="mono" @paste.prevent="quickFam($event.clipboardData.getData('text'))" @change="quickFam($event.target.value); $event.target.value=''">
+          </div>
+          <div class="form" @paste="pasteSplit($event)">
+            <input placeholder="Mã (để trống = tự đặt GGn)" x-model="famForm.id" style="width:150px" :disabled="!!famForm.row">
+            <input placeholder="Email chủ fam" x-model="famForm.email" style="width:240px" class="mono">
+            <input placeholder="Pass" x-model="famForm.pass" style="width:140px" class="mono">
+            <input placeholder="Mail khôi phục" x-model="famForm.mkp" style="width:220px" class="mono">
+            <input placeholder="2FA secret" x-model="famForm.twofa" style="width:260px" class="mono">
+            <select x-model="famForm.plan"><option>2TB</option><option>5TB</option><option>1TB</option><option>500GB</option></select>
+            <label class="mute" style="font-size:13px">Renew <input type="date" x-model="famForm.renewIso"></label>
+            <select x-model="famForm.status"><option>Hoạt động</option><option>Tạm dừng</option><option>Đã đóng</option></select>
+            <input placeholder="Ghi chú" x-model="famForm.note" style="flex:1;min-width:160px">
+            <button class="btn" @click="famForm = null">Huỷ</button>
+            <button class="btn pri" @click="saveFam()" :disabled="busy" x-text="busy ? 'Đang lưu…' : 'Lưu'"></button>
+          </div>
+        </div>
+      </template>
+
       <div class="chips">
         <button class="chip" :class="view==='fam' && 'on'" @click="view='fam'" x-text="'Fam (' + fams.length + ')'"></button>
         <button class="chip" :class="view==='due' && 'on'" @click="view='due'" x-text="'Sắp hết hạn ≤10 ngày (' + dueList().length + ')'"></button>
@@ -116,7 +142,7 @@
                 · <a href="https://one.google.com/family" target="_blank" rel="noopener">Gia đình ↗</a>
               </div>
               <div class="mute" style="font-size:12px" x-show="f.note" x-text="f.note"></div>
-              <table class="ed">
+              <div class="tw"><table class="ed">
                 <thead><tr><th>Khách</th><th>CTV</th><th>Mua</th><th>Tháng</th><th>HSD</th><th>Còn</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
                   <template x-for="c in f.customers" :key="c.row">
@@ -125,7 +151,7 @@
                         <div class="row" style="gap:4px;flex-wrap:nowrap"><input class="ghost" placeholder="mail phụ" x-model="c.mailPhu" @change="saveCus(c)" style="width:150px"><input class="ghost" placeholder="ghi chú" x-model="c.note" @change="saveCus(c)" style="width:120px"></div>
                         <template x-if="c.rn"><div class="form">
                           <b style="font-size:13px">Gia hạn</b>
-                          <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="c.rn.months===m && 'on'" @click="c.rn.months=m" x-text="m + 'th'"></button></template>
+                          <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="c.rn?.months===m && 'on'" @click="c.rn && (c.rn.months=m)" x-text="m + 'th'"></button></template>
                           <span class="mute" style="font-size:13px">tặng</span><input type="number" min="0" style="width:64px" x-model.number="c.rn.bonus"><span class="mute" style="font-size:13px">ngày</span>
                           <label class="mute" style="font-size:13px" x-show="c.daysLeft !== null && c.daysLeft < 0"><input type="checkbox" x-model="c.rn.fromToday"> tính từ hôm nay</label>
                           <select x-model="c.rn.sku"><option value="">Không ghi tài chính</option><template x-for="s in skus" :key="s.sku"><option :value="s.sku" x-text="s.sku + ' · ' + s.price.toLocaleString('vi-VN') + 'đ'"></option></template></select>
@@ -161,7 +187,7 @@
                     </tr>
                   </template>
                 </tbody>
-              </table>
+              </table></div>
             </div>
           </template>
         </div>
