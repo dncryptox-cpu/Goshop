@@ -431,6 +431,12 @@ function doPost(e) {
     if (action === 'get_state') return handleGetState(data);
     if (action === 'set_state') return handleSetState(data);
 
+    if (action === 'goshop_days') {
+      const map = goshopDayMap_(), out = {};
+      Object.keys(map).forEach(d => { if (d >= data.from && d <= data.to) out[d] = { n: map[d].n, profit: map[d].profit, rev: map[d].rev }; });
+      return respondJSON({ status: "success", data: out });
+    }
+
     if (action === 'goshop_stats') {
       const out = {};
       (data.periods || []).slice(0, 12).forEach(p => { if (p && p.key && p.from && p.to) out[p.key] = goshopStats_(p.from, p.to); });

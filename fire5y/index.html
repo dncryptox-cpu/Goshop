@@ -102,6 +102,9 @@ h2{font-size:17px;font-weight:700}
 .daytip .r span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
 .daytip .r span:last-child{font-family:var(--f-mono);white-space:nowrap}
 .daytip .more{color:var(--ink-3);font-size:12px}
+.day .gp{font-family:var(--f-mono);font-size:9.5px;font-weight:600;color:var(--moss);white-space:nowrap;line-height:1}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);cursor:pointer;user-select:none}
+.chk input{width:18px;height:18px;accent-color:var(--accent);margin:0}
 .legend{display:flex;gap:10px;align-items:center;font-size:11px;color:var(--ink-3);flex-wrap:wrap}
 .legend i{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:4px}
 
@@ -473,6 +476,7 @@ function viewCal(){
   const spendDays = Object.values(byDay).filter(v=>v.varChi>0).length;
   const personalView = UI.scope === 'all' || UI.scope === 'personal';
   const base = personalView && b.base > 0 ? b.base : ((s.varChi / Math.max(1, spendDays)) * 1.2 || 1);
+  const gsDays = showGsCal() ? goshopDaysFor(y, m) : null;
   let cells = ['T2','T3','T4','T5','T6','T7','CN'].map(d=>`<div class="dow">${d}</div>`).join('');
   for (let i=0;i<off;i++) cells += '<div class="day empty"></div>';
   for (let d=1; d<=n; d++){
@@ -482,7 +486,7 @@ function viewCal(){
     const cls = ['day', h, ds===t?'today':'', ds===UI.sel?'sel':'', ds>t?'future':''].join(' ');
     cells += `<button class="${cls}" data-day="${ds}" aria-label="Ngày ${d}${info?', chi '+compact(info.chi):''}">
       ${info && info.thu ? '<span class="inc"></span>' : ''}${billDays.has(d) && ds>=t ? '<span class="bill"></span>' : ''}
-      <span class="d">${d}</span><span class="s">${info && info.chi ? compact(info.chi) : ''}</span></button>`;
+      <span class="d">${d}</span><span class="s">${info && info.chi ? compact(info.chi) : ''}</span>${gsDays && gsDays[ds] && gsDays[ds].n ? `<span class="gp ${gsDays[ds].profit>=0?'':'neg'}">+${compact(gsDays[ds].profit)}</span>` : ''}</button>`;
   }
 
   const saveRate = s.thu ? (s.thu - s.chi)/s.thu*100 : 0;
@@ -505,6 +509,7 @@ function viewCal(){
     <div class="cal">${cells}</div>
     <div class="legend"><span><i style="background:var(--h1)"></i>nhẹ</span><span><i style="background:var(--h2)"></i>trong hạn mức</span><span><i style="background:var(--h3)"></i>hơi quá</span><span><i style="background:var(--h4)"></i>vượt mạnh</span><span><i style="background:var(--gold);border-radius:50%;width:8px;height:8px"></i>có thu</span></div>
     <div class="hint">Chạm để xem ngày · chạm đúp để ghi nhanh cho ngày đó</div>
+    ${S.sync.user && !S.sample && (UI.scope==='all' || UI.scope==='biz') ? `<label class="chk"><input type="checkbox" id="calGs" ${S.set.showGoshopCal ? 'checked' : ''}> Hiện lãi Goshop trên lịch${S.set.showGoshopCal && !gsDays ? ' <span class="hint">· đang tải…</span>' : ''}</label>` : ''}
   </section>
   <section class="section">
     <div class="row between"><h2>Tháng ${m+1}${UI.scope!=='all' ? ' · ' + SCOPES[UI.scope] : ''}</h2><button class="btn" data-act="summary">Tổng kết tuần / tháng</button></div>
@@ -517,6 +522,23 @@ function viewCal(){
   ${walletCard()}
   ${b.pool > 0 && personalView ? paceCard(y,m,monthTx(y,m,'personal'),b) : ''}
   ${catBars(list)}`;
+}
+function showGsCal(){ return !!(S.set.showGoshopCal && S.sync.user && !S.sample && (UI.scope==='all' || UI.scope==='biz')); }
+function goshopDaysFor(y, m){
+  const k = `${y}-${pad(m+1)}`, c = S.goshopDays && S.goshopDays[k];
+  if (!c || Date.now() - c.at > 10*60*1000) fetchGoshopDays(y, m);
+  return c ? c.data : null;
+}
+async function fetchGoshopDays(y, m){
+  const k = `${y}-${pad(m+1)}`;
+  if (fetchGoshopDays.busy === k || !S.sync.token) return; fetchGoshopDays.busy = k;
+  try {
+    const j = await api({action:'goshop_days', user:S.sync.user, from:`${k}-01`, to:`${k}-${pad(dim(y,m))}`});
+    S.goshopDays = {...(S.goshopDays||{}), [k]: {at: Date.now(), data: j.data || {}}};
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+    if (UI.view==='cal' && UI.y===y && UI.m===m) render();
+  } catch(e) { /* Apps Script cũ chưa có lệnh này */ }
+  finally { fetchGoshopDays.busy = null; }
 }
 function goshopCard(){
   if (!S.sync.user || S.sample) return '';
@@ -615,10 +637,12 @@ function catBars(list){
   }).join('')}</div></section>`;
 }
 function dayTipHtml(ds){
-  const list = S.tx.filter(t=>t.date===ds && !(t.transfer && t.type==='Thu'));
+  const list = S.tx.filter(t=>t.date===ds && !(t.transfer && t.type==='Thu') && (t.transfer ? UI.scope==='all' : inScope(t, UI.scope)));
   const d = parseD(ds), s = sums(list);
-  const head = `<div class="h"><span>${d.getDate()}/${d.getMonth()+1}</span><span class="num">${s.chi?'<span class="neg">−'+compact(s.chi)+'</span>':''}${s.thu?' <span class="pos">+'+compact(s.thu)+'</span>':''}</span></div>`;
-  if (!list.length) return head + '<div class="more">Chưa có khoản nào</div>';
+  const gk = ds.slice(0,7), gd = showGsCal() && S.goshopDays && S.goshopDays[gk] && S.goshopDays[gk].data[ds];
+  const head = `<div class="h"><span>${d.getDate()}/${d.getMonth()+1}${UI.scope!=='all' ? ' · ' + SCOPES[UI.scope] : ''}</span><span class="num">${s.chi?'<span class="neg">−'+compact(s.chi)+'</span>':''}${s.thu?' <span class="pos">+'+compact(s.thu)+'</span>':''}</span></div>`
+    + (gd && gd.n ? `<div class="r"><span>🏪 Goshop · ${gd.n} đơn · DT ${compact(gd.rev)}</span><span class="pos">+${compact(gd.profit)}</span></div>` : '');
+  if (!list.length) return head + `<div class="more">${UI.scope!=='all' ? 'Không có khoản ' + SCOPES[UI.scope].toLowerCase() : 'Chưa có khoản nào'}</div>`;
   const rows = list.slice(0,8).map(t => {
     if (t.transfer) { const to = S.tx.find(x=>x.pair && x.pair===t.pair && x.id!==t.id); return `<div class="r"><span>${esc(t.account)} → ${esc(to?to.account:'?')}</span><span class="muted">${compact(t.amount)}</span></div>`; }
     return `<div class="r"><span>${esc(t.note || t.category)} · ${esc(t.category)}</span><span class="${t.type==='Thu'?'pos':''}">${t.type==='Thu'?'+':'−'}${compact(t.amount)}</span></div>`;
@@ -655,11 +679,14 @@ function bindCal(){
 
 /* ---- sheet ngày ---- */
 function openDay(ds){
-  const list = S.tx.filter(t=>t.date===ds).sort((a,b)=>(a.type>b.type?-1:1));
+  const list = S.tx.filter(t=>t.date===ds && (t.transfer ? UI.scope==='all' : inScope(t, UI.scope))).sort((a,b)=>(a.type>b.type?-1:1));
   const d = parseD(ds), s = sums(list);
+  const gk = ds.slice(0,7), gd = showGsCal() && S.goshopDays && S.goshopDays[gk] && S.goshopDays[gk].data[ds];
   const wd = ['Chủ nhật','Thứ 2','Thứ 3','Thứ 4','Thứ 5','Thứ 6','Thứ 7'][d.getDay()];
   openSheet(`<div class="row between"><div><div class="eyebrow">${wd}</div><h2>${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}</h2></div>
     <div class="num" style="text-align:right"><div class="neg">−${compact(s.chi)}</div>${s.thu?`<div class="pos">+${compact(s.thu)}</div>`:''}</div></div>
+    ${UI.scope!=='all' ? `<div class="hint">Đang lọc: ${SCOPES[UI.scope]}</div>` : ''}
+    ${gd && gd.n ? `<div class="kv"><span>🏪 Goshop · ${gd.n} đơn · DT ${compact(gd.rev)}</span><span class="num pos">lãi ${compact(gd.profit)}</span></div>` : ''}
     <div class="list">${list.length ? list.map(txItem).join('') : '<div class="empty-note">Ngày này chưa có khoản nào.</div>'}</div>
     <button class="btn primary block" data-act="add-day" data-date="${ds}">Ghi khoản cho ngày này</button>`);
 }
@@ -1424,6 +1451,7 @@ document.addEventListener('click', async e => {
   }
 });
 document.addEventListener('change', e => {
+  if (e.target.id === 'calGs') { S.set.showGoshopCal = e.target.checked; save(); render(); return; }
   if (e.target.id !== 'sFile' || !e.target.files[0]) return;
   const r = new FileReader();
   r.onload = () => { try { const j = JSON.parse(r.result); if (!j || !Array.isArray(j.tx)) throw 0; S = {...blank(), ...j}; save(); go('cal'); toast(`Đã khôi phục ${S.tx.length} khoản`); } catch(err){ toast('Tệp không đúng định dạng FIRE5Y'); } };
