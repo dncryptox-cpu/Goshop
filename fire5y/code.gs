@@ -428,6 +428,12 @@ function doPost(e) {
     if (action === 'upsert_transactions') return handleUpsertTransactions(data);
     if (action === 'delete_transactions') return handleDeleteTransactions(data);
 
+    if (action === 'goshop_stats') {
+      const out = {};
+      (data.periods || []).slice(0, 12).forEach(p => { if (p && p.key && p.from && p.to) out[p.key] = goshopStats_(p.from, p.to); });
+      return respondJSON({ status: "success", data: out });
+    }
+
     if (action === 'get_transactions') {
       return handleGetTransactions(data);
     }
@@ -1148,7 +1154,7 @@ function fire5yWeeklySummary() {
   const rows = fire5yRows_();
   const cur = periodStats_(rows, ymd_(mon), ymd_(now));
   const prev = periodStats_(rows, ymd_(pMon), ymd_(pSun));
-  sendTelegram_(summaryText_('Tổng kết tuần ' + ymd_(mon).slice(8) + '/' + ymd_(mon).slice(5, 7) + ' – ' + ymd_(now).slice(8) + '/' + ymd_(now).slice(5, 7), cur, prev));
+  sendTelegram_(summaryText_('Tổng kết tuần ' + ymd_(mon).slice(8) + '/' + ymd_(mon).slice(5, 7) + ' – ' + ymd_(now).slice(8) + '/' + ymd_(now).slice(5, 7), cur, prev) + '\n' + overviewText_('', ymd_(mon), ymd_(now)));
 }
 
 function fire5yMonthlySummary() {
@@ -1161,7 +1167,7 @@ function fire5yMonthlySummary() {
   const rows = fire5yRows_();
   const cur = periodStats_(rows, ymd_(first), ymd_(last));
   const prev = periodStats_(rows, ymd_(pFirst), ymd_(pLast));
-  sendTelegram_(summaryText_('Tổng kết tháng ' + (first.getMonth() + 1) + '/' + first.getFullYear(), cur, prev));
+  sendTelegram_(summaryText_('Tổng kết tháng ' + (first.getMonth() + 1) + '/' + first.getFullYear(), cur, prev) + '\n' + overviewText_('', ymd_(first), ymd_(last)));
 }
 
 // Chạy tay để kiểm tra kết nối Telegram (không in token ra log)
@@ -1201,9 +1207,10 @@ const TG_KEYWORDS_ = {
   'Giải trí': ['phim', 'game', 'bia', 'nhau', 'karaoke', 'du lich'],
   'Kinh doanh DNC': ['ctv', 'gia von', 'nhap slot', 'ads', 'quang cao', 'tk ytb', 'fam'],
   'Doanh thu Premium': ['doanh thu', 'ban', 'khach', 'gia han', 'thu tien'],
-  'Thu khác': ['luong', 'thuong', 'lai', 'hoan tien', 'thu']
+  'Thu khác': ['luong', 'thuong', 'lai', 'hoan tien', 'thu'],
+  'Lỗ trading': ['trade', 'trading', 'long', 'short', 'futures', 'hyperliquid', 'binance', 'okx', 'bybit', 'lo trade', 'lai trade', 'hl']
 };
-const TG_THU_CATS_ = ['Doanh thu Premium', 'Thu khác'];
+const TG_THU_CATS_ = ['Doanh thu Premium', 'Thu khác', 'Lãi trading'];
 const TG_ACC_ALIAS_ = { 'tcb': 'techcombank', 'mb': 'mb bank', 'mbbank': 'mb bank', 'momo': 'momo', 'zalopay': 'zalopay', 'zalo': 'zalopay', 'tm': 'tien mat', 'cash': 'tien mat', 'tienmat': 'tien mat', 'hl': 'hyperliquid' };
 
 function tgStrip_(s) {
@@ -1289,8 +1296,24 @@ function tgHandleText_(text, updateId, props, msgDate) {
   const sheet = ss.getSheetByName(SHEET_DATA);
   const tz = 'Asia/Ho_Chi_Minh';
 
+  const st = tgStrip_(t);
+  const askCmd = /^\/(homnay|tongquan|today|tuan|thang)\b/.test(st);
+  const askText = !/\d/.test(t) && /(loi nhuan|tong quan|thu chi|doanh thu|bao cao|hom nay|tuan nay|thang nay|^thu$|^chi$)/m.test(st);
+  if (askCmd || askText) {
+    const now = new Date(), tzz = 'Asia/Ho_Chi_Minh', today = Utilities.formatDate(now, tzz, 'yyyy-MM-dd');
+    let from = today, title = 'Tổng quan hôm nay ' + today.slice(8) + '/' + today.slice(5, 7);
+    if (/^\/tuan|tuan/.test(st)) {
+      const mon = new Date(now.getTime() - ((now.getDay() + 6) % 7) * 864e5);
+      from = Utilities.formatDate(mon, tzz, 'yyyy-MM-dd'); title = 'Tổng quan tuần này (từ ' + from.slice(8) + '/' + from.slice(5, 7) + ')';
+    } else if (/^\/thang|thang/.test(st)) {
+      from = today.slice(0, 8) + '01'; title = 'Tổng quan tháng ' + Number(today.slice(5, 7)) + '/' + today.slice(0, 4);
+    }
+    sendTelegram_(overviewText_(title, from, today));
+    return;
+  }
+
   if (/^\/(start|help)/i.test(t)) {
-    sendTelegram_('Nhắn khoản chi/thu để ghi vào FIRE5Y:\n• <code>50k cafe</code>\n• <code>1tr2 giày mb</code> (thêm tên ví: mb, tcb, momo, tm…)\n• <code>+15tr doanh thu</code> (dấu + = khoản thu)\n• <code>hqua 120k ăn tối</code> (ghi cho hôm qua)\n• Nhiều dòng = nhiều khoản\n• /undo — huỷ lần ghi gần nhất');
+    sendTelegram_('Nhắn khoản chi/thu để ghi vào FIRE5Y:\n• <code>50k cafe</code>\n• <code>1tr2 giày mb</code> (thêm tên ví: mb, tcb, momo, tm…)\n• <code>+15tr doanh thu</code> (dấu + = khoản thu)\n• <code>hqua 120k ăn tối</code> (ghi cho hôm qua)\n• Nhiều dòng = nhiều khoản\n• /undo — huỷ lần ghi gần nhất\n\nXem tổng quan (Goshop + cá nhân + trading):\n• /homnay, /tuan, /thang\n• hoặc nhắn <code>lợi nhuận hôm nay</code>, <code>tổng quan tháng này</code>');
     return;
   }
   if (/^\/undo/i.test(t)) {
@@ -1323,7 +1346,8 @@ function tgHandleText_(text, updateId, props, msgDate) {
     const a = tgPickAccount_(p.note, accounts, defAcc);
     const cat = tgGuessCat_(a.note);
     const isThu = p.forceThu || (cat && TG_THU_CATS_.indexOf(cat) >= 0);
-    const category = cat && (TG_THU_CATS_.indexOf(cat) >= 0) === isThu ? cat : (isThu ? 'Thu khác' : 'Khác');
+    let category = cat && (TG_THU_CATS_.indexOf(cat) >= 0) === isThu ? cat : (isThu ? 'Thu khác' : 'Khác');
+    if (cat === 'Lỗ trading') category = isThu ? 'Lãi trading' : 'Lỗ trading';
     items.push({ id: 'tg' + updateId + '-' + (i + 1), date: dateStr, type: isThu ? 'Thu' : 'Chi', amount: p.amount, category: category, account: a.account, description: a.note, source: 'Telegram', status: 'Confirmed' });
   });
 
@@ -1411,4 +1435,104 @@ function setupTelegramPolling() {
   ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'tgPoll') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('tgPoll').timeBased().everyMinutes(1).create();
   sendTelegram_('🤖 FIRE5Y: đã chuyển sang nhận tin mỗi phút. Nhắn lại khoản chi để ghi (vd <code>40k đi chợ</code>), bot trả lời trong vòng 1 phút. /help xem cách gõ.');
+}
+
+
+// ==========================================
+// 11. TỔNG QUAN: GOSHOP (sheet Tài chính) + FIRE5Y THEO MẢNG
+// ==========================================
+// Lợi nhuận Goshop tính giống dashboard godnc.com/admin: DATA(YTB) + DATA(GCC),
+// cột A ngày (dd/MM/yyyy), I hoa hồng, J giá vốn, K phát sinh, L giá bán, M lợi nhuận (trống → L−J−I−K).
+
+const GOSHOP_FIN_ID = '1-EgeNWztGQsY2rmLYp00yKDjgHR5WYoqzzhAkSnvJjc';
+
+function gsNum_(v) {
+  if (typeof v === 'number') return v;
+  let s = String(v || '').toLowerCase().replace(/\s/g, '');
+  if (!s) return 0;
+  let mul = 1;
+  if (s.endsWith('k')) { mul = 1e3; s = s.slice(0, -1); }
+  else if (s.endsWith('m') || s.endsWith('tr')) { mul = 1e6; s = s.replace(/m|tr/g, ''); }
+  s = s.replace(/[.,]/g, '').replace(/[^0-9-]/g, '');
+  return (parseFloat(s) || 0) * mul;
+}
+function gsDate_(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd');
+  const m = String(v || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2) : null;
+}
+
+// Gộp đơn theo ngày, cache 5 phút (sheet ~20k dòng)
+function goshopDayMap_() {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('GOSHOP_DAYMAP_V1');
+  if (hit) return JSON.parse(hit);
+  const ss = SpreadsheetApp.openById(GOSHOP_FIN_ID);
+  const map = {};
+  ['DATA(YTB)', 'DATA(GCC)'].forEach(name => {
+    const sh = ss.getSheetByName(name);
+    if (!sh) return;
+    const last = getRealLastRow(sh, 1);
+    if (last < 2) return;
+    sh.getRange(2, 1, last - 1, 13).getValues().forEach(r => {
+      const d = gsDate_(r[0]);
+      if (!d) return;
+      const price = gsNum_(r[11]), cost = gsNum_(r[9]), comm = gsNum_(r[8]), misc = gsNum_(r[10]);
+      const profit = String(r[12]).trim() !== '' ? gsNum_(r[12]) : price - cost - comm - misc;
+      const type = String(r[2] || '').trim().toLowerCase();
+      const o = map[d] || (map[d] = { n: 0, nw: 0, rn: 0, rev: 0, cost: 0, comm: 0, misc: 0, profit: 0 });
+      o.n++;
+      if (type === 'new') o.nw++; else if (type.indexOf('gia h') === 0) o.rn++;
+      o.rev += price; o.cost += cost; o.comm += comm; o.misc += misc; o.profit += profit;
+    });
+  });
+  try { cache.put('GOSHOP_DAYMAP_V1', JSON.stringify(map), 300); } catch (e) {}
+  return map;
+}
+
+function goshopStats_(from, to) {
+  const map = goshopDayMap_();
+  const s = { n: 0, nw: 0, rn: 0, rev: 0, cost: 0, comm: 0, misc: 0, profit: 0 };
+  Object.keys(map).forEach(d => { if (d >= from && d <= to) Object.keys(s).forEach(k => s[k] += map[d][k]); });
+  return s;
+}
+
+// Mảng của một danh mục FIRE5Y: personal / biz / trading (theo tên + cột Nhóm của tab DS)
+function dsGroups_() {
+  const ss = getTargetSpreadsheet(PropertiesService.getScriptProperties().getProperty('FIRE5Y_USER'));
+  const sh = ss.getSheetByName(SHEET_DS);
+  const out = {};
+  if (!sh || getRealLastRow(sh, 1) < 2) return out;
+  sh.getRange(2, 1, getRealLastRow(sh, 1) - 1, 2).getValues().forEach(r => { if (r[0]) out[String(r[0]).trim()] = String(r[1] || ''); });
+  return out;
+}
+function fire5yScope_(cat, groups) {
+  const c = tgStrip_(cat), g = tgStrip_((groups || {})[cat] || '');
+  if (/trading|trade/.test(c) || /trading/.test(g)) return 'trading';
+  if (/kinh doanh|doanh thu premium|gia von|chi phi ctv|van hanh/.test(c) || /kinh doanh/.test(g)) return 'biz';
+  return 'personal';
+}
+function scopeStats_(from, to) {
+  const groups = dsGroups_();
+  const out = { personal: { thu: 0, chi: 0 }, biz: { thu: 0, chi: 0 }, trading: { thu: 0, chi: 0 } };
+  fire5yRows_().forEach(r => {
+    if (r.date < from || r.date > to || r.category === TRANSFER_CAT) return;
+    const sc = fire5yScope_(r.category, groups);
+    if (r.type === 'Thu') out[sc].thu += r.amount; else out[sc].chi += r.amount;
+  });
+  return out;
+}
+
+function overviewText_(title, from, to) {
+  const g = goshopStats_(from, to), s = scopeStats_(from, to);
+  let t = title ? '📊 <b>' + title + '</b>\n' : '';
+  t += '\n🏪 <b>Goshop</b>: ' + g.n + ' đơn' + (g.n ? ' (' + g.nw + ' mới, ' + g.rn + ' gia hạn)' : '') +
+       '\nDoanh thu ' + short_(g.rev) + ' · Lợi nhuận <b>' + short_(g.profit) + '</b>';
+  t += '\n\n👤 <b>Cá nhân</b>: chi ' + short_(s.personal.chi) + (s.personal.thu ? ' · thu ' + short_(s.personal.thu) : '');
+  if (s.biz.thu || s.biz.chi) t += '\n💼 <b>Kinh doanh (ghi trong FIRE5Y)</b>: ' + (s.biz.thu ? 'thu ' + short_(s.biz.thu) + ' · ' : '') + 'chi ' + short_(s.biz.chi);
+  if (s.trading.thu || s.trading.chi) {
+    const net = s.trading.thu - s.trading.chi;
+    t += '\n📈 <b>Trading</b>: ' + (net >= 0 ? '+' : '') + short_(net) + ' (lãi ' + short_(s.trading.thu) + ', lỗ ' + short_(s.trading.chi) + ')';
+  }
+  return t;
 }

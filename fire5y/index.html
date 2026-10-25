@@ -208,8 +208,9 @@ const DEFAULT_CATS = [
   {name:'Đi lại',type:'Chi',budget:1000000},{name:'Nhà & hoá đơn',type:'Chi',budget:0},
   {name:'Gói đăng ký',type:'Chi',budget:0},{name:'Trail & sức khoẻ',type:'Chi',budget:3000000},
   {name:'Mua sắm',type:'Chi',budget:1500000},{name:'Giải trí',type:'Chi',budget:1000000},
-  {name:'Kinh doanh DNC',type:'Chi',budget:0},{name:'Khác',type:'Chi',budget:0},
-  {name:'Doanh thu Premium',type:'Thu',budget:0},{name:'Thu khác',type:'Thu',budget:0}
+  {name:'Kinh doanh DNC',type:'Chi',budget:0,group:'biz'},{name:'Khác',type:'Chi',budget:0},
+  {name:'Doanh thu Premium',type:'Thu',budget:0,group:'biz'},{name:'Thu khác',type:'Thu',budget:0},
+  {name:'Lãi trading',type:'Thu',budget:0,group:'trading'},{name:'Lỗ trading',type:'Chi',budget:0,group:'trading'}
 ];
 const KEYWORDS = {
   'Cà phê':['cafe','ca phe','cf','coffee','tra sua','highlands','starbucks','nuoc ep','sinh to'],
@@ -222,7 +223,8 @@ const KEYWORDS = {
   'Giải trí':['phim','game','bia','nhau','karaoke','du lich'],
   'Kinh doanh DNC':['ctv','gia von','nhap slot','ads','quang cao','tk ytb','fam'],
   'Doanh thu Premium':['doanh thu','ban','khach','gia han','thu tien'],
-  'Thu khác':['luong','thuong','lai','hoan tien','thu']
+  'Thu khác':['luong','thuong','lai','hoan tien','thu'],
+  'Lỗ trading':['trade','trading','long','short','futures','hyperliquid','binance','okx','bybit','lo trade','lai trade']
 };
 
 const TRANSFER_CAT = 'Chuyển khoản';
@@ -295,20 +297,36 @@ function guessCat(note){
 
 /* ================= tính toán ================= */
 // chuyển tiền giữa ví không phải thu/chi → loại khỏi mọi thống kê
-function monthTx(y,m){ const d = new Date(y,m,1), k = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; return S.tx.filter(t => !t.transfer && monthKey(t.date) === k); }
-function rangeTx(from, to){ return S.tx.filter(t => !t.transfer && t.date >= from && t.date <= to); }
+// mảng: personal (cá nhân) / biz (kinh doanh) / trading — theo danh mục
+const SCOPES = {all:'Tất cả', personal:'Cá nhân', biz:'Kinh doanh', trading:'Trading'};
+function guessScope(name){ const n = strip(name); if (/trading|trade/.test(n)) return 'trading'; if (/kinh doanh|doanh thu premium|gia von|chi phi ctv|van hanh/.test(n)) return 'biz'; return 'personal'; }
+function scopeOf(t){ const c = S.cats.find(x=>x.name===t.category); return (c && c.group) || guessScope(t.category); }
+const inScope = (t, scope) => !scope || scope === 'all' || scopeOf(t) === scope;
+function migrateCats(){
+  S.cats.forEach(c => { if (!c.group) c.group = guessScope(c.name); });
+  [['Lãi trading','Thu'],['Lỗ trading','Chi']].forEach(([n,ty]) => { if (!S.cats.some(c=>c.name===n)) S.cats.push({name:n, type:ty, budget:0, group:'trading'}); });
+}
+function monthTx(y,m,scope){ const d = new Date(y,m,1), k = `${d.getFullYear()}-${pad(d.getMonth()+1)}`; return S.tx.filter(t => !t.transfer && monthKey(t.date) === k && inScope(t, scope)); }
+function rangeTx(from, to, scope){ return S.tx.filter(t => !t.transfer && t.date >= from && t.date <= to && inScope(t, scope)); }
+// thu nhập để tiêu = mọi khoản thu − chi phí kinh doanh (chi kinh doanh được bù bằng doanh thu kinh doanh)
+function netIncome(list){ let v = 0; for (const t of list){ if (t.type==='Thu') v += t.amount; else if (scopeOf(t)==='biz') v -= t.amount; } return v; }
 function balances(){
   const m = {}; S.accounts.forEach(a => m[a.name] = a.initial || 0);
   for (const t of S.tx) if (t.account in m) m[t.account] += t.type==='Thu' ? t.amount : -t.amount;
   return m;
 }
-const INCOME_MODES = {manual:'Tự nhập số cố định', avg3:'Trung bình 3 tháng trước', actual:'Chỉ tiền đã về tháng này'};
+const INCOME_MODES = {manual:'Tự nhập số cố định', goshop:'Lãi Goshop TB 3 tháng trước', avg3:'Thu TB 3 tháng trước (ghi trong app)', actual:'Chỉ tiền đã về tháng này'};
 function incomeBasis(y,m){
-  const thuNow = sums(monthTx(y,m)).thu, mode = S.set.incomeMode || 'manual';
+  const thuNow = netIncome(monthTx(y,m)), mode = S.set.incomeMode || 'manual';
   if (mode === 'actual') return {income: thuNow, label:'tiền đã về'};
+  if (mode === 'goshop' && S.goshop && S.goshop.months){
+    const arr = [];
+    for (let i=1; i<=3; i++){ const d = new Date(y, m-i, 1), g = S.goshop.months[`${d.getFullYear()}-${pad(d.getMonth()+1)}`]; if (g && g.n) arr.push(g.profit); }
+    if (arr.length) return {income: arr.reduce((a,b)=>a+b,0)/arr.length, label:`lãi Goshop TB ${arr.length} tháng`};
+  }
   if (mode === 'avg3'){
     const arr = [];
-    for (let i=1; i<=3; i++){ const s = sums(monthTx(y, m-i)); if (s.thu || s.chi) arr.push(s.thu); }
+    for (let i=1; i<=3; i++){ const l = monthTx(y, m-i); if (l.length) arr.push(netIncome(l)); }
     if (arr.length) return {income: arr.reduce((a,b)=>a+b,0)/arr.length, label:`thu TB ${arr.length} tháng`};
   }
   return {income: Math.max(S.set.income||0, thuNow), label:'thu nhập dự kiến'};
@@ -329,7 +347,7 @@ function budgetFor(y,m){
 function safeToday(){
   const now = new Date(), y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
   const b = budgetFor(y,m);
-  const list = monthTx(y,m);
+  const list = monthTx(y,m,'personal');
   const t = todayS();
   let before = 0, today = 0;
   for (const x of list) if (x.type==='Chi' && !x.fixed) { if (x.date < t) before += x.amount; else if (x.date === t) today += x.amount; }
@@ -355,7 +373,8 @@ function historyMonths(n){
 /* ================= trạng thái UI ================= */
 const now0 = new Date();
 const UI = {view:'cal', y:now0.getFullYear(), m:now0.getMonth(), sel:todayS()};
-try { const v = sessionStorage.getItem('fire5y_view'); if (v) UI.view = v; } catch(e) {}
+UI.scope = 'all';
+try { const v = sessionStorage.getItem('fire5y_view'); if (v) UI.view = v; const sc = sessionStorage.getItem('fire5y_scope'); if (sc) UI.scope = sc; } catch(e) {}
 
 const ICONS = {
   cal:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="3"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>',
@@ -385,7 +404,7 @@ function sampleBanner(){
 /* ================= LỊCH ================= */
 function viewCal(){
   const {y,m} = UI, isNow = y===now0.getFullYear() && m===now0.getMonth();
-  const list = monthTx(y,m), s = sums(list), b = budgetFor(y,m);
+  const list = monthTx(y,m,UI.scope), s = sums(list), b = budgetFor(y,m);
   const t = todayS();
 
   // hero
@@ -399,7 +418,7 @@ function viewCal(){
         ${actual ? '' : '<button class="link" data-tab="set">Nhập thu nhập</button>'}${ridge()}</section>`;
     } else {
       const over = st.left < 0;
-      hero = `<section class="hero"><div class="eyebrow">${over ? 'Hôm nay đã vượt hạn mức' : 'Hôm nay còn tiêu được'}</div>
+      hero = `<section class="hero"><div class="eyebrow">Cá nhân · ${over ? 'hôm nay đã vượt hạn mức' : 'hôm nay còn tiêu được'}</div>
         <div class="hero-amt ${over?'over':''}">${over ? '−' + fmt(-st.left) : fmt(st.left)}</div>
         <div class="hero-sub"><span>Hạn mức ngày <b>${compact(st.allowance)}</b></span><span>Quỹ tháng còn <b>${compact(st.poolLeft)}</b></span><span><b>${st.daysLeft}</b> ngày nữa</span></div>
         <div class="hero-sub"><span>Tính theo ${st.label} <b>${compact(st.income)}</b>, trừ định kỳ <b>${compact(st.fixed)}</b> và để dành <b>${S.set.saveRate}%</b></span></div>
@@ -417,7 +436,8 @@ function viewCal(){
   const billDays = new Set(S.rec.filter(r=>r.type==='Chi' && monthKey(r.next)===`${y}-${pad(m+1)}`).map(r=>+r.next.slice(8)));
   // chưa có hạn mức (chưa có thu) → so với mức chi TB của các ngày có chi, nới 20% để không tô đỏ oan
   const spendDays = Object.values(byDay).filter(v=>v.varChi>0).length;
-  const base = b.base > 0 ? b.base : ((s.varChi / Math.max(1, spendDays)) * 1.2 || 1);
+  const personalView = UI.scope === 'all' || UI.scope === 'personal';
+  const base = personalView && b.base > 0 ? b.base : ((s.varChi / Math.max(1, spendDays)) * 1.2 || 1);
   let cells = ['T2','T3','T4','T5','T6','T7','CN'].map(d=>`<div class="dow">${d}</div>`).join('');
   for (let i=0;i<off;i++) cells += '<div class="day empty"></div>';
   for (let d=1; d<=n; d++){
@@ -444,13 +464,15 @@ function viewCal(){
   ${sampleBanner()}
   ${isNow ? reminderBanner() : ''}
   ${hero}
+  <div class="chips" role="tablist" aria-label="Lọc theo mảng">${Object.entries(SCOPES).map(([k,v])=>`<button data-act="scope" data-s="${k}" class="${UI.scope===k?'on':''}">${v}</button>`).join('')}</div>
+  ${(UI.scope==='all' || UI.scope==='biz') && isNow ? goshopCard() : ''}
   <section class="section">
     <div class="cal">${cells}</div>
     <div class="legend"><span><i style="background:var(--h1)"></i>nhẹ</span><span><i style="background:var(--h2)"></i>trong hạn mức</span><span><i style="background:var(--h3)"></i>hơi quá</span><span><i style="background:var(--h4)"></i>vượt mạnh</span><span><i style="background:var(--gold);border-radius:50%;width:8px;height:8px"></i>có thu</span></div>
     <div class="hint">Chạm để xem ngày · chạm đúp để ghi nhanh cho ngày đó</div>
   </section>
   <section class="section">
-    <div class="row between"><h2>Tháng ${m+1}</h2><button class="btn" data-act="summary">Tổng kết tuần / tháng</button></div>
+    <div class="row between"><h2>Tháng ${m+1}${UI.scope!=='all' ? ' · ' + SCOPES[UI.scope] : ''}</h2><button class="btn" data-act="summary">Tổng kết tuần / tháng</button></div>
     <div class="trio">
       <div class="card"><div class="eyebrow">Thu</div><div class="v pos">${compact(s.thu)}</div></div>
       <div class="card"><div class="eyebrow">Chi</div><div class="v">${compact(s.chi)}</div></div>
@@ -458,8 +480,38 @@ function viewCal(){
     </div>
   </section>
   ${walletCard()}
-  ${b.pool > 0 ? paceCard(y,m,list,b) : ''}
+  ${b.pool > 0 && personalView ? paceCard(y,m,monthTx(y,m,'personal'),b) : ''}
   ${catBars(list)}`;
+}
+function goshopCard(){
+  if (!S.sync.user || S.sample) return '';
+  const g = S.goshop;
+  if (!g || !g.today) return `<section class="card section"><div class="row between"><h2>Goshop</h2><span class="hint">đang tải từ sheet Tài chính…</span></div></section>`;
+  const prevKey = (() => { const d = new Date(now0.getFullYear(), now0.getMonth()-1, 1); return `${d.getFullYear()}-${pad(d.getMonth()+1)}`; })();
+  const prev = g.months && g.months[prevKey];
+  const at = new Date(g.at);
+  return `<section class="card section">
+    <div class="row between"><h2>Goshop</h2><span class="hint">cập nhật ${pad(at.getHours())}:${pad(at.getMinutes())} · <button class="mini" data-act="goshop-refresh">Làm mới</button></span></div>
+    <div class="trio">
+      <div class="card"><div class="eyebrow">Lãi hôm nay</div><div class="v ${g.today.profit>=0?'pos':'neg'}">${compact(g.today.profit)}</div><div class="hint">${g.today.n} đơn</div></div>
+      <div class="card"><div class="eyebrow">Lãi tháng ${now0.getMonth()+1}</div><div class="v ${g.month.profit>=0?'pos':'neg'}">${compact(g.month.profit)}</div><div class="hint">${g.month.n} đơn</div></div>
+      <div class="card"><div class="eyebrow">Doanh thu tháng</div><div class="v">${compact(g.month.rev)}</div><div class="hint">${prev ? 'tháng trước lãi ' + compact(prev.profit) : '&nbsp;'}</div></div>
+    </div>
+    <div class="hint">Số liệu từ sheet Tài chính Goshop, tính như dashboard admin. Không cộng vào thu/chi cá nhân.</div>
+  </section>`;
+}
+async function fetchGoshop(force){
+  if (!S.sync.user || !S.sync.token || S.sample) return;
+  if (!force && S.goshop && Date.now() - S.goshop.at < 5*60*1000) return;
+  const now = new Date(), t = todayS(), periods = [{key:'today', from:t, to:t}, {key:'month', from:t.slice(0,8)+'01', to:t}];
+  for (let i=1; i<=3; i++){ const a = new Date(now.getFullYear(), now.getMonth()-i, 1), b = new Date(now.getFullYear(), now.getMonth()-i+1, 0); periods.push({key:`${a.getFullYear()}-${pad(a.getMonth()+1)}`, from:ymd(a), to:ymd(b)}); }
+  try {
+    const j = await api({action:'goshop_stats', user:S.sync.user, periods});
+    const months = {}; Object.keys(j.data||{}).forEach(k => { if (/^\d{4}-\d{2}$/.test(k)) months[k] = j.data[k]; });
+    months[t.slice(0,7)] = j.data.month;
+    S.goshop = {at: Date.now(), today: j.data.today, month: j.data.month, months};
+    save(); if (UI.view==='cal') render();
+  } catch(e) { if (force) toast('Chưa tải được số liệu Goshop: ' + (e.message||'lỗi kết nối')); }
 }
 function reminderBanner(){
   if (S.sample || !S.tx.length) return '';
@@ -487,7 +539,7 @@ function ridge(){
   return `<svg class="hero-ridge" viewBox="0 0 200 70" preserveAspectRatio="none" aria-hidden="true"><path d="M0 70 L0 52 L22 40 L38 48 L60 22 L76 34 L96 12 L118 30 L134 24 L156 44 L176 30 L200 38 L200 70 Z" fill="currentColor"/></svg>`;
 }
 function paceCard(y,m,list,b){
-  const n = dim(y,m), W=320, H=120, L=34, R=8, T=10, B=20, iw=W-L-R, ih=H-T-B;
+  const n = dim(y,m), W=320, H=120, L=46, R=8, T=10, B=20, iw=W-L-R, ih=H-T-B;
   const daily = Array(n+1).fill(0);
   for (const x of list) if (x.type==='Chi' && !x.fixed) daily[+x.date.slice(8)] += x.amount;
   const isNow = y===now0.getFullYear() && m===now0.getMonth();
@@ -630,6 +682,7 @@ function addLines(){
     let type = p.forceThu ? 'Thu' : ADD.type;
     if (!p.forceThu && ADD.type==='Chi' && !ADD.cat && g && catType(g)==='Thu') type = 'Thu';
     let cat = (arr.length===1 && ADD.cat) ? ADD.cat : (g && catType(g)===type ? g : null);
+    if (!cat && g === 'Lỗ trading' && type === 'Thu') cat = 'Lãi trading';
     if (!cat) cat = type==='Thu' ? (S.cats.find(c=>c.type==='Thu')||{name:'Thu khác'}).name : 'Khác';
     return {...p, type, cat, guessed: !!g};
   });
@@ -754,7 +807,9 @@ function periodStats(from, to){
   let days = 0, zero = 0;
   for (let d = parseD(from); ymd(d) <= end; d.setDate(d.getDate()+1)) { days++; if (!byDay[ymd(d)]) zero++; }
   const maxDay = Object.keys(byDay).sort((a,b)=>byDay[b]-byDay[a])[0];
-  return {thu, chi, varChi, byCat, maxDay, maxAmt: maxDay ? byDay[maxDay] : 0, days, zero, count:list.length};
+  const byScope = {personal:{thu:0,chi:0}, biz:{thu:0,chi:0}, trading:{thu:0,chi:0}};
+  for (const t of list){ const sc = scopeOf(t); if (t.type==='Thu') byScope[sc].thu += t.amount; else byScope[sc].chi += t.amount; }
+  return {thu, chi, varChi, byCat, byScope, maxDay, maxAmt: maxDay ? byDay[maxDay] : 0, days, zero, count:list.length};
 }
 function openSummary(mode){
   mode = mode || 'week';
@@ -788,12 +843,24 @@ function openSummary(mode){
     <div class="kv"><span>Chi linh hoạt TB/ngày</span><span class="num">${compact(c.varChi / Math.max(1,c.days))}</span></div>
     <div class="kv"><span>Ngày không tiêu linh hoạt</span><span class="num">${c.zero}/${c.days} ngày</span></div>
     ${md ? `<div class="kv"><span>Ngày tiêu nhiều nhất</span><span class="num">${md.getDate()}/${md.getMonth()+1} · ${compact(c.maxAmt)}</span></div>` : ''}
+    <h2 style="margin-top:6px">Theo mảng</h2>
+    <div class="kv"><span>👤 Cá nhân</span><span class="num">chi ${compact(c.byScope.personal.chi)}${c.byScope.personal.thu?' · thu '+compact(c.byScope.personal.thu):''}</span></div>
+    ${c.byScope.biz.thu||c.byScope.biz.chi ? `<div class="kv"><span>💼 Kinh doanh (ghi trong app)</span><span class="num">${c.byScope.biz.thu?'thu '+compact(c.byScope.biz.thu)+' · ':''}chi ${compact(c.byScope.biz.chi)}</span></div>` : ''}
+    ${c.byScope.trading.thu||c.byScope.trading.chi ? `<div class="kv"><span>📈 Trading</span><span class="num ${c.byScope.trading.thu-c.byScope.trading.chi>=0?'pos':'neg'}">${c.byScope.trading.thu-c.byScope.trading.chi>=0?'+':''}${compact(c.byScope.trading.thu-c.byScope.trading.chi)}</span></div>` : ''}
     <h2 style="margin-top:6px">Chi nhiều nhất</h2>
     <div class="list">${cats.map(([k,v])=>{ const d = delta(v, p.byCat[k]||0);
       return `<div class="item"><div class="main"><div class="t">${esc(k)}</div></div>${d!==null?`<span class="chip ${d>0?'soon':'ok'}">${d>0?'+':''}${d}%</span>`:'<span class="chip">mới</span>'}<div class="a">${compact(v)}</div></div>`; }).join('')}</div>`
     : '<div class="empty-note">Kỳ này chưa có khoản nào.</div>'}
+    ${S.sync.user && !S.sample ? `<div class="kv" id="sumGoshop"><span>🏪 Goshop (sheet Tài chính)</span><span class="num muted">đang tải…</span></div>` : ''}
     <div class="hint">Không tính tiền chuyển giữa các ví. Bản tổng kết tự gửi qua Telegram mỗi tối Chủ nhật và sáng ngày 1 khi đã cài trong Apps Script.</div>`);
   $('#sumSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) openSummary(b.dataset.m); });
+  if (S.sync.user && S.sync.token && !S.sample) {
+    const end = to < todayS() ? to : todayS();
+    api({action:'goshop_stats', user:S.sync.user, periods:[{key:'p', from, to:end}]}).then(j => {
+      const g = j.data.p, el = document.querySelector('#sumGoshop .num');
+      if (el && g) { el.className = 'num'; el.innerHTML = `${g.n} đơn · lãi <b class="${g.profit>=0?'pos':'neg'}">${compact(g.profit)}</b> · DT ${compact(g.rev)}`; }
+    }).catch(() => { const el = document.querySelector('#sumGoshop .num'); if (el) el.textContent = 'chưa tải được'; });
+  }
 }
 
 /* ================= ĐỊNH KỲ ================= */
@@ -993,7 +1060,7 @@ function viewSet(){
     <div class="hint">Qua Telegram: Apps Script gửi lời nhắc lúc 21h (chỉ khi hôm đó chưa ghi), tổng kết tuần tối Chủ nhật, tổng kết tháng sáng ngày 1. Cài một lần: thêm TG_BOT_TOKEN, TG_CHAT_ID, FIRE5Y_USER vào Script Properties rồi chạy hàm setupFire5yTriggers.</div>
   </section>
   <section class="card section"><div class="row between"><h2>Danh mục</h2><button class="btn" data-act="new-cat">Thêm</button></div>
-    <div class="list">${S.cats.map((c,i)=>`<div class="item tap" data-act="edit-cat" data-i="${i}"><div class="main"><div class="t">${esc(c.name)}</div><div class="m">${c.type}${c.budget?` · ngân sách <span class="num">${compact(c.budget)}</span>/tháng`:''}</div></div></div>`).join('')}</div>
+    <div class="list">${S.cats.map((c,i)=>`<div class="item tap" data-act="edit-cat" data-i="${i}"><div class="main"><div class="t">${esc(c.name)}</div><div class="m">${c.type} · ${SCOPES[c.group||guessScope(c.name)]}${c.budget?` · ngân sách <span class="num">${compact(c.budget)}</span>/tháng`:''}</div></div></div>`).join('')}</div>
   </section>
   <section class="card section"><h2>Sao lưu Google Sheet</h2>
     <div class="hint">Dữ liệu lưu ngay trên máy này. Khi đăng nhập, mọi thay đổi tự được đẩy lên tab "Dữ liệu" trong Sheet FIRE5Y (vài giây sau khi ghi).</div>
@@ -1024,14 +1091,17 @@ function openCat(i){
     <div class="seg" id="cType"><button data-t="Chi" class="${c.type==='Chi'?'on':''}">Chi</button><button data-t="Thu" class="${c.type==='Thu'?'on':''}">Thu</button></div>
     <div class="grid2"><label class="f">Tên<input class="inp" id="cName" value="${esc(c.name)}"></label>
     <label class="f">Ngân sách/tháng<input class="inp num" id="cBud" value="${c.budget||''}" placeholder="không bắt buộc"></label></div>
+    <label class="f">Mảng<select class="inp" id="cGroup">${['personal','biz','trading'].map(k=>`<option value="${k}" ${(c.group||guessScope(c.name||''))===k?'selected':''}>${SCOPES[k]}</option>`).join('')}</select></label>
+    <div class="hint">Chi tiêu mảng Cá nhân mới tính vào hạn mức hằng ngày. Chi kinh doanh được trừ vào doanh thu kinh doanh.</div>
     <button class="btn primary block" id="cSave">Lưu</button>`);
   let type = c.type;
   $('#cType').addEventListener('click', e=>{const b=e.target.closest('button'); if(!b) return; type=b.dataset.t; document.querySelectorAll('#cType button').forEach(x=>x.classList.toggle('on',x===b));});
   $('#cSave').addEventListener('click', () => {
     const name = $('#cName').value.trim(); if (!name) return toast('Cần nhập tên');
     const p = parseLine($('#cBud').value||''); const budget = p ? p.amount : 0;
-    if (i==null){ if (S.cats.some(x=>x.name===name)) return toast('Đã có danh mục này'); S.cats.push({name,type,budget}); }
-    else { const old = S.cats[i].name; S.cats[i] = {name,type,budget}; if (old!==name){ S.tx.forEach(t=>{ if(t.category===old) t.category=name; }); S.rec.forEach(r=>{ if(r.category===old) r.category=name; }); } }
+    const group = $('#cGroup').value;
+    if (i==null){ if (S.cats.some(x=>x.name===name)) return toast('Đã có danh mục này'); S.cats.push({name,type,budget,group}); }
+    else { const old = S.cats[i].name; S.cats[i] = {name,type,budget,group}; if (old!==name){ S.tx.forEach(t=>{ if(t.category===old) t.category=name; }); S.rec.forEach(r=>{ if(r.category===old) r.category=name; }); } }
     save(); closeSheet(); render();
   });
   SHEET_CTX = {cat:i};
@@ -1173,6 +1243,8 @@ document.addEventListener('click', async e => {
       break; }
     case 'del-tx': removeTx([ADD.edit.id]); save(); closeSheet(); render(); autoPush(); toast('Đã xoá'); break;
     case 'summary': openSummary('week'); break;
+    case 'scope': UI.scope = el.dataset.s; try{sessionStorage.setItem('fire5y_scope', UI.scope);}catch(e){} render(); break;
+    case 'goshop-refresh': fetchGoshop(true); break;
     case 'transfer': openTransfer(); break;
     case 'new-acc': openAcc(null); break;
     case 'edit-acc': openAcc(+el.dataset.i); break;
@@ -1218,6 +1290,7 @@ document.addEventListener('change', e => {
 });
 
 try {
+  migrateCats();
   if (FIRST_RUN) { seedSample(); save(); }
   render();
 } catch (err) {
@@ -1229,7 +1302,7 @@ let lastSync = 0;
 async function autoSync(){
   if (!S.sync.user || !S.sync.token || S.sample || Date.now() - lastSync < 30000) return;
   lastSync = Date.now();
-  await push(true); await pull(true);
+  await push(true); await pull(true); await fetchGoshop();
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
 autoSync();
