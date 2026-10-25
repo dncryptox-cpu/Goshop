@@ -429,7 +429,7 @@
                 </div>
                 <div class="mono ellip" x-text="f.email"></div>
                 <div class="mute" style="font-size:13px">
-                  Renew <span x-text="f.renew"></span> · <span x-text="activeCount(f)"></span>/<span x-text="f.customers.length"></span> khách còn hạn
+                  Renew <span x-show="!f.rw" :class="can('setRenew') && 'cp'" :title="can('setRenew') ? 'Bấm để sửa ngày renew' : ''" @click="can('setRenew') && (f.rw = { iso: isoOf(f.renew), busy: false })" x-text="f.renew || '—'"></span><span x-show="f.rw" style="display:inline-flex;gap:4px;align-items:center"><input type="date" :value="f.rw && f.rw.iso" @change="f.rw.iso = $event.target.value" style="padding:1px 4px;font-size:13px"><button class="btn xs" style="color:var(--ok)" @click="saveRenew(f)" :disabled="f.rw && f.rw.busy" x-text="f.rw && f.rw.busy ? '…' : 'Lưu'"></button><button class="btn xs" @click="f.rw = null">Huỷ</button></span> · <span x-text="activeCount(f)"></span>/<span x-text="f.customers.length"></span> khách còn hạn
                   <span class="badge" :class="stClass(f.status)" style="margin-left:4px" x-text="f.status || '—'"></span>
                   <span class="badge bad" style="margin-left:4px" x-show="f.blockedUntil" x-text="'⛔ chặn mời đến ' + f.blockedUntil"></span>
                 </div>
@@ -1411,7 +1411,7 @@ function app() {
     async api(body) {
       // các lệnh chỉ đọc (không làm cũ dữ liệu)
       // Admin tick "Ghi luôn vào gốc": mọi thao tác ghi data đều đồng bộ sang gốc ngay
-      const sync = this.me.role === 'admin' && this.autoSync && ['move', 'swapMail', 'vacate', 'complete', 'retire', 'markInvited', 'merge'].includes(body.action);
+      const sync = this.me.role === 'admin' && this.autoSync && ['move', 'swapMail', 'vacate', 'complete', 'retire', 'markInvited', 'merge', 'setRenew'].includes(body.action);
       if (!READS.includes(body.action) && body.op !== 'list') this.syncInfo = '';
       const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, autoSync: sync || body.autoSync || undefined, pass: this.pass, fresh: Date.now() < (this.freshUntil || 0) || undefined }) });
       const data = await res.json();
@@ -1985,6 +1985,17 @@ function app() {
       try { const r = await this.api({ action: 'saveOld', rn: f.rn }); s.oldSaved = r.row; this.toast = '✓ Lưu ' + r.email + ' vào ' + r.sheet + (r.isNew ? '' : ' (cập nhật dòng cũ)'); setTimeout(() => this.toast = '', 2500); }
       catch (e) { this.swapError = e.message; }
       s.oldBusy = false;
+    },
+    isoOf(d) { const p = String(d || '').split('/'); return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : ''; },
+    async saveRenew(f) {
+      const p = String(f.rw.iso || '').split('-'); if (p.length !== 3) { this.error = 'Chọn ngày renew'; return; }
+      f.rw.busy = true; this.error = '';
+      try {
+        const r = await this.api({ action: 'setRenew', rn: f.rn, stockRow: f.stockRow, renew: p[2] + '/' + p[1] + '/' + p[0] });
+        this.lastDone = '✓ ' + r.rn + ': renew ' + (r.old || '?') + ' → ' + r.renew + (r.fr ? ' (FamRenew ' + r.fr + ' cũng đã sửa)' : '') + '. Hoàn tác ở tab Lịch sử.';
+        this.lastActionId = r.actionId || '';
+        f.renew = r.renew; f.rw = null;
+      } catch (e) { this.error = e.message; if (f.rw) f.rw.busy = false; }
     },
     async retireFam() {
       const s = this.swap;
