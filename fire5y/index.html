@@ -173,6 +173,9 @@ label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:60
 .inp{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:10px 12px;font-size:15px;color:var(--ink);min-width:0}
 textarea.inp{resize:none;font-size:18px;line-height:1.4}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:420px){.grid3{grid-template-columns:1fr 1fr}}
+.item.hold{align-items:flex-start}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
 .chips button{flex:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 11px;font-size:13px;font-weight:500}
 .chips button.on{background:var(--accent);color:var(--accent-fg);border-color:transparent}
@@ -236,7 +239,38 @@ try { S = JSON.parse(localStorage.getItem(KEY)) || null; } catch(e) { S = null; 
 const FIRST_RUN = !S;
 if (!S) S = blank();
 else { const b = blank(); S = {...b, ...S, set:{...b.set, ...S.set}, sync:{...b.sync, ...S.sync}}; }
-function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {} }
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {} try { scheduleStateSync(); } catch(e) {} }
+const STATE_KEYS = ['cats','accounts','rec','debts','portfolio','fire','set','rules','noSpend'];
+function stateBlob(){ const o = {}; STATE_KEYS.forEach(k => o[k] = S[k]); o.set = {...(S.set||{})}; delete o.set.lastAcc; return JSON.stringify(o); }
+function hashStr(t){ let h = 5381; for (let i=0; i<t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0; return String(h); }
+let stateTimer = null;
+function scheduleStateSync(){
+  if (!S.sync || !S.sync.user || !S.sync.token || S.sample) return;
+  if (hashStr(stateBlob()) === S.stateHash) return;
+  clearTimeout(stateTimer); stateTimer = setTimeout(() => syncState(), 3000);
+}
+async function syncState(){
+  if (!S.sync.user || !S.sync.token || S.sample || syncState.busy) return;
+  syncState.busy = true;
+  try {
+    const r = await api({action:'get_state', user:S.sync.user});
+    if (r.state && r.at > (S.stateAt||0)) {          // máy khác vừa sửa → nhận bản mới
+      const o = JSON.parse(r.state);
+      STATE_KEYS.forEach(k => { if (o[k] !== undefined) S[k] = k === 'set' ? {...S.set, ...o.set} : o[k]; });
+      migrateCats(); S.stateAt = r.at; S.stateHash = hashStr(stateBlob());
+      try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+      render(); return;
+    }
+    const blob = stateBlob(), h = hashStr(blob);
+    if (h !== S.stateHash || !r.state) {
+      const at = Date.now();
+      await api({action:'set_state', user:S.sync.user, state:blob, at});
+      S.stateAt = at; S.stateHash = h;
+      try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {}
+    }
+  } catch(e) { /* Apps Script cũ chưa có lệnh này → bỏ qua */ }
+  finally { syncState.busy = false; }
+}
 
 /* ================= tiện ích ================= */
 const $ = s => document.querySelector(s);
@@ -394,6 +428,7 @@ function render(){
   const v = {cal:viewCal, rec:viewRec, fire:viewFire, set:viewSet}[UI.view] || viewCal;
   $('#app').innerHTML = v();
   if (UI.view==='cal') bindCal();
+  if (UI.view==='fire') fetchPrices();
 }
 function go(v){ const tp = document.getElementById('daytip'); if (tp) tp.hidden = true; UI.view = v; try{sessionStorage.setItem('fire5y_view', v);}catch(e){} render(); window.scrollTo(0,0); }
 
@@ -970,73 +1005,168 @@ function openDebt(d){
 }
 
 /* ================= FIRE ================= */
+/* FIRE: mục tiêu = chi tiêu/tháng × 12 ÷ lợi suất/năm (vd 1.000$ × 12 ÷ 10% = 120.000$) */
+const FIRE_DEF = {monthlyUsd:1000, rate:10, contribUsd:400};
+function fireCfg(){ return {...FIRE_DEF, ...(S.fire||{})}; }
+function usdVnd(){ return (S.prices && S.prices.tether && S.prices.tether.vnd) || 26000; }
+function coinPrice(h){ const p = S.prices && S.prices[h.cgId]; return p ? p.usd : null; }
+function holdingValue(h){ if (h.kind==='manual') return +h.valueUsd || 0; const pr = coinPrice(h); return pr != null ? h.qty * pr : (h.avgCost||0) * h.qty; }
+function portfolioTotal(){ return (S.portfolio||[]).reduce((a,h)=>a+holdingValue(h),0); }
+const fmtUsd = n => (n<0?'−':'') + '$' + Math.round(Math.abs(n)).toLocaleString('en-US');
+const fmtPx = p => p == null ? '—' : p >= 1 ? '$' + p.toLocaleString('en-US', {maximumFractionDigits: p >= 100 ? 0 : 2}) : '$' + p.toPrecision(3);
+const fmtQty = q => (+q).toLocaleString('en-US', {maximumFractionDigits: q < 1 ? 6 : q < 100 ? 4 : 2});
+const vndOf = usd => compact(usd * usdVnd());
+function simFire(v0, contrib, rate, target){
+  const i = rate/100/12; let v = v0, m = 0, hit = v0 >= target ? 0 : null; const pts = [[0, v0]];
+  while (m < 50*12){ m++; v = v*(1+i) + contrib; if (m%12===0) pts.push([m/12, v]); if (hit===null && v>=target) hit = m; if (hit!==null && m>=Math.max(60,hit) && m%12===0) break; }
+  const p5 = pts.find(p=>p[0]===5); return {pts, hit, at5: p5 ? p5[1] : v};
+}
+function needFor(v0, target, rate, months){ const i = rate/100/12, g = Math.pow(1+i, months); return Math.max(0, (target - v0*g) * i / (g - 1)); }
+async function fetchPrices(force){
+  const ids = [...new Set((S.portfolio||[]).filter(h=>h.kind!=='manual' && h.cgId).map(h=>h.cgId).concat('tether'))];
+  if (!force && S.pricesAt && Date.now() - S.pricesAt < 5*60*1000 && ids.every(id => S.prices && S.prices[id])) return;
+  if (fetchPrices.busy) return; fetchPrices.busy = true;
+  try {
+    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=' + encodeURIComponent(ids.join(',')) + '&vs_currencies=usd,vnd&include_24hr_change=true');
+    if (!r.ok) throw new Error('CoinGecko trả mã ' + r.status);
+    S.prices = {...(S.prices||{}), ...(await r.json())}; S.pricesAt = Date.now(); save();
+    if (UI.view==='fire') render();
+    if (force) toast('Đã cập nhật giá');
+  } catch(e){ if (force) toast('Chưa lấy được giá: ' + e.message); }
+  finally { fetchPrices.busy = false; }
+}
+function personalSpendUsd(){
+  const now = new Date(), arr = [];
+  for (let i=1; i<=3; i++){ const l = monthTx(now.getFullYear(), now.getMonth()-i, 'personal'); if (l.length) arr.push(sums(l).chi); }
+  return arr.length ? arr.reduce((a,b)=>a+b,0) / arr.length / usdVnd() : null;
+}
 function viewFire(){
-  const hist = historyMonths(3);
-  const avgThu = hist.length ? hist.reduce((a,s)=>a+s.thu,0)/hist.length : (S.set.income||0);
-  const avgChi = hist.length ? hist.reduce((a,s)=>a+s.chi,0)/hist.length : 0;
-  const saveM = avgThu - avgChi, rate = avgThu ? saveM/avgThu*100 : 0;
-  const target = avgChi * 12 * 25;
-  const nw = S.set.netWorth || 0, r = (S.set.ret||0)/100;
-  const prog = target ? Math.min(1, nw/target) : 0;
-  const sim = (extra) => { let v = nw, pts=[[0,v]], m=0, hit=null;
-    while (m < 50*12){ m++; v = v*(1+r/12) + saveM + extra; if (m%12===0) pts.push([m/12, v]); if (hit===null && v>=target) hit=m; if (hit!==null && m>=Math.max(60,hit) && m%12===0) break; }
-    return {pts, hit, at5: pts.find(p=>p[0]===5)}; };
-  const A = sim(0), Bx = sim(avgThu*0.1);
-  const yrs = mth => mth===null ? 'trên 50 năm' : mth < 12 ? `${mth} tháng` : `${Math.floor(mth/12)} năm${mth%12?` ${mth%12} tháng`:''}`;
-  const less50 = sim(50000*30);
-  const gain = (A.hit!==null && less50.hit!==null) ? A.hit - less50.hit : null;
-
-  const noData = !avgChi;
+  const c = fireCfg(), target = c.monthlyUsd * 12 / (c.rate/100);
+  const v0 = portfolioTotal(), prog = target ? Math.min(1, v0/target) : 0;
+  const A = simFire(v0, c.contribUsd, c.rate, target);
+  const need5 = needFor(v0, target, c.rate, 60);
+  const yrs = mth => mth===null ? 'trên 50 năm' : mth===0 ? 'đã đạt' : mth < 12 ? `${mth} tháng` : `${Math.floor(mth/12)} năm${mth%12 ? ` ${mth%12} tháng` : ''}`;
+  const real = personalSpendUsd();
   return `<header class="top"><h1 class="brand">Mục tiêu FIRE</h1></header>
   ${sampleBanner()}
-  <section class="hero"><div class="eyebrow">Đỉnh FIRE · 25 lần chi tiêu một năm</div>
-    <div class="hero-amt">${noData ? '—' : fmt(target)}</div>
-    <div class="hero-sub"><span>Đã leo <b>${(prog*100).toFixed(1)}%</b></span><span>Tài sản <b>${compact(nw)}</b></span><span>Về đích <b>${noData?'—':yrs(A.hit)}</b></span></div>
+  <section class="hero"><div class="eyebrow">Đỉnh FIRE · chi ${fmtUsd(c.monthlyUsd)}/tháng × 12 ÷ ${c.rate}%/năm</div>
+    <div class="hero-amt">${fmtUsd(target)}</div>
+    <div class="hero-sub"><span>Đã có <b>${fmtUsd(v0)}</b></span><span>Đạt <b>${(prog*100).toFixed(1)}%</b></span><span>Còn <b>${fmtUsd(Math.max(0, target - v0))}</b></span><span>Về đích <b>${yrs(A.hit)}</b></span></div>
     <div class="progress" style="background:rgba(234,242,240,.15)"><div style="width:${(prog*100).toFixed(1)}%"></div></div>${ridge()}
   </section>
-  ${noData ? '<section class="card"><div class="empty-note">Cần ít nhất vài tuần ghi chép để app tính chi tiêu trung bình và mục tiêu FIRE.</div></section>' : `
-  <section class="trio">
-    <div class="card"><div class="eyebrow">Chi TB/tháng</div><div class="v">${compact(avgChi)}</div></div>
-    <div class="card"><div class="eyebrow">Để dành TB</div><div class="v ${saveM>=0?'pos':'neg'}">${compact(saveM)}</div></div>
-    <div class="card"><div class="eyebrow">Tỷ lệ</div><div class="v ${rate>=0?'pos':'neg'}">${Math.round(rate)}%</div></div>
-  </section>
-  ${fireChart(A, Bx, target)}
+  ${portfolioCard()}
+  ${fireChart(A, target)}
   <section class="card section"><h2>Mốc 5 năm</h2>
-    <div class="kv"><span>Giữ nhịp hiện tại</span><span class="num">${A.at5?compact(A.at5[1]):'—'} · ${A.at5&&target?Math.round(A.at5[1]/target*100):0}%</span></div>
-    <div class="kv"><span>Để dành thêm 10% thu nhập (${compact(avgThu*0.1)}/tháng)</span><span class="num pos">${Bx.at5?compact(Bx.at5[1]):'—'} · ${Bx.at5&&target?Math.round(Bx.at5[1]/target*100):0}%</span></div>
-    <div class="kv"><span>Về đích nếu để dành thêm 10%</span><span class="num">${yrs(Bx.hit)}</span></div>
-    ${gain>0 ? `<div class="hint">Mỗi ngày bớt 50k (một ly cà phê và bánh) sẽ về đích sớm hơn ${yrs(gain)}.</div>` : ''}
-    <div class="hint">Tính trên ${hist.length} tháng gần nhất có dữ liệu, lợi nhuận đầu tư ${S.set.ret}%/năm, rút 4%/năm khi về hưu.</div>
-  </section>`}
+    <div class="kv"><span>Đầu tư thêm hiện tại</span><span class="num">${fmtUsd(c.contribUsd)}/tháng · ≈${vndOf(c.contribUsd)}</span></div>
+    <div class="kv"><span>Giá trị sau 5 năm</span><span class="num">${fmtUsd(A.at5)} · ${Math.round(A.at5/target*100)}%</span></div>
+    <div class="kv"><span>Để về đích đúng 5 năm cần đầu tư</span><span class="num pos">${fmtUsd(need5)}/tháng · ≈${vndOf(need5)}</span></div>
+    <div class="hint">Giả định lợi suất ${c.rate}%/năm, cộng dồn hằng tháng. Khi đạt đỉnh, ${c.rate}% mỗi năm của ${fmtUsd(target)} = ${fmtUsd(c.monthlyUsd*12)}, đủ chi tiêu cả năm.</div>
+    ${real != null ? `<div class="hint">Chi tiêu cá nhân thực tế TB 3 tháng qua: ~${fmtUsd(real)}/tháng${real > c.monthlyUsd ? ' — cao hơn mục tiêu, nên nâng mục tiêu hoặc giảm chi.' : ' — trong mục tiêu.'}</div>` : ''}
+  </section>
   <section class="card section"><h2>Thông số</h2>
-    <div class="grid2"><label class="f">Tài sản hiện có<input class="inp num" id="fNw" value="${nw||''}" placeholder="500tr"></label>
-    <label class="f">Lợi nhuận kỳ vọng %/năm<input class="inp num" id="fRet" type="number" step="0.5" value="${S.set.ret}"></label></div>
+    <div class="grid3"><label class="f">Chi tiêu/tháng ($)<input class="inp num" id="fMonthly" inputmode="decimal" value="${c.monthlyUsd}"></label>
+    <label class="f">Lợi suất %/năm<input class="inp num" id="fRate" type="number" step="0.5" value="${c.rate}"></label>
+    <label class="f">Đầu tư thêm/tháng ($)<input class="inp num" id="fContrib" inputmode="decimal" value="${c.contribUsd}"></label></div>
+    <div class="hint">Tỷ giá dùng để quy đổi: 1$ ≈ ${Math.round(usdVnd()).toLocaleString('vi-VN')}đ (theo USDT).</div>
     <button class="btn primary" data-act="save-fire">Cập nhật</button>
   </section>`;
 }
-function fireChart(A, Bx, target){
-  const W=320, H=150, L=40, R=10, T=12, B=20, iw=W-L-R, ih=H-T-B;
-  const maxX = Math.max(5, Math.min(30, Math.ceil(((A.hit ?? 360)/12))+1));
-  const pa = A.pts.filter(p=>p[0]<=maxX), pb = Bx.pts.filter(p=>p[0]<=maxX);
-  const maxY = Math.max(target, ...pa.map(p=>p[1]), ...pb.map(p=>p[1])) * 1.08 || 1;
-  const X = x => L + x/maxX*iw, Y = v => T + ih - Math.max(0,v)/maxY*ih;
-  const path = pts => pts.map((p,i)=>`${i?'L':'M'}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' ');
+function portfolioCard(){
+  const list = (S.portfolio||[]).map(h => ({h, v: holdingValue(h)})).sort((a,b) => b.v - a.v);
+  const total = list.reduce((a,x) => a + x.v, 0);
+  const costed = list.filter(x => x.h.kind !== 'manual' && x.h.avgCost);
+  const cost = costed.reduce((a,x) => a + x.h.avgCost * x.h.qty, 0), valC = costed.reduce((a,x) => a + x.v, 0);
+  const pnl = valC - cost;
+  const at = S.pricesAt ? new Date(S.pricesAt) : null;
+  const rows = list.map(({h, v}) => {
+    const pr = h.kind === 'manual' ? null : coinPrice(h), p = S.prices && S.prices[h.cgId];
+    const ch = p && p.usd_24h_change != null ? p.usd_24h_change : null;
+    const pl = h.kind !== 'manual' && h.avgCost && pr != null ? (pr / h.avgCost - 1) * 100 : null;
+    const w = total ? v / total * 100 : 0;
+    return `<div class="item hold"><div class="main">
+        <div class="t">${esc(h.sym || h.name)} ${pl != null ? `<span class="chip ${pl>=0?'ok':'late'}">${pl>=0?'+':''}${pl.toFixed(1)}%</span>` : ''}</div>
+        <div class="m">${h.kind==='manual' ? 'Nhập tay' : `${fmtQty(h.qty)} × ${fmtPx(pr)}${ch != null ? ` · 24h <span class="${ch>=0?'pos':'neg'}">${ch>=0?'+':''}${ch.toFixed(1)}%</span>` : ''}${h.avgCost ? ` · vốn ${fmtPx(h.avgCost)}` : ''}`}</div>
+        <div class="bar-track" style="margin-top:6px"><div class="bar-fill" style="width:${w.toFixed(1)}%"></div></div>
+      </div>
+      <div style="text-align:right"><div class="a">${fmtUsd(v)}</div><div class="m">${w.toFixed(0)}% · ≈${vndOf(v)}</div></div>
+      <span class="tx-act"><button class="mini" data-act="edit-h" data-id="${h.id}">Sửa</button><button class="mini danger" data-act="quick-del-h" data-id="${h.id}">Xoá</button></span></div>`;
+  }).join('');
+  return `<section class="card section">
+    <div class="row between"><h2>Danh mục đầu tư</h2><span class="row"><button class="btn" data-act="prices-refresh">Cập nhật giá</button><button class="btn primary" data-act="new-h">Thêm</button></span></div>
+    ${list.length ? `<div class="trio">
+        <div class="card"><div class="eyebrow">Tổng</div><div class="v">${fmtUsd(total)}</div><div class="hint">≈${vndOf(total)}</div></div>
+        <div class="card"><div class="eyebrow">Lãi/lỗ</div><div class="v ${pnl>=0?'pos':'neg'}">${cost ? (pnl>=0?'+':'') + fmtUsd(pnl) : '—'}</div><div class="hint">${cost ? (pnl/cost*100).toFixed(1) + '%' : 'nhập giá vốn để xem'}</div></div>
+        <div class="card"><div class="eyebrow">Giá lúc</div><div class="v">${at ? pad(at.getHours())+':'+pad(at.getMinutes()) : '—'}</div><div class="hint">CoinGecko</div></div>
+      </div>
+      <div class="list">${rows}</div>`
+    : '<div class="empty-note">Chưa có khoản đầu tư nào. Bấm Thêm để nhập coin đang giữ (BTC, HYPE…) hoặc tiền chờ trên sàn.</div>'}
+  </section>`;
+}
+function openHolding(h){
+  const isNew = !h; h = h || {id:uid(), kind:'crypto', cgId:'', sym:'', name:'', qty:0, avgCost:0, valueUsd:0};
+  let pick = h.cgId ? {id:h.cgId, symbol:h.sym, name:h.name} : null, kind = h.kind || 'crypto';
+  openSheet(`<div class="grab"></div><div class="row between"><h2>${isNew ? 'Thêm khoản đầu tư' : 'Sửa ' + esc(h.sym || h.name)}</h2>${isNew ? '' : '<button class="btn ghost danger" id="hDel">Xoá</button>'}</div>
+    <div class="seg" id="hKind"><button data-k="crypto" class="${kind==='crypto'?'on':''}">Coin</button><button data-k="manual" class="${kind==='manual'?'on':''}">Nhập tay (USDT, tiền chờ…)</button></div>
+    <div id="hCrypto" ${kind==='manual'?'hidden':''}>
+      <label class="f">Tìm coin<input class="inp" id="hQ" value="${esc(h.sym ? h.sym + ' · ' + h.name : '')}" placeholder="BTC, HYPE, Bera…" autocomplete="off"></label>
+      <div class="chips" id="hRes" style="margin-top:6px"></div>
+      <div class="grid2" style="margin-top:10px"><label class="f">Số lượng<input class="inp num" id="hQty" inputmode="decimal" value="${h.qty || ''}"></label>
+      <label class="f">Giá vốn TB/coin ($)<input class="inp num" id="hCost" inputmode="decimal" value="${h.avgCost || ''}" placeholder="không bắt buộc"></label></div>
+    </div>
+    <div id="hManual" ${kind==='manual'?'':'hidden'} class="grid2"><label class="f">Tên<input class="inp" id="hName" value="${esc(kind==='manual' ? h.name : '')}" placeholder="USDT trên Hyperliquid"></label>
+      <label class="f">Giá trị ($)<input class="inp num" id="hVal" inputmode="decimal" value="${h.valueUsd || ''}"></label></div>
+    <button class="btn primary block" id="hSave">Lưu</button>`);
+  const showPick = () => { $('#hRes').innerHTML = pick ? `<button class="on">${esc(pick.symbol)} · ${esc(pick.name)}</button>` : ''; };
+  showPick();
+  $('#hKind').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; kind = b.dataset.k;
+    document.querySelectorAll('#hKind button').forEach(x => x.classList.toggle('on', x === b)); $('#hCrypto').hidden = kind !== 'crypto'; $('#hManual').hidden = kind !== 'manual'; });
+  let tmr;
+  $('#hQ').addEventListener('input', e => { clearTimeout(tmr); const q = e.target.value.trim(); if (q.length < 2) return; tmr = setTimeout(async () => {
+    try { const j = await fetch('https://api.coingecko.com/api/v3/search?query=' + encodeURIComponent(q)).then(r => r.json());
+      const coins = (j.coins || []).slice(0, 6);
+      $('#hRes').innerHTML = coins.map((c,i) => `<button data-i="${i}">${esc(c.symbol)} · ${esc(c.name)}</button>`).join('') || '<span class="hint">Không thấy coin này</span>';
+      $('#hRes').onclick = ev => { const b = ev.target.closest('button[data-i]'); if (!b) return; const c = coins[+b.dataset.i]; pick = {id:c.id, symbol:c.symbol, name:c.name}; $('#hQ').value = c.symbol + ' · ' + c.name; showPick(); };
+    } catch(err){ $('#hRes').innerHTML = '<span class="hint">Không tìm được (mất mạng?). Gõ đúng mã CoinGecko, vd bitcoin.</span>'; pick = {id:q.toLowerCase(), symbol:q.toUpperCase(), name:q}; }
+  }, 400); });
+  const num = v => { const n = parseFloat(String(v).replace(/,/g,'.').replace(/[^0-9.]/g,'')); return isNaN(n) ? 0 : n; };
+  $('#hSave').addEventListener('click', () => {
+    if (kind === 'crypto') {
+      if (!pick) return toast('Chọn coin trong danh sách tìm kiếm');
+      const qty = num($('#hQty').value); if (!qty) return toast('Nhập số lượng');
+      Object.assign(h, {kind, cgId:pick.id, sym:String(pick.symbol).toUpperCase(), name:pick.name, qty, avgCost:num($('#hCost').value)});
+    } else {
+      const name = $('#hName').value.trim(), val = num($('#hVal').value); if (!name || !val) return toast('Nhập tên và giá trị');
+      Object.assign(h, {kind, name, sym:name, valueUsd:val, cgId:''});
+    }
+    if (S.sample) clearSample(true);
+    S.portfolio = (S.portfolio||[]).filter(x => x.id !== h.id); S.portfolio.push(h);
+    save(); closeSheet(); render(); fetchPrices(true); toast('Đã lưu ' + (h.sym || h.name));
+  });
+  if (!isNew) $('#hDel').addEventListener('click', () => { S.portfolio = S.portfolio.filter(x => x.id !== h.id); save(); closeSheet(); render(); toast('Đã xoá'); });
+}
+function fireChart(A, target){
+  const W=320, H=150, L=46, R=10, T=12, B=20, iw=W-L-R, ih=H-T-B;
+  const maxX = Math.max(5, Math.min(30, Math.ceil(((A.hit ?? 360)/12)) + 1));
+  const pa = A.pts.filter(p => p[0] <= maxX);
+  const maxY = Math.max(target, ...pa.map(p => p[1])) * 1.08 || 1;
+  const X = x => L + x/maxX*iw, Y = v => T + ih - Math.max(0, v)/maxY*ih;
+  const path = pts => pts.map((p,i) => `${i?'L':'M'}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(' ');
   const area = `${path(pa)} L${X(pa[pa.length-1][0])} ${Y(0)} L${X(0)} ${Y(0)} Z`;
-  const step = maxX<=10?1:maxX<=20?5:5;
-  let xt=''; for (let x=0;x<=maxX;x+=step) xt += `<text x="${X(x)}" y="${H-5}" text-anchor="middle">${x}</text>`;
+  const step = maxX <= 10 ? 1 : 5;
+  let xt = ''; for (let x = 0; x <= maxX; x += step) xt += `<text x="${X(x)}" y="${H-5}" text-anchor="middle">${x}</text>`;
+  const k = v => v >= 1000 ? '$' + Math.round(v/1000) + 'k' : '$' + Math.round(v);
   return `<section class="card section"><div class="row between"><h2>Đường lên đỉnh</h2><span class="hint">năm</span></div>
-    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Dự phóng tài sản theo năm so với mục tiêu FIRE">
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Dự phóng danh mục theo năm so với mục tiêu FIRE">
       <line x1="${L}" x2="${W-R}" y1="${Y(target)}" y2="${Y(target)}" stroke="var(--gold)" stroke-width="1.6" stroke-dasharray="5 4"/>
-      <text x="${W-R}" y="${Y(target)-5}" text-anchor="end" style="fill:var(--gold-ink)">Đỉnh ${compact(target)}</text>
+      <text x="${W-R}" y="${Y(target)-5}" text-anchor="end" style="fill:var(--gold-ink)">Đỉnh ${k(target)}</text>
       <line x1="${X(5)}" x2="${X(5)}" y1="${T}" y2="${Y(0)}" stroke="var(--line)" stroke-width="1"/>
       <text x="${X(5)+3}" y="${T+8}">mốc 5Y</text>
-      <text x="${L-4}" y="${Y(0)+3}" text-anchor="end">0</text>
+      <text x="${L-4}" y="${Y(0)+3}" text-anchor="end">$0</text>
       ${xt}
       <path d="${area}" fill="var(--h1)"/>
-      <path d="${path(pb)}" fill="none" stroke="var(--moss)" stroke-width="1.6" stroke-dasharray="3 3"/>
       <path d="${path(pa)}" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/>
     </svg>
-    <div class="legend-line"><span><i style="background:var(--accent)"></i>Nhịp hiện tại</span><span><i style="background:var(--moss)"></i>Để dành thêm 10%</span></div>
+    <div class="legend-line"><span><i style="background:var(--accent)"></i>Danh mục hiện tại + ${fmtUsd(fireCfg().contribUsd)}/tháng, lãi ${fireCfg().rate}%/năm</span></div>
   </section>`;
 }
 
@@ -1198,13 +1328,14 @@ function seedSample(){
     {id:uid(), name:'iCloud 200GB', amount:59000, type:'Chi', category:'Gói đăng ký', repeat:'m', next:nm(now.getDate()+2 > 28 ? 2 : now.getDate()+2)},
     {id:uid(), name:'Phí giải trail', amount:6000000, type:'Chi', category:'Trail & sức khoẻ', repeat:'y', next:ymd(new Date(now.getFullYear()+1, 2, 15))}
   ];
+  S.portfolio = [{id:uid(), kind:'crypto', cgId:'bitcoin', sym:'BTC', name:'Bitcoin', qty:0.12, avgCost:62000}, {id:uid(), kind:'crypto', cgId:'hyperliquid', sym:'HYPE', name:'Hyperliquid', qty:400, avgCost:22}, {id:uid(), kind:'manual', sym:'USDT chờ', name:'USDT chờ', valueUsd:1500}];
   S.debts = [{id:uid(), person:'Anh Minh', amount:2000000, dir:'lend', due:ymd(new Date(now.getFullYear(), now.getMonth(), now.getDate()+12)), note:'mượn mua giày', done:false}];
   S.set = {...S.set, income:30000000, saveRate:30, netWorth:450000000, ret:6};
   S.accounts = [{name:'Tiền mặt', initial:8000000}, {name:'Ngân hàng', initial:40000000}];
   S.sample = true;
 }
 function clearSample(keepSettings){
-  S.tx = S.tx.filter(t=>!t.sample); S.rec = []; S.debts = []; S.sample = false; S.accounts.forEach(a=>a.initial=0);
+  S.tx = S.tx.filter(t=>!t.sample); S.rec = []; S.debts = []; S.portfolio = []; S.sample = false; S.accounts.forEach(a=>a.initial=0);
   if (!keepSettings) S.set = {...S.set, income:0, netWorth:0};
   else S.set = {...S.set, netWorth:0};
 }
@@ -1259,7 +1390,17 @@ document.addEventListener('click', async e => {
     case 'edit-debt': openDebt(S.debts.find(x=>x.id===id)); break;
     case 'del-debt': S.debts = S.debts.filter(x=>x.id!==SHEET_CTX.debt.id); save(); closeSheet(); render(); break;
     case 'done-debt': { const d = S.debts.find(x=>x.id===id); if (d){ d.done = true; save(); render(); toast(`Đã xong khoản với ${d.person}`); } break; }
-    case 'save-fire': { const p = parseLine($('#fNw').value||''); S.set.netWorth = p ? p.amount : 0; S.set.ret = +$('#fRet').value || 0; save(); render(); toast('Đã cập nhật'); break; }
+    case 'save-fire': {
+      const n = id => { const v = parseFloat(String($(id).value).replace(/,/g,'.').replace(/[^0-9.]/g,'')); return isNaN(v) ? 0 : v; };
+      const monthlyUsd = n('#fMonthly'), rate = n('#fRate'), contribUsd = n('#fContrib');
+      if (!monthlyUsd || !rate) { toast('Cần nhập chi tiêu/tháng và lợi suất'); break; }
+      S.fire = {monthlyUsd, rate, contribUsd}; save(); render(); toast('Đã cập nhật mục tiêu FIRE'); break; }
+    case 'new-h': openHolding(); break;
+    case 'edit-h': openHolding((S.portfolio||[]).find(x=>x.id===id)); break;
+    case 'prices-refresh': fetchPrices(true); break;
+    case 'quick-del-h': {
+      if (!el.classList.contains('confirm')) { el.classList.add('confirm'); el.textContent = 'Chắc chắn?'; setTimeout(()=>{ if (el.isConnected) { el.classList.remove('confirm'); el.textContent = 'Xoá'; } }, 3000); break; }
+      const h = (S.portfolio||[]).find(x=>x.id===id); S.portfolio = (S.portfolio||[]).filter(x=>x.id!==id); save(); render(); if (h) toast('Đã xoá ' + (h.sym||h.name)); break; }
     case 'save-budget': { const p = parseLine($('#sInc').value||''); S.set.income = p ? p.amount : 0; S.set.saveRate = Math.max(0, Math.min(90, +$('#sRate').value||0)); S.set.incomeMode = $('#sMode').value; save(); render(); toast('Đã lưu hạn mức'); break; }
     case 'new-cat': openCat(null); break;
     case 'edit-cat': openCat(+el.dataset.i); break;
@@ -1302,7 +1443,7 @@ let lastSync = 0;
 async function autoSync(){
   if (!S.sync.user || !S.sync.token || S.sample || Date.now() - lastSync < 30000) return;
   lastSync = Date.now();
-  await push(true); await pull(true); await fetchGoshop();
+  await push(true); await pull(true); await syncState(); await fetchGoshop();
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') autoSync(); });
 autoSync();

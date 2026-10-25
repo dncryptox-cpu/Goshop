@@ -428,6 +428,9 @@ function doPost(e) {
     if (action === 'upsert_transactions') return handleUpsertTransactions(data);
     if (action === 'delete_transactions') return handleDeleteTransactions(data);
 
+    if (action === 'get_state') return handleGetState(data);
+    if (action === 'set_state') return handleSetState(data);
+
     if (action === 'goshop_stats') {
       const out = {};
       (data.periods || []).slice(0, 12).forEach(p => { if (p && p.key && p.from && p.to) out[p.key] = goshopStats_(p.from, p.to); });
@@ -1624,4 +1627,48 @@ function goshopFreezeDaily() {
 function setupGoshopFreezeTrigger() {
   ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'goshopFreezeDaily') ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger('goshopFreezeDaily').timeBased().everyDays(1).atHour(1).inTimezone('Asia/Ho_Chi_Minh').create();
+}
+
+
+// ==========================================
+// 14. ĐỒNG BỘ TRẠNG THÁI APP GIỮA CÁC MÁY (danh mục đầu tư, FIRE, ví, danh mục, định kỳ, nợ, cài đặt)
+// ==========================================
+// Tab AppState: A key | B json | C at (ms). Ghi đè theo kiểu bản mới nhất thắng.
+const SHEET_APPSTATE = 'AppState';
+function stateRow_(sh, key) {
+  const last = getRealLastRow(sh, 1);
+  if (last < 2) return 0;
+  const keys = sh.getRange(2, 1, last - 1, 1).getValues();
+  for (let i = 0; i < keys.length; i++) if (String(keys[i][0]) === key) return i + 2;
+  return 0;
+}
+function handleGetState(data) {
+  const ss = getTargetSpreadsheet(data.user);
+  const sh = ss.getSheetByName(SHEET_APPSTATE);
+  if (!sh) return respondJSON({ status: 'success', state: null, at: 0 });
+  const r = stateRow_(sh, 'fire5y:' + data.user);
+  if (!r) return respondJSON({ status: 'success', state: null, at: 0 });
+  const v = sh.getRange(r, 1, 1, 3).getValues()[0];
+  return respondJSON({ status: 'success', state: String(v[1] || ''), at: Number(v[2]) || 0 });
+}
+function handleSetState(data) {
+  const json = String(data.state || '');
+  if (!json || json.length > 45000) return respondJSON({ status: 'error', message: 'Dữ liệu trạng thái rỗng hoặc quá lớn' });
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(8000)) return respondJSON({ status: 'error', message: 'Sheet đang bận, thử lại sau.' });
+  try {
+    const ss = getTargetSpreadsheet(data.user);
+    let sh = ss.getSheetByName(SHEET_APPSTATE);
+    if (!sh) { sh = ss.insertSheet(SHEET_APPSTATE); sh.appendRow(['Key', 'JSON', 'At']); }
+    const key = 'fire5y:' + data.user, at = Number(data.at) || Date.now();
+    const r = stateRow_(sh, key);
+    if (r) {
+      const cur = Number(sh.getRange(r, 3).getValue()) || 0;
+      if (cur > at) return respondJSON({ status: 'success', conflict: true, at: cur });
+      sh.getRange(r, 1, 1, 3).setValues([[key, json, at]]);
+    } else {
+      sh.getRange(getRealLastRow(sh, 1) + 1, 1, 1, 3).setValues([[key, json, at]]);
+    }
+    return respondJSON({ status: 'success', at: at });
+  } finally { try { lock.releaseLock(); } catch (e) {} }
 }
