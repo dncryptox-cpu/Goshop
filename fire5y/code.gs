@@ -1574,3 +1574,54 @@ function setupTelegramWebhookFast() {
   });
   Logger.log('setWebhook: ' + r.getContentText());
 }
+
+// ==========================================
+// 13. CHỐT GIÁ VỐN / GIÁ BÁN TRONG SHEET TÀI CHÍNH GOSHOP
+// ==========================================
+// Cột J (Cost) và L (Price) của DATA(YTB)/DATA(GCC) là công thức tra tab PRICE → sửa PRICE làm đổi cả đơn cũ.
+// Chốt = thay công thức bằng số đang hiển thị cho các đơn trước ngày cutoff. Đơn mới vẫn tra PRICE.
+// Trigger mỗi đêm chốt các đơn của những ngày trước → sửa PRICE chỉ ảnh hưởng đơn từ hôm sửa trở đi.
+
+function goshopFreezeBefore_(cutoff) {
+  const ss = SpreadsheetApp.openById(GOSHOP_FIN_ID);
+  const done = {};
+  ['DATA(YTB)', 'DATA(GCC)'].forEach(name => {
+    const sh = ss.getSheetByName(name);
+    if (!sh) return;
+    const last = getRealLastRow(sh, 1);
+    if (last < 2) return;
+    const dates = sh.getRange(2, 1, last - 1, 1).getValues();
+    let n = 0;
+    [10, 12].forEach(col => { // J = Cost, L = Price
+      const rng = sh.getRange(2, col, last - 1, 1);
+      const f = rng.getFormulas(), v = rng.getValues();
+      let start = -1;
+      const flush = end => { // ghi số cho đoạn dòng liền nhau [start, end)
+        if (start < 0) return;
+        sh.getRange(2 + start, col, end - start, 1).setValues(v.slice(start, end));
+        n += end - start; start = -1;
+      };
+      for (let i = 0; i < f.length; i++) {
+        const d = gsDate_(dates[i][0]);
+        const freeze = f[i][0] && d && d < cutoff;
+        if (freeze && start < 0) start = i;
+        if (!freeze) flush(i);
+      }
+      flush(f.length);
+    });
+    done[name] = n;
+  });
+  CacheService.getScriptCache().remove('GOSHOP_DAYMAP_V1');
+  return done;
+}
+
+function goshopFreezeDaily() {
+  const today = Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd');
+  const r = goshopFreezeBefore_(today);
+  Logger.log('Đã chốt (ô): ' + JSON.stringify(r));
+}
+
+function setupGoshopFreezeTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => { if (t.getHandlerFunction() === 'goshopFreezeDaily') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('goshopFreezeDaily').timeBased().everyDays(1).atHour(1).inTimezone('Asia/Ho_Chi_Minh').create();
+}
