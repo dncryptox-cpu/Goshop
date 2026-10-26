@@ -41,7 +41,8 @@
   table{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:8px}
   th{text-align:left;font-weight:500;color:var(--mute);padding:5px 6px;border-bottom:1px solid var(--line)}
   td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle}
-  td.acts{text-align:right;white-space:nowrap}
+  td.acts{text-align:right;white-space:nowrap;padding-right:0}
+  td.acts .btn.xs{padding:2px 6px}
   .form{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;padding:10px;border:1px dashed var(--line);border-radius:8px}
   .err{color:var(--bad);margin:8px 0}
   .okbox{background:color-mix(in srgb,var(--ok) 12%,transparent);color:var(--ok);padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:14px}
@@ -81,7 +82,7 @@
         <a class="btn" x-show="sheetUrl" :href="sheetUrl" target="_blank" rel="noopener">Xem sheet</a>
         <button class="btn" @click="load()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
       </header>
-      <div class="okbox" x-show="done" x-text="done"></div>
+      <div class="okbox row" x-show="done"><span style="flex:1" x-text="done"></span><button class="btn xs" x-show="undo" @click="doUndo()" :disabled="busy">↶ Hoàn tác</button></div>
       <div class="err" x-show="error" x-text="error"></div>
 
       <div class="row" style="margin-bottom:10px">
@@ -105,6 +106,7 @@
             <label class="mute" style="font-size:13px">Renew <input type="date" x-model="famForm.renewIso"></label>
             <select x-model="famForm.status"><option>Hoạt động</option><option>Tạm dừng</option><option>Đã đóng</option></select>
             <input placeholder="Ghi chú" x-model="famForm.note" style="flex:1;min-width:160px">
+            <button class="btn" style="color:var(--bad)" x-show="famForm.row" @click="delFam(famForm)" :disabled="busy" x-text="famForm.cf ? 'Bấm lần nữa để xoá' : 'Xoá fam'"></button>
             <button class="btn" @click="famForm = null">Huỷ</button>
             <button class="btn pri" @click="saveFam()" :disabled="busy" x-text="busy ? 'Đang lưu…' : 'Lưu'"></button>
           </div>
@@ -132,6 +134,7 @@
                 <div class="sp"></div>
                 <button class="btn xs" x-show="pending(f).length" @click="copy(pending(f).map(c => c.email).join(', '), 'Đã copy ' + pending(f).length + ' email chờ vào')" x-text="'Copy ' + pending(f).length + ' email chờ vào'"></button>
                 <button class="btn xs" style="color:var(--ok)" x-show="pending(f).length" @click="allJoined(f)" :disabled="busy">✓ Tất cả đã vào</button>
+                <button class="btn xs" style="color:var(--bad)" x-show="!f.customers.length" @click="delFam(f)" :disabled="busy" x-text="f.cf ? 'Bấm lần nữa' : 'Xoá fam'"></button>
                 <button class="btn xs" @click="famForm = editFam(f)">Sửa fam</button>
               </div>
               <div class="mute" style="font-size:13px;margin-top:4px">
@@ -148,7 +151,7 @@
                   <template x-for="c in f.customers" :key="c.row">
                     <tr :class="c.sv && 'sv'" :style="hit(c) ? 'background:color-mix(in srgb,var(--warn) 10%,transparent)' : ''">
                       <td class="mono"><span class="cp" @click="copy(c.email)" x-text="c.email"></span>
-                        <div class="row" style="gap:4px;flex-wrap:nowrap"><input class="ghost" placeholder="mail phụ" x-model="c.mailPhu" @change="saveCus(c)" style="width:150px"><input class="ghost" placeholder="ghi chú" x-model="c.note" @change="saveCus(c)" style="width:120px"></div>
+                        <div class="row" style="gap:4px;flex-wrap:nowrap"><input class="ghost" placeholder="mail phụ" x-model="c.mailPhu" @change="saveCus(c)" style="width:140px"><input class="ghost" placeholder="ghi chú" x-model="c.note" @change="saveCus(c)" style="width:100px"></div>
                         <template x-if="c.rn"><div class="form">
                           <b style="font-size:13px">Gia hạn</b>
                           <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="c.rn?.months===m && 'on'" @click="c.rn && (c.rn.months=m)" x-text="m + 'th'"></button></template>
@@ -160,7 +163,7 @@
                         </div></template>
                       </td>
                       <td><input class="ghost" x-model="c.ctv" list="ctvs" @change="saveCus(c)" style="width:64px"></td>
-                      <td><input class="ghost" type="date" :value="iso(c.buy)" @change="c.buy = dmy($event.target.value); saveCus(c)"></td>
+                      <td><input class="ghost" type="date" style="width:122px" :value="iso(c.buy)" @change="c.buy = dmy($event.target.value); saveCus(c)"></td>
                       <td><input class="ghost" type="number" min="1" x-model.number="c.months" @change="saveCus(c)" style="width:52px"></td>
                       <td x-text="c.hsd || '—'"></td>
                       <td :style="c.daysLeft !== null && c.daysLeft < 0 ? 'color:var(--bad)' : (c.daysLeft !== null && c.daysLeft <= 10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft === null ? '—' : (c.daysLeft < 0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + 'n')"></td>
@@ -169,6 +172,7 @@
                         <button class="btn xs" @click="c.rn = c.rn ? null : { months: c.months || 1, bonus: 0, fromToday: c.daysLeft !== null && c.daysLeft < -7, sku: '' }">Gia hạn</button>
                         <select class="btn xs" style="width:72px" title="Chuyển sang fam khác" @change="moveCus(c, $event.target.value); $event.target.value = ''"><option value="">Chuyển</option><template x-for="x in fams.filter(x => x.id !== f.id && x.status === 'Hoạt động')" :key="x.id"><option :value="x.id" x-text="x.id + ' (' + x.customers.length + '/' + max + ')'"></option></template></select>
                         <button class="btn xs" style="color:var(--bad)" @click="leave(c)" x-text="c.cf ? 'Bấm lần nữa' : 'Rời fam'"></button>
+                        <button class="btn xs" style="color:var(--bad)" title="Xoá khách nhập sai" @click="delCus(c)" x-text="c.dx ? 'Xoá?' : '✕'"></button>
                       </td>
                     </tr>
                   </template>
@@ -177,7 +181,7 @@
                     <tr class="nw">
                       <td><input class="mono" :placeholder="'+ email khách, Enter — còn ' + (max - f.customers.length) + ' slot'" x-model="n.email" @keydown.enter.prevent="addRow(f, n)" @paste="$nextTick(() => /\s|,/.test(n.email.trim()) && addRow(f, n))" style="width:100%"></td>
                       <td><input x-model="n.ctv" list="ctvs" placeholder="CTV" style="width:64px"></td>
-                      <td><input type="date" x-model="n.buyIso" style="width:130px"></td>
+                      <td><input type="date" x-model="n.buyIso" style="width:122px"></td>
                       <td><input type="number" min="1" x-model.number="n.months" style="width:52px"></td>
                       <td class="mute" x-text="n.email ? hsdOf(n) : ''"></td>
                       <td></td>
@@ -217,6 +221,7 @@
               <div style="flex:1;min-width:0"><div class="mono" x-text="c.email"></div><div class="mute" style="font-size:13px" x-text="(c.fam || '—') + ' · ' + c.status + ' · HSD ' + (c.hsd || '—') + ' · CTV ' + (c.ctv || '—')"></div></div>
               <select x-model="c.to"><option value="">Chọn fam để thêm lại</option><template x-for="x in fams.filter(x => x.customers.length < max && x.status === 'Hoạt động')" :key="x.id"><option :value="x.id" x-text="x.id + ' (' + x.customers.length + '/' + max + ')'"></option></template></select>
               <button class="btn xs" :disabled="!c.to || busy" @click="rejoin(c)">Thêm lại (Chờ mời)</button>
+              <button class="btn xs" style="color:var(--bad)" @click="delCus(c)" x-text="c.dx ? 'Bấm lần nữa' : 'Xoá'"></button>
             </div>
           </template>
         </div>
@@ -227,6 +232,7 @@
 </div>
 
 <script>
+const DEL = 'Đã xoá';
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return ''; } }
 function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
@@ -237,7 +243,7 @@ const todayIso = () => { const t = new Date(); return t.getFullYear() + '-' + St
 function gg() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '', fams: [], loose: [], skus: [], max: 5, sheetUrl: '',
-    loading: false, busy: false, error: '', done: '', q: '', view: 'fam', famForm: null, otp: {},
+    loading: false, busy: false, error: '', done: '', q: '', view: 'fam', famForm: null, otp: {}, undo: null,
     init() { if (this.pass) this.load(); setInterval(() => this.tickOtp(), 1000); },
     async api(body) {
       const r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
@@ -249,7 +255,7 @@ function gg() {
       this.loading = true; this.error = '';
       try {
         const d = await this.api({ action: 'gg_list' });
-        this.fams = d.fams.map(f => Object.assign(f, { nw: f.status === 'Hoạt động' ? (d.max > f.customers.length ? [this.blankRow()] : []) : [] })); this.loose = d.loose; this.skus = d.skus || []; this.max = d.max; this.sheetUrl = d.sheetUrl;
+        this.fams = d.fams.filter(f => f.status !== DEL).map(f => Object.assign(f, { nw: f.status === 'Hoạt động' ? (d.max > f.customers.length ? [this.blankRow()] : []) : [] })); this.loose = d.loose.filter(c => c.status !== DEL); this.skus = d.skus || []; this.max = d.max; this.sheetUrl = d.sheetUrl;
       } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng GG1: dán Code.gs mới rồi Triển khai → phiên bản mới.' : e.message; }
       this.loading = false;
     },
@@ -271,7 +277,7 @@ function gg() {
     },
     blankFam() { return { row: 0, id: '', email: '', pass: '', mkp: '', twofa: '', plan: '2TB', renewIso: '', status: 'Hoạt động', note: '' }; },
     editFam(f) { return { row: f.row, id: f.id, email: f.email, pass: f.pass, mkp: f.mkp, twofa: f.twofa, plan: f.plan, renewIso: iso(f.renew), status: f.status, note: f.note }; },
-    async run(fn, msg) { this.busy = true; this.error = ''; this.done = ''; try { const r = await fn(); this.done = typeof msg === 'function' ? msg(r) : msg; await this.load(); } catch (e) { this.error = e.message; } this.busy = false; },
+    async run(fn, msg, undo) { this.busy = true; this.error = ''; this.done = ''; this.undo = null; try { const r = await fn(); this.done = typeof msg === 'function' ? msg(r) : msg; this.undo = undo || null; await this.load(); } catch (e) { this.error = e.message; } this.busy = false; },
     // Dán 1 dòng copy từ sheet → tự tách email chủ / pass / mail khôi phục / 2FA / ngày renew
     quickFam(txt) {
       const f = this.famForm; if (!f || !txt) return;
@@ -317,7 +323,7 @@ function gg() {
       c.sv = false;
     },
     moveCus(c, fam) { if (fam) this.saveCus(c, fam); },
-    flash(m) { this.done = m; clearTimeout(this._ft); this._ft = setTimeout(() => { if (this.done === m) this.done = ''; }, 2500); },
+    flash(m) { this.done = m; this.undo = null; clearTimeout(this._ft); this._ft = setTimeout(() => { if (this.done === m) this.done = ''; }, 2500); },
     known() {
       const m = {};
       this.fams.forEach(f => f.customers.forEach(c => { m[c.email.toLowerCase()] = 'đã có ở ' + f.id; if (c.mailPhu && c.mailPhu.includes('@')) m[c.mailPhu.toLowerCase()] = m[c.mailPhu.toLowerCase()] || 'là mail phụ ở ' + f.id; }));
@@ -345,7 +351,25 @@ function gg() {
     },
     renew(f, c) { const x = c.rn; this.run(() => this.api({ action: 'gg_renew', row: c.row, email: c.email, months: x.months, bonusDays: x.bonus || 0, base: x.fromToday ? 'today' : 'hsd', finance: x.sku }), r => '✓ Gia hạn ' + c.email + ': ' + (r.oldHsd || '?') + ' → ' + r.hsd + (r.finance ? ' · tài chính dòng ' + r.finance.row + ' (' + r.finance.price.toLocaleString('vi-VN') + 'đ)' : '')); },
     setStatus(c, s) { this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: s }), '✓ ' + c.email + ': ' + s); },
-    leave(c) { if (!c.cf) { c.cf = true; setTimeout(() => { c.cf = false; }, 4000); return; } this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: 'Rời fam' }), '✓ ' + c.email + ' rời fam (giữ data, xem ở mục Đã rời).'); },
+    // ---- xoá (mềm: chỉ đánh dấu Đã xoá, không xoá dòng) + hoàn tác ----
+    famPayload(f, status) { return { row: f.row, id: f.id, email: f.email, pass: f.pass, mkp: f.mkp, twofa: f.twofa, plan: f.plan, renew: f.renew !== undefined ? f.renew : dmy(f.renewIso), status, note: f.note }; },
+    delFam(f) {
+      const live = this.fams.find(x => x.row === f.row) || f;
+      if (live.customers && live.customers.length) { this.error = live.id + ' còn ' + live.customers.length + ' khách — chuyển hoặc cho rời fam hết rồi mới xoá được.'; return; }
+      if (!f.cf) { f.cf = true; setTimeout(() => { f.cf = false; }, 4000); return; }
+      const old = live.status, body = this.famPayload(live, DEL);
+      this.run(() => this.api({ action: 'gg_fam', fam: body }), '✓ Đã xoá fam ' + live.id,
+        { label: live.id, fn: () => this.api({ action: 'gg_fam', fam: { ...body, status: old } }), msg: '↶ Đã khôi phục fam ' + live.id })
+        .then(() => { if (!this.error) this.famForm = null; });
+    },
+    delCus(c) {
+      if (!c.dx) { c.dx = true; setTimeout(() => { c.dx = false; }, 4000); return; }
+      const old = c.status;
+      this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: DEL }), '✓ Đã xoá ' + c.email,
+        { fn: () => this.api({ action: 'gg_set', row: c.row, email: c.email, status: old }), msg: '↶ Đã khôi phục ' + c.email });
+    },
+    doUndo() { const u = this.undo; if (!u) return; this.run(u.fn, u.msg); },
+    leave(c) { if (!c.cf) { c.cf = true; setTimeout(() => { c.cf = false; }, 4000); return; } const old = c.status; this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: 'Rời fam' }), '✓ ' + c.email + ' rời fam (giữ data, xem ở mục Đã rời).', { fn: () => this.api({ action: 'gg_set', row: c.row, email: c.email, status: old }), msg: '↶ ' + c.email + ' đã quay lại fam' }); },
     rejoin(c) { this.run(() => this.api({ action: 'gg_set', row: c.row, email: c.email, status: 'Chờ mời', toFam: c.to }), '✓ ' + c.email + ' → ' + c.to + ' (Chờ mời)'); },
     copy(t, msg) { if (!t) return; navigator.clipboard.writeText(String(t)); this.done = msg || 'Đã copy'; setTimeout(() => { if (this.done === (msg || 'Đã copy')) this.done = ''; }, 1500); },
     async tickOtp() { const m = {}; for (const f of this.fams) if (f.twofa) m[f.id] = await totp(f.twofa); this.otp = m; },
