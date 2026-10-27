@@ -153,72 +153,184 @@
             <!-- Scrollable Body Content -->
             <main class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
                 
-                <!-- EXECUTIVE SUMMARY BANNER (TÓM TẮT TỔNG QUAN PHÍA TRÊN) -->
-                <div class="bg-gradient-to-r from-red-950 via-slate-900 to-red-900 rounded-2xl p-4 sm:p-5 text-white shadow-xl relative overflow-hidden">
-                    <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-red-500/10 rounded-full blur-2xl pointer-events-none"></div>
-
-                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
-                        <!-- Summary Header Title -->
-                        <div class="space-y-1">
-                            <div class="flex items-center gap-2">
-                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-red-500/20 text-red-300 border border-red-400/30">
-                                    ⚡ Operational Overview
-                                </span>
-                                <span class="text-[11px] text-slate-300 font-mono" x-text="new Date().toLocaleTimeString('vi-VN')"></span>
-                            </div>
-                            <h2 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
-                                🍿 Bảng Tóm Tắt Nhanh Netflix Premium 4K
-                            </h2>
-                            <p class="text-xs text-slate-300 hidden sm:block">Theo dõi tổng lượng slot chủ gói, khách còn hạn & trạng thái vận hành tức thì.</p>
+                <!-- ===== 1. VIỆC CẦN LÀM (bấm để lọc hàng đợi) ===== -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                    <button type="button" @click="document.getElementById('slot-map')?.scrollIntoView({behavior:'smooth'})"
+                            class="text-left bg-white rounded-2xl p-3.5 border border-gray-100 card-shadow hover:border-emerald-300 transition-all">
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-gray-400">Slot trống</span>
+                        <div class="flex items-baseline gap-1.5 mt-1">
+                            <span class="text-2xl font-black font-mono text-emerald-600" x-text="slotStats.empty"></span>
+                            <span class="text-xs text-gray-400 font-mono" x-text="'/ ' + slotStats.capacity"></span>
                         </div>
+                        <span class="text-[11px] font-bold text-gray-500" x-text="slotStats.reclaim > 0 ? ('+' + slotStats.reclaim + ' slot quá hạn có thể thu hồi') : 'Có thể bán ngay'"></span>
+                    </button>
 
-                        <!-- Metric Summary Cards Group -->
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                            <!-- 1. Slot Chủ Gói Sức Chứa -->
-                            <div class="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-2.5 flex flex-col justify-between">
-                                <span class="text-[10px] text-slate-300 font-bold uppercase">Sức Chứa Chủ Gói</span>
-                                <div class="flex items-baseline gap-1 mt-1">
-                                    <span class="text-base font-extrabold text-red-300 font-mono" x-text="getTotalUsedSlots()"></span>
-                                    <span class="text-xs text-slate-400 font-mono" x-text="'/' + (ownerAccounts.length * 5) + ' Slot'"></span>
-                                </div>
-                                <span class="text-[10px] font-bold mt-1" 
-                                      :class="(ownerAccounts.length * 5 - getTotalUsedSlots()) > 0 ? 'text-emerald-400' : 'text-rose-400'"
-                                      x-text="(ownerAccounts.length * 5 - getTotalUsedSlots()) > 0 ? ('🟢 Trống ' + (ownerAccounts.length * 5 - getTotalUsedSlots()) + ' slot') : '🔴 Đã hết slot!'"></span>
-                            </div>
+                    <button type="button" @click="queueFilter = (queueFilter === 'overdue' ? 'all' : 'overdue')"
+                            class="text-left bg-white rounded-2xl p-3.5 border card-shadow transition-all"
+                            :class="queueFilter === 'overdue' ? 'border-rose-400 ring-2 ring-rose-500/20' : 'border-gray-100 hover:border-rose-300'">
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose-500">Quá hạn (≤30 ngày)</span>
+                        <div class="flex items-baseline gap-1.5 mt-1">
+                            <span class="text-2xl font-black font-mono text-rose-600" x-text="queueCounts.overdue"></span>
+                            <span class="text-xs text-gray-400">khách</span>
+                        </div>
+                        <span class="text-[11px] font-bold text-gray-500">Gia hạn hoặc thu hồi slot</span>
+                    </button>
 
-                            <!-- 2. Khách Còn Hạn -->
-                            <div class="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-2.5 flex flex-col justify-between">
-                                <span class="text-[10px] text-slate-300 font-bold uppercase">🟢 Đang Còn Hạn</span>
-                                <div class="flex items-baseline gap-1 mt-1">
-                                    <span class="text-base font-extrabold text-emerald-400 font-mono" x-text="list.filter(i => !i.expired).length"></span>
-                                    <span class="text-xs text-slate-400 font-mono" x-text="'/' + list.length + ' KH'"></span>
-                                </div>
-                                <span class="text-[10px] font-bold text-emerald-300 mt-1" x-text="list.length > 0 ? Math.round((list.filter(i => !i.expired).length / list.length)*100) + '% Đang dùng' : '0%'"></span>
-                            </div>
+                    <button type="button" @click="queueFilter = (queueFilter === 'd3' ? 'all' : 'd3')"
+                            class="text-left bg-white rounded-2xl p-3.5 border card-shadow transition-all"
+                            :class="queueFilter === 'd3' ? 'border-orange-400 ring-2 ring-orange-500/20' : 'border-gray-100 hover:border-orange-300'">
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-orange-500">Hết hạn 0–3 ngày</span>
+                        <div class="flex items-baseline gap-1.5 mt-1">
+                            <span class="text-2xl font-black font-mono text-orange-600" x-text="queueCounts.d3"></span>
+                            <span class="text-xs text-gray-400">khách</span>
+                        </div>
+                        <span class="text-[11px] font-bold text-gray-500">Nhắn gia hạn ngay</span>
+                    </button>
 
-                            <!-- 3. Sắp Hết Hạn (≤7 Ngày) -->
-                            <div class="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-2.5 flex flex-col justify-between cursor-pointer hover:bg-white/20 transition-all"
-                                 @click="statusFilter = 'expiring_soon'">
-                                <span class="text-[10px] text-amber-300 font-bold uppercase">⏳ Sắp Hạn (≤7d)</span>
-                                <div class="flex items-baseline gap-1 mt-1">
-                                    <span class="text-base font-extrabold text-amber-400 font-mono" x-text="list.filter(i => i.daysLeft >= 0 && i.daysLeft <= 7).length"></span>
-                                    <span class="text-xs text-slate-400">Khách</span>
-                                </div>
-                                <span class="text-[10px] font-bold text-amber-300 mt-1">Bấm để lọc ➔</span>
-                            </div>
+                    <button type="button" @click="queueFilter = (queueFilter === 'd7' ? 'all' : 'd7')"
+                            class="text-left bg-white rounded-2xl p-3.5 border card-shadow transition-all"
+                            :class="queueFilter === 'd7' ? 'border-amber-400 ring-2 ring-amber-500/20' : 'border-gray-100 hover:border-amber-300'">
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-600">Hết hạn 4–7 ngày</span>
+                        <div class="flex items-baseline gap-1.5 mt-1">
+                            <span class="text-2xl font-black font-mono text-amber-600" x-text="queueCounts.d7"></span>
+                            <span class="text-xs text-gray-400">khách</span>
+                        </div>
+                        <span class="text-[11px] font-bold text-gray-500">Nhắc trước</span>
+                    </button>
+                </div>
 
-                            <!-- 4. Đã Hết Hạn -->
-                            <div class="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-2.5 flex flex-col justify-between cursor-pointer hover:bg-white/20 transition-all"
-                                 @click="statusFilter = 'expired'">
-                                <span class="text-[10px] text-rose-300 font-bold uppercase">🔴 Đã Hết Hạn</span>
-                                <div class="flex items-baseline gap-1 mt-1">
-                                    <span class="text-base font-extrabold text-rose-400 font-mono" x-text="list.filter(i => i.expired).length"></span>
-                                    <span class="text-xs text-slate-400">Khách</span>
+                <!-- ===== 2. HÀNG ĐỢI XỬ LÝ ===== -->
+                <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                    <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-2">
+                        <h3 class="text-sm font-extrabold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="list-checks" class="w-4 h-4 text-red-600"></i>
+                            <span>Cần xử lý</span>
+                            <span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600" x-text="workQueue.length"></span>
+                        </h3>
+                        <template x-if="queueFilter !== 'all'">
+                            <button type="button" @click="queueFilter = 'all'" class="text-[11px] font-bold text-gray-500 hover:text-gray-800 flex items-center gap-1">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i><span>Bỏ lọc</span>
+                            </button>
+                        </template>
+                    </div>
+                    <div class="divide-y divide-gray-100 max-h-[420px] overflow-y-auto">
+                        <template x-for="item in workQueue" :key="'q-' + (item.id || item.rowNum)">
+                            <div class="px-4 py-2.5 flex items-center gap-3 hover:bg-gray-50/80">
+                                <span class="shrink-0 w-[76px] text-center text-[11px] font-extrabold font-mono px-2 py-1 rounded-lg border" :class="dayPillClass(item)" x-text="dayLabel(item)"></span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-1.5 min-w-0">
+                                        <span class="text-xs font-extrabold text-gray-900 truncate" x-text="item.userName || 'Profile'"></span>
+                                        <span class="text-[10px] font-mono font-bold text-red-700 bg-red-50 px-1.5 rounded shrink-0" x-text="item.userCode"></span>
+                                    </div>
+                                    <div class="text-[11px] text-gray-500 font-mono truncate">
+                                        HSD <span x-text="item.expiryDate"></span> · <span x-text="shortEmail(item.rootEmail)"></span> · Slot <span x-text="item.slotSeq || '?'"></span> · <span x-text="item.ctv || 'Dnc'"></span>
+                                    </div>
                                 </div>
-                                <span class="text-[10px] font-bold text-rose-300 mt-1">Cần gia hạn ➔</span>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button @click="openCustomerMessageModal(item)" class="p-1.5 sm:px-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 rounded-lg text-xs font-bold flex items-center gap-1" title="Nhắn khách">
+                                        <i data-lucide="message-square" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Nhắn</span>
+                                    </button>
+                                    <button @click="openRenewFor(item)" class="p-1.5 sm:px-2.5 bg-red-600 text-white hover:bg-red-700 rounded-lg text-xs font-bold flex items-center gap-1" title="Gia hạn">
+                                        <i data-lucide="refresh-ccw" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Gia hạn</span>
+                                    </button>
+                                </div>
                             </div>
+                        </template>
+                        <template x-if="workQueue.length === 0">
+                            <div class="px-4 py-8 text-center text-xs font-bold text-gray-400">✅ Không có khách nào cần xử lý</div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- ===== 3. SƠ ĐỒ SLOT THEO TÀI KHOẢN CHỦ ===== -->
+                <div id="slot-map" class="space-y-2.5 scroll-mt-4">
+                    <div class="flex items-center justify-between gap-2 flex-wrap">
+                        <h3 class="text-sm font-extrabold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="layout-grid" class="w-4 h-4 text-red-600"></i>
+                            <span>Sơ đồ slot</span>
+                        </h3>
+                        <div class="flex items-center gap-3 text-[10px] font-bold text-gray-500 flex-wrap">
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-emerald-500"></span>&gt;7 ngày</span>
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-amber-500"></span>4–7</span>
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-orange-500"></span>0–3</span>
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm bg-rose-500"></span>Quá hạn</span>
+                            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-sm border border-dashed border-gray-400"></span>Trống</span>
+                            <label class="flex items-center gap-1.5 cursor-pointer text-gray-600">
+                                <input type="checkbox" x-model="onlyHostsWithFree" class="w-3.5 h-3.5 text-red-600 rounded">
+                                <span>Chỉ TK còn trống</span>
+                            </label>
                         </div>
                     </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3">
+                        <template x-for="host in visibleHosts" :key="'h-' + host.email">
+                            <div class="bg-white rounded-2xl border card-shadow overflow-hidden"
+                                 :class="host.overflow.length ? 'border-rose-300' : 'border-gray-100'">
+                                <div class="px-3.5 py-2.5 border-b border-gray-100 flex items-center justify-between gap-2 bg-gray-50/60">
+                                    <div class="min-w-0">
+                                        <span class="font-mono font-bold text-xs text-red-700 truncate block cursor-pointer hover:underline"
+                                              @click="copyToClipboard(host.email, 'Email Chủ Gói')" :title="'Copy ' + host.email" x-text="host.email"></span>
+                                        <template x-if="!host.acc">
+                                            <span class="text-[10px] font-bold text-amber-700">⚠️ Chưa có trong bảng TK chủ</span>
+                                        </template>
+                                        <template x-if="host.acc">
+                                            <span class="text-[10px] font-mono font-bold text-emerald-700" x-text="'2FA ' + (host.acc.totpCode || '------') + ' · ' + (host.acc.totpSeconds || 30) + 's'"></span>
+                                        </template>
+                                    </div>
+                                    <span class="shrink-0 text-[11px] font-extrabold font-mono px-2 py-1 rounded-lg border"
+                                          :class="host.empty > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (host.overflow.length ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-gray-100 text-gray-600 border-gray-200')"
+                                          x-text="host.overflow.length ? ('VƯỢT ' + (5 + host.overflow.length) + '/5') : (host.empty > 0 ? ('Trống ' + host.empty) : 'Đầy 5/5')"></span>
+                                </div>
+
+                                <div class="divide-y divide-gray-50">
+                                    <template x-for="(cell, si) in host.slots" :key="host.email + '-' + si">
+                                        <div class="flex items-center gap-2.5 px-3.5 py-2 min-h-[44px]">
+                                            <span class="w-5 text-[11px] font-black font-mono text-gray-300 shrink-0" x-text="si + 1"></span>
+
+                                            <template x-if="!cell">
+                                                <button type="button" @click="openNewInSlot(host.email, si + 1)"
+                                                        class="flex-1 text-left text-[11px] font-bold text-gray-400 border border-dashed border-gray-300 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50/50 rounded-lg px-2.5 py-1.5 transition-all flex items-center gap-1.5">
+                                                    <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>Trống — thêm khách</span>
+                                                </button>
+                                            </template>
+
+                                            <template x-if="cell">
+                                                <div class="flex-1 min-w-0 flex items-center gap-2">
+                                                    <span class="w-1.5 self-stretch rounded-full shrink-0" :class="dayBarClass(cell.item)"></span>
+                                                    <div class="min-w-0 flex-1">
+                                                        <div class="flex items-center gap-1.5 min-w-0">
+                                                            <span class="text-xs font-bold truncate" :class="cell.item.expired ? 'text-gray-400 line-through' : 'text-gray-900'" x-text="cell.item.userName || 'Profile'"></span>
+                                                            <template x-if="cell.conflict">
+                                                                <span class="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1 rounded shrink-0" :title="'Trên sheet ghi slot ' + cell.item.slotSeq">TRÙNG SLOT</span>
+                                                            </template>
+                                                        </div>
+                                                        <span class="text-[10px] font-mono text-gray-400 truncate block" x-text="(cell.item.userCode || '') + ' · ' + cell.item.expiryDate"></span>
+                                                    </div>
+                                                    <span class="shrink-0 text-[10px] font-extrabold font-mono px-1.5 py-0.5 rounded-md border" :class="dayPillClass(cell.item)" x-text="dayLabel(cell.item)"></span>
+                                                    <div class="flex items-center gap-0.5 shrink-0">
+                                                        <button @click="openCustomerMessageModal(cell.item)" class="p-1 text-gray-400 hover:text-emerald-600 rounded" title="Nhắn khách"><i data-lucide="message-square" class="w-3.5 h-3.5"></i></button>
+                                                        <button @click="openRenewFor(cell.item)" class="p-1 text-gray-400 hover:text-red-600 rounded" title="Gia hạn"><i data-lucide="refresh-ccw" class="w-3.5 h-3.5"></i></button>
+                                                        <button @click="copyFullInfo(cell.item)" class="p-1 text-gray-400 hover:text-gray-800 rounded" title="Copy full info"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+
+                                    <template x-for="ov in host.overflow" :key="'ov-' + (ov.id || ov.rowNum)">
+                                        <div class="flex items-center gap-2.5 px-3.5 py-2 bg-rose-50/60">
+                                            <span class="w-5 text-[11px] font-black text-rose-400 shrink-0">!</span>
+                                            <span class="flex-1 text-xs font-bold text-rose-700 truncate" x-text="(ov.userName || 'Profile') + ' · ' + (ov.userCode || '') + ' — vượt 5 slot'"></span>
+                                            <span class="shrink-0 text-[10px] font-extrabold font-mono px-1.5 py-0.5 rounded-md border" :class="dayPillClass(ov)" x-text="dayLabel(ov)"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                    <template x-if="visibleHosts.length === 0">
+                        <div class="bg-white rounded-2xl p-8 text-center text-xs font-bold text-gray-400 border border-gray-100" x-text="onlyHostsWithFree ? 'Không còn tài khoản chủ nào trống slot' : 'Chưa có tài khoản chủ nào'"></div>
+                    </template>
                 </div>
 
                 <!-- SECTION: QUẢN LÝ TÀI KHOẢN CHỦ GÓI (NETFLIX) -->
@@ -320,6 +432,13 @@
                     </div>
                 </div>
 
+                <!-- ===== 4. TẤT CẢ KHÁCH ===== -->
+                <h3 class="text-sm font-extrabold text-gray-900 flex items-center gap-2 pt-2">
+                    <i data-lucide="users" class="w-4 h-4 text-red-600"></i>
+                    <span>Tất cả khách</span>
+                    <span class="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-gray-100 text-gray-600" x-text="filteredList.length + '/' + list.length"></span>
+                    <span class="text-[10px] font-bold text-gray-400">· sắp xếp theo HSD gần nhất</span>
+                </h3>
                 <!-- Filters & Search Bar -->
                 <div class="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 card-shadow flex flex-col md:flex-row items-center justify-between gap-3">
                     <div class="relative w-full md:w-96">
@@ -1148,6 +1267,10 @@
                 activeModalTab: 'ai',
                 searchQuery: '',
                 statusFilter: 'all',
+                queueFilter: 'all',          // all | overdue | d3 | d7
+                onlyHostsWithFree: false,
+                SLOTS_PER_HOST: 5,
+                OVERDUE_WINDOW: 30,          // quá hạn > 30 ngày coi như đã thu hồi → slot trống
                 list: [],
                 ownerAccounts: [],
                 showOwnerSection: false,
@@ -1662,6 +1785,144 @@ Lưu ý: Vui lòng không đổi mật khẩu, chỉ xem đúng Profile được
                     }
                 },
 
+                // ===== SLOT MAP & HÀNG ĐỢI =====
+                _norm(e) { return String(e || '').trim().toLowerCase(); },
+
+                shortEmail(e) {
+                    const s = String(e || '');
+                    const at = s.indexOf('@');
+                    return at > 0 ? s.slice(0, at) : s;
+                },
+
+                // Mỗi host: 5 ô slot. Ưu tiên khách còn hạn theo slotSeq; ô còn trống thì hiện khách quá hạn ≤30 ngày cùng slotSeq (chờ gia hạn/thu hồi).
+                get slotMap() {
+                    const N = this.SLOTS_PER_HOST;
+                    const hosts = new Map();
+                    (this.ownerAccounts || []).forEach(acc => {
+                        const k = this._norm(acc.email);
+                        if (k && !hosts.has(k)) hosts.set(k, { email: acc.email, acc, items: [] });
+                    });
+                    (this.list || []).forEach(item => {
+                        const k = this._norm(item.rootEmail || item.email);
+                        if (!k) return;
+                        if (!hosts.has(k)) hosts.set(k, { email: item.rootEmail || item.email, acc: null, items: [] });
+                        hosts.get(k).items.push(item);
+                    });
+
+                    const out = [];
+                    hosts.forEach(h => {
+                        const slots = Array(N).fill(null);
+                        const overflow = [];
+                        const active = h.items.filter(i => !i.expired).sort((a, b) => (a.slotSeq || 99) - (b.slotSeq || 99));
+                        const pending = [];
+                        active.forEach(i => {
+                            const s = parseInt(i.slotSeq, 10);
+                            if (s >= 1 && s <= N && !slots[s - 1]) slots[s - 1] = { item: i, conflict: false };
+                            else pending.push(i);
+                        });
+                        pending.forEach(i => {
+                            const free = slots.findIndex(c => !c);
+                            if (free >= 0) slots[free] = { item: i, conflict: true };
+                            else overflow.push(i);
+                        });
+                        const activeCount = active.length;
+                        h.items.filter(i => i.expired && i.daysLeft >= -this.OVERDUE_WINDOW)
+                            .sort((a, b) => b.daysLeft - a.daysLeft)
+                            .forEach(i => {
+                                const s = parseInt(i.slotSeq, 10);
+                                if (s >= 1 && s <= N && !slots[s - 1]) slots[s - 1] = { item: i, conflict: false };
+                            });
+                        const empty = slots.filter(c => !c).length;
+                        const reclaim = slots.filter(c => c && c.item.expired).length;
+                        out.push({ email: h.email, acc: h.acc, slots, overflow, activeCount, empty, reclaim });
+                    });
+                    // Host còn trống nhiều lên trước, rồi theo email
+                    return out.sort((a, b) => (b.empty - a.empty) || a.email.localeCompare(b.email));
+                },
+
+                get visibleHosts() {
+                    return this.onlyHostsWithFree ? this.slotMap.filter(h => h.empty > 0 || h.reclaim > 0) : this.slotMap;
+                },
+
+                get slotStats() {
+                    const m = this.slotMap;
+                    return {
+                        capacity: m.length * this.SLOTS_PER_HOST,
+                        empty: m.reduce((s, h) => s + h.empty, 0),
+                        reclaim: m.reduce((s, h) => s + h.reclaim, 0)
+                    };
+                },
+
+                _queueBucket(i) {
+                    const d = i.daysLeft;
+                    if (d === null || isNaN(d)) return null;
+                    if (d < 0) return d >= -this.OVERDUE_WINDOW ? 'overdue' : null;
+                    if (d <= 3) return 'd3';
+                    if (d <= 7) return 'd7';
+                    return null;
+                },
+
+                get queueCounts() {
+                    const c = { overdue: 0, d3: 0, d7: 0 };
+                    (this.list || []).forEach(i => { const b = this._queueBucket(i); if (b) c[b]++; });
+                    return c;
+                },
+
+                get workQueue() {
+                    return (this.list || [])
+                        .filter(i => { const b = this._queueBucket(i); return b && (this.queueFilter === 'all' || this.queueFilter === b); })
+                        .sort((a, b) => a.daysLeft - b.daysLeft);
+                },
+
+                dayLabel(i) {
+                    const d = i.daysLeft;
+                    if (d === null || isNaN(d)) return '—';
+                    if (d < 0) return 'Quá ' + Math.abs(d) + 'd';
+                    if (d === 0) return 'Hôm nay';
+                    return 'Còn ' + d + 'd';
+                },
+
+                dayPillClass(i) {
+                    const d = i.daysLeft;
+                    if (d < 0) return 'bg-rose-50 text-rose-700 border-rose-200';
+                    if (d <= 3) return 'bg-orange-50 text-orange-700 border-orange-200';
+                    if (d <= 7) return 'bg-amber-50 text-amber-700 border-amber-200';
+                    return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                },
+
+                dayBarClass(i) {
+                    const d = i.daysLeft;
+                    if (d < 0) return 'bg-rose-500';
+                    if (d <= 3) return 'bg-orange-500';
+                    if (d <= 7) return 'bg-amber-500';
+                    return 'bg-emerald-500';
+                },
+
+                openNewInSlot(email, slotSeq) {
+                    this.openModal();
+                    this.activeModalTab = 'manual';
+                    this.form.orderType = 'new';
+                    this.form.userName = '';
+                    this.form.userCode = '';
+                    this.form.note = '';
+                    this.$nextTick(() => {
+                        this.form.rootEmail = email;
+                        this.form.slotSeq = slotSeq;
+                    });
+                },
+
+                openRenewFor(item) {
+                    const id = item.id || item.rowNum;
+                    this.openModal();
+                    this.activeModalTab = 'manual';
+                    this.form.orderType = 'renew';
+                    // chờ <select> render xong option rồi mới gán giá trị
+                    this.$nextTick(() => setTimeout(() => {
+                        this.form.selectedRenewId = id;
+                        this.onSelectRenewCustomer();
+                    }, 0));
+                },
+
                 get filteredList() {
                     const q = (this.searchQuery || '').toLowerCase().trim();
                     return (this.list || []).filter(item => {
@@ -1671,6 +1932,10 @@ Lưu ý: Vui lòng không đổi mật khẩu, chỉ xem đúng Profile được
                         if (!q) return true;
                         return [item.rootEmail, item.userName, item.userCode, item.product, item.ctv, item.note]
                             .map(v => String(v || '')).join(' ').toLowerCase().includes(q);
+                    }).sort((a, b) => {
+                        // Còn hạn: HSD gần nhất lên trước; quá hạn xếp sau, mới quá hạn lên trước
+                        if (a.expired !== b.expired) return a.expired ? 1 : -1;
+                        return a.expired ? (b.daysLeft - a.daysLeft) : (a.daysLeft - b.daysLeft);
                     });
                 },
 
