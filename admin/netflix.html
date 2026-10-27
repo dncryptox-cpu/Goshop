@@ -233,6 +233,7 @@
                                     <button @click="openRenewFor(item)" class="p-1.5 sm:px-2.5 bg-red-600 text-white hover:bg-red-700 rounded-lg text-xs font-bold flex items-center gap-1" title="Gia hạn">
                                         <i data-lucide="refresh-ccw" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Gia hạn</span>
                                     </button>
+                                    <button @click="deleteCustomer(item)" class="p-1.5 bg-white text-gray-400 border border-gray-200 hover:text-rose-600 hover:border-rose-300 rounded-lg" title="Xoá khách (giải phóng slot)"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                                 </div>
                             </div>
                         </template>
@@ -311,6 +312,7 @@
                                                         <button @click="openCustomerMessageModal(cell.item)" class="p-1 text-gray-400 hover:text-emerald-600 rounded" title="Nhắn khách"><i data-lucide="message-square" class="w-3.5 h-3.5"></i></button>
                                                         <button @click="openRenewFor(cell.item)" class="p-1 text-gray-400 hover:text-red-600 rounded" title="Gia hạn"><i data-lucide="refresh-ccw" class="w-3.5 h-3.5"></i></button>
                                                         <button @click="copyFullInfo(cell.item)" class="p-1 text-gray-400 hover:text-gray-800 rounded" title="Copy full info"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                                                        <button @click="deleteCustomer(cell.item)" class="p-1 text-gray-400 hover:text-rose-600 rounded" title="Xoá khách (giải phóng slot)"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                                                     </div>
                                                 </div>
                                             </template>
@@ -322,6 +324,7 @@
                                             <span class="w-5 text-[11px] font-black text-rose-400 shrink-0">!</span>
                                             <span class="flex-1 text-xs font-bold text-rose-700 truncate" x-text="(ov.userName || 'Profile') + ' · ' + (ov.userCode || '') + ' — vượt 5 slot'"></span>
                                             <span class="shrink-0 text-[10px] font-extrabold font-mono px-1.5 py-0.5 rounded-md border" :class="dayPillClass(ov)" x-text="dayLabel(ov)"></span>
+                                            <button @click="deleteCustomer(ov)" class="p-1 text-rose-400 hover:text-rose-700 rounded shrink-0" title="Xoá khách"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                                         </div>
                                     </template>
                                 </div>
@@ -524,6 +527,7 @@
                                     <button @click="startEditRow(item)" class="p-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold">
                                         <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
                                     </button>
+                                    <button @click="deleteCustomer(item)" class="p-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg" title="Xoá khách"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                                 </div>
                             </div>
                         </div>
@@ -667,6 +671,10 @@
                                                         <button @click="startEditRow(item)"
                                                                 class="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1" title="Sửa Ngày Mua & Số Tháng">
                                                             <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                                                        </button>
+                                                        <button @click="deleteCustomer(item)"
+                                                                class="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-all" title="Xoá khách (giải phóng slot)">
+                                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                                                         </button>
                                                     </div>
                                                 </template>
@@ -1909,6 +1917,29 @@ Lưu ý: Vui lòng không đổi mật khẩu, chỉ xem đúng Profile được
                         this.form.rootEmail = email;
                         this.form.slotSeq = slotSeq;
                     });
+                },
+
+                async deleteCustomer(item) {
+                    if (!item) return;
+                    const info = `${item.userName || 'Profile'} (${item.userCode || '—'})\nTK chủ: ${item.rootEmail}\nSlot ${item.slotSeq || '?'} · HSD ${item.expiryDate} · ${this.dayLabel(item)}`;
+                    if (!confirm(`Xoá khách này khỏi sheet Netflix?\n\n${info}\n\nKhông hoàn tác được.`)) return;
+                    try {
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ module: 'netflix', action: 'delete', id: item.id, rowNum: item.rowNum, userCode: item.userCode || '', authToken: this.CONFIG.API_KEY })
+                        });
+                        const json = await res.json().catch(() => null);
+                        if (!json || !json.success) {
+                            alert('❌ Chưa xoá được: ' + ((json && (json.error || json.message)) || 'backend chưa hỗ trợ action delete'));
+                            return;
+                        }
+                        this.list = this.list.filter(i => i !== item);
+                        this.showToast(`🗑️ Đã xoá ${item.userName || 'khách'} — slot ${item.slotSeq || ''} trống`);
+                        this.fetchData(); // rowNum các dòng dưới bị dịch, tải lại cho chắc
+                    } catch (e) {
+                        alert('Lỗi xoá khách: ' + e.message);
+                    }
                 },
 
                 openRenewFor(item) {
