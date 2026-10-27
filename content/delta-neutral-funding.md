@@ -1,56 +1,74 @@
-Mình không đoán giá. Phần lớn thời gian trên Hyperliquid, mình làm một việc: **ăn chênh lệch funding** giữa hai sàn, giữ vị thế trung lập.
+Cùng một mã, hai sàn trả phí funding hai mức khác nhau.
 
-Bài này là cách mình nghĩ về nó — cơ chế, cách đo, và những chỗ dễ sai.
+Mình không đoán giá lên hay xuống. Mình sống ở khoảng chênh đó.
 
-## Cơ chế trong 3 dòng
+Đọc mất khoảng 4 phút.
 
-- Perp có **funding**: funding dương thì long trả cho short, âm thì ngược lại.
-- Cùng một tài sản, mỗi sàn một mức funding khác nhau.
-- Mở **long ở sàn funding thấp, short ở sàn funding cao** với cùng khối lượng → giá đi đâu thì hai chân bù nhau, còn lại là phần chênh funding.
+## Funding là gì, trong 3 câu
 
-Trên HIP-3, mình theo dõi các cặp giữa các sàn builder như Trade[XYZ] và EntropyIO.
+Lệnh perp (hợp đồng không kỳ hạn) có một khoản phí trả qua lại mỗi giờ, gọi là **funding**.
 
-## Đo basis
+Funding dương thì bên mua trả bên bán. Âm thì ngược lại.
 
-Trước khi vào, mình nhìn chênh lệch giá giữa hai chân:
+Mỗi sàn tự tính mức funding của mình, nên cùng một mã có thể chênh nhau.
+
+## Cách làm
+
+Mở **lệnh mua ở sàn funding thấp**, **lệnh bán ở sàn funding cao**, cùng khối lượng.
+
+Giá lên thì lệnh mua lãi, lệnh bán lỗ, bù nhau. Giá xuống cũng vậy.
+
+Thứ còn lại sau khi hai lệnh bù nhau: phần chênh phí funding.
+
+Mình đang làm việc này trên Hyperliquid HIP-3, giữa hai sàn xyz và io.
+
+## Đo độ lệch giá trước khi vào
+
+Hai sàn hiếm khi cùng một giá. Mình đo độ lệch:
 
 ```
-Basis = (giá chân short − giá chân long) / giá chân long × 100
+Lệch giá (%) = (giá ở sàn bán − giá ở sàn mua) / giá ở sàn mua × 100
 ```
 
-Basis quan trọng vì lúc đóng lệnh, nếu basis đi ngược thì phần lỗ giá có thể ăn hết phần funding đã nhận.
+Con số này quan trọng hơn bạn nghĩ.
 
-## Trung lập giá ≠ hết rủi ro
+Lúc đóng lệnh, nếu độ lệch đi ngược mình, phần lỗ giá có thể nuốt hết phí funding đã nhận.
 
-Đây là chỗ nhiều anh em hiểu nhầm.
+## Không đoán giá, nhưng vẫn mất tiền được
 
-Delta-neutral **xoá rủi ro hướng giá**, nhưng **không xoá rủi ro thanh lý từng chân**. Mỗi sàn dùng margin riêng, độc lập. Giá chạy mạnh một chiều thì chân thua có thể bị thanh lý trước — trong khi chân thắng nằm ở sàn khác, không cứu được.
+Hai lệnh bù nhau về giá. **Nhưng mỗi lệnh nằm ở một sàn, ký quỹ riêng.**
 
-Nên: margin mỗi chân phải đủ dày, và phải theo dõi cả hai.
+Giá chạy mạnh một chiều, lệnh thua có thể bị thanh lý trước. Lệnh thắng nằm ở sàn kia, không cứu được.
 
-## 6 tiêu chí chọn cặp
+Nên mỗi lệnh phải đủ ký quỹ, và phải theo dõi cả hai.
 
-Mình chỉ vào cặp qua được cả 6:
+<a id="6-tieu-chi"></a>
 
-1. **Giá tham chiếu chung, công khai** cho cả hai chân.
-2. **Backtest cho thấy basis có quay về trung bình** (mean-reversion).
-3. **Thanh khoản hai chân tương đương** — không thì vào/ra bị trượt giá một bên.
-4. **Luật settlement rõ ràng**, không phụ thuộc quyết định của người vận hành.
-5. **Không có rủi ro pháp lý đang treo.**
-6. **Deployer có lịch sử** đáng tin.
+## 6 câu hỏi trước khi vào một cặp
 
-## Một ví dụ về chỗ sai
+Trượt một câu là mình bỏ, kể cả khi funding đang rất đẹp.
 
-Có lần mình theo dõi một cặp chéo sàn mà oracle của một sàn **tự tham chiếu sổ lệnh của chính nó**, sàn còn lại không công bố cách tính oracle. Không có lực arbitrage nào kéo hai giá về gần nhau.
+1. Hai sàn có **cùng một giá tham chiếu công khai** không?
+2. Dữ liệu cũ có cho thấy **độ lệch giá quay về** không?
+3. **Thanh khoản hai bên có tương đương** không? Không thì vào ra bị trượt giá một phía.
+4. **Luật chốt giá có rõ** không, hay phụ thuộc người vận hành sàn quyết?
+5. Có **rủi ro pháp lý** nào đang treo không?
+6. **Người dựng sàn** có lịch sử đáng tin không?
 
-Kết quả: basis trôi từ **+0.57% lên +6.39%** và không quay lại. Funding ăn được bao nhiêu cũng không bù nổi.
+## Lần mình sai
 
-Bài học: tiêu chí 1 và 2 không phải cho có.
+Mã ANTH, chéo hai sàn khác.
 
-## Mình làm thế nào
+Một sàn **tự lấy giá từ sổ lệnh của chính nó**. Sàn kia không công bố cách tính giá. Không có ai kéo hai giá về gần nhau.
 
-- **Nghiên cứu:** tự build tool quét funding spread, chỉ dùng dữ liệu miễn phí từ API công khai của Hyperliquid. Tool chỉ đọc — không bao giờ tự đặt lệnh.
-- **Vào lệnh:** làm tay trên TreadFi.
-- **Không:** tín hiệu, đoán đỉnh đáy, all-in một cặp.
+Độ lệch trôi từ **0,57% lên 6,39%**. Không quay lại.
 
-Phần nghiên cứu sâu hơn — dashboard funding spread, phân tích từng dự án — mình để ở **[dnctrading.xyz](https://dnctrading.xyz)**.
+Phí funding nhận được bao nhiêu cũng không bù nổi. Câu 1 và câu 2 ở trên có từ lần đó.
+
+## Mình làm bằng gì
+
+- **Tìm cặp:** tool tự build, chỉ đọc dữ liệu từ API công khai của Hyperliquid. Tool không bao giờ tự đặt lệnh.
+- **Vào lệnh:** làm tay trên TreadFi, chia nhỏ lệnh theo thời gian để đỡ trượt giá.
+- **Không làm:** theo tín hiệu, dồn hết vốn vào một cặp.
+
+Muốn xem các cặp đang chênh bao nhiêu: **[Funding HIP-3 lúc này →](/tai-nguyen/funding/)**

@@ -1,22 +1,26 @@
 Mình là **DNC** — Đình Đỉnh. Sống ở Nha Trang.
 
-Mình làm ba việc, và cả ba dùng chung một thứ: **kỷ luật**.
+Mình không đoán giá. Mình ăn chênh lệch phí funding giữa các sàn trên Hyperliquid, và ghi lại ở đây.
 
-**Trade trung lập.** Không đoán giá. Ăn chênh lệch funding trên Hyperliquid, giữ vị thế delta-neutral. Tự build tool nghiên cứu, vào lệnh tay.
+## Một ngày của mình
 
-**Chạy núi.** Trail cự ly 100 km — VMM, Prenn, Dalat Ultra Trail. Chiều chạy, hay lên Núi Cô Tiên.
+- 06:30 dậy.
+- 08:30 ra quán cà phê làm việc, mặc quần đùi áo chạy bộ.
+- Chiều chạy. Hôm leo núi thì 17:00–20:00, trên Núi Cô Tiên.
+- Thiền 2 tiếng.
 
-**Thiền.** 2 giờ mỗi ngày.
+## Ngoài màn hình
 
-Ngày nào cũng ra quán cà phê làm việc trong bộ quần đùi áo race. Làm kinh doanh một mình, và tự build gần như mọi hệ thống mình dùng — với AI.
+Chạy núi cự ly 100 km. Đã chạy VMM 100km ở Sa Pa (09.2026).
 
-Mục tiêu: **FIRE trong 5 năm**. Ghi chép ở [Sổ Tay FIRE](/fire5yos/).
+Mục tiêu tiếp theo: **Dalat Ultra Trail 110km, 2027, dưới 20 tiếng.**
 
-## Vì sao có sổ tay này
+## Vì sao viết
 
-Để ghi lại cách làm thật — kể cả chỗ sai. Ai đi cùng đường thì đọc được, khỏi trả học phí lại.
+Mình làm kinh doanh một mình và tự build gần như mọi công cụ mình dùng, với AI. 
+Viết ra để ai đi cùng đường đỡ trả lại học phí mình đã trả.
 
-Mọi thứ ở đây là ghi chép cá nhân, không phải lời khuyên đầu tư.
+Mọi thứ ở đây là ghi chép cá nhân, **không phải lời khuyên đầu tư**.
 
 ## Tìm mình ở
 

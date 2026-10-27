@@ -9,7 +9,7 @@ const visible = posts => posts.filter(p => !p.draft && !p.page).sort((a, b) => b
 function chrome(site, active) {
   const st = `<div class="status"><div class="wrap"><b>Chiến lược</b>${site.strategies.map(d =>
     `<span><i class="dot${d.state === 'watch' ? ' w' : ''}"></i>${esc(d.short)} <em>${esc(d.status)}</em></span>`).join('')}</div></div>`;
-  const items = [['/', 'Trang chủ', 'home', 'hide-s'], ['/bai/', 'Bài viết', 'bai'], ['/ve-toi/', 'Về mình', 've-toi']];
+  const items = [['/', 'Trang chủ', 'home', 'hide-s'], ['/bai/', 'Bài viết', 'bai'], ['/tai-nguyen/', 'Tài nguyên', 'tai-nguyen'], ['/ve-toi/', 'Về mình', 've-toi', 'hide-s']];
   const nav = `<nav class="nav"><div class="wrap">
     <a class="brand" href="/">DNC<i>Hyperliquid · HIP-3</i></a>
     <ul>${items.map(([h, t, k, c]) => `<li class="${c || ''}"><a href="${h}" class="${k === active ? 'on' : ''}">${t}</a></li>`).join('')}
@@ -19,10 +19,10 @@ function chrome(site, active) {
 
 function subscribe(site) {
   return `<div class="wrap"><div class="sub" id="dang-ky">
-    <div><span class="kicker" style="color:#f0a070">Nhận ghi chép mới</span><h2 style="margin-top:14px">Có bài mới thì nhận qua email. <em>Chỉ vậy.</em></h2>
-    <p>Chiến lược, số liệu, tool — và chỗ đã sai.</p></div>
+    <div><span class="kicker" style="color:#f0a070">Nhận bài mới</span><h2 style="margin-top:14px">Có bài mới, mình gửi qua email. <em>Không gửi gì khác.</em></h2>
+    <p>Cách làm, số liệu, và chỗ đã sai.</p></div>
     <div><form id="subForm"><input type="email" name="email" required placeholder="email@cuaban.com" autocomplete="email"><button class="btn" type="submit">Đăng ký →</button></form>
-    <div class="msg" id="subMsg"></div><small>Không spam. Huỷ lúc nào cũng được.</small></div></div></div>`;
+    <div class="msg" id="subMsg"></div><small>Huỷ lúc nào cũng được.</small></div></div></div>`;
 }
 
 function bindSubscribe(site) {
@@ -47,7 +47,7 @@ function bindSubscribe(site) {
 function footer(site) {
   return `<footer><div class="wrap"><div class="cols">
     <div><div class="big">DNC</div><div>${esc(site.tagline)}</div></div>
-    <div><h4>Trang</h4><ul><li><a href="/bai/">Bài viết</a></li><li><a href="/ve-toi/">Về mình</a></li><li><a href="#dang-ky">Đăng ký thư</a></li></ul></div>
+    <div><h4>Trang</h4><ul><li><a href="/bai/">Bài viết</a></li><li><a href="/tai-nguyen/">Tài nguyên</a></li><li><a href="/ve-toi/">Về mình</a></li><li><a href="#dang-ky">Nhận bài mới</a></li></ul></div>
     <div><h4>Kênh</h4><ul>${site.social.map(s => `<li><a href="${s.url}" target="_blank" rel="noopener">${esc(s.name)}</a></li>`).join('')}</ul></div>
     <div><h4>Khác</h4><ul>${site.links.map(s => `<li><a href="${s.url}">${esc(s.name)}</a></li>`).join('')}</ul></div>
   </div><div class="legal"><span>© 2026 DNC · Nha Trang</span><span>Nội dung là ghi chép cá nhân, không phải lời khuyên đầu tư.</span></div></div></footer>`;
@@ -95,7 +95,7 @@ async function hlDex(dex) {
 }
 const pct = (v, d = 2) => (v > 0 ? '+' : '') + v.toFixed(d) + '%';
 const usd = v => v >= 1e6 ? '$' + (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? '$' + (v / 1e3).toFixed(0) + 'K' : '$' + v.toFixed(0);
-async function liveFunding(dexes) {
+async function liveFunding(dexes, n = 8) {
   const box = $('#live'), upd = $('#live-upd'), [A, B] = dexes;
   try {
     const [a, b] = await Promise.all([hlDex(A), hlDex(B)]);
@@ -105,14 +105,14 @@ async function liveFunding(dexes) {
       const rows = both.map(k => {
         const hi = a[k].apr >= b[k].apr ? [A, a[k]] : [B, b[k]], lo = hi[0] === A ? [B, b[k]] : [A, a[k]];
         return { k, aA: a[k].apr, aB: b[k].apr, sp: hi[1].apr - lo[1].apr, basis: lo[1].px ? (hi[1].px - lo[1].px) / lo[1].px * 100 : 0, s: hi[0], l: lo[0], v: Math.min(a[k].vol, b[k].vol) };
-      }).sort((x, y) => y.sp - x.sp).slice(0, 8);
-      html = `<table><thead><tr><th>Mã</th><th>${A} APR</th><th>${B} APR</th><th>Chênh APR</th><th>Basis</th><th class="hide-s">Short / Long</th><th class="hide-s">Vol 24h (min)</th></tr></thead><tbody>
+      }).sort((x, y) => y.sp - x.sp).slice(0, n);
+      html = `<table><thead><tr><th>Mã</th><th>${A} %/năm</th><th>${B} %/năm</th><th>Chênh %/năm</th><th>Lệch giá</th><th class="hide-s">Bán / Mua</th><th class="hide-s">Khối lượng 24h</th></tr></thead><tbody>
         ${rows.map(r => `<tr><td><b>${esc(r.k)}</b></td><td class="${r.aA < 0 ? 'neg' : ''}">${pct(r.aA, 1)}</td><td class="${r.aB < 0 ? 'neg' : ''}">${pct(r.aB, 1)}</td>
         <td class="hl">${r.sp.toFixed(1)}%</td><td class="${Math.abs(r.basis) > 0.5 ? 'warn' : ''}">${pct(r.basis, 2)}</td><td class="hide-s">${r.s} / ${r.l}</td><td class="hide-s">${usd(r.v)}</td></tr>`).join('')}</tbody></table>`;
     } else {
       const rows = [...Object.entries(a).map(([k, v]) => [k, A, v]), ...Object.entries(b).map(([k, v]) => [k, B, v])]
-        .filter(r => r[2].vol > 0).sort((x, y) => Math.abs(y[2].apr) - Math.abs(x[2].apr)).slice(0, 8);
-      html = `<table><thead><tr><th>Mã</th><th>Sàn</th><th>Funding APR</th><th>Vol 24h</th></tr></thead><tbody>
+        .filter(r => r[2].vol > 0).sort((x, y) => Math.abs(y[2].apr) - Math.abs(x[2].apr)).slice(0, n);
+      html = `<table><thead><tr><th>Mã</th><th>Sàn</th><th>Funding %/năm</th><th>Vol 24h</th></tr></thead><tbody>
         ${rows.map(([k, d, v]) => `<tr><td><b>${esc(k)}</b></td><td>${d}</td><td class="hl">${pct(v.apr, 1)}</td><td>${usd(v.vol)}</td></tr>`).join('')}</tbody></table>`;
     }
     box.innerHTML = html;
@@ -120,7 +120,7 @@ async function liveFunding(dexes) {
   } catch (e) {
     box.innerHTML = '<p class="empty">Không tải được dữ liệu Hyperliquid lúc này. Thử tải lại trang.</p>';
   }
-  clearTimeout(window.__lf); window.__lf = setTimeout(() => liveFunding(dexes), 60000);
+  clearTimeout(window.__lf); window.__lf = setTimeout(() => liveFunding(dexes, n), 60000);
 }
 
 /* ---------- danh sách + đọc bài ---------- */
@@ -158,4 +158,24 @@ async function reader(fixedSlug) {
   }
   document.body.insertAdjacentHTML('beforeend', subscribe(site) + footer(site));
   bindSubscribe(site);
+}
+
+/* ---------- tài nguyên ---------- */
+async function resources() {
+  const site = await getJSON('/content/site.json');
+  chrome(site, 'tai-nguyen');
+  $('#main').innerHTML = `<div class="wrap"><header class="page-head"><span class="kicker">Thư viện · miễn phí</span><h1>Tài nguyên</h1>
+    <p class="lead">${esc(site.resources.intro)}</p></header>
+    ${site.resources.groups.map(g => `<section class="res-g"><div class="sh"><h2>${esc(g.name)}</h2><span class="count">${g.items.length} mục</span></div>
+      <div class="res">${g.items.map(r => `<a class="do" href="${r.url}"><div class="top"><span class="n">${esc(r.kind)}</span>${r.badge ? `<span class="badge${r.state === 'watch' ? ' w' : ''}">${esc(r.badge)}</span>` : ''}</div>
+        <h3>${esc(r.name)}</h3><p>${esc(r.desc)}</p><div class="meta"><span class="go">Xem →</span></div></a>`).join('')}</div></section>`).join('')}</div>`;
+  document.body.insertAdjacentHTML('beforeend', subscribe(site) + footer(site));
+  bindSubscribe(site);
+}
+async function fundingPage() {
+  const site = await getJSON('/content/site.json');
+  chrome(site, 'tai-nguyen');
+  document.body.insertAdjacentHTML('beforeend', subscribe(site) + footer(site));
+  bindSubscribe(site);
+  liveFunding(site.live.dexes, 30);
 }

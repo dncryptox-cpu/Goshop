@@ -1,4 +1,4 @@
-Trước VMM 100km 2026, mình không muốn mang theo kế hoạch trong đầu. Mình muốn nó nằm trên điện thoại, mở ra là thấy.
+101 km, 18 trạm, 4 mốc thời gian. Mình muốn tất cả nằm trên điện thoại, mở ra là thấy.
 
 Nên mình tự build một trang: **[Phân tích VMM 100km 2026](/vmm100/)**.
 

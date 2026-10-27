@@ -1,20 +1,15 @@
-*Trang này nói mình đang làm gì, ở thời điểm hiện tại. Cập nhật mỗi tháng.*
+*Mình đang làm gì, tính đến 27.10.2026.*
+
+## Trading
+
+Ăn chênh lệch funding trên HIP-3, giữa xyz và io. Theo dõi độ lệch giá Entropy ↔ Lighter. Đang nghiên cứu đặt lệnh hai phía trên thị trường dự đoán HIP-4.
 
 ## Chạy
 
-Xong VMM 100km 2026 ở Sa Pa (19.09). Đang viết race report.
+Xong VMM 100km (Sa Pa, 09.2026). Đang viết race report.
+
+Tiếp theo: Dalat Ultra Trail 110km, 2027. Mục tiêu dưới 20 tiếng.
 
 ## Build
 
-**[dnctrading.xyz](https://dnctrading.xyz)** — hub trading: hướng dẫn delta-neutral từ A–Z, nghiên cứu dự án, dashboard funding spread.
-
-## Nhịp một ngày
-
-- 06:30 dậy
-- 08:30 ra quán cà phê làm việc — quần đùi, áo race
-- Chiều chạy. Hôm leo núi thì 17:00–20:00
-- Thiền 2 giờ
-
-## Sống ở
-
-Nha Trang.
+[dnctrading.xyz](https://dnctrading.xyz) — dashboard funding và nghiên cứu dự án chi tiết.
