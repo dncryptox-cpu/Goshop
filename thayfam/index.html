@@ -188,6 +188,12 @@
         <div class="card" style="padding:12px 14px">
           <div class="row"><b class="grow" x-text="'Báo khách ' + notify.rn + ' (' + notify.sent.length + '/' + notify.items.length + ' đã copy)'"></b><button class="btn sm" @click="notify=null">Xong</button></div>
           <div class="mute" style="font-size:13px;margin:4px 0 8px">Copy tin rồi gửi Zalo cho khách (hoặc gửi CTV). Khách có Zalo là khách đã điền khi báo lỗi.</div>
+          <div class="row" style="gap:6px;margin-bottom:8px">
+            <span class="mute" style="font-size:13px">Gửi CTV:</span>
+            <template x-for="cv in [...new Set(notify.items.map(i => i.ctv || 'Không rõ CTV'))]" :key="cv">
+              <button class="btn sm" :class="!notify.ctvSent.includes(cv) && 'pri'" @click="copyCtvList(cv)" x-text="(notify.ctvSent.includes(cv) ? '✓ ' : '') + 'Copy list ' + cv + ' (' + notify.items.filter(i => (i.ctv || 'Không rõ CTV') === cv).length + ')'"></button>
+            </template>
+          </div>
           <template x-for="it in notify.items" :key="it.email">
             <div class="row" style="padding:6px 0;border-top:1px solid var(--line)">
               <div class="grow" style="min-width:0">
@@ -1997,6 +2003,12 @@ function app() {
         f.renew = r.renew; f.rw = null;
       } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng sửa renew: dán Code.gs mới rồi Triển khai → phiên bản mới.' : e.message; if (f.rw) f.rw.busy = false; }
     },
+    copyCtvList(cv) {
+      const n = this.notify, list = n.items.filter(i => (i.ctv || 'Không rõ CTV') === cv);
+      const txt = 'Đã mời lại lúc ' + n.at + ' (' + n.rn + '):\n' + list.map(i => '- ' + i.email + (i.hsd ? ' · HSD ' + i.hsd : '')).join('\n') + '\nKhách mở Gmail, bấm Chấp nhận lời mời tham gia nhóm gia đình giúp mình nhé.';
+      this.copy(txt, 'Đã copy list ' + list.length + ' khách cho ' + cv);
+      if (!n.ctvSent.includes(cv)) n.ctvSent.push(cv);
+    },
     async retireFam() {
       const s = this.swap;
       if (!s.retireConfirm) { s.retireConfirm = true; setTimeout(() => { if (this.swap === s) s.retireConfirm = false; }, 4000); return; }
@@ -2254,7 +2266,8 @@ function app() {
           }
         }
         const zaloOf = e => { const x = s.f.report && s.f.report.reporters.find(p => p.email === String(e).toLowerCase()); return x ? x.zalo : ''; };
-        this.notify = { rn: r.rn, url: r.fixUrl || FIXYTB_URL, sent: [], items: s.f.customers.filter(c => s.sel.includes(c.email)).map(c => ({ email: c.email, ctv: c.ctv, zalo: zaloOf(c.email) })) };
+        const nowStr = new Date().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
+        this.notify = { rn: r.rn, at: nowStr, url: r.fixUrl || FIXYTB_URL, sent: [], ctvSent: [], items: s.f.customers.filter(c => s.sel.includes(c.email)).map(c => ({ email: c.email, ctv: c.ctv, hsd: c.hsd, zalo: zaloOf(c.email) })) };
         if (!this.notify.items.length) this.notify = null;
         if (this.me.role === 'admin') this.openNotes += (r.invited < 5 ? 1 : 0) + (s.note && s.note.trim() ? 1 : 0);
         if (this.me.limit) this.me.usedToday++;
