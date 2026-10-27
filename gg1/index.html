@@ -56,9 +56,9 @@
   select.st{font-size:12.5px;border-radius:10px;font-weight:600}
   select.st.ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 13%,transparent)}
   select.st.warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 13%,transparent)}
-  tr.sv{opacity:.55}
-  tr.nw td{background:color-mix(in srgb,var(--acc) 4%,transparent)}
-  tr.nw input,tr.nw select{padding:3px 6px}
+  tr.sv{opacity:.55;pointer-events:none}
+  .addrow{gap:8px;margin-top:8px;padding:6px;border-radius:8px;background:color-mix(in srgb,var(--acc) 5%,transparent)}
+  .addrow input{flex:1;min-width:200px}
   @media (max-width:760px){ td.acts{white-space:normal} .hide-sm{display:none} }
 </style>
 </head>
@@ -76,7 +76,7 @@
     <div>
       <header>
         <h1>GG1 · Google One gia đình</h1>
-        <span class="mute" style="font-size:13px" x-text="fams.length + ' fam · ' + activeCount() + ' khách đang dùng · ' + freeCount() + ' slot trống'"></span>
+        <span class="mute" style="font-size:13px" x-text="fams.length + ' fam' + (fullCount() ? ' (' + fullCount() + ' bán full)' : '') + ' · ' + activeCount() + ' khách · ' + freeCount() + ' slot trống' + (saving ? ' · đang lưu ' + saving + '…' : '')"></span>
         <div class="sp"></div>
         <a class="btn" href="/thayfam/">← Thay Fam</a>
         <a class="btn" x-show="sheetUrl" :href="sheetUrl" target="_blank" rel="noopener">Xem sheet</a>
@@ -104,7 +104,7 @@
             <input placeholder="2FA secret" x-model="famForm.twofa" style="width:260px" class="mono">
             <select x-model="famForm.plan"><option>2TB</option><option>5TB</option><option>1TB</option><option>500GB</option></select>
             <label class="mute" style="font-size:13px">Renew <input type="date" x-model="famForm.renewIso"></label>
-            <select x-model="famForm.status"><option>Hoạt động</option><option>Tạm dừng</option><option>Đã đóng</option></select>
+            <select x-model="famForm.status"><option>Hoạt động</option><option>Bán full</option><option>Tạm dừng</option><option>Đã đóng</option></select>
             <input placeholder="Ghi chú" x-model="famForm.note" style="flex:1;min-width:160px">
             <button class="btn" style="color:var(--bad)" x-show="famForm.row" @click="delFam(famForm)" :disabled="busy" x-text="famForm.cf ? 'Bấm lần nữa để xoá' : 'Xoá fam'"></button>
             <button class="btn" @click="famForm = null">Huỷ</button>
@@ -113,6 +113,17 @@
         </div>
       </template>
 
+      <template x-if="defOpen">
+        <div class="card row" style="gap:6px">
+          <b style="font-size:13px">Mặc định khi thêm khách</b>
+          <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="def.months===m && 'on'" @click="def.months=m; saveDef()" x-text="m + 'th'"></button></template>
+          <label class="mute" style="font-size:13px">Mua <input type="date" x-model="def.buyIso"></label>
+          <input placeholder="CTV" x-model="def.ctv" @change="saveDef()" list="ctvs" style="width:90px">
+          <select x-model="def.status" @change="saveDef()"><option>Đã mời</option><option>Chờ mời</option><option>Đang dùng</option></select>
+          <select x-model="def.sku" @change="saveDef()"><option value="">Không ghi tài chính</option><template x-for="s in skus" :key="s.sku"><option :value="s.sku" x-text="s.sku + ' · ' + s.price.toLocaleString('vi-VN') + 'đ'"></option></template></select>
+          <div class="sp"></div><button class="btn xs" @click="defOpen = false">Xong</button>
+        </div>
+      </template>
       <div class="chips">
         <button class="chip" :class="view==='fam' && 'on'" @click="view='fam'" x-text="'Fam (' + fams.length + ')'"></button>
         <button class="chip" :class="view==='due' && 'on'" @click="view='due'" x-text="'Sắp hết hạn ≤10 ngày (' + dueList().length + ')'"></button>
@@ -124,16 +135,19 @@
         <div>
           <template x-if="!loading && !fams.length"><div class="card mute">Chưa có fam nào. Bấm <b>+ Thêm fam</b>.</div></template>
           <template x-for="f in shownFams()" :key="f.id">
-            <div class="card" :style="f.status !== 'Hoạt động' ? 'opacity:.6' : ''">
+            <div class="card" :style="f.status !== 'Hoạt động' && f.status !== FULL ? 'opacity:.6' : ''">
               <div class="row">
                 <span class="id" x-text="f.id"></span>
                 <span class="badge blue" x-text="f.plan"></span>
-                <span class="badge" :class="f.customers.length >= max ? 'ok' : 'warn'" x-text="f.customers.length + '/' + max + ' khách'"></span>
-                <span class="badge" x-show="f.status !== 'Hoạt động'" x-text="f.status"></span>
+                <span class="badge ok" x-show="f.status === FULL">Bán full</span>
+                <span class="badge" x-show="f.status !== FULL" :class="f.customers.length >= max ? 'ok' : 'warn'" x-text="f.customers.length + '/' + max + ' khách'"></span>
+                <span class="badge" x-show="f.status !== 'Hoạt động' && f.status !== FULL" x-text="f.status"></span>
                 <span class="badge" :class="f.renewDays !== null && f.renewDays <= 3 ? 'bad' : ''" x-show="f.renew" x-text="'Renew ' + f.renew + (f.renewDays !== null ? ' · còn ' + f.renewDays + ' ngày' : '')"></span>
                 <div class="sp"></div>
                 <button class="btn xs" x-show="pending(f).length" @click="copy(pending(f).map(c => c.email).join(', '), 'Đã copy ' + pending(f).length + ' email chờ vào')" x-text="'Copy ' + pending(f).length + ' email chờ vào'"></button>
                 <button class="btn xs" style="color:var(--ok)" x-show="pending(f).length" @click="allJoined(f)" :disabled="busy">✓ Tất cả đã vào</button>
+                <button class="btn xs" x-show="f.status === 'Hoạt động' && !f.customers.length" @click="setFull(f, true)" :disabled="busy" title="Bán nguyên fam cho 1 khách, không cần nhập từng slot">Bán full</button>
+                <button class="btn xs" x-show="f.status === FULL" @click="setFull(f, false)" :disabled="busy">Bỏ full</button>
                 <button class="btn xs" style="color:var(--bad)" x-show="!f.customers.length" @click="delFam(f)" :disabled="busy" x-text="f.cf ? 'Bấm lần nữa' : 'Xoá fam'"></button>
                 <button class="btn xs" @click="famForm = editFam(f)">Sửa fam</button>
               </div>
@@ -145,11 +159,11 @@
                 · <a href="https://one.google.com/family" target="_blank" rel="noopener">Gia đình ↗</a>
               </div>
               <div class="mute" style="font-size:12px" x-show="f.note" x-text="f.note"></div>
-              <div class="tw"><table class="ed">
+              <div class="tw" x-show="f.customers.length"><table class="ed">
                 <thead><tr><th>Khách</th><th>CTV</th><th>Mua</th><th>Tháng</th><th>HSD</th><th>Còn</th><th>Trạng thái</th><th></th></tr></thead>
                 <tbody>
-                  <template x-for="c in f.customers" :key="c.row">
-                    <tr :class="c.sv && 'sv'" :style="hit(c) ? 'background:color-mix(in srgb,var(--warn) 10%,transparent)' : ''">
+                  <template x-for="c in f.customers" :key="c.row || ('t' + c.tmp)">
+                    <tr :class="(c.sv || !c.row) && 'sv'" :style="hit(c) ? 'background:color-mix(in srgb,var(--warn) 10%,transparent)' : ''">
                       <td class="mono"><span class="cp" @click="copy(c.email)" x-text="c.email"></span>
                         <div class="row" style="gap:4px;flex-wrap:nowrap"><input class="ghost" placeholder="mail phụ" x-model="c.mailPhu" @change="saveCus(c)" style="width:140px"><input class="ghost" placeholder="ghi chú" x-model="c.note" @change="saveCus(c)" style="width:100px"></div>
                         <template x-if="c.rn"><div class="form">
@@ -176,22 +190,15 @@
                       </td>
                     </tr>
                   </template>
-                  <!-- slot trống: gõ / dán email rồi Enter -->
-                  <template x-for="(n, i) in f.nw" :key="i">
-                    <tr class="nw">
-                      <td><input class="mono" :placeholder="'+ email khách, Enter — còn ' + (max - f.customers.length) + ' slot'" x-model="n.email" @keydown.enter.prevent="addRow(f, n)" @paste="$nextTick(() => /\s|,/.test(n.email.trim()) && addRow(f, n))" style="width:100%"></td>
-                      <td><input x-model="n.ctv" list="ctvs" placeholder="CTV" style="width:64px"></td>
-                      <td><input type="date" x-model="n.buyIso" style="width:122px"></td>
-                      <td><input type="number" min="1" x-model.number="n.months" style="width:52px"></td>
-                      <td class="mute" x-text="n.email ? hsdOf(n) : ''"></td>
-                      <td></td>
-                      <td><select x-model="n.status"><option>Đã mời</option><option>Chờ mời</option><option>Đang dùng</option></select></td>
-                      <td class="acts"><select class="btn xs" x-model="n.sku" title="Ghi tài chính"><option value="">Không ghi TC</option><template x-for="s in skus" :key="s.sku"><option :value="s.sku" x-text="s.sku"></option></template></select>
-                        <button class="btn xs pri" x-show="n.email" @click="addRow(f, n)" :disabled="busy">Thêm</button></td>
-                    </tr>
-                  </template>
                 </tbody>
               </table></div>
+              <!-- thêm khách: chỉ cần dán email rồi Enter -->
+              <template x-if="f.status === 'Hoạt động' && f.customers.length < max">
+                <div class="row addrow">
+                  <input class="mono" x-model="f.nw" :placeholder="'+ dán email khách, Enter · còn ' + (max - f.customers.length) + ' slot · gõ full = bán nguyên fam'" @keydown.enter.prevent="addRow(f)" @paste="$nextTick(() => /[\s,;]/.test(f.nw.trim()) && addRow(f))">
+                  <span class="mute cp" style="font-size:12px;white-space:nowrap" title="Đổi mặc định khi thêm khách" @click="defOpen = !defOpen" x-text="defLabel()"></span>
+                </div>
+              </template>
             </div>
           </template>
         </div>
@@ -232,7 +239,7 @@
 </div>
 
 <script>
-const DEL = 'Đã xoá';
+const DEL = 'Đã xoá', FULL = 'Bán full';
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return ''; } }
 function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
@@ -243,8 +250,8 @@ const todayIso = () => { const t = new Date(); return t.getFullYear() + '-' + St
 function gg() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '', fams: [], loose: [], skus: [], max: 5, sheetUrl: '',
-    loading: false, busy: false, error: '', done: '', q: '', view: 'fam', famForm: null, otp: {}, undo: null,
-    init() { if (this.pass) this.load(); setInterval(() => this.tickOtp(), 1000); },
+    loading: false, busy: false, error: '', done: '', q: '', view: 'fam', famForm: null, otp: {}, undo: null, FULL, def: { months: 12, ctv: '', status: 'Đã mời', sku: '', buyIso: todayIso() }, defOpen: false, saving: 0, seq: 0, jobs: Promise.resolve(), needLoad: false,
+    init() { Object.assign(this.def, JSON.parse(lsGet('gg1_def') || '{}'), { buyIso: todayIso() }); if (this.pass) this.load(); setInterval(() => this.tickOtp(), 1000); },
     async api(body) {
       const r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
       if (!r.ok) throw new Error(r.error || 'Lỗi không rõ');
@@ -252,14 +259,16 @@ function gg() {
     },
     async login() { this.pass = this.passInput; this.error = ''; await this.load(); if (!this.error) lsSet('thayfam_pass', this.pass); else this.pass = ''; },
     async load() {
+      if (this.saving) { this.needLoad = true; return; }
       this.loading = true; this.error = '';
       try {
         const d = await this.api({ action: 'gg_list' });
-        this.fams = d.fams.filter(f => f.status !== DEL).map(f => Object.assign(f, { nw: f.status === 'Hoạt động' ? (d.max > f.customers.length ? [this.blankRow()] : []) : [] })); this.loose = d.loose.filter(c => c.status !== DEL); this.skus = d.skus || []; this.max = d.max; this.sheetUrl = d.sheetUrl;
+        const keep = {}; this.fams.forEach(f => { if (f.nw) keep[f.id] = f.nw; }); this.fams = d.fams.filter(f => f.status !== DEL).map(f => Object.assign(f, { nw: keep[f.id] || '' })); this.loose = d.loose.filter(c => c.status !== DEL); this.skus = d.skus || []; this.max = d.max; this.sheetUrl = d.sheetUrl;
       } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng GG1: dán Code.gs mới rồi Triển khai → phiên bản mới.' : e.message; }
       this.loading = false;
     },
     activeCount() { return this.fams.reduce((n, f) => n + f.customers.length, 0); },
+    fullCount() { return this.fams.filter(f => f.status === FULL).length; },
     freeCount() { return this.fams.filter(f => f.status === 'Hoạt động').reduce((n, f) => n + Math.max(0, this.max - f.customers.length), 0); },
     hit(c) { const q = this.q.trim().toLowerCase(); return q.length >= 3 && (c.email.toLowerCase().includes(q) || (c.mailPhu || '').toLowerCase().includes(q)); },
     shownFams() {
@@ -302,9 +311,9 @@ function gg() {
     saveFam() { const f = this.famForm; this.run(() => this.api({ action: 'gg_fam', fam: { ...f, renew: dmy(f.renewIso) } }), r => '✓ Đã lưu fam ' + r.id).then(() => { if (!this.error) this.famForm = null; }); },
     // ---- sửa trực tiếp trong bảng ----
     iso, dmy,
-    defs() { return JSON.parse(lsGet('gg1_def') || '{}'); },
-    blankRow() { const d = this.defs(); return { email: '', buyIso: todayIso(), months: d.months || 12, ctv: d.ctv || '', status: d.status || 'Đã mời', sku: d.sku || '' }; },
-    hsdOf(n) { const q = String(n.buyIso).split('-'); if (q.length !== 3) return ''; const d = new Date(+q[0], q[1] - 1, +q[2]); const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + (+n.months || 0)); d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); },
+    saveDef() { const d = this.def; lsSet('gg1_def', JSON.stringify({ months: d.months, ctv: d.ctv, status: d.status, sku: d.sku })); },
+    defLabel() { const d = this.def; return (d.buyIso !== todayIso() ? 'mua ' + dmy(d.buyIso) : 'hôm nay') + ' · ' + d.months + 'th · ' + d.status + (d.ctv ? ' · ' + d.ctv : '') + (d.sku ? ' · ' + d.sku : '') + ' ✎'; },
+    hsdOf(buyIso, months) { const q = String(buyIso).split('-'); if (q.length !== 3) return ''; const d = new Date(+q[0], q[1] - 1, +q[2]); const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + (+months || 0)); d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); },
     daysTo(h) { const p = String(h || '').split('/'); if (p.length !== 3) return null; const t = new Date(); t.setHours(0, 0, 0, 0); return Math.round((new Date(+p[2], p[1] - 1, +p[0]) - t) / 864e5); },
     async saveCus(c, fam) {
       c.sv = true; this.error = '';
@@ -330,19 +339,41 @@ function gg() {
       this.loose.forEach(c => { const k = c.email.toLowerCase(); if (!m[k]) m[k] = 'từng ở ' + (c.fam || '—') + ', dùng Thêm lại ở mục Đã rời'; });
       return m;
     },
-    addRow(f, n) {
-      if (this.busy) return;
-      const all = [...new Set((String(n.email).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map(x => x.toLowerCase()))];
-      if (!all.length) { this.error = 'Không thấy email hợp lệ'; return; }
-      const kn = this.known(), skip = all.filter(e => kn[e]).map(e => e + ' ' + kn[e]);
-      const list = all.filter(e => !kn[e]).slice(0, this.max - f.customers.length), over = all.filter(e => !kn[e]).slice(this.max - f.customers.length);
-      lsSet('gg1_def', JSON.stringify({ months: n.months, ctv: n.ctv, status: n.status, sku: n.sku }));
-      if (!list.length) { this.error = 'Không thêm: ' + skip.join(' · '); return; }
-      this.run(async () => {
-        const ok = [];
-        for (const em of list) { const r = await this.api({ action: 'gg_cus', cus: { fam: f.id, email: em, buyIso: n.buyIso, buy: dmy(n.buyIso), months: n.months, ctv: n.ctv, status: n.status, sku: n.sku, note: '' }, finance: n.sku }); ok.push(em); }
-        return ok;
-      }, ok => '✓ ' + f.id + ' +' + ok.length + ': ' + ok.join(', ') + (skip.length ? ' · Bỏ qua: ' + skip.join(' · ') : '') + (over.length ? ' · Hết slot, chưa thêm: ' + over.join(', ') : ''));
+    // Thêm khách: hiện ngay trên bảng, lưu nền theo hàng đợi (không chặn thao tác khác, không tải lại cả trang)
+    addRow(f) {
+      const txt = String(f.nw || '').trim(); if (!txt) return;
+      if (/^full$/i.test(txt)) { f.nw = ''; return this.setFull(f, true); }
+      const all = [...new Set((txt.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map(x => x.toLowerCase()))];
+      if (!all.length) { this.error = 'Không thấy email hợp lệ (gõ "full" nếu bán nguyên fam)'; return; }
+      const kn = this.known(), skip = all.filter(e => kn[e]).map(e => e + ' ' + kn[e]), fresh = all.filter(e => !kn[e]);
+      const room = this.max - f.customers.length, list = fresh.slice(0, room), over = fresh.slice(room);
+      this.error = [skip.length && 'Bỏ qua: ' + skip.join(' · '), over.length && f.id + ' hết slot, chưa thêm: ' + over.join(', ')].filter(Boolean).join(' — ');
+      f.nw = over.join(' ');
+      const d = { ...this.def }, buy = dmy(d.buyIso), hsd = this.hsdOf(d.buyIso, d.months);
+      list.forEach(em => {
+        f.customers.push({ tmp: ++this.seq, row: 0, fam: f.id, email: em, ctv: d.ctv, buy, months: d.months, hsd, daysLeft: this.daysTo(hsd), status: d.status, mailPhu: '', note: '', sv: false });
+        const c = f.customers[f.customers.length - 1];
+        this.enqueue(async () => {
+          try {
+            const r = await this.api({ action: 'gg_cus', cus: { fam: f.id, email: em, buy, months: d.months, ctv: d.ctv, status: d.status, mailPhu: '', note: '' }, finance: d.sku });
+            if (r.row) c.row = r.row; else this.needLoad = true;
+            if (r.hsd) { c.hsd = r.hsd; c.daysLeft = this.daysTo(r.hsd); }
+            this.flash('✓ ' + f.id + ' + ' + em);
+          } catch (e) {
+            const i = f.customers.indexOf(c); if (i >= 0) f.customers.splice(i, 1);
+            this.error = em + ': ' + e.message; f.nw = (f.nw + ' ' + em).trim();
+          }
+        });
+      });
+    },
+    enqueue(fn) {
+      this.saving++;
+      this.jobs = this.jobs.then(fn).finally(() => { this.saving--; if (!this.saving && this.needLoad) { this.needLoad = false; this.load(); } });
+    },
+    setFull(f, on) {
+      const body = this.famPayload(f, on ? FULL : 'Hoạt động');
+      this.run(() => this.api({ action: 'gg_fam', fam: body }), on ? '✓ ' + f.id + ' đánh dấu Bán full (ghi người mua ở Sửa fam → Ghi chú nếu cần)' : '✓ ' + f.id + ' mở lại để thêm khách',
+        { fn: () => this.api({ action: 'gg_fam', fam: { ...body, status: f.status } }), msg: '↶ ' + f.id + ' về như cũ' });
     },
     pending(f) { return f.customers.filter(c => c.status === 'Đã mời' || c.status === 'Chờ mời'); },
     allJoined(f) {
