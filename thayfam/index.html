@@ -484,6 +484,7 @@
                 <div class="peek-own mute">
                   Pass <span class="mono cp" title="Bấm để copy" @click="copy(f.pass, 'Đã copy pass')" x-text="f.pass || '—'"></span> · MKP <span class="mono cp" title="Bấm để copy" @click="copy(f.mkp, 'Đã copy MKP')" x-text="f.mkp || '—'"></span> · 2FA <b class="mono" :class="f.twofa && 'cp'" title="Bấm để copy mã" @click="f.twofa && copy(slotOtp['S' + f.rn], 'Đã copy mã 2FA')" x-text="f.twofa ? (slotOtp['S' + f.rn] || '······') : 'không'"></b> · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
                   <button class="btn sm" style="margin-left:8px" x-show="can('markJoined') && f.customers.length" @click="f.check = !f.check; f.mark = {}" x-text="f.check ? 'Đóng kiểm tra' : 'Kiểm tra fam'"></button>
+                  <template x-for="cv in famCtvs(f)" :key="cv"><button class="btn sm" @click="copyCtvFam(f, cv)" :title="'Copy danh sách khách CTV ' + cv + ' kèm thời gian mời'" x-text="'📋 List ' + cv"></button></template>
                   <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'deleted')" @click="openDel(f)" :disabled="!!f.fsBusy" title="Đã đăng nhập fam cũ và xoá nhóm gia đình, sẽ lấy FR mời khách sau">🗑 Đã xoá nhóm</button>
                   <button class="btn sm" x-show="can('famState') && !(f.famState && f.famState.state === 'scanned')" @click="setFamState(f, 'scanned')" :disabled="!!f.fsBusy" title="Fam bị Google quét">⚠ Bị quét</button>
                   <button class="btn sm" x-show="can('famState') && f.famState" @click="setFamState(f, '')" :disabled="!!f.fsBusy">Bỏ đánh dấu</button>
@@ -2003,9 +2004,15 @@ function app() {
         f.renew = r.renew; f.rw = null;
       } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng sửa renew: dán Code.gs mới rồi Triển khai → phiên bản mới.' : e.message; if (f.rw) f.rw.busy = false; }
     },
+    famCtvs(f) { return [...new Set((f.customers || []).filter(c => c.email && !c.masked).map(c => c.ctv || 'Không rõ CTV'))]; },
+    copyCtvFam(f, cv) {
+      const list = f.customers.filter(c => c.email && !c.masked && (c.ctv || 'Không rõ CTV') === cv);
+      const txt = f.rn + ':\n' + list.map(c => '- ' + c.email + (c.invitedAt ? ' · mời ' + c.invitedAt : '') + (c.hsd ? ' · HSD ' + c.hsd : '')).join('\n');
+      this.copy(txt, 'Đã copy list ' + list.length + ' khách ' + cv);
+    },
     copyCtvList(cv) {
       const n = this.notify, list = n.items.filter(i => (i.ctv || 'Không rõ CTV') === cv);
-      const txt = 'Đã mời lại lúc ' + n.at + ' (' + n.rn + '):\n' + list.map(i => '- ' + i.email + (i.hsd ? ' · HSD ' + i.hsd : '')).join('\n') + '\nKhách mở Gmail, bấm Chấp nhận lời mời tham gia nhóm gia đình giúp mình nhé.';
+      const txt = 'Đã mời lại lúc ' + n.at + ' (' + n.rn + '):\n' + list.map(i => '- ' + i.email + (i.hsd ? ' · HSD ' + i.hsd : '')).join('\n');
       this.copy(txt, 'Đã copy list ' + list.length + ' khách cho ' + cv);
       if (!n.ctvSent.includes(cv)) n.ctvSent.push(cv);
     },
