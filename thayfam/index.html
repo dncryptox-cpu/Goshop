@@ -711,11 +711,16 @@
                 <template x-for="m in mpMerges()" :key="m.bare.row + '_' + m.data.row">
                   <div style="padding:8px 0;border-top:1px solid var(--line)">
                     <label class="row" style="gap:8px;cursor:pointer;font-size:13px"><input type="radio" :name="'mg' + m.bare.row + '_' + m.data.row" value="bare" x-model="m.keep" :disabled="!!m.done">
-                      <span class="grow"><b x-text="m.bare.rn"></b> dòng <span x-text="m.bare.row"></span> · <span class="mono" x-text="m.bare.email"></span> <span class="badge warn">thiếu data</span></span></label>
+                      <span class="grow"><b x-text="m.bare.rn"></b> dòng <span x-text="m.bare.row"></span> · <span class="mono" x-text="m.bare.email"></span> <span class="badge warn" x-show="!m.bare.hsd">thiếu data</span><span class="mute" x-show="m.bare.hsd" x-text="'· HSD ' + m.bare.hsd + ' · CTV ' + (m.bare.ctv || '—') + (m.bare.mailPhu ? ' · mail phụ ' + m.bare.mailPhu : '')"></span></span></label>
                     <label class="row" style="gap:8px;cursor:pointer;font-size:13px;margin-top:4px"><input type="radio" :name="'mg' + m.bare.row + '_' + m.data.row" value="data" x-model="m.keep" :disabled="!!m.done || m.data.arch || m.data.dead">
                       <span class="grow"><b x-text="m.data.rn"></b> dòng <span x-text="m.data.row"></span> · <span class="mono" x-text="m.data.email"></span> <span class="mute" x-text="'· HSD ' + m.data.hsd + ' · CTV ' + (m.data.ctv || '—') + ' · mail phụ ' + m.data.mailPhu + (m.data.arch ? ' · đang ở vùng lưu (không có slot)' : '') + (m.data.dead ? ' · fam ' + (m.data.status || 'không hoạt động') : '') + (m.same ? ' · cùng email' : '')"></span></span></label>
+                    <div class="row" style="gap:8px;margin-top:6px;font-size:13px" x-show="m.both && !m.done">
+                      <span class="mute">1 khách chiếm 2 slot. Lấy HSD:</span>
+                      <label><input type="radio" :name="'hs' + m.bare.row + '_' + m.data.row" value="bare" x-model="m.hsdFrom"> <span x-text="m.bare.hsd + ' (' + m.bare.email + ')'"></span></label>
+                      <label><input type="radio" :name="'hs' + m.bare.row + '_' + m.data.row" value="data" x-model="m.hsdFrom"> <span x-text="m.data.hsd + ' (' + m.data.email + ')'"></span></label>
+                    </div>
                     <div class="row" style="gap:8px;margin-top:6px">
-                      <span class="grow" style="font-size:12px" :style="m.done ? 'color:var(--ok)' : ''" x-text="m.done || (m.keep ? '' : 'Chưa chọn giữ slot nào')"></span>
+                      <span class="grow" style="font-size:12px" :style="m.done ? 'color:var(--ok)' : ''" x-text="m.done || (m.keep ? (m.both ? 'Giữ slot đã chọn với HSD đã chọn, dòng kia xoá trắng.' : '') : 'Chưa chọn giữ slot nào')"></span>
                       <button class="btn sm pri" x-show="!m.done" @click="doMerge(m)" :disabled="!m.keep || m.busy" x-text="m.busy ? 'Đang gộp…' : (m.confirm ? 'Bấm lần nữa để gộp' : 'Gộp')"></button>
                     </div>
                   </div>
@@ -1666,7 +1671,7 @@ function app() {
       if (!m.confirm) { m.confirm = true; setTimeout(() => { m.confirm = false; }, 4000); return; }
       m.confirm = false; m.busy = true; this.error = '';
       try {
-        const r = await this.api({ action: 'merge', bareRow: m.bare.row, bareEmail: m.bare.email, dataRow: m.data.row, dataEmail: m.data.email, keep: m.keep });
+        const r = await this.api({ action: 'merge', bareRow: m.bare.row, bareEmail: m.bare.email, dataRow: m.data.row, dataEmail: m.data.email, keep: m.keep, hsdFrom: m.both ? m.hsdFrom : 'data' });
         m.done = '✓ Giữ ' + r.keptEmail + '. Dòng kia đã xoá trắng' + (r.freed ? ', slot ' + r.freed + ' thành trống' : '') + '. Hoàn tác ở tab Lịch sử.';
         this.lastActionId = r.actionId || '';
       } catch (e) { this.error = e.message; }
@@ -1677,7 +1682,7 @@ function app() {
     mpItems() { return (this.mp.items || []).filter(f => this.mpHit(f.rn, f.email, ...(f.rows || []).flatMap(r => [r.email, r.mailPhu]))); },
     async loadMp() {
       this.mp = { items: this.mp.items || [], loading: true, loaded: this.mp.loaded };
-      try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, merges: (d.merges || []).map(m => Object.assign(m, { keep: '', busy: false, confirm: false, done: '' })), loading: false, loaded: true }; }
+      try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, merges: (d.merges || []).map(m => Object.assign(m, { keep: '', busy: false, confirm: false, done: '', hsdFrom: m.both && laterHsd(m.bare.hsd, m.data.hsd) ? 'bare' : 'data' })), loading: false, loaded: true }; }
       catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng Soi mail phụ: dán Code.gs mới rồi Deploy → New version.' : e.message; this.mp.loading = false; }
     },
     async loadWeek() {
@@ -2351,6 +2356,7 @@ function base32(s) {
   for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
   return new Uint8Array(out);
 }
+function laterHsd(a, b) { const n = x => { const p = String(x || '').split('/'); return p.length === 3 ? +(p[2] + p[1].padStart(2, '0') + p[0].padStart(2, '0')) : 0; }; return n(a) > n(b); }
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return ''; } }
 function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
 </script>
