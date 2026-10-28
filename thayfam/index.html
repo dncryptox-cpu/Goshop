@@ -744,6 +744,18 @@
                   <div style="margin-top:6px;font-size:13px;padding-left:8px" :style="'border-left:3px solid ' + (r.lv <= 2 ? 'var(--bad)' : 'var(--warn)')">
                     <span class="mono" x-text="r.email"></span><span x-show="r.mailPhu"> · mail phụ <b class="mono" x-text="r.mailPhu"></b></span> <span class="mute" x-text="'(dòng ' + r.row + ')'"></span>
                     <template x-for="w in r.why" :key="w"><div class="mute" x-text="'• ' + w"></div></template>
+                    <div class="row" style="gap:4px;margin:3px 0 4px" x-show="can('setPhu') && r.mailPhu && !r.ph">
+                      <button class="btn xs" @click="setPhu(r, r.mailPhu + ' (hủy)')" :disabled="!!r.busy" title="Mail phụ không còn trong nhóm: ghi hủy để hết bị báo">Ghi "hủy"</button>
+                      <button class="btn xs" @click="r.ph = { v: r.mailPhu }">Sửa mail phụ</button>
+                      <button class="btn xs" style="color:var(--bad)" @click="setPhu(r, '')" :disabled="!!r.busy" x-text="r.delCf ? 'Bấm lần nữa' : 'Xoá mail phụ'"></button>
+                      <button class="btn xs" x-show="r.why.some(w => w.indexOf('đang là khách') >= 0)" @click="mpQ = r.mailPhu; window.scrollTo({ top: 0, behavior: 'smooth' })" title="Lọc theo mail phụ để Gộp 2 dòng (1 khách chiếm 2 slot)">Gộp 2 dòng ↑</button>
+                      <span class="mute" style="font-size:12px" x-show="r.msg" x-text="r.msg"></span>
+                    </div>
+                    <div class="row" style="gap:4px;margin:3px 0 4px" x-show="r.ph">
+                      <input class="mono" style="flex:1;min-width:220px;padding:3px 6px" :value="r.ph && r.ph.v" @input="r.ph.v = $event.target.value" placeholder="để trống = xoá mail phụ">
+                      <button class="btn xs" style="color:var(--ok)" @click="setPhu(r, r.ph.v, true)" :disabled="!!r.busy">Lưu</button>
+                      <button class="btn xs" @click="r.ph = null">Huỷ</button>
+                    </div>
                   </div>
                 </template>
               </div>
@@ -1423,7 +1435,7 @@ function app() {
     async api(body) {
       // các lệnh chỉ đọc (không làm cũ dữ liệu)
       // Admin tick "Ghi luôn vào gốc": mọi thao tác ghi data đều đồng bộ sang gốc ngay
-      const sync = this.me.role === 'admin' && this.autoSync && ['move', 'swapMail', 'vacate', 'complete', 'retire', 'markInvited', 'merge', 'setRenew'].includes(body.action);
+      const sync = this.me.role === 'admin' && this.autoSync && ['move', 'swapMail', 'vacate', 'complete', 'retire', 'markInvited', 'merge', 'setRenew', 'setPhu'].includes(body.action);
       if (!READS.includes(body.action) && body.op !== 'list') this.syncInfo = '';
       const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, autoSync: sync || body.autoSync || undefined, pass: this.pass, fresh: Date.now() < (this.freshUntil || 0) || undefined }) });
       const data = await res.json();
@@ -1680,6 +1692,16 @@ function app() {
     mpHit(...xs) { const q = String(this.mpQ || '').trim().toLowerCase(); return q.length < 2 || xs.some(x => String(x || '').toLowerCase().includes(q)); },
     mpMerges() { return (this.mp.merges || []).filter(m => this.mpHit(m.bare.email, m.bare.rn, m.data.email, m.data.rn, m.data.mailPhu)); },
     mpItems() { return (this.mp.items || []).filter(f => this.mpHit(f.rn, f.email, ...(f.rows || []).flatMap(r => [r.email, r.mailPhu]))); },
+    async setPhu(r, v, direct) {
+      if (v === '' && !direct && !r.delCf) { r.delCf = true; setTimeout(() => { r.delCf = false; }, 4000); return; }
+      r.busy = true; r.delCf = false; this.error = '';
+      try {
+        const x = await this.api({ action: 'setPhu', row: r.row, email: r.email, mailPhu: String(v || '').trim() });
+        r.mailPhu = x.mailPhu; r.ph = null; r.msg = '✓ Đã lưu (' + (x.old || '—') + ' → ' + (x.mailPhu || 'trống') + ')';
+        this.lastActionId = x.actionId || '';
+      } catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có chức năng sửa mail phụ: dán Code.gs mới rồi Triển khai.' : e.message; }
+      r.busy = false;
+    },
     async loadMp() {
       this.mp = { items: this.mp.items || [], loading: true, loaded: this.mp.loaded };
       try { const d = await this.api({ action: 'mailPhu', op: 'list' }); this.mp = { items: d.items, merges: (d.merges || []).map(m => Object.assign(m, { keep: '', busy: false, confirm: false, done: '', hsdFrom: m.both && laterHsd(m.bare.hsd, m.data.hsd) ? 'bare' : 'data' })), loading: false, loaded: true }; }
