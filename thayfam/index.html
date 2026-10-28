@@ -707,11 +707,11 @@
             <template x-if="(mp.merges || []).length">
               <div class="card" style="border-color:var(--warn)">
                 <b x-text="'Gộp dòng thiếu data (' + mpMerges().length + (mpQ.trim().length >= 2 ? '/' + mp.merges.length : '') + ' cặp)'"></b>
-                <div class="mute" style="font-size:12px;margin-bottom:6px">Dòng chỉ có email (thiếu Ngày mua / Số tháng) + dòng có đủ data cùng email (vd ở fam cũ đã Banned) hoặc có Mail phụ ghi đúng email đó. <b>Chọn giữ slot nào</b> rồi bấm Gộp. Giữ slot thiếu data: slot đó nhận Ngày mua, Số tháng, CTV của dòng kia, Mail phụ = mail cũ; dòng kia xoá trắng. Giữ slot có data: dòng chỉ có email xoá trắng. Không chép xuống cuối sheet, data cũ nằm trong tab Lịch sử (Hoàn tác được).</div>
+                <div class="mute" style="font-size:12px;margin-bottom:6px">Dòng chỉ có email (thiếu Ngày mua / Số tháng) + dòng có đủ data cùng email (vd ở fam cũ đã Banned) hoặc có Mail phụ ghi đúng email đó, hoặc ngược lại: dòng thiếu data có Mail phụ = email cũ đang giữ HSD ở fam khác (đổi mail làm ở sheet). <b>Chọn giữ slot nào</b> rồi bấm Gộp. Giữ slot thiếu data: slot đó nhận Ngày mua, Số tháng, CTV của dòng kia, Mail phụ = mail cũ; dòng kia xoá trắng. Giữ slot có data: dòng chỉ có email xoá trắng. Không chép xuống cuối sheet, data cũ nằm trong tab Lịch sử (Hoàn tác được).</div>
                 <template x-for="m in mpMerges()" :key="m.bare.row + '_' + m.data.row">
                   <div style="padding:8px 0;border-top:1px solid var(--line)">
                     <label class="row" style="gap:8px;cursor:pointer;font-size:13px"><input type="radio" :name="'mg' + m.bare.row + '_' + m.data.row" value="bare" x-model="m.keep" :disabled="!!m.done">
-                      <span class="grow"><b x-text="m.bare.rn"></b> dòng <span x-text="m.bare.row"></span> · <span class="mono" x-text="m.bare.email"></span> <span class="badge warn" x-show="!m.bare.hsd">thiếu data</span><span class="mute" x-show="m.bare.hsd" x-text="'· HSD ' + m.bare.hsd + ' · CTV ' + (m.bare.ctv || '—') + (m.bare.mailPhu ? ' · mail phụ ' + m.bare.mailPhu : '')"></span></span></label>
+                      <span class="grow"><b x-text="m.bare.rn"></b> dòng <span x-text="m.bare.row"></span> · <span class="mono" x-text="m.bare.email"></span> <span class="badge warn" x-show="!m.bare.hsd">thiếu data</span><span class="mute" x-show="m.phu" x-text="'· mail phụ ' + m.bare.mailPhu + ' (mail cũ)'"></span><span class="mute" x-show="m.bare.hsd" x-text="'· HSD ' + m.bare.hsd + ' · CTV ' + (m.bare.ctv || '—') + (m.bare.mailPhu ? ' · mail phụ ' + m.bare.mailPhu : '')"></span></span></label>
                     <label class="row" style="gap:8px;cursor:pointer;font-size:13px;margin-top:4px"><input type="radio" :name="'mg' + m.bare.row + '_' + m.data.row" value="data" x-model="m.keep" :disabled="!!m.done || m.data.arch || m.data.dead">
                       <span class="grow"><b x-text="m.data.rn"></b> dòng <span x-text="m.data.row"></span> · <span class="mono" x-text="m.data.email"></span> <span class="mute" x-text="'· HSD ' + m.data.hsd + ' · CTV ' + (m.data.ctv || '—') + ' · mail phụ ' + m.data.mailPhu + (m.data.arch ? ' · đang ở vùng lưu (không có slot)' : '') + (m.data.dead ? ' · fam ' + (m.data.status || 'không hoạt động') : '') + (m.same ? ' · cùng email' : '')"></span></span></label>
                     <div class="row" style="gap:8px;margin-top:6px;font-size:13px" x-show="m.both && !m.done">
@@ -720,7 +720,7 @@
                       <label><input type="radio" :name="'hs' + m.bare.row + '_' + m.data.row" value="data" x-model="m.hsdFrom"> <span x-text="m.data.hsd + ' (' + m.data.email + ')'"></span></label>
                     </div>
                     <div class="row" style="gap:8px;margin-top:6px">
-                      <span class="grow" style="font-size:12px" :style="m.done ? 'color:var(--ok)' : ''" x-text="m.done || (m.keep ? (m.both ? 'Giữ slot đã chọn với HSD đã chọn, dòng kia xoá trắng.' : '') : 'Chưa chọn giữ slot nào')"></span>
+                      <span class="grow" style="font-size:12px" :style="m.done ? 'color:var(--ok)' : ''" x-text="m.done || (m.keep ? (m.both ? 'Giữ slot đã chọn với HSD đã chọn, dòng kia xoá trắng.' : (m.phu && m.keep === 'bare' ? m.bare.email + ' giữ nguyên ở ' + m.bare.rn + ', nhận Ngày mua / Số tháng / HSD ' + m.data.hsd + ' của ' + m.data.email + '; dòng ' + m.data.rn + ' xoá trắng.' : '')) : (m.phu ? 'Đã đổi mail ở sheet. Chọn giữ slot ' + m.bare.rn + ' để lấy HSD từ mail cũ.' : 'Chưa chọn giữ slot nào'))"></span>
                       <button class="btn sm pri" x-show="!m.done" @click="doMerge(m)" :disabled="!m.keep || m.busy" x-text="m.busy ? 'Đang gộp…' : (m.confirm ? 'Bấm lần nữa để gộp' : 'Gộp')"></button>
                     </div>
                   </div>
@@ -1690,7 +1690,7 @@ function app() {
       m.busy = false;
     },
     mpHit(...xs) { const q = String(this.mpQ || '').trim().toLowerCase(); return q.length < 2 || xs.some(x => String(x || '').toLowerCase().includes(q)); },
-    mpMerges() { return (this.mp.merges || []).filter(m => this.mpHit(m.bare.email, m.bare.rn, m.data.email, m.data.rn, m.data.mailPhu)); },
+    mpMerges() { return (this.mp.merges || []).filter(m => this.mpHit(m.bare.email, m.bare.rn, m.bare.mailPhu, m.data.email, m.data.rn, m.data.mailPhu)); },
     mpItems() { return (this.mp.items || []).filter(f => this.mpHit(f.rn, f.email, ...(f.rows || []).flatMap(r => [r.email, r.mailPhu]))); },
     async setPhu(r, v, direct) {
       if (v === '' && !direct && !r.delCf) { r.delCf = true; setTimeout(() => { r.delCf = false; }, 4000); return; }
