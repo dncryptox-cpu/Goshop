@@ -128,11 +128,11 @@
 
             <div>
                 <span class="text-[10px] uppercase font-bold text-blue-400 tracking-widest block mb-1">DNC TRADING OS • PRIVATE ACCESS</span>
-                <h2 class="text-2xl font-outfit font-black text-white" x-text="signupMode ? 'Đăng Ký' : 'Đăng Nhập'"></h2>
-                <p class="text-xs text-slate-400 mt-1" x-text="signupMode ? 'Tạo tài khoản mới — dữ liệu chỉ mình bạn xem được' : 'Đăng nhập để truy cập nhật ký giao dịch'"></p>
+                <h2 class="text-2xl font-outfit font-black text-white" x-text="resetMode ? 'Quên Mật Khẩu' : (signupMode ? 'Đăng Ký' : 'Đăng Nhập')"></h2>
+                <p class="text-xs text-slate-400 mt-1" x-text="resetMode ? 'Nhập username + mã khôi phục để đặt mật khẩu mới' : (signupMode ? 'Tạo tài khoản mới — dữ liệu chỉ mình bạn xem được' : 'Đăng nhập để truy cập nhật ký giao dịch')"></p>
             </div>
 
-            <form @submit.prevent="signupMode ? signUpApp() : unlockApp()" class="space-y-3 text-left">
+            <form @submit.prevent="resetMode ? resetPasswordApp() : (signupMode ? signUpApp() : unlockApp())" class="space-y-3 text-left">
                 <!-- Username -->
                 <div>
                     <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Username</label>
@@ -141,11 +141,19 @@
                         class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 font-mono font-bold text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner">
                 </div>
 
+                <!-- Mã khôi phục (chỉ khi quên mật khẩu) -->
+                <div x-show="resetMode" x-cloak>
+                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Mã khôi phục</label>
+                    <input type="text" x-model="inputRecoveryCode" :required="resetMode" autocomplete="off" autocapitalize="characters" spellcheck="false"
+                        placeholder="XXXX-XXXX-XXXX-XXXX"
+                        class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 font-mono font-bold text-sm text-white uppercase tracking-wider focus:outline-none focus:border-blue-500 shadow-inner">
+                </div>
+
                 <!-- Password -->
                 <div class="relative">
-                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Password</label>
-                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode" required :autocomplete="signupMode ? 'new-password' : 'current-password'"
-                        placeholder="Nhập mật khẩu..."
+                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5" x-text="resetMode ? 'Mật khẩu mới' : 'Password'"></label>
+                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode" required :autocomplete="(signupMode || resetMode) ? 'new-password' : 'current-password'"
+                        :placeholder="(signupMode || resetMode) ? 'Ít nhất 6 ký tự...' : 'Nhập mật khẩu...'"
                         class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 pr-12 font-mono font-bold text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner">
                     <button type="button" @click="showPassword = !showPassword"
                         class="absolute right-4 bottom-3.5 text-slate-400 hover:text-white">
@@ -154,9 +162,9 @@
                 </div>
 
                 <!-- Confirm password (chỉ khi đăng ký) -->
-                <div x-show="signupMode" x-cloak>
+                <div x-show="signupMode || resetMode" x-cloak>
                     <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Nhập lại mật khẩu</label>
-                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode2" :required="signupMode" autocomplete="new-password"
+                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode2" :required="signupMode || resetMode" autocomplete="new-password"
                         placeholder="Nhập lại mật khẩu..."
                         class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 font-mono font-bold text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner">
                 </div>
@@ -166,21 +174,32 @@
                 <button type="submit" :disabled="loginLoading"
                     class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60 text-white py-4 rounded-2xl text-sm font-extrabold transition-all shadow-xl shadow-blue-500/25 flex items-center justify-center gap-2 mt-2">
                     <template x-if="!loginLoading">
-                        <span class="flex items-center gap-2"><i data-lucide="log-in" class="w-5 h-5"></i> <span x-text="signupMode ? 'Tạo Tài Khoản' : 'Đăng Nhập'"></span></span>
+                        <span class="flex items-center gap-2"><i data-lucide="log-in" class="w-5 h-5"></i> <span x-text="resetMode ? 'Đặt Mật Khẩu Mới' : (signupMode ? 'Tạo Tài Khoản' : 'Đăng Nhập')"></span></span>
                     </template>
                     <template x-if="loginLoading">
                         <span class="flex items-center gap-2"><i data-lucide="loader" class="w-5 h-5 animate-spin"></i> Đang xác thực...</span>
                     </template>
                 </button>
 
-                <p class="text-xs text-slate-400 text-center pt-1">
+                <p x-show="!resetMode" class="text-xs text-slate-400 text-center pt-1">
                     <span x-text="signupMode ? 'Đã có tài khoản?' : 'Chưa có tài khoản?'"></span>
-                    <button type="button" @click="signupMode = !signupMode; loginError = false; inputPasscode2 = ''" class="text-blue-400 hover:text-blue-300 font-bold underline ml-1" x-text="signupMode ? 'Đăng nhập' : 'Đăng ký'"></button>
+                    <button type="button" @click="setAuthMode(signupMode ? 'login' : 'signup')" class="text-blue-400 hover:text-blue-300 font-bold underline ml-1" x-text="signupMode ? 'Đăng nhập' : 'Đăng ký'"></button>
+                </p>
+                <p x-show="resetMode" x-cloak class="text-xs text-slate-400 text-center pt-1">
+                    <button type="button" @click="setAuthMode('login')" class="text-blue-400 hover:text-blue-300 font-bold underline">← Quay lại đăng nhập</button>
                 </p>
             </form>
 
             <div class="pt-3 border-t border-white/10 text-[11px] text-slate-500">
-                Dữ liệu được bảo mật • Quên mật khẩu? Liên hệ DNC
+                <template x-if="!resetMode && !signupMode">
+                    <span>Dữ liệu được bảo mật • <button type="button" @click="setAuthMode('reset')" class="text-slate-300 hover:text-white underline font-bold">Quên mật khẩu?</button></span>
+                </template>
+                <template x-if="resetMode">
+                    <span>Mã khôi phục được cấp lúc đăng ký hoặc trong Cài Đặt. Chưa từng tạo mã? Liên hệ DNC để reset.</span>
+                </template>
+                <template x-if="signupMode">
+                    <span>Dữ liệu được bảo mật • Sau khi tạo sẽ có mã khôi phục để tự lấy lại mật khẩu</span>
+                </template>
             </div>
         </div>
     </div>
@@ -259,6 +278,39 @@
         </div>
     </header>
 
+    <!-- MÃ KHÔI PHỤC: hiện đúng 1 lần sau khi tạo -->
+    <div x-show="recoveryModalOpen" x-cloak class="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="glass-panel rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-5 border border-emerald-500/30 shadow-2xl">
+            <div class="flex items-center gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+                    <i data-lucide="life-buoy" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h3 class="font-outfit font-black text-lg text-white">Mã Khôi Phục Của Bạn</h3>
+                    <p class="text-xs text-slate-400">Dùng khi quên mật khẩu • chỉ hiện 1 lần này</p>
+                </div>
+            </div>
+            <div class="bg-black/40 border border-white/15 rounded-2xl px-4 py-4 text-center">
+                <div class="font-mono font-black text-lg sm:text-xl text-emerald-300 tracking-wider break-all select-all" x-text="recoveryCode"></div>
+                <div class="text-[11px] text-slate-500 mt-1">Tài khoản: <span class="text-slate-300 font-bold" x-text="traderUsername"></span></div>
+            </div>
+            <div class="flex gap-2">
+                <button type="button" @click="copyRecoveryCode()" class="flex-1 bg-white/10 hover:bg-white/20 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                    <i data-lucide="copy" class="w-4 h-4"></i><span x-text="recoveryCopied ? 'Đã chép' : 'Chép mã'"></span>
+                </button>
+                <button type="button" @click="downloadRecoveryCode()" class="flex-1 bg-white/10 hover:bg-white/20 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
+                    <i data-lucide="download" class="w-4 h-4"></i>Tải file .txt
+                </button>
+            </div>
+            <p class="text-xs text-amber-300/90 leading-relaxed">Lưu mã vào ghi chú, ảnh chụp hoặc trình quản lý mật khẩu. Mất mã thì không tự đặt lại mật khẩu được. Mã cũ (nếu có) đã hết hiệu lực.</p>
+            <label class="flex items-center gap-2 text-xs text-slate-300 font-bold cursor-pointer">
+                <input type="checkbox" x-model="recoverySaved" class="w-4 h-4 accent-emerald-500"> Tôi đã lưu mã ở nơi an toàn
+            </label>
+            <button type="button" :disabled="!recoverySaved" @click="closeRecoveryModal()"
+                class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white py-3 rounded-2xl text-sm font-extrabold">Xong</button>
+        </div>
+    </div>
+
     <!-- MAIN BODY -->
     <!-- MOBILE CAPITAL BAR (visible only on mobile) -->
     <div class="sm:hidden bg-card/60 backdrop-blur-xl border-b border-white/10 px-4 py-2.5 flex items-center justify-between gap-3">
@@ -281,6 +333,16 @@
     </div>
 
     <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-8 py-4 sm:py-8 space-y-5 sm:space-y-8 pb-safe">
+
+        <!-- Nhắc tạo mã khôi phục (tài khoản cũ chưa có) -->
+        <div x-show="hasRecoveryCode === false" x-cloak class="glass-panel rounded-2xl px-4 py-3 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div class="flex items-start gap-3 flex-1">
+                <i data-lucide="life-buoy" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+                <p class="text-xs text-slate-300 leading-relaxed"><strong class="text-amber-300">Chưa có mã khôi phục.</strong> Nếu quên mật khẩu bạn sẽ không tự lấy lại được. Tạo 1 lần, lưu lại là xong.</p>
+            </div>
+            <button type="button" @click="generateRecoveryCode()" :disabled="recoveryLoading"
+                class="shrink-0 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold">Tạo mã ngay</button>
+        </div>
 
         <!-- KPI SUMMARY & 5% RULE BANNER -->
         <div class="hidden sm:grid sm:grid-cols-2 md:grid-cols-4 gap-4">
@@ -1306,18 +1368,33 @@
                 </div>
             </div>
 
+            <!-- Recovery code -->
+            <div x-show="hasRecoveryCode !== null" class="glass-panel rounded-2xl p-5 border border-emerald-500/20 space-y-3">
+                <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                    <i data-lucide="life-buoy" class="w-4 h-4"></i>
+                    Mã Khôi Phục
+                </h4>
+                <p class="text-xs text-slate-400" x-show="hasRecoveryCode">✅ Đã có mã. Quên mật khẩu → bấm "Quên mật khẩu?" ở màn đăng nhập và nhập mã. Mất mã thì tạo mã mới ở đây (mã cũ hết hiệu lực).</p>
+                <p class="text-xs text-amber-300" x-show="!hasRecoveryCode">⚠️ Chưa có mã. Nếu quên mật khẩu sẽ không tự lấy lại được.</p>
+                <button type="button" @click="generateRecoveryCode()" :disabled="recoveryLoading"
+                    class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': recoveryLoading}"></i>
+                    <span x-text="hasRecoveryCode ? 'Tạo Mã Mới' : 'Tạo Mã Khôi Phục'"></span>
+                </button>
+            </div>
+
             <!-- Change Password -->
             <div class="glass-panel rounded-2xl p-5 border border-amber-500/20 space-y-3">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-2">
                     <i data-lucide="key-round" class="w-4 h-4"></i>
                     Đổi Mật Khẩu
                 </h4>
-                <p class="text-xs text-slate-400">Mật khẩu mới sẽ được lưu lên hệ thống ngay lập tức. Nếu quên mật khẩu, liên hệ DNC để reset.</p>
+                <p class="text-xs text-slate-400">Mật khẩu mới sẽ được lưu lên hệ thống ngay lập tức.</p>
 
                 <div class="space-y-2">
                     <input type="password" x-model="pwOld" placeholder="Mật khẩu hiện tại..."
                         class="w-full bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
-                    <input type="password" x-model="pwNew" placeholder="Mật khẩu mới (ít nhất 4 ký tự)..."
+                    <input type="password" x-model="pwNew" placeholder="Mật khẩu mới (ít nhất 6 ký tự)..."
                         class="w-full bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
                     <input type="password" x-model="pwConfirm" placeholder="Xác nhận mật khẩu mới..."
                         class="w-full bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
@@ -1929,6 +2006,15 @@
                 insightExpanded: {},
                 reviewFilter: 'ALL',
                 signupMode: false,
+                resetMode: false,
+                inputRecoveryCode: '',
+                // Mã khôi phục: null = chưa biết (SQL chưa chạy / lỗi) → ẩn mục
+                hasRecoveryCode: null,
+                recoveryCode: '',
+                recoveryModalOpen: false,
+                recoverySaved: false,
+                recoveryCopied: false,
+                recoveryLoading: false,
                 loginError: false,
                 loginErrorMsg: '',
                 loginLoading: false,
@@ -2123,6 +2209,91 @@
                     this.googleApiKey = p.gemini_api_key || '';
                     this.isLocked = false;
                     this.loadUserSettings();
+                    this.checkRecoveryCode();
+                },
+
+                setAuthMode(mode) {
+                    this.signupMode = mode === 'signup';
+                    this.resetMode = mode === 'reset';
+                    this.loginError = false;
+                    this.inputPasscode = ''; this.inputPasscode2 = ''; this.inputRecoveryCode = '';
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                // ───────── MÃ KHÔI PHỤC ─────────
+                async checkRecoveryCode() {
+                    const { data, error } = await sb.rpc('has_recovery_code');
+                    this.hasRecoveryCode = error ? null : !!data;
+                },
+
+                async generateRecoveryCode(silent = false) {
+                    if (!silent && this.hasRecoveryCode && !confirm('Tạo mã mới? Mã cũ sẽ hết hiệu lực ngay.')) return;
+                    this.recoveryLoading = true;
+                    try {
+                        const { data, error } = await sb.rpc('create_recovery_code');
+                        if (error) throw error;
+                        this.recoveryCode = data;
+                        this.hasRecoveryCode = true;
+                        this.recoverySaved = false;
+                        this.recoveryCopied = false;
+                        this.recoveryModalOpen = true;
+                        this.$nextTick(() => lucide.createIcons());
+                    } catch(err) {
+                        if (!silent) alert('❌ Không tạo được mã khôi phục: ' + err.message);
+                    } finally {
+                        this.recoveryLoading = false;
+                    }
+                },
+
+                async copyRecoveryCode() {
+                    try { await navigator.clipboard.writeText(this.recoveryCode); this.recoveryCopied = true; }
+                    catch(e) { alert('Không chép tự động được — hãy chọn mã và chép tay.'); }
+                },
+
+                downloadRecoveryCode() {
+                    const txt = `DNC Trading OS — godnc.com/trading\nUsername: ${this.traderUsername}\nMã khôi phục: ${this.recoveryCode}\nTạo lúc: ${new Date().toLocaleString('vi-VN')}\n\nQuên mật khẩu: màn đăng nhập → "Quên mật khẩu?" → nhập username + mã này.\nMã chỉ dùng 1 lần; sau khi đặt lại mật khẩu sẽ có mã mới.\n`;
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain;charset=utf-8' }));
+                    a.download = `ma-khoi-phuc-${this.traderUsername}.txt`;
+                    a.click();
+                    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+                    this.recoverySaved = true;
+                },
+
+                closeRecoveryModal() {
+                    this.recoveryModalOpen = false;
+                    this.recoveryCode = '';
+                    this.recoverySaved = false;
+                },
+
+                async resetPasswordApp() {
+                    const u = String(this.inputUsername || '').trim();
+                    this.loginError = false;
+                    const fail = msg => { this.loginError = true; this.loginErrorMsg = msg; };
+                    if (!u) return fail('Nhập username');
+                    if (!String(this.inputRecoveryCode || '').trim()) return fail('Nhập mã khôi phục');
+                    if (String(this.inputPasscode).length < 6) return fail('Mật khẩu mới ít nhất 6 ký tự');
+                    if (this.inputPasscode !== this.inputPasscode2) return fail('Hai mật khẩu không khớp');
+                    this.loginLoading = true;
+                    try {
+                        const { data, error } = await sb.rpc('reset_password_with_code', {
+                            p_username: u, p_code: this.inputRecoveryCode, p_new_password: toAuthPw(this.inputPasscode)
+                        });
+                        if (error) return fail(/could not find|does not exist/i.test(error.message) ? 'Tính năng chưa bật — liên hệ DNC' : error.message);
+                        if (data === 'locked') return fail('Nhập sai quá 5 lần — thử lại sau 15 phút');
+                        if (data === 'weak') return fail('Mật khẩu mới ít nhất 6 ký tự');
+                        if (data !== 'ok') return fail('Sai username hoặc mã khôi phục');
+                        const login = await sb.auth.signInWithPassword({ email: toLoginEmail(u), password: toAuthPw(this.inputPasscode) });
+                        if (login.error) { this.setAuthMode('login'); return fail('Đã đổi mật khẩu — hãy đăng nhập lại'); }
+                        this.setAuthMode('login');
+                        await this.applySession(login.data.session);
+                        // Mã cũ đã dùng → cấp mã mới ngay
+                        await this.generateRecoveryCode(true);
+                    } catch(err) {
+                        fail('Không kết nối được máy chủ: ' + err.message);
+                    } finally {
+                        this.loginLoading = false;
+                    }
                 },
 
                 loadUserSettings() {
@@ -2212,6 +2383,13 @@
                     }
                     this.loginLoading = true;
                     try {
+                        const chk = await sb.rpc('signup_check', { p_username: u });
+                        if (!chk.error && chk.data === 'taken') {
+                            this.loginError = true; this.loginErrorMsg = 'Username đã có người dùng'; return;
+                        }
+                        if (!chk.error && chk.data === 'busy') {
+                            this.loginError = true; this.loginErrorMsg = 'Đăng ký đang tạm khoá vì quá nhiều tài khoản mới — thử lại sau 1 giờ'; return;
+                        }
                         const { data, error } = await sb.auth.signUp({
                             email: toLoginEmail(u),
                             password: toAuthPw(this.inputPasscode),
@@ -2220,7 +2398,7 @@
                         if (error) {
                             this.loginError = true;
                             this.loginErrorMsg = /already registered|already exists/i.test(error.message) ? 'Username đã có người dùng'
-                                : /database error/i.test(error.message) ? 'Username đã có người dùng'
+                                : /database error/i.test(error.message) ? 'Không tạo được tài khoản (username đã có hoặc đăng ký đang tạm khoá) — thử lại sau'
                                 : /not allowed|disabled/i.test(error.message) ? 'Hiện chưa mở đăng ký'
                                 : error.message;
                             return;
@@ -2232,6 +2410,7 @@
                         }
                         this.inputPasscode = ''; this.inputPasscode2 = ''; this.signupMode = false;
                         await this.applySession(data.session);
+                        await this.generateRecoveryCode(true);
                     } catch(err) {
                         this.loginError = true;
                         this.loginErrorMsg = 'Không kết nối được máy chủ: ' + err.message;
@@ -2307,8 +2486,11 @@
 
                 async loadInsights() {
                     if (!this.userId) return;
-                    const { data, error } = await sb.from('trade_insights').select('*').order('created_at', { ascending: true });
-                    if (error) { console.warn('Tải insight lỗi:', error.message); return; }
+                    let data;
+                    try {
+                        data = await this.fetchAllRows(() => sb.from('trade_insights').select('*')
+                            .order('created_at', { ascending: true }).order('id', { ascending: true }));
+                    } catch(error) { console.warn('Tải insight lỗi:', error.message); return; }
                     const map = {};
                     for (const r of data) (map[r.trade_id] = map[r.trade_id] || []).push(r);
                     this.insights = map;
@@ -2345,6 +2527,8 @@
                     this.googleApiKey = '';
                     this.trades = [];
                     this.insights = {};
+                    this.hasRecoveryCode = null;
+                    this.closeRecoveryModal();
                 },
 
                 // ───────── CÀI ĐẶT (bảng profiles) ─────────
@@ -2382,9 +2566,9 @@
                         this.changePwMsg = '❌ Mật khẩu mới và xác nhận không khớp!';
                         return;
                     }
-                    if (this.pwNew.length < 4) {
+                    if (this.pwNew.length < 6) {
                         this.changePwOk = false;
-                        this.changePwMsg = '❌ Mật khẩu mới phải có ít nhất 4 ký tự!';
+                        this.changePwMsg = '❌ Mật khẩu mới phải có ít nhất 6 ký tự!';
                         return;
                     }
                     this.changePwLoading = true;
@@ -2405,16 +2589,27 @@
                     }
                 },
 
+                // Supabase trả tối đa 1000 dòng/lần → tải từng trang tới hết
+                async fetchAllRows(makeQuery, pageSize = 1000) {
+                    const all = [];
+                    for (let from = 0; ; from += pageSize) {
+                        const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+                        if (error) throw error;
+                        all.push(...data);
+                        if (data.length < pageSize) return all;
+                    }
+                },
+
                 // ───────── LỆNH: tải / lưu / xoá ─────────
                 async pullTradesFromCloud(silent = false) {
                     if (!this.userId || this.tradingMode === 'BACKTEST') return;
                     this.cloudSyncing = true;
                     this._lastPullTime = Date.now();
                     try {
-                        const { data, error } = await sb.from('trades').select('*')
+                        const data = await this.fetchAllRows(() => sb.from('trades').select('*')
                             .order('trade_date', { ascending: false })
-                            .order('created_at', { ascending: false });
-                        if (error) throw error;
+                            .order('created_at', { ascending: false })
+                            .order('id', { ascending: true }));
                         const cloud = data.map(r => this.sanitizeTradeData(this.rowToTrade(r)));
                         const ids = new Set(cloud.map(t => t.id));
                         // Giữ lại lệnh trên máy chưa lưu được lên server — không bao giờ ghi đè mất

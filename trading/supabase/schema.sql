@@ -113,3 +113,5 @@ drop policy if exists "own insights" on public.trade_insights;
 create policy "own insights" on public.trade_insights for all
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id and exists (select 1 from public.trades t where t.id = trade_id and t.user_id = auth.uid()));
+
+-- 5. MÃ KHÔI PHỤC + GIỚI HẠN ĐĂNG KÝ: xem file 2026-10-29_recovery_signup_limit.sql (chạy sau file này)
