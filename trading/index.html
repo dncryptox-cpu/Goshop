@@ -128,32 +128,40 @@
 
             <div>
                 <span class="text-[10px] uppercase font-bold text-blue-400 tracking-widest block mb-1">DNC TRADING OS • PRIVATE ACCESS</span>
-                <h2 class="text-2xl font-outfit font-black text-white" x-text="resetMode ? 'Quên Mật Khẩu' : (signupMode ? 'Đăng Ký' : 'Đăng Nhập')"></h2>
-                <p class="text-xs text-slate-400 mt-1" x-text="resetMode ? 'Nhập username + mã khôi phục để đặt mật khẩu mới' : (signupMode ? 'Tạo tài khoản mới — dữ liệu chỉ mình bạn xem được' : 'Đăng nhập để truy cập nhật ký giao dịch')"></p>
+                <h2 class="text-2xl font-outfit font-black text-white" x-text="authTitle"></h2>
+                <p class="text-xs text-slate-400 mt-1" x-text="authSubtitle"></p>
             </div>
 
-            <form @submit.prevent="resetMode ? resetPasswordApp() : (signupMode ? signUpApp() : unlockApp())" class="space-y-3 text-left">
-                <!-- Username -->
-                <div>
-                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Username</label>
-                    <input type="text" x-model="inputUsername" required autocomplete="username"
-                        placeholder="Nhập username..."
+            <form @submit.prevent="submitAuth()" novalidate class="space-y-3 text-left">
+                <!-- Đăng nhập: username (tài khoản cũ) hoặc email -->
+                <div x-show="authMode === 'login'">
+                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Username hoặc Email</label>
+                    <input type="text" x-model="inputUsername" :required="authMode === 'login'" autocomplete="username" autocapitalize="none" spellcheck="false"
+                        placeholder="username hoặc email..."
                         class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 font-mono font-bold text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner">
                 </div>
 
-                <!-- Mã khôi phục (chỉ khi quên mật khẩu) -->
-                <div x-show="resetMode" x-cloak>
-                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Mã khôi phục</label>
-                    <input type="text" x-model="inputRecoveryCode" :required="resetMode" autocomplete="off" autocapitalize="characters" spellcheck="false"
-                        placeholder="XXXX-XXXX-XXXX-XXXX"
-                        class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 font-mono font-bold text-sm text-white uppercase tracking-wider focus:outline-none focus:border-blue-500 shadow-inner">
+                <!-- Đăng ký: username -->
+                <div x-show="authMode === 'signup'" x-cloak>
+                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Username</label>
+                    <input type="text" x-model="inputUsername" :required="authMode === 'signup'" autocomplete="username" autocapitalize="none" spellcheck="false"
+                        placeholder="3–24 ký tự: chữ, số, . _ -"
+                        class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 font-mono font-bold text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner">
                 </div>
 
-                <!-- Password -->
-                <div class="relative">
-                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5" x-text="resetMode ? 'Mật khẩu mới' : 'Password'"></label>
-                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode" required :autocomplete="(signupMode || resetMode) ? 'new-password' : 'current-password'"
-                        :placeholder="(signupMode || resetMode) ? 'Ít nhất 6 ký tự...' : 'Nhập mật khẩu...'"
+                <!-- Email: đăng ký + quên mật khẩu -->
+                <div x-show="authMode === 'signup' || authMode === 'forgot'" x-cloak>
+                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Email</label>
+                    <input type="email" x-model="inputEmail" :required="authMode === 'signup' || authMode === 'forgot'" autocomplete="email" autocapitalize="none" spellcheck="false"
+                        placeholder="ban@gmail.com"
+                        class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 font-mono font-bold text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner">
+                </div>
+
+                <!-- Mật khẩu -->
+                <div x-show="authMode !== 'forgot'" class="relative">
+                    <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5" x-text="authMode === 'newpw' ? 'Mật khẩu mới' : 'Mật khẩu'"></label>
+                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode" :required="authMode !== 'forgot'" :autocomplete="authMode === 'login' ? 'current-password' : 'new-password'"
+                        :placeholder="authMode === 'login' ? 'Nhập mật khẩu...' : 'Ít nhất 6 ký tự...'"
                         class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 pr-12 font-mono font-bold text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner">
                     <button type="button" @click="showPassword = !showPassword"
                         class="absolute right-4 bottom-3.5 text-slate-400 hover:text-white">
@@ -161,45 +169,37 @@
                     </button>
                 </div>
 
-                <!-- Confirm password (chỉ khi đăng ký) -->
-                <div x-show="signupMode || resetMode" x-cloak>
+                <!-- Nhập lại mật khẩu (đăng ký / đặt mật khẩu mới) -->
+                <div x-show="authMode === 'signup' || authMode === 'newpw'" x-cloak>
                     <label class="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1.5">Nhập lại mật khẩu</label>
-                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode2" :required="signupMode || resetMode" autocomplete="new-password"
+                    <input :type="showPassword ? 'text' : 'password'" x-model="inputPasscode2" :required="authMode === 'signup' || authMode === 'newpw'" autocomplete="new-password"
                         placeholder="Nhập lại mật khẩu..."
                         class="w-full bg-card border border-white/15 rounded-2xl px-5 py-3.5 font-mono font-bold text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner">
                 </div>
 
                 <p x-show="loginError" x-cloak class="text-xs text-rose-400 font-bold text-center" x-text="loginErrorMsg || 'Sai tài khoản hoặc mật khẩu!'"></p>
+                <p x-show="loginInfo" x-cloak class="text-xs text-emerald-300 font-bold text-center leading-relaxed" x-text="loginInfo"></p>
 
                 <button type="submit" :disabled="loginLoading"
                     class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-60 text-white py-4 rounded-2xl text-sm font-extrabold transition-all shadow-xl shadow-blue-500/25 flex items-center justify-center gap-2 mt-2">
-                    <template x-if="!loginLoading">
-                        <span class="flex items-center gap-2"><i data-lucide="log-in" class="w-5 h-5"></i> <span x-text="resetMode ? 'Đặt Mật Khẩu Mới' : (signupMode ? 'Tạo Tài Khoản' : 'Đăng Nhập')"></span></span>
-                    </template>
-                    <template x-if="loginLoading">
-                        <span class="flex items-center gap-2"><i data-lucide="loader" class="w-5 h-5 animate-spin"></i> Đang xác thực...</span>
-                    </template>
+                    <span x-show="!loginLoading" x-text="authButton"></span>
+                    <span x-show="loginLoading" x-cloak>Đang xử lý...</span>
                 </button>
 
-                <p x-show="!resetMode" class="text-xs text-slate-400 text-center pt-1">
-                    <span x-text="signupMode ? 'Đã có tài khoản?' : 'Chưa có tài khoản?'"></span>
-                    <button type="button" @click="setAuthMode(signupMode ? 'login' : 'signup')" class="text-blue-400 hover:text-blue-300 font-bold underline ml-1" x-text="signupMode ? 'Đăng nhập' : 'Đăng ký'"></button>
+                <p x-show="authMode === 'login' || authMode === 'signup'" class="text-xs text-slate-400 text-center pt-1">
+                    <span x-text="authMode === 'signup' ? 'Đã có tài khoản?' : 'Chưa có tài khoản?'"></span>
+                    <button type="button" @click="setAuthMode(authMode === 'signup' ? 'login' : 'signup')" class="text-blue-400 hover:text-blue-300 font-bold underline ml-1" x-text="authMode === 'signup' ? 'Đăng nhập' : 'Đăng ký'"></button>
                 </p>
-                <p x-show="resetMode" x-cloak class="text-xs text-slate-400 text-center pt-1">
+                <p x-show="authMode === 'forgot' || authMode === 'newpw'" x-cloak class="text-xs text-slate-400 text-center pt-1">
                     <button type="button" @click="setAuthMode('login')" class="text-blue-400 hover:text-blue-300 font-bold underline">← Quay lại đăng nhập</button>
                 </p>
             </form>
 
             <div class="pt-3 border-t border-white/10 text-[11px] text-slate-500">
-                <template x-if="!resetMode && !signupMode">
-                    <span>Dữ liệu được bảo mật • <button type="button" @click="setAuthMode('reset')" class="text-slate-300 hover:text-white underline font-bold">Quên mật khẩu?</button></span>
-                </template>
-                <template x-if="resetMode">
-                    <span>Mã khôi phục được cấp lúc đăng ký hoặc trong Cài Đặt. Chưa từng tạo mã? Liên hệ DNC để reset.</span>
-                </template>
-                <template x-if="signupMode">
-                    <span>Dữ liệu được bảo mật • Sau khi tạo sẽ có mã khôi phục để tự lấy lại mật khẩu</span>
-                </template>
+                <span x-show="authMode === 'login'">Dữ liệu được bảo mật • <button type="button" @click="setAuthMode('forgot')" class="text-slate-300 hover:text-white underline font-bold">Quên mật khẩu?</button></span>
+                <span x-show="authMode === 'signup'" x-cloak>Email chỉ dùng để xác nhận tài khoản và lấy lại mật khẩu khi quên</span>
+                <span x-show="authMode === 'forgot'" x-cloak>Tài khoản cũ chưa gắn email? Liên hệ DNC để reset mật khẩu.</span>
+                <span x-show="authMode === 'newpw'" x-cloak>Đặt xong là vào thẳng nhật ký</span>
             </div>
         </div>
     </div>
@@ -278,39 +278,6 @@
         </div>
     </header>
 
-    <!-- MÃ KHÔI PHỤC: hiện đúng 1 lần sau khi tạo -->
-    <div x-show="recoveryModalOpen" x-cloak class="fixed inset-0 z-[120] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="glass-panel rounded-3xl max-w-md w-full p-6 sm:p-8 space-y-5 border border-emerald-500/30 shadow-2xl">
-            <div class="flex items-center gap-3">
-                <div class="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
-                    <i data-lucide="life-buoy" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <h3 class="font-outfit font-black text-lg text-white">Mã Khôi Phục Của Bạn</h3>
-                    <p class="text-xs text-slate-400">Dùng khi quên mật khẩu • chỉ hiện 1 lần này</p>
-                </div>
-            </div>
-            <div class="bg-black/40 border border-white/15 rounded-2xl px-4 py-4 text-center">
-                <div class="font-mono font-black text-lg sm:text-xl text-emerald-300 tracking-wider break-all select-all" x-text="recoveryCode"></div>
-                <div class="text-[11px] text-slate-500 mt-1">Tài khoản: <span class="text-slate-300 font-bold" x-text="traderUsername"></span></div>
-            </div>
-            <div class="flex gap-2">
-                <button type="button" @click="copyRecoveryCode()" class="flex-1 bg-white/10 hover:bg-white/20 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
-                    <i data-lucide="copy" class="w-4 h-4"></i><span x-text="recoveryCopied ? 'Đã chép' : 'Chép mã'"></span>
-                </button>
-                <button type="button" @click="downloadRecoveryCode()" class="flex-1 bg-white/10 hover:bg-white/20 text-white py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2">
-                    <i data-lucide="download" class="w-4 h-4"></i>Tải file .txt
-                </button>
-            </div>
-            <p class="text-xs text-amber-300/90 leading-relaxed">Lưu mã vào ghi chú, ảnh chụp hoặc trình quản lý mật khẩu. Mất mã thì không tự đặt lại mật khẩu được. Mã cũ (nếu có) đã hết hiệu lực.</p>
-            <label class="flex items-center gap-2 text-xs text-slate-300 font-bold cursor-pointer">
-                <input type="checkbox" x-model="recoverySaved" class="w-4 h-4 accent-emerald-500"> Tôi đã lưu mã ở nơi an toàn
-            </label>
-            <button type="button" :disabled="!recoverySaved" @click="closeRecoveryModal()"
-                class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white py-3 rounded-2xl text-sm font-extrabold">Xong</button>
-        </div>
-    </div>
-
     <!-- MAIN BODY -->
     <!-- MOBILE CAPITAL BAR (visible only on mobile) -->
     <div class="sm:hidden bg-card/60 backdrop-blur-xl border-b border-white/10 px-4 py-2.5 flex items-center justify-between gap-3">
@@ -334,14 +301,15 @@
 
     <main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-8 py-4 sm:py-8 space-y-5 sm:space-y-8 pb-safe">
 
-        <!-- Nhắc tạo mã khôi phục (tài khoản cũ chưa có) -->
-        <div x-show="hasRecoveryCode === false" x-cloak class="glass-panel rounded-2xl px-4 py-3 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center gap-3">
+        <!-- Nhắc tài khoản cũ gắn email (để tự lấy lại mật khẩu) -->
+        <div x-show="userId && !hasRealEmail" x-cloak class="glass-panel rounded-2xl px-4 py-3 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center gap-3">
             <div class="flex items-start gap-3 flex-1">
-                <i data-lucide="life-buoy" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
-                <p class="text-xs text-slate-300 leading-relaxed"><strong class="text-amber-300">Chưa có mã khôi phục.</strong> Nếu quên mật khẩu bạn sẽ không tự lấy lại được. Tạo 1 lần, lưu lại là xong.</p>
+                <i data-lucide="mail-warning" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+                <p class="text-xs text-slate-300 leading-relaxed" x-show="!pendingEmail"><strong class="text-amber-300">Chưa gắn email.</strong> Nếu quên mật khẩu bạn sẽ không tự lấy lại được.</p>
+                <p class="text-xs text-slate-300 leading-relaxed" x-show="pendingEmail"><strong class="text-amber-300">Đang chờ xác nhận email</strong> <span class="text-white" x-text="pendingEmail"></span> — mở email và bấm link xác nhận.</p>
             </div>
-            <button type="button" @click="generateRecoveryCode()" :disabled="recoveryLoading"
-                class="shrink-0 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold">Tạo mã ngay</button>
+            <button type="button" @click="openEmailSettings()"
+                class="shrink-0 bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-bold" x-text="pendingEmail ? 'Gửi lại / đổi email' : 'Gắn email'"></button>
         </div>
 
         <!-- KPI SUMMARY & 5% RULE BANNER -->
@@ -1368,19 +1336,24 @@
                 </div>
             </div>
 
-            <!-- Recovery code -->
-            <div x-show="hasRecoveryCode !== null" class="glass-panel rounded-2xl p-5 border border-emerald-500/20 space-y-3">
+            <!-- Recovery email -->
+            <div id="email-panel" class="glass-panel rounded-2xl p-5 border border-emerald-500/20 space-y-3">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
-                    <i data-lucide="life-buoy" class="w-4 h-4"></i>
-                    Mã Khôi Phục
+                    <i data-lucide="mail" class="w-4 h-4"></i>
+                    Email Đăng Nhập &amp; Khôi Phục
                 </h4>
-                <p class="text-xs text-slate-400" x-show="hasRecoveryCode">✅ Đã có mã. Quên mật khẩu → bấm "Quên mật khẩu?" ở màn đăng nhập và nhập mã. Mất mã thì tạo mã mới ở đây (mã cũ hết hiệu lực).</p>
-                <p class="text-xs text-amber-300" x-show="!hasRecoveryCode">⚠️ Chưa có mã. Nếu quên mật khẩu sẽ không tự lấy lại được.</p>
-                <button type="button" @click="generateRecoveryCode()" :disabled="recoveryLoading"
-                    class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2">
-                    <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': recoveryLoading}"></i>
-                    <span x-text="hasRecoveryCode ? 'Tạo Mã Mới' : 'Tạo Mã Khôi Phục'"></span>
-                </button>
+                <p class="text-xs text-slate-300" x-show="hasRealEmail">✅ Đã gắn <strong class="text-white" x-text="authEmail"></strong>. Đăng nhập bằng email này. Quên mật khẩu → bấm "Quên mật khẩu?" ở màn đăng nhập, link đặt lại gửi về email này.</p>
+                <p class="text-xs text-amber-300" x-show="!hasRealEmail && !pendingEmail">⚠️ Chưa gắn email — quên mật khẩu sẽ không tự lấy lại được. Gắn xong thì đăng nhập bằng email thay cho username.</p>
+                <p class="text-xs text-slate-300" x-show="pendingEmail">⏳ Đang chờ xác nhận <strong class="text-white" x-text="pendingEmail"></strong> — mở email, bấm link. Không thấy thì xem mục Spam.</p>
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <input type="email" x-model="newEmail" autocomplete="email" autocapitalize="none" spellcheck="false"
+                        :placeholder="hasRealEmail ? 'Email mới...' : 'ban@gmail.com'"
+                        class="flex-1 bg-card border border-white/15 rounded-xl px-4 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500">
+                    <button type="button" @click="linkEmail()" :disabled="emailLoading"
+                        class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap"
+                        x-text="emailLoading ? 'Đang gửi...' : (hasRealEmail ? 'Đổi Email' : 'Gắn Email')"></button>
+                </div>
+                <p x-show="emailMsg" x-cloak class="text-xs font-bold" :class="emailOk ? 'text-emerald-400' : 'text-rose-400'" x-text="emailMsg"></p>
             </div>
 
             <!-- Change Password -->
@@ -1987,6 +1960,13 @@
         // ===== SUPABASE CONFIG (anon key là public, an toàn để nằm trong HTML — dữ liệu được RLS bảo vệ) =====
         const SUPABASE_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_GPVgOD3U3O_9yytoRnXv6w_jiiBibnH';
+        // Link trong email quay về trang với #...type=recovery (đặt lại mk) hoặc #error=... (link hết hạn)
+        const AUTH_HASH = new URLSearchParams(location.hash.replace(/^#/, ''));
+        const AUTH_LINK_TYPE = AUTH_HASH.get('type') || '';
+        const AUTH_LINK_ERROR = AUTH_HASH.get('error_description') || AUTH_HASH.get('error') || '';
+        const APP_URL = location.origin + location.pathname;
+        const FAKE_EMAIL_DOMAIN = '@users.dnctrading.xyz';
+        const isEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v || '').trim());
         const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             auth: { persistSession: true, autoRefreshToken: true, storageKey: 'dnc_trading_auth' }
         });
@@ -2005,16 +1985,13 @@
                 insights: {},
                 insightExpanded: {},
                 reviewFilter: 'ALL',
-                signupMode: false,
-                resetMode: false,
-                inputRecoveryCode: '',
-                // Mã khôi phục: null = chưa biết (SQL chưa chạy / lỗi) → ẩn mục
-                hasRecoveryCode: null,
-                recoveryCode: '',
-                recoveryModalOpen: false,
-                recoverySaved: false,
-                recoveryCopied: false,
-                recoveryLoading: false,
+                authMode: 'login', // login | signup | forgot | newpw
+                inputEmail: '',
+                loginInfo: '',
+                authEmail: '',
+                pendingEmail: '',
+                newEmail: '',
+                emailMsg: '', emailOk: false, emailLoading: false,
                 loginError: false,
                 loginErrorMsg: '',
                 loginLoading: false,
@@ -2198,8 +2175,121 @@
                 },
 
                 // ───────── PHIÊN ĐĂNG NHẬP ─────────
+                get hasRealEmail() {
+                    return !!this.authEmail && !this.authEmail.endsWith(FAKE_EMAIL_DOMAIN);
+                },
+                get authTitle() {
+                    return { login: 'Đăng Nhập', signup: 'Đăng Ký', forgot: 'Quên Mật Khẩu', newpw: 'Đặt Mật Khẩu Mới' }[this.authMode];
+                },
+                get authSubtitle() {
+                    return {
+                        login: 'Đăng nhập để truy cập nhật ký giao dịch',
+                        signup: 'Tạo tài khoản mới — dữ liệu chỉ mình bạn xem được',
+                        forgot: 'Nhập email đã gắn với tài khoản, link đặt lại sẽ gửi về đó',
+                        newpw: 'Chọn mật khẩu mới cho tài khoản của bạn'
+                    }[this.authMode];
+                },
+                get authButton() {
+                    return { login: 'Đăng Nhập', signup: 'Tạo Tài Khoản', forgot: 'Gửi Link Đặt Lại', newpw: 'Lưu Mật Khẩu Mới' }[this.authMode];
+                },
+
+                setAuthMode(mode) {
+                    this.authMode = mode;
+                    this.loginError = false;
+                    this.loginInfo = '';
+                    this.inputPasscode = ''; this.inputPasscode2 = '';
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                authFail(msg) { this.loginError = true; this.loginErrorMsg = msg; this.loginInfo = ''; },
+
+                submitAuth() {
+                    return { login: () => this.unlockApp(), signup: () => this.signUpApp(),
+                             forgot: () => this.forgotPasswordApp(), newpw: () => this.newPasswordApp() }[this.authMode]();
+                },
+
+                async forgotPasswordApp() {
+                    const email = String(this.inputEmail || '').trim().toLowerCase();
+                    this.loginError = false; this.loginInfo = '';
+                    if (!isEmail(email)) return this.authFail('Email không hợp lệ');
+                    this.loginLoading = true;
+                    try {
+                        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: APP_URL });
+                        if (error) {
+                            return this.authFail(/rate limit|security purposes|too many/i.test(error.message)
+                                ? 'Gửi quá nhanh — đợi 1 phút rồi thử lại' : error.message);
+                        }
+                        this.loginInfo = 'Nếu email này đã gắn với tài khoản, link đặt lại mật khẩu đã được gửi. Xem cả mục Spam / Quảng cáo.';
+                    } catch(err) {
+                        this.authFail('Không kết nối được máy chủ: ' + err.message);
+                    } finally {
+                        this.loginLoading = false;
+                    }
+                },
+
+                async newPasswordApp() {
+                    this.loginError = false;
+                    if (String(this.inputPasscode).length < 6) return this.authFail('Mật khẩu ít nhất 6 ký tự');
+                    if (this.inputPasscode !== this.inputPasscode2) return this.authFail('Hai mật khẩu không khớp');
+                    this.loginLoading = true;
+                    try {
+                        const { error } = await sb.auth.updateUser({ password: toAuthPw(this.inputPasscode) });
+                        if (error) {
+                            return this.authFail(/different from the old|same/i.test(error.message) ? 'Mật khẩu mới phải khác mật khẩu cũ'
+                                : /session|jwt|expired/i.test(error.message) ? 'Phiên đặt lại đã hết hạn — bấm "Quên mật khẩu?" để gửi link mới'
+                                : error.message);
+                        }
+                        const { data: { session } } = await sb.auth.getSession();
+                        this.setAuthMode('login');
+                        if (session) await this.applySession(session);
+                        alert('✅ Đã đặt mật khẩu mới');
+                    } catch(err) {
+                        this.authFail('Không kết nối được máy chủ: ' + err.message);
+                    } finally {
+                        this.loginLoading = false;
+                    }
+                },
+
+                openEmailSettings() {
+                    this.currentView = 'SETTINGS';
+                    this.newEmail = this.pendingEmail || '';
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                        const el = document.getElementById('email-panel');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    });
+                },
+
+                async linkEmail() {
+                    const email = String(this.newEmail || '').trim().toLowerCase();
+                    this.emailMsg = '';
+                    if (!isEmail(email)) { this.emailOk = false; this.emailMsg = '❌ Email không hợp lệ'; return; }
+                    if (email === this.authEmail) { this.emailOk = false; this.emailMsg = 'Email này đang được dùng rồi'; return; }
+                    this.emailLoading = true;
+                    try {
+                        const { data, error } = await sb.auth.updateUser({ email }, { emailRedirectTo: APP_URL });
+                        if (error) throw error;
+                        this.pendingEmail = (data.user && data.user.new_email) || email;
+                        if (data.user && data.user.email === email) { this.authEmail = email; this.pendingEmail = ''; }
+                        this.emailOk = true;
+                        this.emailMsg = this.pendingEmail
+                            ? `✅ Đã gửi link xác nhận tới ${email}. Bấm link trong email là xong.`
+                            : `✅ Đã gắn email ${email}.`;
+                        this.newEmail = '';
+                    } catch(err) {
+                        this.emailOk = false;
+                        this.emailMsg = '❌ ' + (/already|registered|exists/i.test(err.message) ? 'Email này đã thuộc tài khoản khác'
+                            : /rate limit|security purposes|too many/i.test(err.message) ? 'Gửi quá nhanh — đợi 1 phút rồi thử lại'
+                            : err.message);
+                    } finally {
+                        this.emailLoading = false;
+                    }
+                },
+
                 async applySession(session) {
                     this.userId = session.user.id;
+                    this.authEmail = (session.user.email || '').toLowerCase();
+                    this.pendingEmail = session.user.new_email || '';
                     const { data: p, error } = await sb.from('profiles').select('*').eq('id', this.userId).single();
                     if (error) throw error;
                     this.profile = p;
@@ -2209,91 +2299,6 @@
                     this.googleApiKey = p.gemini_api_key || '';
                     this.isLocked = false;
                     this.loadUserSettings();
-                    this.checkRecoveryCode();
-                },
-
-                setAuthMode(mode) {
-                    this.signupMode = mode === 'signup';
-                    this.resetMode = mode === 'reset';
-                    this.loginError = false;
-                    this.inputPasscode = ''; this.inputPasscode2 = ''; this.inputRecoveryCode = '';
-                    this.$nextTick(() => lucide.createIcons());
-                },
-
-                // ───────── MÃ KHÔI PHỤC ─────────
-                async checkRecoveryCode() {
-                    const { data, error } = await sb.rpc('has_recovery_code');
-                    this.hasRecoveryCode = error ? null : !!data;
-                },
-
-                async generateRecoveryCode(silent = false) {
-                    if (!silent && this.hasRecoveryCode && !confirm('Tạo mã mới? Mã cũ sẽ hết hiệu lực ngay.')) return;
-                    this.recoveryLoading = true;
-                    try {
-                        const { data, error } = await sb.rpc('create_recovery_code');
-                        if (error) throw error;
-                        this.recoveryCode = data;
-                        this.hasRecoveryCode = true;
-                        this.recoverySaved = false;
-                        this.recoveryCopied = false;
-                        this.recoveryModalOpen = true;
-                        this.$nextTick(() => lucide.createIcons());
-                    } catch(err) {
-                        if (!silent) alert('❌ Không tạo được mã khôi phục: ' + err.message);
-                    } finally {
-                        this.recoveryLoading = false;
-                    }
-                },
-
-                async copyRecoveryCode() {
-                    try { await navigator.clipboard.writeText(this.recoveryCode); this.recoveryCopied = true; }
-                    catch(e) { alert('Không chép tự động được — hãy chọn mã và chép tay.'); }
-                },
-
-                downloadRecoveryCode() {
-                    const txt = `DNC Trading OS — godnc.com/trading\nUsername: ${this.traderUsername}\nMã khôi phục: ${this.recoveryCode}\nTạo lúc: ${new Date().toLocaleString('vi-VN')}\n\nQuên mật khẩu: màn đăng nhập → "Quên mật khẩu?" → nhập username + mã này.\nMã chỉ dùng 1 lần; sau khi đặt lại mật khẩu sẽ có mã mới.\n`;
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain;charset=utf-8' }));
-                    a.download = `ma-khoi-phuc-${this.traderUsername}.txt`;
-                    a.click();
-                    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-                    this.recoverySaved = true;
-                },
-
-                closeRecoveryModal() {
-                    this.recoveryModalOpen = false;
-                    this.recoveryCode = '';
-                    this.recoverySaved = false;
-                },
-
-                async resetPasswordApp() {
-                    const u = String(this.inputUsername || '').trim();
-                    this.loginError = false;
-                    const fail = msg => { this.loginError = true; this.loginErrorMsg = msg; };
-                    if (!u) return fail('Nhập username');
-                    if (!String(this.inputRecoveryCode || '').trim()) return fail('Nhập mã khôi phục');
-                    if (String(this.inputPasscode).length < 6) return fail('Mật khẩu mới ít nhất 6 ký tự');
-                    if (this.inputPasscode !== this.inputPasscode2) return fail('Hai mật khẩu không khớp');
-                    this.loginLoading = true;
-                    try {
-                        const { data, error } = await sb.rpc('reset_password_with_code', {
-                            p_username: u, p_code: this.inputRecoveryCode, p_new_password: toAuthPw(this.inputPasscode)
-                        });
-                        if (error) return fail(/could not find|does not exist/i.test(error.message) ? 'Tính năng chưa bật — liên hệ DNC' : error.message);
-                        if (data === 'locked') return fail('Nhập sai quá 5 lần — thử lại sau 15 phút');
-                        if (data === 'weak') return fail('Mật khẩu mới ít nhất 6 ký tự');
-                        if (data !== 'ok') return fail('Sai username hoặc mã khôi phục');
-                        const login = await sb.auth.signInWithPassword({ email: toLoginEmail(u), password: toAuthPw(this.inputPasscode) });
-                        if (login.error) { this.setAuthMode('login'); return fail('Đã đổi mật khẩu — hãy đăng nhập lại'); }
-                        this.setAuthMode('login');
-                        await this.applySession(login.data.session);
-                        // Mã cũ đã dùng → cấp mã mới ngay
-                        await this.generateRecoveryCode(true);
-                    } catch(err) {
-                        fail('Không kết nối được máy chủ: ' + err.message);
-                    } finally {
-                        this.loginLoading = false;
-                    }
                 },
 
                 loadUserSettings() {
@@ -2330,9 +2335,26 @@
                             if (!this._lastPullTime || Date.now() - this._lastPullTime > 30000) this.pullTradesFromCloud(true);
                         }
                     });
+                    sb.auth.onAuthStateChange((event, session) => {
+                        if (event === 'PASSWORD_RECOVERY') { this.isLocked = true; this.setAuthMode('newpw'); }
+                        if (event === 'USER_UPDATED' && session && this.userId === session.user.id) {
+                            this.authEmail = (session.user.email || '').toLowerCase();
+                            this.pendingEmail = session.user.new_email || '';
+                        }
+                    });
                     try {
                         const { data: { session } } = await sb.auth.getSession();
-                        if (session) await this.applySession(session);
+                        if (AUTH_LINK_ERROR) {
+                            this.setAuthMode('forgot');
+                            this.authFail('Link trong email đã hết hạn hoặc đã dùng rồi — gửi lại link mới');
+                        } else if (AUTH_LINK_TYPE === 'recovery' && session) {
+                            this.setAuthMode('newpw');
+                        } else if (session) {
+                            await this.applySession(session);
+                            if (AUTH_LINK_TYPE === 'signup') alert('✅ Đã xác nhận email — chào mừng ' + this.traderUsername + '!');
+                            if (AUTH_LINK_TYPE === 'email_change') alert('✅ Đã gắn email ' + this.authEmail + '. Lần sau đăng nhập bằng email này.');
+                        }
+                        if (location.href.includes('#')) history.replaceState(null, '', APP_URL + location.search);
                     } catch(e) {
                         console.warn('Không khôi phục được phiên:', e.message);
                     }
@@ -2340,18 +2362,25 @@
                 },
 
                 async unlockApp() {
-                    if (!this.inputUsername || !this.inputPasscode) return;
+                    const id = String(this.inputUsername || '').trim();
+                    if (!id || !this.inputPasscode) return;
+                    const byEmail = id.includes('@');
                     this.loginLoading = true;
                     this.loginError = false;
+                    this.loginInfo = '';
                     try {
                         const { data, error } = await sb.auth.signInWithPassword({
-                            email: toLoginEmail(this.inputUsername),
+                            email: byEmail ? id.toLowerCase() : toLoginEmail(id),
                             password: toAuthPw(this.inputPasscode)
                         });
                         if (error) {
-                            this.loginError = true;
-                            this.loginErrorMsg = /invalid login/i.test(error.message) ? 'Sai username hoặc mật khẩu' : error.message;
-                            return;
+                            if (/not confirmed/i.test(error.message)) return this.authFail('Email chưa xác nhận — mở email và bấm link xác nhận trước');
+                            if (!/invalid login/i.test(error.message)) return this.authFail(error.message);
+                            if (!byEmail) {
+                                const hint = await sb.rpc('login_hint', { p_username: id });
+                                if (!hint.error && hint.data === 'email') return this.authFail('Tài khoản này đã gắn email — hãy đăng nhập bằng email');
+                            }
+                            return this.authFail(byEmail ? 'Sai email hoặc mật khẩu' : 'Sai username hoặc mật khẩu');
                         }
                         this.inputPasscode = '';
                         await this.applySession(data.session);
@@ -2365,7 +2394,10 @@
 
                 async signUpApp() {
                     const u = String(this.inputUsername || '').trim();
+                    const email = String(this.inputEmail || '').trim().toLowerCase();
                     this.loginError = false;
+                    this.loginInfo = '';
+                    if (!isEmail(email)) return this.authFail('Email không hợp lệ');
                     if (!/^[A-Za-z0-9_.-]{3,24}$/.test(u)) {
                         this.loginError = true;
                         this.loginErrorMsg = 'Username 3–24 ký tự, chỉ gồm chữ, số, dấu . _ -';
@@ -2384,33 +2416,35 @@
                     this.loginLoading = true;
                     try {
                         const chk = await sb.rpc('signup_check', { p_username: u });
-                        if (!chk.error && chk.data === 'taken') {
-                            this.loginError = true; this.loginErrorMsg = 'Username đã có người dùng'; return;
-                        }
-                        if (!chk.error && chk.data === 'busy') {
-                            this.loginError = true; this.loginErrorMsg = 'Đăng ký đang tạm khoá vì quá nhiều tài khoản mới — thử lại sau 1 giờ'; return;
-                        }
+                        if (!chk.error && chk.data === 'taken') return this.authFail('Username đã có người dùng');
+                        if (!chk.error && chk.data === 'busy') return this.authFail('Đăng ký đang tạm khoá vì quá nhiều tài khoản mới — thử lại sau 1 giờ');
                         const { data, error } = await sb.auth.signUp({
-                            email: toLoginEmail(u),
+                            email,
                             password: toAuthPw(this.inputPasscode),
-                            options: { data: { username: u } }
+                            options: { data: { username: u }, emailRedirectTo: APP_URL }
                         });
                         if (error) {
                             this.loginError = true;
-                            this.loginErrorMsg = /already registered|already exists/i.test(error.message) ? 'Username đã có người dùng'
+                            this.loginErrorMsg = /already registered|already exists/i.test(error.message) ? 'Email đã được dùng — hãy đăng nhập hoặc bấm Quên mật khẩu'
+                                : /rate limit|security purposes|too many/i.test(error.message) ? 'Gửi quá nhanh — đợi 1 phút rồi thử lại'
                                 : /database error/i.test(error.message) ? 'Không tạo được tài khoản (username đã có hoặc đăng ký đang tạm khoá) — thử lại sau'
                                 : /not allowed|disabled/i.test(error.message) ? 'Hiện chưa mở đăng ký'
                                 : error.message;
                             return;
                         }
+                        // Supabase giấu việc email đã tồn tại: trả user không có identity
+                        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+                            return this.authFail('Email đã được dùng — hãy đăng nhập hoặc bấm Quên mật khẩu');
+                        }
                         if (!data.session) {
-                            this.loginError = true;
-                            this.loginErrorMsg = 'Đã tạo tài khoản nhưng chưa đăng nhập được — liên hệ DNC';
+                            // Đang bật "Confirm email": phải bấm link trong email trước
+                            this.setAuthMode('login');
+                            this.inputUsername = email;
+                            this.loginInfo = `Đã gửi email xác nhận tới ${email}. Mở email, bấm link là vào thẳng nhật ký (xem cả mục Spam).`;
                             return;
                         }
-                        this.inputPasscode = ''; this.inputPasscode2 = ''; this.signupMode = false;
+                        this.inputPasscode = ''; this.inputPasscode2 = ''; this.authMode = 'login';
                         await this.applySession(data.session);
-                        await this.generateRecoveryCode(true);
                     } catch(err) {
                         this.loginError = true;
                         this.loginErrorMsg = 'Không kết nối được máy chủ: ' + err.message;
@@ -2527,8 +2561,8 @@
                     this.googleApiKey = '';
                     this.trades = [];
                     this.insights = {};
-                    this.hasRecoveryCode = null;
-                    this.closeRecoveryModal();
+                    this.authEmail = ''; this.pendingEmail = ''; this.newEmail = ''; this.emailMsg = '';
+                    this.setAuthMode('login');
                 },
 
                 // ───────── CÀI ĐẶT (bảng profiles) ─────────
@@ -2573,7 +2607,7 @@
                     }
                     this.changePwLoading = true;
                     try {
-                        const check = await sb.auth.signInWithPassword({ email: toLoginEmail(this.traderUsername), password: toAuthPw(this.pwOld) });
+                        const check = await sb.auth.signInWithPassword({ email: this.authEmail || toLoginEmail(this.traderUsername), password: toAuthPw(this.pwOld) });
                         if (check.error) throw new Error('Mật khẩu hiện tại không đúng');
                         const { error } = await sb.auth.updateUser({ password: toAuthPw(this.pwNew) });
                         if (error) throw error;
