@@ -185,28 +185,33 @@
                     <span class="hidden sm:inline text-[11px] text-slate-500">Ctrl+V dán ảnh • W thắng • L thua • B hoà</span>
                 </div>
 
-                <!-- Ảnh chart -->
-                <label class="block relative rounded-2xl border-2 border-dashed border-white/15 bg-card/50 cursor-pointer overflow-hidden"
-                       :class="{'drop-active': dragOver, 'border-rose-500/70': needImg}"
-                       @dragover.prevent="dragOver = true" @dragleave.prevent="dragOver = false" @drop.prevent="onDrop($event)">
-                    <input type="file" accept="image/*" class="hidden" @change="onFile($event, 'form')">
-                    <template x-if="!form.img">
-                        <div class="py-10 sm:py-14 px-4 text-center">
-                            <i data-lucide="image-plus" class="w-9 h-9 mx-auto text-slate-500"></i>
-                            <div class="text-sm font-bold text-white mt-3">Dán ảnh chart (Ctrl+V)</div>
-                            <div class="text-xs text-slate-400 mt-1">hoặc kéo thả • hoặc chạm để chọn ảnh</div>
-                            <div class="text-[11px] mt-2" :class="needImg ? 'text-rose-400 font-bold' : 'text-slate-500'">Bắt buộc — ảnh là thứ bạn sẽ học lại sau này</div>
-                        </div>
-                    </template>
-                    <template x-if="form.img">
-                        <div class="relative">
-                            <img :src="form.img" class="w-full max-h-[420px] object-contain bg-black/40" alt="chart">
-                            <button type="button" @click.prevent="form.img = ''" class="absolute top-2 right-2 bg-black/70 hover:bg-rose-600 text-white rounded-xl px-3 py-1.5 text-xs font-bold flex items-center gap-1">
-                                <i data-lucide="x" class="w-3.5 h-3.5"></i> Bỏ ảnh
-                            </button>
-                        </div>
-                    </template>
-                </label>
+                <!-- Ảnh chart: 3 khung -->
+                <div>
+                    <div class="grid grid-cols-3 gap-2 rounded-2xl" :class="{'ring-2 ring-rose-500/70 ring-offset-2 ring-offset-panel': needImg}">
+                        <template x-for="sl in SLOTS" :key="sl.key">
+                            <div class="relative rounded-xl border-2 border-dashed bg-card/50 cursor-pointer overflow-hidden aspect-[4/3]"
+                                 :class="dragSlot === sl.key ? 'drop-active' : (formSlot === sl.key ? 'border-emerald-500 border-solid' : 'border-white/15')"
+                                 @click="pickSlot(sl.key, $event)"
+                                 @dragover.prevent="dragSlot = sl.key" @dragleave.prevent="dragSlot = ''" @drop.prevent="onDrop($event, sl.key)">
+                                <input type="file" accept="image/*" class="hidden" @click.stop @change="onFile($event, 'form', sl.key)">
+                                <img x-show="form[sl.col]" :src="form[sl.col]" class="absolute inset-0 w-full h-full object-cover" alt="">
+                                <div x-show="!form[sl.col]" class="absolute inset-0 flex flex-col items-center justify-center text-center px-1">
+                                    <span class="font-mono font-black text-sm" :class="formSlot === sl.key ? 'text-emerald-400' : 'text-slate-300'" x-text="sl.key"></span>
+                                    <span class="text-[10px] text-slate-500 leading-tight" x-text="sl.label"></span>
+                                    <span x-show="formSlot === sl.key" class="hidden sm:block text-[10px] text-emerald-400 font-bold mt-1">Ctrl+V vào đây</span>
+                                </div>
+                                <span x-show="form[sl.col]" class="absolute top-1 left-1 bg-black/75 text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded" x-text="sl.key"></span>
+                                <button x-show="form[sl.col]" type="button" @click.stop="form[sl.col] = ''; formSlot = sl.key" title="Bỏ ảnh"
+                                        class="absolute top-1 right-1 bg-black/75 hover:bg-rose-600 text-white rounded-lg w-6 h-6 flex items-center justify-center text-xs font-bold">✕</button>
+                            </div>
+                        </template>
+                    </div>
+                    <p class="text-[11px] mt-2" :class="needImg ? 'text-rose-400 font-bold' : 'text-slate-500'">
+                        <span class="hidden sm:inline">Ctrl+V tự điền lần lượt HTF → MTF → LTF • bấm ô để chọn ô dán • kéo thả vào ô.</span>
+                        <span class="sm:hidden">Chạm ô để chọn ảnh.</span>
+                        Cần ít nhất 1 khung — ảnh là thứ bạn học lại sau này.
+                    </p>
+                </div>
 
                 <!-- Hướng + R + ghi chú -->
                 <div class="grid grid-cols-2 gap-3">
@@ -307,7 +312,8 @@
                     <button @click="openTrade(t)" class="glass rounded-2xl overflow-hidden text-left border-2 hover:brightness-110"
                             :class="t.result === 'WIN' ? 'border-emerald-500/40' : (t.result === 'LOSS' ? 'border-rose-500/40' : 'border-slate-500/40')">
                         <div class="relative bg-black/40">
-                            <img :src="t.img" loading="lazy" class="thumb w-full" alt="">
+                            <img :src="thumbOf(t)" loading="lazy" class="thumb w-full" alt="">
+                            <span x-show="imgCount(t) > 1" class="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded" x-text="imgCount(t) + ' khung'"></span>
                             <span class="absolute top-1.5 left-1.5 bg-black/70 text-white text-[11px] font-mono font-bold px-1.5 py-0.5 rounded" x-text="'#' + t.no"></span>
                             <span x-show="t.status === 'saving'" class="absolute top-1.5 right-1.5 bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">Đang lưu…</span>
                             <span x-show="t.status === 'failed'" class="absolute top-1.5 right-1.5 bg-amber-500 text-black text-[10px] font-extrabold px-1.5 py-0.5 rounded">⚠ Chưa lưu</span>
@@ -341,13 +347,31 @@
                 <button @click="closeTrade()" class="p-2 rounded-xl hover:bg-white/10" title="Đóng (Esc)"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <div class="p-4 space-y-4">
-                <div class="relative bg-black/50 rounded-2xl overflow-hidden">
-                    <a :href="edit.img" target="_blank" rel="noopener" x-show="!edit.img.startsWith('data:')"><img :src="edit.img" class="w-full max-h-[60vh] object-contain" alt="chart"></a>
-                    <img x-show="edit.img.startsWith('data:')" :src="edit.img" class="w-full max-h-[60vh] object-contain" alt="chart">
-                    <label class="absolute bottom-2 right-2 bg-black/70 hover:bg-black text-white rounded-xl px-3 py-1.5 text-xs font-bold cursor-pointer flex items-center gap-1">
-                        <i data-lucide="replace" class="w-3.5 h-3.5"></i> Đổi ảnh
-                        <input type="file" accept="image/*" class="hidden" @change="onFile($event, 'edit')">
-                    </label>
+                <div class="flex gap-1 rounded-xl bg-card border border-white/10 p-1">
+                    <template x-for="sl in SLOTS" :key="sl.key">
+                        <button type="button" @click="edit.slot = sl.key" class="flex-1 py-2 rounded-lg text-xs font-extrabold"
+                                :class="edit.slot === sl.key ? 'bg-white/15 text-white' : (edit[sl.col] ? 'text-slate-300' : 'text-slate-600')">
+                            <span x-text="sl.key"></span><span x-show="!edit[sl.col]" class="font-normal"> (trống)</span>
+                        </button>
+                    </template>
+                </div>
+                <div class="relative bg-black/50 rounded-2xl overflow-hidden min-h-[180px]">
+                    <template x-if="edit[slotCol(edit.slot)]">
+                        <a :href="edit[slotCol(edit.slot)].startsWith('data:') ? null : edit[slotCol(edit.slot)]" target="_blank" rel="noopener">
+                            <img :src="edit[slotCol(edit.slot)]" class="w-full max-h-[60vh] object-contain" alt="chart">
+                        </a>
+                    </template>
+                    <template x-if="!edit[slotCol(edit.slot)]">
+                        <div class="py-16 px-4 text-center text-sm text-slate-500">Chưa có ảnh khung <b class="text-slate-300" x-text="edit.slot"></b> — dán (Ctrl+V) hoặc bấm "Thêm ảnh"</div>
+                    </template>
+                    <div class="absolute bottom-2 right-2 flex gap-2">
+                        <button type="button" x-show="edit[slotCol(edit.slot)] && imgCount(edit) > 1" @click="removeEditImg()"
+                                class="bg-black/70 hover:bg-rose-600 text-white rounded-xl px-3 py-1.5 text-xs font-bold">Bỏ ảnh</button>
+                        <label class="bg-black/70 hover:bg-black text-white rounded-xl px-3 py-1.5 text-xs font-bold cursor-pointer flex items-center gap-1">
+                            <i data-lucide="replace" class="w-3.5 h-3.5"></i> <span x-text="edit[slotCol(edit.slot)] ? 'Đổi ảnh' : 'Thêm ảnh'"></span>
+                            <input type="file" accept="image/*" class="hidden" @change="onFile($event, 'edit')">
+                        </label>
+                    </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2">
                     <template x-for="r in [['WIN','✅ Thắng','bg-emerald-600'],['LOSS','❌ Thua','bg-rose-600'],['BE','➖ Hoà','bg-slate-600']]" :key="r[0]">
@@ -432,6 +456,14 @@
     const toLoginEmail = u => String(u).trim().toLowerCase() + '@users.dnctrading.xyz';
     const toAuthPw = p => 'dnc_' + String(p);
     const BUCKET = 'trade-images';
+    // 3 khung ảnh mỗi lệnh. Cột 'img' (ảnh cũ trước khi có 3 khung) = LTF.
+    const SLOTS = [
+        { key: 'HTF', col: 'img_htf', label: 'Khung lớn' },
+        { key: 'MTF', col: 'img_mtf', label: 'Khung giữa' },
+        { key: 'LTF', col: 'img', label: 'Khung vào lệnh' },
+    ];
+    const IMG_COLS = SLOTS.map(s => s.col);
+    const emptyImgs = () => ({ img: '', img_mtf: '', img_htf: '' });
 
     const MILESTONES = {
         10: '10 lệnh! Phần lớn người bỏ cuộc trước mốc này — bạn đã qua.',
@@ -448,8 +480,10 @@
             view: 'HOME',
             sets: [], setsLoaded: false,
             set: null, trades: [], filter: 'ALL',
-            form: { img: '', direction: '', winR: '2', note: '' },
-            needImg: false, shakeForm: false, dragOver: false, popCount: false,
+            SLOTS,
+            form: { ...emptyImgs(), direction: '', winR: '2', note: '' },
+            formSlot: 'HTF', dragSlot: '',
+            needImg: false, shakeForm: false, popCount: false,
             edit: null, setForm: null, setErr: '',
             toast: null, _toastTimer: null,
 
@@ -527,7 +561,8 @@
                 this.view = 'RUN';
                 this.filter = 'ALL';
                 this.trades = [];
-                this.form = { img: '', direction: '', winR: String(Number(s.default_rr)), note: '' };
+                this.form = { ...emptyImgs(), direction: '', winR: String(Number(s.default_rr)), note: '' };
+                this.formSlot = 'HTF';
                 if (push) history.replaceState(null, '', location.pathname + '?set=' + s.id);
                 try {
                     const rows = await this.fetchAll(() => sb.from('bt_trades').select('*').eq('set_id', s.id).order('created_at').order('id'));
@@ -568,7 +603,7 @@
                     this.setForm = null;
                     if (f.id) {
                         Object.assign(this.set, data);
-                        if (!this.form.img && !this.form.note) this.form.winR = String(Number(data.default_rr));
+                        if (!this.imgCount(this.form) && !this.form.note) this.form.winR = String(Number(data.default_rr));
                         this.showToast('✅ Đã lưu bộ');
                     } else {
                         await this.openSet({ ...data, n: 0, wr: 0, netR: 0 });
@@ -581,7 +616,7 @@
                 const n = this.trades.length;
                 if (!confirm(`Xoá bộ "${s.name}" cùng ${n} lệnh và toàn bộ ảnh?\nKhông khôi phục được.`)) return;
                 if (n >= 5 && prompt(`Gõ XOA để xác nhận xoá ${n} lệnh:`) !== 'XOA') return;
-                const paths = this.trades.map(t => this.pathFromUrl(t.img)).filter(Boolean);
+                const paths = this.trades.flatMap(t => this.pathsOf(t));
                 const { error } = await sb.from('bt_sets').delete().eq('id', s.id);
                 if (error) return alert('❌ Xoá thất bại: ' + error.message);
                 for (let i = 0; i < paths.length; i += 100) sb.storage.from(BUCKET).remove(paths.slice(i, i + 100)).catch(() => {});
@@ -601,11 +636,34 @@
                 });
             },
 
-            async takeImage(file, target) {
+            slotCol(key) { return (SLOTS.find(s => s.key === key) || SLOTS[2]).col; },
+            imgCount(t) { return IMG_COLS.filter(c => t && t[c]).length; },
+            thumbOf(t) { return t.img || t.img_mtf || t.img_htf || ''; },
+            pathsOf(t) { return IMG_COLS.map(c => this.pathFromUrl(t[c])).filter(Boolean); },
+
+            // Chạm ô: chọn ô để dán; ô đang chọn còn trống (hoặc màn cảm ứng) thì mở chọn ảnh
+            pickSlot(key, e) {
+                const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+                const again = this.formSlot === key && !this.form[this.slotCol(key)];
+                this.formSlot = key;
+                if (touch || again) e.currentTarget.querySelector('input[type=file]').click();
+            },
+
+            async takeImage(file, target, key) {
                 try {
                     const url = await this.readFile(file);
-                    if (target === 'edit' && this.edit) { this.edit.img = url; this.edit.newImg = true; }
-                    else { this.form.img = url; this.needImg = false; }
+                    if (target === 'edit' && this.edit) {
+                        const col = this.slotCol(key || this.edit.slot);
+                        this.edit[col] = url; this.edit.changed[col] = true;
+                    } else {
+                        const k = key || this.formSlot;
+                        this.form[this.slotCol(k)] = url;
+                        this.needImg = false;
+                        // tự chuyển sang ô trống kế tiếp (HTF → MTF → LTF)
+                        const i = SLOTS.findIndex(s => s.key === k);
+                        const next = [1, 2].map(d => SLOTS[(i + d) % 3]).find(s => !this.form[s.col]);
+                        if (next) this.formSlot = next.key;
+                    }
                     this.icons();
                 } catch(e) { this.showToast('⚠️ ' + e.message); }
             },
@@ -617,8 +675,8 @@
                 e.preventDefault();
                 this.takeImage(item.getAsFile(), this.edit ? 'edit' : 'form');
             },
-            onDrop(e) { this.dragOver = false; const f = e.dataTransfer.files[0]; if (f) this.takeImage(f, 'form'); },
-            onFile(e, target) { const f = e.target.files[0]; e.target.value = ''; if (f) this.takeImage(f, target); },
+            onDrop(e, key) { this.dragSlot = ''; const f = e.dataTransfer.files[0]; if (f) this.takeImage(f, 'form', key); },
+            onFile(e, target, key) { const f = e.target.files[0]; e.target.value = ''; if (f) this.takeImage(f, target, key); },
 
             compress(dataUrl, maxW = 1600, quality = 0.82) {
                 return new Promise((resolve, reject) => {
@@ -636,10 +694,10 @@
                 });
             },
 
-            async uploadImage(dataUrl, tradeId) {
+            async uploadImage(dataUrl, tradeId, slot) {
                 const blob = await (await fetch(dataUrl)).blob();
                 const ext = blob.type === 'image/webp' ? 'webp' : (blob.type === 'image/jpeg' ? 'jpg' : 'png');
-                const path = `${this.userId}/bt/${this.set.id}/${tradeId}_${Date.now()}.${ext}`;
+                const path = `${this.userId}/bt/${this.set.id}/${tradeId}_${slot}_${Date.now()}.${ext}`;
                 const { error } = await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type, cacheControl: '31536000' });
                 if (error) throw new Error('Upload ảnh: ' + error.message);
                 return sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
@@ -659,14 +717,14 @@
             },
             savePending(t) {
                 const list = this.readPending().filter(x => x.id !== t.id);
-                list.push({ id: t.id, set_id: t.set_id, result: t.result, r: t.r, direction: t.direction, note: t.note, img: t.img, created_at: t.created_at });
+                list.push({ id: t.id, set_id: t.set_id, result: t.result, r: t.r, direction: t.direction, note: t.note, img: t.img, img_mtf: t.img_mtf, img_htf: t.img_htf, created_at: t.created_at });
                 if (!this.writePending(list)) this.showToast('⚠️ Bộ nhớ máy đầy — đừng đóng trang khi còn lệnh "Chưa lưu"');
             },
             dropPending(id) { this.writePending(this.readPending().filter(x => x.id !== id)); },
             clearPending(setId) { this.writePending(this.readPending().filter(x => x.set_id !== setId)); },
             restorePending() {
                 const mine = this.readPending().filter(p => p.set_id === this.set.id && !this.trades.some(t => t.id === p.id));
-                for (const p of mine) this.trades.push({ ...p, user_id: this.userId, status: 'failed', compressed: true });
+                for (const p of mine) this.trades.push({ ...emptyImgs(), ...p, user_id: this.userId, status: 'failed', _c: { img: true, img_mtf: true, img_htf: true } });
                 this.trades.sort((a, b) => a.created_at < b.created_at ? -1 : 1);
                 if (mine.length) setTimeout(() => this.retryFailed(true), 300);
             },
@@ -674,7 +732,7 @@
             // ───────── THÊM LỆNH (bấm kết quả = lưu) ─────────
             async addTrade(result) {
                 if (!this.set) return;
-                if (!this.form.img) {
+                if (!this.imgCount(this.form)) {
                     this.needImg = true; this.shakeForm = true;
                     setTimeout(() => this.shakeForm = false, 600);
                     this.showToast('📷 Dán ảnh chart trước rồi mới bấm kết quả');
@@ -685,13 +743,15 @@
                     id: crypto.randomUUID(), set_id: this.set.id, user_id: this.userId, result,
                     r: result === 'WIN' ? Math.abs(winR) : (result === 'LOSS' ? -1 : 0),
                     direction: this.form.direction, note: this.form.note.trim(),
-                    img: this.form.img, created_at: new Date().toISOString(), status: 'saving'
+                    img: this.form.img, img_mtf: this.form.img_mtf, img_htf: this.form.img_htf,
+                    created_at: new Date().toISOString(), status: 'saving', _c: {}
                 };
                 this.trades.push(t);
                 this.renumber();
                 const no = this.trades.length;
                 // Form trống ngay để làm lệnh tiếp — giữ hướng + R vì thường test liên tục cùng kiểu
-                this.form = { img: '', direction: this.form.direction, winR: this.form.winR, note: '' };
+                this.form = { ...emptyImgs(), direction: this.form.direction, winR: this.form.winR, note: '' };
+                this.formSlot = 'HTF';
                 this.popCount = false; this.$nextTick(() => this.popCount = true);
                 const ms = no === this.set.target ? `🎯 XONG ${no} lệnh! Kéo xuống xem kết luận.` : MILESTONES[no];
                 this.showToast(ms || `Đã lưu #${no} • ${{ WIN: 'Thắng', LOSS: 'Thua', BE: 'Hoà' }[result]}`, ms ? null : () => this.openTrade(this.trades.find(x => x.id === t.id)), 'Sửa', ms ? 5000 : 2500);
@@ -703,13 +763,16 @@
                 const live = () => this.trades.find(x => x.id === t.id) || t;
                 live().status = 'saving';
                 try {
-                    if (live().img.startsWith('data:')) {
-                        if (!live().compressed) { live().img = await this.compress(live().img); live().compressed = true; }
+                    const local = SLOTS.filter(sl => String(live()[sl.col] || '').startsWith('data:'));
+                    if (local.length) {
+                        live()._c = live()._c || {};
+                        for (const sl of local) if (!live()._c[sl.col]) { live()[sl.col] = await this.compress(live()[sl.col]); live()._c[sl.col] = true; }
                         this.savePending(live());
-                        live().img = await this.uploadImage(live().img, t.id);
+                        for (const sl of local) live()[sl.col] = await this.uploadImage(live()[sl.col], t.id, sl.key);
                     }
                     const x = live();
-                    const row = { id: x.id, set_id: x.set_id, result: x.result, r: x.r, direction: x.direction, note: x.note, img: x.img, created_at: x.created_at };
+                    const row = { id: x.id, set_id: x.set_id, result: x.result, r: x.r, direction: x.direction, note: x.note,
+                                  img: x.img || '', img_mtf: x.img_mtf || '', img_htf: x.img_htf || '', created_at: x.created_at };
                     const { error } = await sb.from('bt_trades').upsert(row);
                     if (error) throw error;
                     live().status = 'ok';
@@ -718,7 +781,7 @@
                 } catch(e) {
                     console.warn('Lưu lệnh lỗi:', e.message);
                     live().status = 'failed';
-                    if (!live().img.startsWith('data:')) this.savePending(live()); // ảnh đã lên, chỉ thiếu dòng dữ liệu
+                    this.savePending(live()); // giữ trên máy: ảnh chưa lên (đã nén) + link ảnh đã lên
                     return false;
                 }
             },
@@ -733,7 +796,7 @@
             // ───────── XEM / SỬA / XOÁ ─────────
             openTrade(t) {
                 if (!t) return;
-                this.edit = { ...t, rText: this.fmtNum(t.r), newImg: false };
+                this.edit = { ...t, rText: this.fmtNum(t.r), changed: {}, slot: (SLOTS.find(sl => t[sl.col]) || SLOTS[2]).key };
                 this.icons();
             },
             closeTrade() { this.edit = null; },
@@ -745,6 +808,10 @@
                 const i = this.editIndex;
                 const t = this.shownTrades[dir < 0 ? i + 1 : i - 1];
                 if (t) this.openTrade(t);
+            },
+            removeEditImg() {
+                const col = this.slotCol(this.edit.slot);
+                this.edit[col] = ''; this.edit.changed[col] = true;
             },
             setEditResult(r) {
                 this.edit.result = r;
@@ -759,13 +826,16 @@
                 if (!isFinite(r) || Math.abs(r) > 50) return alert('R không hợp lệ');
                 const t = this.trades.find(x => x.id === e.id);
                 if (!t) return;
-                const oldImg = t.img;
+                if (!this.imgCount(e)) return alert('Cần ít nhất 1 ảnh');
+                const changed = Object.keys(e.changed).filter(c => e.changed[c]);
+                const oldPaths = changed.map(c => this.pathFromUrl(t[c])).filter(Boolean);
                 Object.assign(t, { result: e.result, r, direction: e.direction, note: e.note.trim() });
-                if (e.newImg) { t.img = e.img; t.compressed = false; }
+                t._c = t._c || {};
+                for (const c of changed) { t[c] = e[c]; t._c[c] = false; }
                 this.busy = true;
                 const ok = await this.persist(t);
                 this.busy = false;
-                if (ok && e.newImg) { const p = this.pathFromUrl(oldImg); if (p) sb.storage.from(BUCKET).remove([p]).catch(() => {}); }
+                if (ok && oldPaths.length) sb.storage.from(BUCKET).remove(oldPaths).catch(() => {});
                 this.edit = null;
                 this.showToast(ok ? `✅ Đã lưu #${t.no}` : `⚠️ #${t.no} chưa lưu lên server — bấm "Thử lưu lại"`);
             },
@@ -783,7 +853,7 @@
                     if (error) { this.trades.splice(idx, 0, t); this.renumber(); return alert('❌ Xoá thất bại: ' + error.message); }
                 }
                 // Ảnh giữ lại 8 giây để còn hoàn tác
-                const timer = setTimeout(() => { const p = this.pathFromUrl(t.img); if (p) sb.storage.from(BUCKET).remove([p]).catch(() => {}); }, 8000);
+                const timer = setTimeout(() => { const ps = this.pathsOf(t); if (ps.length) sb.storage.from(BUCKET).remove(ps).catch(() => {}); }, 8000);
                 this.showToast(`Đã xoá lệnh #${t.no}`, async () => {
                     clearTimeout(timer);
                     this.trades.push({ ...t, status: 'saving' });
