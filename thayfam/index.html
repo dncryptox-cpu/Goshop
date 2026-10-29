@@ -691,13 +691,28 @@
       <section x-show="tab==='slots' && !searchOn()">
         <div class="mute" style="font-size:13px;margin-bottom:10px">Fam đang chạy còn chỗ, có khách cần mời, hoặc đã mời mà chưa xác nhận vào. Fam còn nhiều ngày dùng xếp trước.</div>
         <div class="chips">
-          <button class="chip" :class="slotFilter==='' && 'on'" @click="slotFilter=''">Tất cả</button>
-          <button class="chip" :class="slotFilter==='free' && 'on'" @click="slotFilter='free'">Còn slot trống</button>
-          <button class="chip" :class="slotFilter==='need' && 'on'" @click="slotFilter='need'">Cần mời</button>
-          <button class="chip" :class="slotFilter==='late' && 'on'" @click="slotFilter='late'" x-text="'Chờ kiểm tra (' + checkDue().length + ')'"></button>
+          <button class="chip" :class="slotFilter==='' && 'on'" @click="slotFilter=''; slotRn=''">Tất cả</button>
+          <button class="chip" :class="slotFilter==='free' && 'on'" @click="slotRn=''; slotFilter='free'">Còn slot trống</button>
+          <button class="chip" :class="slotFilter==='need' && 'on'" @click="slotRn=''; slotFilter='need'">Cần mời</button>
+          <button class="chip" :class="slotFilter==='late' && 'on'" @click="slotRn=''; slotFilter='late'" x-text="'Chờ kiểm tra (' + checkDue().length + ')'"></button>
           <button class="chip" x-show="can('mailPhu')" :class="slotFilter==='mp' && 'on'" @click="slotFilter='mp'; loadMp()" x-text="'Điểm đáng ngờ' + (mp.loaded ? ' (' + mp.items.length + ' fam)' : '')"></button>
           <button class="btn sm" style="margin-left:auto" @click="freshUntil = Date.now() + 20000; loadSlots()" :disabled="slotsLoading" x-text="slotsLoading ? 'Đang tải…' : 'Tải lại'"></button>
         </div>
+        <template x-if="slotFilter !== 'mp' && slots.length">
+          <div style="margin:4px 0 12px">
+            <div class="row" style="gap:6px;flex-wrap:wrap;font-size:13px">
+              <span class="mute">Renew còn ≥</span>
+              <template x-for="d in [0,7,14,21]" :key="d"><button class="chip" :class="slotMin===d && 'on'" @click="slotMin=d; slotRn=''" x-text="d ? d + ' ngày' : 'Tất cả'"></button></template>
+              <span class="mute" x-text="'· ' + slotBase().length + ' fam · ' + slotBase().reduce((n, f) => n + (f.free || 0), 0) + ' slot trống'"></span>
+              <button class="chip" x-show="slotRn" @click="slotRn=''">✕ Bỏ chọn fam</button>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px;max-height:132px;overflow:auto;margin-top:6px">
+              <template x-for="f in slotBase()" :key="'c' + f.rn">
+                <button class="chip" :class="slotRn===f.rn && 'on'" style="font-size:12px" @click="slotRn = slotRn===f.rn ? '' : f.rn" x-text="f.rn + ' · còn ' + f.days + ' ngày · ' + (f.free || 0) + ' slot'"></button>
+              </template>
+            </div>
+          </div>
+        </template>
         <template x-if="slotsLoading && !slots.length"><div class="empty">Đang tải…</div></template>
         <template x-if="slotsLoaded && slotFilter !== 'mp' && !filteredSlots().length"><div class="empty">Không có fam nào.</div></template>
         <template x-if="slotFilter === 'mp'">
@@ -1367,7 +1382,7 @@ function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', notify: null,
-    slots: [], slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
+    slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
       'Đang xử lý lỗi': ['Nhóm gia đình bạn đang bị lỗi', 'để được hỗ trợ lại nhắn qua giúp mình nhé 0398057191'],
@@ -1836,7 +1851,11 @@ function app() {
     filteredSlots() {
       const k = this.slotFilter;
       if (k === 'mp') return [];
-      return this.slots.filter(f => !k || (k === 'free' ? f.free : k === 'need' ? f.need : f.late));
+      return this.slotBase().filter(f => !this.slotRn || f.rn === this.slotRn);
+    },
+    slotBase() {
+      const k = this.slotFilter, m = this.slotMin || 0;
+      return this.slots.filter(f => (!k || (k === 'free' ? f.free : k === 'need' ? f.need : f.late)) && (!m || (f.days != null && f.days >= m)));
     },
     stLabel(r) {
       return ({ free: 'Trống', reuse: 'Hết hạn, chưa mời · dùng lại được', need: 'Còn hạn, chưa mời', pending: 'Đã mời ' + (r.hours >= 48 ? Math.floor(r.hours / 24) + ' ngày' : r.hours + 'h') + ', chưa kiểm tra',
