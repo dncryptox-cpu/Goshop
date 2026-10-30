@@ -283,7 +283,11 @@
                                         <div class="min-w-0">
                                             <div class="flex items-center gap-2 flex-wrap">
                                                 <span class="text-sm font-extrabold text-gray-900" x-text="group.userName"></span>
-                                                <button @click="copyToClipboard(group.userCode, 'Mã KH')" class="text-[11px] font-mono font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded hover:bg-indigo-100" :title="'Copy mã ' + group.userCode" x-text="group.userCode"></button>
+                                                <span class="inline-flex items-center rounded overflow-hidden" :class="group.userCode ? 'bg-indigo-50' : 'bg-rose-50'">
+                                                    <button x-show="group.userCode" @click="copyToClipboard(group.userCode, 'Mã KH')" class="text-[11px] font-mono font-bold text-indigo-700 px-1.5 py-0.5 hover:bg-indigo-100" :title="'Copy Mã KH ' + group.userCode" x-text="group.userCode"></button>
+                                                    <span x-show="!group.userCode" class="text-[11px] font-bold text-rose-700 px-1.5 py-0.5">Chưa có Mã KH</span>
+                                                    <button @click="renameCode(group)" class="px-1 py-0.5 hover:bg-indigo-100" :class="group.userCode ? 'text-indigo-500' : 'text-rose-600'" title="Sửa Mã KH (cột T)"><i data-lucide="pencil" class="w-3 h-3"></i></button>
+                                                </span>
                                                 <span class="text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap" :class="groupTone(group).pill" x-text="groupTone(group).label"></span>
                                             </div>
                                             <div class="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
@@ -565,7 +569,7 @@
 
                                             <!-- Mã KH -->
                                             <td class="p-2.5">
-                                                <input x-model="rec.userCode" type="text" class="w-full border border-gray-200 rounded p-1.5 text-xs font-mono font-bold text-indigo-600 focus:outline-none focus:border-indigo-500">
+                                                <input x-model="rec.userCode" type="text" placeholder="Bắt buộc" :class="!String(rec.userCode||'').trim() && 'border-rose-400 bg-rose-50'" class="w-full border border-gray-200 rounded p-1.5 text-xs font-mono font-bold text-indigo-600 focus:outline-none focus:border-indigo-500">
                                             </td>
 
                                             <!-- CỘT NGÀY MUA -->
@@ -682,8 +686,8 @@
 
                                 <!-- Mã khách hàng -->
                                 <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Khách Hàng (Mã Nhóm Slot)</label>
-                                    <input x-model="chatgptForm.userCode" type="text" placeholder="Ví dụ: KH-CAFARD-01" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã KH <span class="text-rose-500">*</span> <span class="normal-case font-semibold text-gray-400">(khách dùng để lấy mã 2FA)</span></label>
+                                    <input x-model="chatgptForm.userCode" type="text" required placeholder="Hỏi khách, vd: HoanTran" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
                                 </div>
 
                                 <!-- Tên người dùng thực tế -->
@@ -1010,12 +1014,13 @@
                 },
                 statusCount(f) {
                     const set = new Set();
-                    (this.chatgptList || []).forEach(it => { if (it && this._matchStatus(it, f)) set.add(String(this.getItemUserCode(it)).toUpperCase()); });
+                    (this.chatgptList || []).forEach(it => { if (it && this._matchStatus(it, f)) set.add(String(this.getItemUserCode(it)).toUpperCase() || ('#' + (it.id || it.rowNum))); });
                     return set.size;
                 },
                 get groupCountAll() { return this.statusCount('all'); },
                 _allItemsOf(code) {
                     const c = String(code || '').toUpperCase();
+                    if (!c) return [];
                     return (this.chatgptList || []).filter(it => it && String(this.getItemUserCode(it)).toUpperCase() === c);
                 },
                 _groupMinDays(g) { return Math.min(...g.items.map(it => Number(it.daysLeft) || 0)); },
@@ -1057,6 +1062,44 @@
                     if (exp > 0 && exp < g.items.length) label = exp + '/' + g.items.length + ' máy hết hạn';
                     else if (exp > 0) label = 'Hết hạn';
                     return { ...t, label };
+                },
+                _norm(v) { return String(v || '').trim().toLowerCase(); },
+                // Mã KH bắt buộc khi nhập đơn. Báo nếu trống, trùng trong lô, hoặc đã thuộc khách khác.
+                confirmCodes(list) {
+                    const missing = list.filter(x => !String(x.code || '').trim());
+                    if (missing.length) {
+                        alert('⚠️ Thiếu Mã KH — hỏi khách rồi điền vào:\n' + missing.map(x => '• ' + (x.name || 'Khách mới')).join('\n'));
+                        return false;
+                    }
+                    const seen = {}, clash = [];
+                    list.forEach(x => {
+                        const k = this._norm(x.code), n = this._norm(x.name);
+                        if (seen[k] !== undefined && seen[k] !== n) clash.push(`• ${x.code}: "${x.name}" và một khách khác trong lô này`);
+                        seen[k] = n;
+                        const other = (this.chatgptList || []).find(it => this._norm(this.getItemUserCode(it)) === k && this._norm(this.getItemUserName(it)) !== n);
+                        if (other) clash.push(`• ${x.code} đang là mã của "${this.getItemUserName(other)}"`);
+                    });
+                    if (clash.length) return confirm('Mã KH bị trùng:\n' + [...new Set(clash)].join('\n') + '\n\nTrùng mã = gộp chung 1 khách (chung đăng nhập vgpt + chung lượt 2FA). Vẫn lưu?');
+                    return true;
+                },
+                // Đổi Mã KH cho mọi máy của khách (ghi cột T)
+                async renameCode(group) {
+                    const items = group.userCode ? this._allItemsOf(group.userCode) : group.items;
+                    const cur = group.userCode || '';
+                    const next = (prompt(`Mã KH mới cho ${group.userName} (${items.length} máy).\nKhách sẽ dùng mã này + email để lấy mã 2FA ở godnc.com/vgpt.`, cur) || '').trim();
+                    if (!next || next === cur) return;
+                    const other = (this.chatgptList || []).find(it => this._norm(this.getItemUserCode(it)) === this._norm(next) && !items.includes(it));
+                    if (other && !confirm(`Mã ${next} đang là của "${this.getItemUserName(other)}". Đổi sẽ gộp 2 khách làm 1. Tiếp tục?`)) return;
+                    try {
+                        for (const it of items) {
+                            const r = await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify({ action: 'update', id: it.id, rowNum: it.rowNum, activationDate: it.activationDate, duration: parseInt(it.duration, 10) || 1, userCode: next, authToken: this.CONFIG.CHATGPT_API_KEY }) });
+                            const j = await r.json();
+                            if (!j || !j.success) throw new Error((j && j.error) || 'Sheet không nhận');
+                        }
+                        this.showToast(`✅ Đã đổi Mã KH ${cur || '(trống)'} → ${next} cho ${items.length} máy. Nhớ báo khách mã mới.`);
+                    } catch (e) { alert('❌ Chưa đổi được: ' + e.message); }
+                    this.buildChatgptList();
                 },
                 cleanNote(note) {
                     return String(note || '').replace(/\[Khách:[^\]]*\]\s*/g, '').trim();
@@ -1360,14 +1403,14 @@ Mở sẵn màn hình ChatGPT hỏi mã 6 số → vào trang nhập email + mã
 
                 // Helper to extract userCode from item or note
                 getItemUserCode(item) {
-                    if (!item) return 'Chưa phân mã';
+                    if (!item) return '';
                     if (item.userCode) return item.userCode;
                     if (item.note) {
                         const m = String(item.note).match(/\[Khách:\s*([^|]+)\|\s*Mã:\s*([^\]]+)\]/);
                         if (m && m[2]) return m[2].trim();
                     }
                     const userName = this.getItemUserName(item);
-                    return this.generateUserCode(userName);
+                    return ''; // Mã KH lấy từ cột T (Sheet ThietbiGPT) — không tự sinh
                 },
 
                 getUserActiveCount(userCode) {
@@ -1747,7 +1790,7 @@ ${rawClean}`;
                                     return {
                                         rootEmail: rootMail,
                                         email: rootMail,
-                                        userCode: item.userCode || this.generateUserCode(nameStr),
+                                        userCode: item.userCode || '',
                                         userName: nameStr,
                                         deviceSeq: 1,
                                         device: 'Computer',
@@ -1858,13 +1901,14 @@ ${rawClean}`;
                     }
 
                     const rootMail = this.aiSharedRootEmail || 'dncethxyz@gmail.com';
+                    if (!this.confirmCodes(this.aiRecords.map(r => ({ code: r.userCode, name: r.userName })))) return;
                     this.chatgptSubmitting = true;
 
                     try {
                         const finalRecords = this.aiRecords.map(r => ({
                             rootEmail: rootMail,
                             email: rootMail,
-                            userCode: r.userCode || this.generateUserCode(r.userName),
+                            userCode: String(r.userCode || '').trim(),
                             userName: r.userName || 'Khách Mới',
                             deviceSeq: 1,
                             device: 'Computer',
@@ -1997,6 +2041,7 @@ ${rawClean}`;
                         return;
                     }
 
+                    if (this.chatgptForm.orderType !== 'renew' && !this.confirmCodes([{ code: this.chatgptForm.userCode, name: this.chatgptForm.userName }])) return;
                     this.chatgptSubmitting = true;
                     try {
                         let finalHsdStr = '';
