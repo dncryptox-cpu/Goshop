@@ -1275,8 +1275,13 @@
 
             async applySession(session) {
                 this.userId = session.user.id;
-                const { data: p, error } = await sb.from('profiles').select('*').eq('id', this.userId).single();
+                let { data: p, error } = await sb.from('profiles').select('*').eq('id', this.userId).maybeSingle();
+                if (!error && !p) {   // tài khoản thiếu hồ sơ (vd tạo thẳng trong Supabase) → tự tạo
+                    await sb.rpc('ensure_my_profile');
+                    ({ data: p, error } = await sb.from('profiles').select('*').eq('id', this.userId).maybeSingle());
+                }
                 if (error) throw error;
+                if (!p) { this.userId = ''; try { await sb.auth.signOut(); } catch (e) {} throw new Error('Tài khoản chưa có hồ sơ — liên hệ DNC'); }
                 this.username = p.username || '';
                 this.capital = Number(p.capital) || 10000;
                 this.riskPercent = Number(p.risk_percent) || 5;
@@ -1301,7 +1306,7 @@
                     if (error) { this.loginErr = /invalid login/i.test(error.message) ? 'Sai username hoặc mật khẩu' : error.message; return; }
                     this.inPass = '';
                     await this.applySession(data.session);
-                } catch (e) { this.loginErr = 'Không kết nối được máy chủ: ' + e.message; }
+                } catch (e) { this.loginErr = /fetch|network|Failed/i.test(e.message) ? 'Không kết nối được máy chủ' : e.message; }
                 finally { this.busy = false; this.icons(); }
             },
 
