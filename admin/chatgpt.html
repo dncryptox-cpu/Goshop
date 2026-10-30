@@ -67,8 +67,8 @@
     <div class="flex h-screen bg-[#f4f7fe] overflow-hidden font-sans">
         
         <!-- Sidebar Navigation -->
-        <aside :class="sidebarOpen ? 'w-64' : 'w-20'"
-            class="bg-white border-r border-gray-100 flex flex-col transition-all duration-300 z-50 shadow-sm relative shrink-0">
+        <aside :class="sidebarOpen ? 'w-64 fixed inset-y-0 left-0 md:relative' : 'w-20 hidden md:flex'"
+            class="bg-white border-r border-gray-100 flex flex-col transition-all duration-300 z-50 shadow-sm shrink-0">
             <!-- Logo Header -->
             <div class="h-16 flex items-center justify-between px-6 border-b border-gray-50">
                 <div class="flex items-center gap-3">
@@ -181,6 +181,7 @@
                 </button>
             </div>
         </aside>
+        <div x-show="sidebarOpen" x-cloak @click="sidebarOpen = false" class="fixed inset-0 bg-gray-900/30 z-40 md:hidden"></div>
 
         <!-- Main Content Area -->
         <div class="flex-1 flex flex-col h-screen min-h-0 overflow-hidden">
@@ -192,10 +193,7 @@
                         <i data-lucide="menu" class="w-5 h-5"></i>
                     </button>
 
-                    <div class="relative w-full max-w-[12rem] sm:max-w-xs md:w-96">
-                        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
-                        <input x-model.debounce.300ms="chatgptSearch" type="text" placeholder="Tìm kiếm nhanh thiết bị..." class="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 pl-9 pr-4 text-xs md:text-sm focus:outline-none focus:border-primary transition-all">
-                    </div>
+                    <span class="text-sm font-bold text-gray-500 truncate"><span class="hidden sm:inline">Go Shop OS <span class="text-gray-300 mx-1">/</span></span> <span class="text-gray-900">Thiết bị ChatGPT</span></span>
                 </div>
 
                 <div class="flex items-center gap-1.5 sm:gap-3">
@@ -222,342 +220,175 @@
 
             <!-- Main Scrollable Content -->
             <main class="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 md:p-8 bg-[#f4f7fe]">
-                <div class="space-y-6 max-w-7xl mx-auto">
+                <div class="space-y-4 max-w-6xl mx-auto">
 
-                    <!-- Header Card -->
-                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-gray-100 card-shadow">
+                    <!-- ===== Đầu trang ===== -->
+                    <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
                         <div>
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-                                    <i data-lucide="monitor-smartphone" class="w-5 h-5"></i>
-                                </div>
-                                <div>
-                                    <h1 class="text-xl font-black text-gray-900 tracking-tight">Quản Lý Khách Hàng & Thiết Bị ChatGPT</h1>
-                                    <p class="text-xs text-gray-500 mt-0.5">Hệ thống quản lý dữ liệu thiết bị ChatGPT độc lập (Sheet ThietbiGPT).</p>
-                                </div>
-                            </div>
+                            <h1 class="text-xl font-extrabold text-gray-900 tracking-tight">Thiết bị ChatGPT</h1>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                <span x-text="groupCountAll"></span> khách · <span x-text="(chatgptList || []).length"></span> máy · mỗi khách tối đa 3 máy
+                            </p>
                         </div>
-
-                        <div class="flex items-center gap-3">
-                            <button @click="openChatgptModal()" class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-200 flex items-center gap-2">
-                                <i data-lucide="sparkles" class="w-4 h-4 text-purple-200"></i>
-                                <span>Thêm / Gia Hạn AI (Batch)</span>
+                        <div class="flex items-center gap-2">
+                            <button @click="manageGptKeys()" class="h-9 px-3 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-xs font-bold flex items-center gap-1.5" title="Thêm / đổi / xoá khoá 2FA (godnc.com/vgpt)">
+                                <i data-lucide="key-round" class="w-4 h-4"></i><span>Khoá 2FA</span>
                             </button>
-                            <button @click="manageGptKeys()" class="px-4 py-2.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2" title="Thêm / đổi / xoá khoá 2FA của các tài khoản ChatGPT (cho godnc.com/vgpt)">
-                                <i data-lucide="key-round" class="w-4 h-4"></i>
-                                <span>Khoá 2FA</span>
-                            </button>
-                            <button @click="buildChatgptList()" class="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2" :disabled="chatgptLoading">
-                                <i data-lucide="refresh-cw" class="w-4 h-4" :class="chatgptLoading ? 'animate-spin' : ''"></i>
-                                <span x-text="chatgptLoading ? 'Đang Tải...' : 'Tải Lại'"></span>
+                            <button @click="openChatgptModal()" class="h-9 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5">
+                                <i data-lucide="plus" class="w-4 h-4"></i><span>Thêm / Gia hạn</span>
                             </button>
                         </div>
                     </div>
 
-                    <!-- EXECUTIVE SUMMARY BANNER (TÓM TẮT TỔNG QUAN PHÍA TRÊN) -->
-                    <div class="bg-gradient-to-r from-indigo-950 via-indigo-900 to-slate-900 rounded-2xl p-4 sm:p-5 text-white shadow-xl relative overflow-hidden">
-                        <div class="absolute -right-10 -bottom-10 w-40 h-40 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none"></div>
-
-                        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
-                            <!-- Summary Header Title -->
-                            <div class="space-y-1">
-                                <div class="flex items-center gap-2">
-                                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-                                        ⚡ Operational Overview
-                                    </span>
-                                    <span class="text-[11px] text-slate-300 font-mono" x-text="new Date().toLocaleTimeString('vi-VN')"></span>
-                                </div>
-                                <h2 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
-                                    📊 Bảng Tóm Tắt Nhanh Thiết Bị ChatGPT Plus
-                                </h2>
-                                <p class="text-xs text-slate-300 hidden sm:block">Theo dõi tổng lượng khách mua, số máy active & tình trạng hết hạn.</p>
-                            </div>
-
-                            <!-- Metric Summary Cards Group -->
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                                <!-- 1. Tổng Máy / Khách -->
-                                <div class="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-2.5 flex flex-col justify-between">
-                                    <span class="text-[10px] text-slate-300 font-bold uppercase">Tổng Số Thiết Bị</span>
-                                    <div class="flex items-baseline gap-1 mt-1">
-                                        <span class="text-base font-extrabold text-indigo-300 font-mono" x-text="(chatgptList || []).length"></span>
-                                        <span class="text-xs text-slate-400 font-mono" x-text="'/' + (groupedChatgptList || []).length + ' KH'"></span>
-                                    </div>
-                                    <span class="text-[10px] font-bold text-indigo-300 mt-1">Quản lý theo Máy (1-3)</span>
-                                </div>
-
-                                <!-- 2. Đang Hoạt Động -->
-                                <div class="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-2.5 flex flex-col justify-between">
-                                    <span class="text-[10px] text-slate-300 font-bold uppercase">🟢 Đang Còn Hạn</span>
-                                    <div class="flex items-baseline gap-1 mt-1">
-                                        <span class="text-base font-extrabold text-emerald-400 font-mono" x-text="(chatgptList || []).filter(i => i && !i.expired).length"></span>
-                                        <span class="text-xs text-slate-400 font-mono">Máy</span>
-                                    </div>
-                                    <span class="text-[10px] font-bold text-emerald-300 mt-1" x-text="chatgptList.length > 0 ? Math.round(((chatgptList.filter(i=>!i.expired).length)/chatgptList.length)*100) + '% Active' : '0%'"></span>
-                                </div>
-
-                                <!-- 3. Sắp Hết Hạn (≤7d) -->
-                                <div class="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-2.5 flex flex-col justify-between cursor-pointer hover:bg-white/20 transition-all"
-                                     @click="chatgptStatusFilter = 'expiring_soon'">
-                                    <span class="text-[10px] text-amber-300 font-bold uppercase">⏳ Sắp Hạn (≤7d)</span>
-                                    <div class="flex items-baseline gap-1 mt-1">
-                                        <span class="text-base font-extrabold text-amber-400 font-mono" x-text="(chatgptList || []).filter(i => i && i.daysLeft >= 0 && i.daysLeft <= 7).length"></span>
-                                        <span class="text-xs text-slate-400">Máy</span>
-                                    </div>
-                                    <span class="text-[10px] font-bold text-amber-300 mt-1">Bấm để lọc ➔</span>
-                                </div>
-
-                                <!-- 4. Đã Hết Hạn -->
-                                <div class="bg-white/10 backdrop-blur-md border border-white/10 rounded-xl p-2.5 flex flex-col justify-between cursor-pointer hover:bg-white/20 transition-all"
-                                     @click="chatgptStatusFilter = 'expired'">
-                                    <span class="text-[10px] text-rose-300 font-bold uppercase">🔴 Đã Hết Hạn</span>
-                                    <div class="flex items-baseline gap-1 mt-1">
-                                        <span class="text-base font-extrabold text-rose-400 font-mono" x-text="(chatgptList || []).filter(i => i && i.expired).length"></span>
-                                        <span class="text-xs text-slate-400">Máy</span>
-                                    </div>
-                                    <span class="text-[10px] font-bold text-rose-300 mt-1">Cần nhắn gia hạn ➔</span>
-                                </div>
-                            </div>
+                    <!-- ===== Lọc nhanh + tìm ===== -->
+                    <div class="flex flex-col lg:flex-row lg:items-center gap-3">
+                        <div class="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5">
+                            <template x-for="f in statusFilters" :key="f.id">
+                                <button @click="chatgptStatusFilter = f.id"
+                                        class="shrink-0 h-9 px-3 rounded-lg text-xs font-bold border flex items-center gap-2 transition-colors"
+                                        :class="chatgptStatusFilter === f.id ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300'">
+                                    <span class="w-2 h-2 rounded-full" :class="f.dot" x-show="f.dot"></span>
+                                    <span x-text="f.label"></span>
+                                    <span class="tabular-nums" :class="chatgptStatusFilter === f.id ? 'text-white/70' : 'text-gray-400'" x-text="statusCount(f.id)"></span>
+                                </button>
+                            </template>
                         </div>
-                    </div>
-
-                    <!-- Stats Cards Grid -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <!-- Card 1: Total -->
-                        <div @click="chatgptStatusFilter = 'all'" 
-                            :class="chatgptStatusFilter === 'all' ? 'ring-2 ring-indigo-500 border-indigo-200' : 'border-gray-100'"
-                            class="bg-white rounded-2xl border p-5 card-shadow flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
-                            <div>
-                                <span class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Tổng Khách Mua ChatGPT</span>
-                                <h3 class="text-3xl font-extrabold text-gray-900" x-text="(chatgptList || []).length"></h3>
-                                <span class="text-[11px] text-gray-500 mt-1 block">Toàn bộ danh sách tài khoản & thiết bị</span>
+                        <div class="flex gap-2 lg:ml-auto">
+                            <div class="relative flex-1 lg:w-80">
+                                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
+                                <input x-model.debounce.250ms="chatgptSearch" type="search" placeholder="Tên, mã KH, email, ghi chú…"
+                                       class="w-full h-9 bg-white border border-gray-200 rounded-lg pl-9 pr-3 text-xs font-medium focus:outline-none focus:border-indigo-500">
                             </div>
-                            <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 border border-indigo-100 flex items-center justify-center">
-                                <i data-lucide="server" class="w-6 h-6"></i>
-                            </div>
-                        </div>
-
-                        <!-- Card 2: Active -->
-                        <div @click="chatgptStatusFilter = 'active'" 
-                            :class="chatgptStatusFilter === 'active' ? 'ring-2 ring-emerald-500 border-emerald-200' : 'border-gray-100'"
-                            class="bg-white rounded-2xl border p-5 card-shadow flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
-                            <div>
-                                <span class="block text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">Đang Sử Dụng (Còn Hạn)</span>
-                                <h3 class="text-3xl font-extrabold text-emerald-600" x-text="(chatgptList || []).filter(i => i && !i.expired).length"></h3>
-                                <span class="text-[11px] text-emerald-600 mt-1 block">Khách hàng đang dùng thiết bị hợp lệ</span>
-                            </div>
-                            <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
-                                <i data-lucide="check-circle-2" class="w-6 h-6"></i>
-                            </div>
-                        </div>
-
-                        <!-- Card 3: Expired -->
-                        <div @click="chatgptStatusFilter = 'expired'" 
-                            :class="chatgptStatusFilter === 'expired' ? 'ring-2 ring-rose-500 border-rose-200' : 'border-gray-100'"
-                            class="bg-white rounded-2xl border p-5 card-shadow flex items-center justify-between cursor-pointer hover:shadow-md transition-all">
-                            <div>
-                                <span class="block text-xs font-bold text-rose-600 uppercase tracking-widest mb-1">Đã Hết Hạn Sử Dụng</span>
-                                <h3 class="text-3xl font-extrabold text-rose-600" x-text="(chatgptList || []).filter(i => i && i.expired).length"></h3>
-                                <span class="text-[11px] text-rose-600 mt-1 block">Cần kiểm tra gia hạn hoặc thu hồi</span>
-                            </div>
-                            <div class="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 border border-rose-100 flex items-center justify-center">
-                                <i data-lucide="alert-circle" class="w-6 h-6"></i>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Search & Filter Card -->
-                    <div class="bg-white p-4 rounded-2xl border border-gray-100 card-shadow flex flex-col sm:flex-row gap-3 items-center justify-between">
-                        <div class="relative w-full sm:max-w-md">
-                            <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"></i>
-                            <input x-model.debounce.300ms="chatgptSearch" type="text" placeholder="Tìm theo email gốc, tên, mã KH, ghi chú, mã đơn..." class="w-full bg-gray-50 border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 text-xs font-medium focus:outline-none focus:border-indigo-500 transition-all text-gray-900">
-                        </div>
-                        <div class="flex items-center gap-3 w-full sm:w-auto">
-                            <select x-model="chatgptStatusFilter" class="w-full sm:w-auto bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none focus:border-indigo-500 transition-all text-gray-800">
-                                <option value="all">Tất cả Trạng Thái</option>
-                                <option value="active">🟢 Đang Sử Dụng (Còn Hạn)</option>
-                                <option value="expired">🔴 Đã Hết Hạn</option>
+                            <select x-model="chatgptSort" class="h-9 bg-white border border-gray-200 rounded-lg px-2.5 text-xs font-bold text-gray-700 focus:outline-none focus:border-indigo-500" title="Sắp xếp">
+                                <option value="expiry">Sắp hết hạn trước</option>
+                                <option value="recent">Mua gần nhất</option>
+                                <option value="sheet">Thứ tự Sheet</option>
                             </select>
                         </div>
                     </div>
 
-                    <!-- Table Card (Main Dashboard Table with Inline Edit for ActivationDate & Duration) -->
-                    <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-left border-collapse">
-                                <thead>
-                                    <tr class="bg-gray-50/80 border-b border-gray-100">
-                                        <th class="px-5 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Tài Khoản Chia Sẻ (Email Gốc)</th>
-                                        <th class="px-5 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Mã KH / Tên Người Dùng</th>
-                                        <th class="px-5 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">STT Máy</th>
-                                        <th class="px-5 py-4 text-xs font-bold text-indigo-600 uppercase tracking-widest">Ngày Mua & Số Tháng</th>
-                                        <th class="px-5 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Ghi Chú Khách</th>
-                                        <th class="px-5 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Trạng Thái / HSD</th>
-                                        <th class="px-5 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest">CTV</th>
-                                        <th class="px-5 py-4 text-xs font-bold text-gray-400 uppercase tracking-widest text-right">Thao Tác</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100">
-                                    <template x-for="(group, gIdx) in groupedChatgptList" :key="group.id || gIdx">
-                                        <tr class="hover:bg-gray-50/80 transition-colors">
-                                            
-                                            <!-- Root Email / Order ID -->
-                                            <td class="px-5 py-4">
-                                                <div class="flex items-center gap-3">
-                                                    <div class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-indigo-50 text-indigo-600 border border-indigo-100">
-                                                        <i data-lucide="key" class="w-4 h-4"></i>
+                    <!-- ===== Danh sách khách ===== -->
+                    <div class="space-y-3">
+                        <!-- Đang tải -->
+                        <template x-if="chatgptLoading && chatgptList.length === 0">
+                            <div class="bg-white rounded-xl border border-gray-100 p-10 text-center text-xs font-bold text-gray-400">Đang tải danh sách…</div>
+                        </template>
+
+                        <template x-for="group in sortedGroups" :key="group.id">
+                            <div class="bg-white rounded-xl border overflow-hidden" :class="groupTone(group).border">
+                                <!-- Đầu thẻ: khách -->
+                                <div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 px-4 py-3">
+                                    <div class="flex items-start gap-3 min-w-0 flex-1">
+                                        <span class="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0" :class="groupTone(group).dot"></span>
+                                        <div class="min-w-0">
+                                            <div class="flex items-center gap-2 flex-wrap">
+                                                <span class="text-sm font-extrabold text-gray-900" x-text="group.userName"></span>
+                                                <span class="inline-flex items-center rounded overflow-hidden" :class="group.userCode ? 'bg-indigo-50' : 'bg-rose-50'">
+                                                    <button x-show="group.userCode" @click="copyToClipboard(group.userCode, 'Mã KH')" class="text-[11px] font-mono font-bold text-indigo-700 px-1.5 py-0.5 hover:bg-indigo-100" :title="'Copy Mã KH ' + group.userCode" x-text="group.userCode"></button>
+                                                    <span x-show="!group.userCode" class="text-[11px] font-bold text-rose-700 px-1.5 py-0.5">Chưa có Mã KH</span>
+                                                    <button @click="renameCode(group)" class="px-1 py-0.5 hover:bg-indigo-100" :class="group.userCode ? 'text-indigo-500' : 'text-rose-600'" title="Sửa Mã KH (cột T)"><i data-lucide="pencil" class="w-3 h-3"></i></button>
+                                                </span>
+                                                <span class="text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap" :class="groupTone(group).pill" x-text="groupTone(group).label"></span>
+                                            </div>
+                                            <div class="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                                <button @click="copyToClipboard(group.rootEmail, 'Email gốc')" class="font-mono hover:text-indigo-700 hover:underline truncate max-w-[220px]" :title="'Copy ' + group.rootEmail" x-text="group.rootEmail"></button>
+                                                <span class="text-gray-300">·</span>
+                                                <span x-text="'CTV ' + (group.items[0].ctv || '—')"></span>
+                                                <template x-if="group.items[0].orderId">
+                                                    <span><span class="text-gray-300">· </span><span class="font-mono" x-text="group.items[0].orderId"></span></span>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Thao tác khách -->
+                                    <div class="flex items-center gap-1.5 pl-5 md:pl-0 shrink-0">
+                                        <button @click="openCustomerMessageModal(group)" class="h-8 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5" title="Soạn tin nhắn cho khách">
+                                            <i data-lucide="message-square" class="w-3.5 h-3.5"></i><span>Nhắn</span>
+                                        </button>
+                                        <button @click="copyVerifyGuide(group)" class="h-8 px-2.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-lg text-xs font-bold flex items-center gap-1.5" title="Copy hướng dẫn tự lấy mã 2FA (godnc.com/vgpt) — số lượt đã dùng">
+                                            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i><span x-text="'2FA ' + gptUsageLabel(group)"></span>
+                                        </button>
+                                        <template x-if="(gptUsageOf(group) || {}).used > 0">
+                                            <button @click="resetGptUsage(group)" class="h-8 w-8 bg-white hover:bg-amber-50 text-amber-700 border border-gray-200 rounded-lg flex items-center justify-center" title="Reset lượt lấy mã 2FA">
+                                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                                            </button>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- Các máy -->
+                                <div class="border-t border-gray-100 divide-y divide-gray-100">
+                                    <template x-for="it in group.items" :key="it.id || it.rowNum">
+                                        <div class="px-4 py-2.5 grid grid-cols-[auto,1fr,auto] md:grid-cols-[60px,200px,250px,1fr,auto] items-center gap-x-3 gap-y-1 text-xs hover:bg-gray-50/70">
+                                            <!-- Máy -->
+                                            <span class="font-extrabold text-gray-700 w-14" x-text="'Máy ' + (it.deviceSeq || 1)"></span>
+
+                                            <!-- Ngày mua + số tháng (xem / sửa) -->
+                                            <div class="min-w-0">
+                                                <template x-if="editingRowId !== (it.id || it.rowNum)">
+                                                    <div class="text-gray-600 whitespace-nowrap">
+                                                        <span class="text-gray-400">Mua</span>
+                                                        <span class="font-semibold text-gray-800 tabular-nums" x-text="formatDateStr(it.activationDate)"></span>
+                                                        <span class="text-gray-400">·</span>
+                                                        <span class="font-semibold text-gray-800" x-text="(it.duration || 1) + ' tháng'"></span>
                                                     </div>
-                                                    <div class="min-w-0">
-                                                        <div class="flex items-center gap-1.5">
-                                                            <span class="font-mono font-extrabold text-indigo-600 text-xs block truncate cursor-pointer hover:underline hover:text-indigo-800 transition-colors" 
-                                                                  @click="copyToClipboard(group.rootEmail, 'Email Tài Khoản Gốc')" 
-                                                                  :title="'Bấm để copy Email: ' + group.rootEmail" 
-                                                                  x-text="group.rootEmail"></span>
-                                                        </div>
-                                                        <span class="text-[10px] font-bold text-gray-400 block mt-0.5 font-mono" x-text="group.items[0].orderId ? ('Mã đơn: ' + group.items[0].orderId) : 'Đơn tay'"></span>
+                                                </template>
+                                                <template x-if="editingRowId === (it.id || it.rowNum)">
+                                                    <div class="flex items-center gap-1 flex-wrap">
+                                                        <input x-model="editForm.activationDateIso" type="date" class="h-7 border border-indigo-400 rounded px-1 text-[11px] font-semibold bg-white">
+                                                        <select x-model.number="editForm.duration" class="h-7 border border-indigo-400 rounded px-1 text-[11px] font-semibold bg-white">
+                                                            <option value="1">1 tháng</option><option value="3">3 tháng</option><option value="6">6 tháng</option><option value="12">12 tháng</option>
+                                                        </select>
+                                                        <button @click="saveEditRow(it)" :disabled="rowSaving" class="h-7 px-2 bg-indigo-600 text-white rounded text-[11px] font-bold">Lưu</button>
+                                                        <button @click="cancelEditRow()" class="h-7 px-2 bg-gray-100 text-gray-700 rounded text-[11px] font-bold">Huỷ</button>
                                                     </div>
-                                                </div>
-                                            </td>
+                                                </template>
+                                            </div>
 
-                                            <!-- User Code & User Name -->
-                                            <td class="px-5 py-4">
-                                                <div class="flex flex-col gap-1">
-                                                    <span class="font-mono font-bold text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100 w-fit" x-text="group.userCode"></span>
-                                                    <span class="text-xs font-bold text-gray-800" x-text="group.userName"></span>
-                                                </div>
-                                            </td>
+                                            <!-- Sửa (mobile: cột 3 dòng 1) -->
+                                            <button x-show="editingRowId !== (it.id || it.rowNum)" @click="startEditRow(it)" class="md:order-last h-7 px-2 text-gray-500 hover:text-indigo-700 hover:bg-indigo-50 rounded flex items-center gap-1 justify-self-end" title="Sửa ngày mua / số tháng">
+                                                <i data-lucide="pencil" class="w-3.5 h-3.5"></i><span class="text-[11px] font-bold">Sửa</span>
+                                            </button>
+                                            <span x-show="editingRowId === (it.id || it.rowNum)" class="md:order-last"></span>
 
-                                            <!-- STT Máy & Quick Add Machine Button (Hiển thị các máy của khách trên 1 hàng) -->
-                                            <td class="px-5 py-4">
-                                                <div class="flex flex-wrap items-center gap-1.5">
-                                                    <template x-for="it in group.items" :key="it.id || it.rowNum">
-                                                        <span class="text-xs font-extrabold px-2.5 py-1 rounded-lg border font-mono"
-                                                              :class="it.expired ? 'bg-rose-50 text-rose-700 border-rose-200' : (it.deviceSeq >= 3 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200')"
-                                                              x-text="'Máy ' + (it.deviceSeq || 1) + '/3'"></span>
-                                                    </template>
-                                                    <template x-if="group.items.length < 3">
-                                                        <button @click="quickAddNextDeviceForGroup(group)"
-                                                                class="text-[10px] font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-lg flex items-center gap-1 transition-all shadow-xs"
-                                                                title="Thêm nhanh Máy tiếp theo cho khách này">
-                                                            <i data-lucide="plus" class="w-3 h-3 text-emerald-600"></i>
-                                                            <span x-text="'+Máy ' + (group.items.length + 1)"></span>
-                                                        </button>
-                                                    </template>
-                                                </div>
-                                            </td>
+                                            <!-- HSD -->
+                                            <div class="col-start-2 col-span-2 md:col-start-auto md:col-span-1 flex items-center gap-2 tabular-nums whitespace-nowrap">
+                                                <span class="text-gray-400">HSD</span>
+                                                <span class="font-semibold text-gray-800" x-text="formatDateStr(it.expiryDate)"></span>
+                                                <span class="text-[11px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap" :class="itemTone(it).pill" x-text="daysLabel(it.daysLeft)"></span>
+                                            </div>
 
-                                            <!-- CỘT NGÀY MUA & SỐ THÁNG (Hiển thị cho từng máy) -->
-                                            <td class="px-5 py-4">
-                                                <div class="flex flex-col gap-1.5">
-                                                    <template x-for="it in group.items" :key="it.id || it.rowNum">
-                                                        <div class="flex items-center gap-1.5 text-xs font-mono">
-                                                            <span class="font-extrabold text-gray-500" x-text="'M' + (it.deviceSeq || 1) + ':'"></span>
-                                                            <template x-if="editingRowId !== (it.id || it.rowNum)">
-                                                                <div class="flex items-center gap-1">
-                                                                    <span class="font-bold text-gray-900" x-text="formatDateStr(it.activationDate)"></span>
-                                                                    <span class="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100" x-text="(it.duration || 1) + 'T'"></span>
-                                                                    <button @click="startEditRow(it)" class="p-0.5 text-amber-600 hover:bg-amber-50 rounded" title="Sửa máy này"><i data-lucide="pencil" class="w-3 h-3"></i></button>
-                                                                </div>
-                                                            </template>
-                                                            <template x-if="editingRowId === (it.id || it.rowNum)">
-                                                                <div class="flex items-center gap-1">
-                                                                    <input x-model="editForm.activationDateIso" type="date" class="border border-indigo-400 rounded p-1 text-[11px] font-bold font-mono bg-white text-gray-900 shadow-2xs">
-                                                                    <button type="button" @click="editForm.activationDateIso = toIsoDateStr(new Date())" class="px-1.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-[10px] font-bold border border-indigo-200" title="Chọn Hôm Nay">Hôm nay</button>
-                                                                    <select x-model.number="editForm.duration" class="border border-indigo-400 rounded p-1 text-[11px] font-bold">
-                                                                        <option value="1">1T</option>
-                                                                        <option value="3">3T</option>
-                                                                        <option value="6">6T</option>
-                                                                        <option value="12">12T</option>
-                                                                    </select>
-                                                                    <button @click="saveEditRow(it)" class="p-1 bg-emerald-600 text-white rounded"><i data-lucide="check" class="w-3 h-3"></i></button>
-                                                                    <button @click="cancelEditRow()" class="p-1 bg-gray-200 text-gray-700 rounded"><i data-lucide="x" class="w-3 h-3"></i></button>
-                                                                </div>
-                                                            </template>
-                                                        </div>
-                                                    </template>
-                                                </div>
-                                            </td>
-
-                                            <!-- Ghi Chú Raw Text -->
-                                            <td class="px-5 py-4 max-w-xs">
-                                                <div class="space-y-1">
-                                                    <template x-for="it in group.items" :key="it.id || it.rowNum">
-                                                        <div class="bg-gray-50 border border-gray-200/80 rounded-lg p-1.5 text-[11px] font-mono text-gray-800 break-words">
-                                                            <span class="font-bold text-indigo-600" x-text="'[M' + (it.deviceSeq || 1) + ']'"></span>
-                                                            <span x-text="it.note || 'Chưa có ghi chú'"></span>
-                                                        </div>
-                                                    </template>
-                                                </div>
-                                            </td>
-
-                                            <!-- Expiry Status & Calculated Days Left -->
-                                            <td class="px-5 py-4">
-                                                <div class="flex flex-col gap-1.5">
-                                                    <template x-for="it in group.items" :key="it.id || it.rowNum">
-                                                        <div class="flex items-center gap-1 text-xs font-mono">
-                                                            <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded border"
-                                                                  :class="it.expired ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'">
-                                                                <span class="w-1.5 h-1.5 rounded-full" :class="it.expired ? 'bg-rose-500' : 'bg-emerald-500'"></span>
-                                                                <span x-text="'M' + (it.deviceSeq || 1) + ': HSD ' + formatDateStr(it.expiryDate)"></span>
-                                                            </span>
-                                                            <span class="text-[10px] font-bold" :class="it.expired ? 'text-rose-600' : 'text-emerald-600'" x-text="it.daysLeft >= 0 ? '🟢 ' + it.daysLeft + 'd' : '🔴 -' + Math.abs(it.daysLeft) + 'd'"></span>
-                                                        </div>
-                                                    </template>
-                                                </div>
-                                            </td>
-
-                                            <!-- Product -->
-                                            <td class="px-5 py-4">
-                                                <span class="text-xs font-bold text-gray-900 bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200" x-text="group.items[0].ctv"></span>
-                                            </td>
-
-                                            <!-- Actions: Edit & Copy & Nhắn Khách -->
-                                            <td class="px-5 py-4 text-right">
-                                                <div class="flex items-center justify-end gap-1">
-                                                    <button @click="openCustomerMessageModal(group)"
-                                                            class="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-xs"
-                                                            title="Nhắn Khách (Tự động soạn tin nhắn Zalo/Telegram)">
-                                                        <i data-lucide="message-square" class="w-3.5 h-3.5 text-emerald-600"></i>
-                                                        <span>Nhắn</span>
-                                                    </button>
-                                                    <button @click="copyVerifyGuide(group)"
-                                                            class="p-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-xs"
-                                                            title="Copy hướng dẫn tự lấy mã 2FA (godnc.com/vgpt)">
-                                                        <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-                                                        <span x-text="'2FA ' + gptUsageLabel(group)"></span>
-                                                    </button>
-                                                    <template x-if="(gptUsageOf(group) || {}).used > 0">
-                                                        <button @click="resetGptUsage(group)"
-                                                                class="p-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold transition-all" title="Reset lượt lấy mã 2FA của khách này">
-                                                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-                                                        </button>
-                                                    </template>
-                                                    <button @click="copyToClipboard(group.rootEmail, 'Email Gốc')"
-                                                            class="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-all" title="Copy Email Gốc">
-                                                        <i data-lucide="key" class="w-3.5 h-3.5"></i>
-                                                    </button>
-                                                    <button @click="copyToClipboard(group.items.map(it => it.note).filter(Boolean).join(' | '), 'Ghi Chú')"
-                                                            class="p-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-xs font-bold transition-all" title="Copy Tất Cả Ghi Chú">
-                                                        <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                            <!-- Ghi chú -->
+                                            <div class="col-start-2 col-span-2 md:col-start-auto md:col-span-1 min-w-0 text-gray-500 truncate" :title="it.note || ''">
+                                                <span x-text="cleanNote(it.note) || '—'"></span>
+                                            </div>
+                                        </div>
                                     </template>
-                                    <template x-if="groupedChatgptList.length === 0">
-                                        <tr>
-                                            <td colspan="8" class="px-5 py-12 text-center text-gray-400">
-                                                <p class="text-sm font-bold text-gray-600">Không tìm thấy khách hàng / thiết bị ChatGPT nào</p>
-                                                <p class="text-xs text-gray-400 mt-1">Thử chọn bộ lọc khác hoặc nhập từ khóa tìm kiếm</p>
-                                            </td>
-                                        </tr>
+
+                                    <template x-if="group.allItemsCount < 3">
+                                        <button @click="quickAddNextDeviceForGroup(group)" class="w-full px-4 py-2 text-left text-[11px] font-bold text-indigo-600 hover:bg-indigo-50/60 flex items-center gap-1.5">
+                                            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                                            <span x-text="'Thêm máy ' + (group.allItemsCount + 1)"></span>
+                                        </button>
                                     </template>
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="px-5 py-3 border-t border-gray-100 text-xs text-gray-400 font-semibold flex items-center justify-between">
-                            <span>Đang hiển thị <strong class="text-gray-700" x-text="(filteredChatgptList || []).length"></strong> / <strong class="text-gray-700" x-text="(chatgptList || []).length"></strong> thiết bị</span>
-                        </div>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Trống -->
+                        <template x-if="!chatgptLoading && sortedGroups.length === 0">
+                            <div class="bg-white rounded-xl border border-gray-100 p-10 text-center">
+                                <p class="text-sm font-bold text-gray-700">Không có khách nào khớp</p>
+                                <p class="text-xs text-gray-400 mt-1">Đổi bộ lọc hoặc xoá từ khoá tìm.</p>
+                                <button x-show="chatgptSearch || chatgptStatusFilter !== 'all'" @click="chatgptSearch=''; chatgptStatusFilter='all'" class="mt-3 h-8 px-3 bg-gray-100 hover:bg-gray-200 rounded-lg text-xs font-bold text-gray-700">Xem tất cả</button>
+                            </div>
+                        </template>
                     </div>
+
+                    <p class="text-[11px] text-gray-400 text-center pb-4">
+                        Đang hiện <strong class="text-gray-600" x-text="sortedGroups.length"></strong> khách ·
+                        <strong class="text-gray-600" x-text="(filteredChatgptList || []).length"></strong> / <span x-text="(chatgptList || []).length"></span> máy
+                    </p>
 
                 </div>
             </main>
@@ -738,7 +569,7 @@
 
                                             <!-- Mã KH -->
                                             <td class="p-2.5">
-                                                <input x-model="rec.userCode" type="text" class="w-full border border-gray-200 rounded p-1.5 text-xs font-mono font-bold text-indigo-600 focus:outline-none focus:border-indigo-500">
+                                                <input x-model="rec.userCode" type="text" placeholder="Bắt buộc" :class="!String(rec.userCode||'').trim() && 'border-rose-400 bg-rose-50'" class="w-full border border-gray-200 rounded p-1.5 text-xs font-mono font-bold text-indigo-600 focus:outline-none focus:border-indigo-500">
                                             </td>
 
                                             <!-- CỘT NGÀY MUA -->
@@ -855,8 +686,8 @@
 
                                 <!-- Mã khách hàng -->
                                 <div>
-                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã Khách Hàng (Mã Nhóm Slot)</label>
-                                    <input x-model="chatgptForm.userCode" type="text" placeholder="Ví dụ: KH-CAFARD-01" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
+                                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Mã KH <span class="text-rose-500">*</span> <span class="normal-case font-semibold text-gray-400">(khách dùng để lấy mã 2FA)</span></label>
+                                    <input x-model="chatgptForm.userCode" type="text" required placeholder="Hỏi khách, vd: HoanTran" class="w-full bg-gray-50 border border-gray-200 rounded-xl p-2.5 text-xs font-mono font-bold focus:outline-none focus:border-indigo-500 text-gray-900">
                                 </div>
 
                                 <!-- Tên người dùng thực tế -->
@@ -1085,6 +916,13 @@
                 activeModalTab: 'ai',
                 chatgptSearch: '',
                 chatgptStatusFilter: 'all',
+                chatgptSort: 'expiry',
+                statusFilters: [
+                    { id: 'all', label: 'Tất cả', dot: '' },
+                    { id: 'active', label: 'Còn hạn', dot: 'bg-emerald-500' },
+                    { id: 'expiring_soon', label: 'Sắp hết ≤7 ngày', dot: 'bg-amber-500' },
+                    { id: 'expired', label: 'Hết hạn', dot: 'bg-rose-500' }
+                ],
                 chatgptList: [],
                 chatgptLoading: false,
                 showChatgptModal: false,
@@ -1156,7 +994,115 @@
                     this.$nextTick(() => {
                         if (window.lucide) window.lucide.createIcons();
                     });
+                    // Vẽ lại icon mỗi khi danh sách đổi (lọc, tìm, sắp xếp, sửa)
+                    ['chatgptSearch', 'chatgptStatusFilter', 'chatgptSort', 'chatgptList', 'editingRowId', 'gptUsage', 'chatgptLoading']
+                        .forEach(k => this.$watch(k, () => this.refreshIcons()));
                     this.buildChatgptList();
+                },
+
+                refreshIcons() {
+                    clearTimeout(this._iconTimer);
+                    this._iconTimer = setTimeout(() => { if (window.lucide) window.lucide.createIcons(); }, 30);
+                },
+
+                // ===== Hiển thị danh sách =====
+                _matchStatus(item, f) {
+                    if (f === 'active') return !item.expired;
+                    if (f === 'expired') return !!item.expired;
+                    if (f === 'expiring_soon') return !item.expired && item.daysLeft >= 0 && item.daysLeft <= 7;
+                    return true;
+                },
+                statusCount(f) {
+                    const set = new Set();
+                    (this.chatgptList || []).forEach(it => { if (it && this._matchStatus(it, f)) set.add(String(this.getItemUserCode(it)).toUpperCase() || ('#' + (it.id || it.rowNum))); });
+                    return set.size;
+                },
+                get groupCountAll() { return this.statusCount('all'); },
+                _allItemsOf(code) {
+                    const c = String(code || '').toUpperCase();
+                    if (!c) return [];
+                    return (this.chatgptList || []).filter(it => it && String(this.getItemUserCode(it)).toUpperCase() === c);
+                },
+                _groupMinDays(g) { return Math.min(...g.items.map(it => Number(it.daysLeft) || 0)); },
+                get sortedGroups() {
+                    const groups = this.groupedChatgptList.map(g => {
+                        g.items = g.items.slice().sort((a, b) => (parseInt(a.deviceSeq, 10) || 1) - (parseInt(b.deviceSeq, 10) || 1));
+                        g.allItemsCount = this._allItemsOf(g.userCode).length || g.items.length;
+                        return g;
+                    });
+                    if (this.chatgptSort === 'sheet') return groups;
+                    if (this.chatgptSort === 'recent') {
+                        const t = g => Math.max(...g.items.map(it => { const d = this.parseDate(it.activationDate); return d ? d.getTime() : 0; }));
+                        return groups.sort((a, b) => t(b) - t(a));
+                    }
+                    // Sắp hết hạn trước: khách còn hạn (ít ngày nhất lên đầu), rồi khách đã hết hạn (mới hết lên trước)
+                    return groups.sort((a, b) => {
+                        const da = this._groupMinDays(a), db = this._groupMinDays(b);
+                        if ((da < 0) !== (db < 0)) return da < 0 ? 1 : -1;
+                        return da < 0 ? db - da : da - db;
+                    });
+                },
+                daysLabel(d) {
+                    d = Number(d) || 0;
+                    if (d === 0) return 'hết hôm nay';
+                    if (d > 0) return 'còn ' + d + ' ngày';
+                    return 'hết ' + Math.abs(d) + ' ngày trước';
+                },
+                _tone(d) {
+                    if (d < 0) return { dot: 'bg-rose-500', pill: 'bg-rose-50 text-rose-700', border: 'border-rose-200' };
+                    if (d <= 7) return { dot: 'bg-amber-500', pill: 'bg-amber-50 text-amber-700', border: 'border-amber-200' };
+                    return { dot: 'bg-emerald-500', pill: 'bg-emerald-50 text-emerald-700', border: 'border-gray-200' };
+                },
+                itemTone(it) { return this._tone(Number(it.daysLeft) || 0); },
+                groupTone(g) {
+                    const d = this._groupMinDays(g);
+                    const t = this._tone(d);
+                    const exp = g.items.filter(it => it.expired).length;
+                    let label = this.daysLabel(d);
+                    if (exp > 0 && exp < g.items.length) label = exp + '/' + g.items.length + ' máy hết hạn';
+                    else if (exp > 0) label = 'Hết hạn';
+                    return { ...t, label };
+                },
+                _norm(v) { return String(v || '').trim().toLowerCase(); },
+                // Mã KH bắt buộc khi nhập đơn. Báo nếu trống, trùng trong lô, hoặc đã thuộc khách khác.
+                confirmCodes(list) {
+                    const missing = list.filter(x => !String(x.code || '').trim());
+                    if (missing.length) {
+                        alert('⚠️ Thiếu Mã KH — hỏi khách rồi điền vào:\n' + missing.map(x => '• ' + (x.name || 'Khách mới')).join('\n'));
+                        return false;
+                    }
+                    const seen = {}, clash = [];
+                    list.forEach(x => {
+                        const k = this._norm(x.code), n = this._norm(x.name);
+                        if (seen[k] !== undefined && seen[k] !== n) clash.push(`• ${x.code}: "${x.name}" và một khách khác trong lô này`);
+                        seen[k] = n;
+                        const other = (this.chatgptList || []).find(it => this._norm(this.getItemUserCode(it)) === k && this._norm(this.getItemUserName(it)) !== n);
+                        if (other) clash.push(`• ${x.code} đang là mã của "${this.getItemUserName(other)}"`);
+                    });
+                    if (clash.length) return confirm('Mã KH bị trùng:\n' + [...new Set(clash)].join('\n') + '\n\nTrùng mã = gộp chung 1 khách (chung đăng nhập vgpt + chung lượt 2FA). Vẫn lưu?');
+                    return true;
+                },
+                // Đổi Mã KH cho mọi máy của khách (ghi cột T)
+                async renameCode(group) {
+                    const items = group.userCode ? this._allItemsOf(group.userCode) : group.items;
+                    const cur = group.userCode || '';
+                    const next = (prompt(`Mã KH mới cho ${group.userName} (${items.length} máy).\nKhách sẽ dùng mã này + email để lấy mã 2FA ở godnc.com/vgpt.`, cur) || '').trim();
+                    if (!next || next === cur) return;
+                    const other = (this.chatgptList || []).find(it => this._norm(this.getItemUserCode(it)) === this._norm(next) && !items.includes(it));
+                    if (other && !confirm(`Mã ${next} đang là của "${this.getItemUserName(other)}". Đổi sẽ gộp 2 khách làm 1. Tiếp tục?`)) return;
+                    try {
+                        for (const it of items) {
+                            const r = await fetch(this.CONFIG.CHATGPT_WEBAPP_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                body: JSON.stringify({ action: 'update', id: it.id, rowNum: it.rowNum, activationDate: it.activationDate, duration: parseInt(it.duration, 10) || 1, userCode: next, authToken: this.CONFIG.CHATGPT_API_KEY }) });
+                            const j = await r.json();
+                            if (!j || !j.success) throw new Error((j && j.error) || 'Sheet không nhận');
+                        }
+                        this.showToast(`✅ Đã đổi Mã KH ${cur || '(trống)'} → ${next} cho ${items.length} máy. Nhớ báo khách mã mới.`);
+                    } catch (e) { alert('❌ Chưa đổi được: ' + e.message); }
+                    this.buildChatgptList();
+                },
+                cleanNote(note) {
+                    return String(note || '').replace(/\[Khách:[^\]]*\]\s*/g, '').trim();
                 },
 
                 showToast(msg) {
@@ -1457,14 +1403,14 @@ Mở sẵn màn hình ChatGPT hỏi mã 6 số → vào trang nhập email + mã
 
                 // Helper to extract userCode from item or note
                 getItemUserCode(item) {
-                    if (!item) return 'Chưa phân mã';
+                    if (!item) return '';
                     if (item.userCode) return item.userCode;
                     if (item.note) {
                         const m = String(item.note).match(/\[Khách:\s*([^|]+)\|\s*Mã:\s*([^\]]+)\]/);
                         if (m && m[2]) return m[2].trim();
                     }
                     const userName = this.getItemUserName(item);
-                    return this.generateUserCode(userName);
+                    return ''; // Mã KH lấy từ cột T (Sheet ThietbiGPT) — không tự sinh
                 },
 
                 getUserActiveCount(userCode) {
@@ -1573,7 +1519,8 @@ Mở sẵn màn hình ChatGPT hỏi mã 6 số → vào trang nhập email + mã
 
                 quickAddNextDeviceForGroup(group) {
                     if (!group) return;
-                    const items = group.items || [];
+                    const full = this._allItemsOf(group.userCode);
+                    const items = full.length ? full : (group.items || []);
                     const lastItem = items[items.length - 1] || {};
                     const rootMail = group.rootEmail || lastItem.email || 'dncethxyz@gmail.com';
                     const uCode = group.userCode || this.getItemUserCode(lastItem);
@@ -1843,7 +1790,7 @@ ${rawClean}`;
                                     return {
                                         rootEmail: rootMail,
                                         email: rootMail,
-                                        userCode: item.userCode || this.generateUserCode(nameStr),
+                                        userCode: item.userCode || '',
                                         userName: nameStr,
                                         deviceSeq: 1,
                                         device: 'Computer',
@@ -1954,13 +1901,14 @@ ${rawClean}`;
                     }
 
                     const rootMail = this.aiSharedRootEmail || 'dncethxyz@gmail.com';
+                    if (!this.confirmCodes(this.aiRecords.map(r => ({ code: r.userCode, name: r.userName })))) return;
                     this.chatgptSubmitting = true;
 
                     try {
                         const finalRecords = this.aiRecords.map(r => ({
                             rootEmail: rootMail,
                             email: rootMail,
-                            userCode: r.userCode || this.generateUserCode(r.userName),
+                            userCode: String(r.userCode || '').trim(),
                             userName: r.userName || 'Khách Mới',
                             deviceSeq: 1,
                             device: 'Computer',
@@ -2093,6 +2041,7 @@ ${rawClean}`;
                         return;
                     }
 
+                    if (this.chatgptForm.orderType !== 'renew' && !this.confirmCodes([{ code: this.chatgptForm.userCode, name: this.chatgptForm.userName }])) return;
                     this.chatgptSubmitting = true;
                     try {
                         let finalHsdStr = '';
