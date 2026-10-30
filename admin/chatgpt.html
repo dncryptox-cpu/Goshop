@@ -519,8 +519,14 @@
                                                             class="p-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-bold transition-all flex items-center gap-1 shadow-xs"
                                                             title="Copy hướng dẫn tự lấy mã 2FA (godnc.com/vgpt)">
                                                         <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-                                                        <span>2FA</span>
+                                                        <span x-text="'2FA ' + gptUsageLabel(group)"></span>
                                                     </button>
+                                                    <template x-if="(gptUsageOf(group) || {}).used > 0">
+                                                        <button @click="resetGptUsage(group)"
+                                                                class="p-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-xs font-bold transition-all" title="Reset lượt lấy mã 2FA của khách này">
+                                                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                                                        </button>
+                                                    </template>
                                                     <button @click="copyToClipboard(group.rootEmail, 'Email Gốc')"
                                                             class="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition-all" title="Copy Email Gốc">
                                                         <i data-lucide="key" class="w-3.5 h-3.5"></i>
@@ -1068,7 +1074,8 @@
                 CONFIG: {
                     CHATGPT_WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbySu9evgLmqMVKSc-Z1cKUIzcfqJH9_pEFDdzOERQ1yP8uLy1hvLqJgNRkOlwDJEOba/exec',
                     FINANCIAL_WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxoBHLdCgValY0h2LtV5jDo1hhidv0nW_QXZ9rDf0RM0bl2ktpHpL38Utk2NbHos4PF/exec',
-                    CHATGPT_API_KEY: 'c74391ab-gpt-sec-2026'
+                    CHATGPT_API_KEY: 'c74391ab-gpt-sec-2026',
+                    VERIFY_URL: 'https://script.google.com/macros/s/AKfycbxseR4tLVMkbSnfGtE7MgiwnVtGVnPFLzqist3Mpm5h-rgOdXVDkszDMbLq_ORxhOI/exec' // Apps Script vnetflix/vgpt
                 },
                 sidebarOpen: window.innerWidth >= 768,
                 activeModalTab: 'ai',
@@ -1153,6 +1160,39 @@
                     setTimeout(() => { this.toastMessage = ''; }, 3500);
                 },
 
+                // ===== Lượt lấy mã 2FA (godnc.com/vgpt) =====
+                gptUsage: {}, gptQuota: 3,
+                _gptKey(group) {
+                    const item = (group && group.items && group.items[0]) || group || {};
+                    const email = String((group && group.rootEmail) || item.rootEmail || item.email || '').trim().toLowerCase();
+                    const code = String((group && group.userCode) || this.getItemUserCode(item)).trim().toLowerCase();
+                    return email + '|' + code;
+                },
+                gptUsageOf(group) { return this.gptUsage[this._gptKey(group)] || null; },
+                gptUsageLabel(group) { const u = this.gptUsageOf(group); return (u ? u.used : 0) + '/' + (u ? u.quota : this.gptQuota); },
+                async loadGptUsage() {
+                    try {
+                        const res = await fetch(this.CONFIG.VERIFY_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'gpt_usage', authToken: this.CONFIG.CHATGPT_API_KEY }) });
+                        const j = await res.json();
+                        if (!j || !j.ok) return;
+                        const map = {};
+                        (j.usage || []).forEach(u => { map[u.email + '|' + u.pin] = u; });
+                        this.gptUsage = map; this.gptQuota = j.quota || 3;
+                    } catch (e) { console.warn('Không tải được lượt 2FA', e); }
+                },
+                async resetGptUsage(group) {
+                    const item = (group && group.items && group.items[0]) || group || {};
+                    const [email, pin] = this._gptKey(group).split('|');
+                    if (!confirm(`Reset lượt lấy mã 2FA cho ${this.getItemUserName(item)} (${pin})?\nĐang dùng ${this.gptUsageLabel(group)} → về 0/${(this.gptUsageOf(group) || {}).quota || this.gptQuota}`)) return;
+                    try {
+                        const res = await fetch(this.CONFIG.VERIFY_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'gpt_reset', email, pin, authToken: this.CONFIG.CHATGPT_API_KEY }) });
+                        const j = await res.json();
+                        if (!j || !j.ok) { alert('❌ Chưa reset được: ' + ((j && j.message) || 'lỗi')); return; }
+                        this.gptUsage = { ...this.gptUsage, [email + '|' + pin]: { email, pin, used: 0, quota: j.quota } };
+                        this.showToast(`🔄 Đã reset lượt 2FA cho ${this.getItemUserName(item)}`);
+                    } catch (e) { alert('Lỗi reset: ' + e.message); }
+                },
+
                 // Tin nhắn hướng dẫn khách tự lấy mã 2FA tại godnc.com/vgpt. Trang đó đọc danh sách khách từ chính backend này (?action=list).
                 copyVerifyGuide(group) {
                     const item = (group && group.items && group.items[0]) || group || {};
@@ -1163,7 +1203,8 @@
 Email: ${email}
 Mã khách: ${code}
 
-Đăng nhập email + mật khẩu → khi hỏi mã 6 số, vào trang nhập email + mã khách → bấm "Lấy mã". Mã đổi mỗi 30 giây. Kẹt thì nhắn shop nha!`;
+Mở sẵn màn hình ChatGPT hỏi mã 6 số → vào trang nhập email + mã khách → bấm "Lấy mã" → dán ngay.
+⚡ Mã chỉ dùng được 45–60 giây, nhập nhanh nha. Mỗi khách được lấy mã ${this.gptQuota} lần. Kẹt thì nhắn shop!`;
                     navigator.clipboard.writeText(text).then(() => this.showToast(`✅ Đã copy hướng dẫn 2FA cho ${this.getItemUserName(item)} (${code})`));
                 },
 
@@ -2106,6 +2147,7 @@ ${rawClean}`;
                         const json = await res.json();
                         if (json && json.success && Array.isArray(json.data)) {
                             // Format all dates & calculate daysLeft client side as well
+                            this.loadGptUsage();
                             this.chatgptList = json.data.map(item => {
                                 const actDate = this.formatDateStr(item.activationDate);
                                 const expDate = this.formatDateStr(item.expiryDate || this.calculateExpiry(actDate, item.duration));

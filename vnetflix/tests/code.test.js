@@ -5,14 +5,21 @@ const SRC = fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf
 function makeEnv({ accounts = [], mails = [], gpt = { success: true, data: [] }, props = {} } = {}) {
   const store = new Map(), logs = [];
   const rows = [['Email', 'Mã', 'Ghi chú', 'Bật'], ...accounts];
+  const memSheet = data => ({ data,
+    getDataRange: () => ({ getValues: () => data.map(r => r.slice()) }),
+    appendRow: r => data.push(r.slice()),
+    getRange: (row, col, nr = 1, nc = 1) => (typeof row === 'string' ? { setFontWeight() {}, setNumberFormat() {} } : {
+      setValues: v => v.forEach((vr, i) => vr.forEach((x, j) => { (data[row - 1 + i] ||= [])[col - 1 + j] = x; })),
+      setValue: x => { (data[row - 1] ||= [])[col - 1] = x; } }),
+    setFrozenRows() {} });
+  const sheets = { 'Tài khoản': memSheet(rows), 'Nhật ký': memSheet(logs) };
   const ctx = {
     console,
     CacheService: { getScriptCache: () => ({ get: k => store.has(k) ? store.get(k) : null, put: (k, v) => store.set(k, v), remove: k => store.delete(k) }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => k === 'SHEET_ID' ? 'SHEET' : (props[k] ?? null), setProperty(k, v) { props[k] = v; } }) },
     UrlFetchApp: { fetch: () => { ctx.fetchCount = (ctx.fetchCount || 0) + 1; return { getContentText: () => JSON.stringify(gpt) }; } },
-    SpreadsheetApp: { openById: () => ({ getSheetByName: n => n === 'Tài khoản'
-      ? { getDataRange: () => ({ getValues: () => rows }) }
-      : { appendRow: r => logs.push(r) } }) },
+    SpreadsheetApp: { openById: () => ({ getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = memSheet([])) }) },
+    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     GmailApp: { search: (q) => { ctx.lastQuery = q; return [{ getMessages: () => mails.map(mkMsg) }]; } },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => ({ body: s }) }) },
     Utilities: { MacAlgorithm: { HMAC_SHA_1: 1 }, computeHmacSignature: (_, msg, key) => [...crypto.createHmac('sha1', Buffer.from(key.map(b => (b + 256) % 256))).update(Buffer.from(msg.map(b => (b + 256) % 256))).digest()].map(b => b > 127 ? b - 256 : b),
@@ -20,7 +27,7 @@ function makeEnv({ accounts = [], mails = [], gpt = { success: true, data: [] },
     Logger: { log() {} },
   };
   vm.createContext(ctx); vm.runInContext(SRC, ctx);
-  ctx._logs = logs;
+  ctx._logs = logs; ctx._sheets = sheets;
   return ctx;
 }
 const DKIM = 'mx.google.com; dkim=pass header.i=@netflix.com header.s=x; spf=pass';
@@ -183,13 +190,45 @@ t('gpt: sai mã / thiếu mã / email lạ / chưa cài khoá', () => {
   const c2 = makeEnv({ gpt: GPT });
   const r = c2.gptTotp_(G, 'KH-CAFARD-01'); eq(r.ok, false); if (r.code) throw new Error('lộ mã');
 });
-t('gpt: sai mã 5 lần → khoá; giới hạn 20 lần / 10 phút', () => {
+t('gpt: sai mã 5 lần → khoá; chặn spam 30 request / 10 phút', () => {
   const c = makeEnv({ gpt: GPT, props: P });
   for (let i = 0; i < 5; i++) c.gptTotp_(G, 'sai');
   eq(c.gptTotp_(G, 'KH-CAFARD-01').ok, false);
   const c2 = makeEnv({ gpt: GPT, props: P });
-  for (let i = 0; i < 20; i++) eq(c2.gptTotp_(G, 'KH-CAFARD-01').ok, true);
+  for (let i = 0; i < 30; i++) eq(c2.gptTotp_(G, 'KH-CAFARD-01').ok, true); // cùng 1 phiên 3 phút → không tốn lượt
   eq(c2.gptTotp_(G, 'KH-CAFARD-01').ok, false);
+});
+t('gpt lượt: trong 3 phút lấy lại không tốn lượt; hết 3 lượt thì chặn; mỗi khách đếm riêng', () => {
+  const c = makeEnv({ gpt: GPT, props: P });
+  const real = Date.now; let now = real();
+  vm.runInContext('Date', c).now = () => now;
+  try {
+    let r = c.gptTotp_(G, 'KH-CAFARD-01'); eq([r.ok, r.used, r.quota], [true, 1, 3]);
+    now += 60e3; r = c.gptTotp_(G, 'KH-CAFARD-01'); eq([r.used, r.sessionLeft], [1, 120]);
+    now += 121e3; eq(c.gptTotp_(G, 'KH-CAFARD-01').used, 2);
+    now += 181e3; eq(c.gptTotp_(G, 'KH-CAFARD-01').used, 3);
+    now += 100e3; eq(c.gptTotp_(G, 'KH-CAFARD-01').ok, true); // vẫn trong phiên lần 3
+    now += 81e3; r = c.gptTotp_(G, 'KH-CAFARD-01'); eq([r.ok, r.quotaOut, r.used], [false, true, 3]); if (r.code) throw new Error('lộ mã');
+    eq(c.gptTotp_(G, 'KH-HOANTRAN-01').used, 1);
+    const row = c._sheets['GPT lượt'].data.find(x => x[1] === 'kh-cafard-01'); eq([row[0], row[2], row[3]], [G, 'Cafard', 3]);
+  } finally { vm.runInContext('Date', c).now = real; }
+});
+t('gpt lượt: admin reset (đúng khoá) cấp lại lượt; cột Giới hạn riêng; sai khoá bị chặn', () => {
+  const c = makeEnv({ gpt: GPT, props: P });
+  const real = Date.now; let now = real(); vm.runInContext('Date', c).now = () => now;
+  try {
+    for (let i = 0; i < 3; i++) { c.gptTotp_(G, 'KH-CAFARD-01'); now += 181e3; }
+    eq(c.gptTotp_(G, 'KH-CAFARD-01').ok, false);
+    const bad = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({ action: 'gpt_reset', email: G, pin: 'KH-CAFARD-01', authToken: 'x' }) } }).body);
+    eq(bad.ok, false);
+    const ok = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({ action: 'gpt_reset', email: G, pin: 'kh-cafard-01', authToken: 'c74391ab-gpt-sec-2026' }) } }).body);
+    eq(ok.ok, true);
+    eq(c.gptTotp_(G, 'KH-CAFARD-01').used, 1);
+    const u = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({ action: 'gpt_usage', authToken: 'c74391ab-gpt-sec-2026' }) } }).body);
+    eq([u.ok, u.quota, u.usage[0].used, u.usage[0].pin], [true, 3, 1, 'kh-cafard-01']);
+    c._sheets['GPT lượt'].data.find(x => x[1] === 'kh-cafard-01')[4] = 5; now += 181e3;
+    eq(c.gptTotp_(G, 'KH-CAFARD-01').quota, 5);
+  } finally { vm.runInContext('Date', c).now = real; }
 });
 t('gpt: backend lỗi → báo lỗi, không lộ mã; danh sách được cache', () => {
   const c = makeEnv({ gpt: { success: false }, props: P });
@@ -200,7 +239,7 @@ t('gpt: backend lỗi → báo lỗi, không lộ mã; danh sách được cache
 t('doPost gpt_totp trả đúng hợp đồng', () => {
   const c = makeEnv({ gpt: GPT, props: P });
   const r = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({ action: 'gpt_totp', email: G, pin: 'KH-CAFARD-01' }) } }).body);
-  eq(Object.keys(r).sort(), ['code', 'name', 'ok', 'secondsLeft']);
+  eq(Object.keys(r).sort(), ['code', 'name', 'ok', 'quota', 'secondsLeft', 'sessionLeft', 'used']);
 });
 
 console.log(`\n${pass}/${pass + fail} đạt`);

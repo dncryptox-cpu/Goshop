@@ -18,7 +18,11 @@ var CFG = {
   SHEET_LOG: 'Nhật ký',
   // ChatGPT 2FA — danh sách khách lấy từ backend godnc.com/admin/chatgpt.html
   GPT_LIST_URL: 'https://script.google.com/macros/s/AKfycbySu9evgLmqMVKSc-Z1cKUIzcfqJH9_pEFDdzOERQ1yP8uLy1hvLqJgNRkOlwDJEOba/exec?action=list',
-  GPT_MAX_LOOKUPS: 20        // số lần lấy mã 2FA tối đa / email / 10 phút
+  GPT_MAX_LOOKUPS: 30,       // chặn spam: số request tối đa / email / 10 phút
+  GPT_QUOTA: 3,              // mỗi khách được lấy mã 3 LẦN, admin reset để cấp thêm
+  GPT_SESSION_S: 180,        // 1 lần = 3 phút: trong 3 phút trang tự đổi mã mới không tính thêm lần
+  SHEET_GPT: 'GPT lượt',
+  ADMIN_KEY: 'c74391ab-gpt-sec-2026' // trùng CHATGPT_API_KEY ở admin/chatgpt.html
 };
 
 // ───────────────────────── Web app ─────────────────────────
@@ -33,6 +37,10 @@ function doPost(e) {
   catch (err) { return json_({ ok: false, message: 'Yêu cầu không hợp lệ' }); }
   if (req.action === 'lookup') return json_(lookup_(req.email, req.pin));
   if (req.action === 'gpt_totp') return json_(gptTotp_(req.email, req.pin));
+  if (req.action === 'gpt_usage' || req.action === 'gpt_reset') {
+    if (req.authToken !== CFG.ADMIN_KEY) return json_({ ok: false, message: 'Sai khoá admin' });
+    return json_(req.action === 'gpt_usage' ? { ok: true, quota: CFG.GPT_QUOTA, usage: gptUsageAll_() } : gptReset_(req.email, req.pin));
+  }
   return json_({ ok: false, message: 'Yêu cầu không hợp lệ' });
 }
 
@@ -202,6 +210,7 @@ function setup() {
     a.getRange('B:B').setNumberFormat('@'); // giữ số 0 đầu mã khách
     a.setFrozenRows(1);
   }
+  if (!ss.getSheetByName(CFG.SHEET_GPT)) gptSheet_();
   var l = ss.getSheetByName(CFG.SHEET_LOG) || ss.insertSheet(CFG.SHEET_LOG);
   if (l.getLastRow() === 0) { l.appendRow(['Lúc', 'Email', 'Việc', 'Số kết quả']); l.setFrozenRows(1); }
   var def = ss.getSheetByName('Sheet1') || ss.getSheetByName('Trang tính1');
@@ -263,10 +272,67 @@ function gptTotp_(emailRaw, pinRaw) {
     log_(email, 'gpt: ' + pin + ' hết hạn', 0);
     return { ok: false, message: 'Gói của bạn đã hết hạn. Nhắn shop để gia hạn nhé.' };
   }
+  var name = active[0].name || '';
   var now = Date.now();
+  var q = gptUse_(email, pin, name, now);
+  if (!q.ok) {
+    log_(email, 'gpt hết lượt · ' + (name || pin), 0);
+    return { ok: false, quotaOut: true, used: q.used, quota: q.quota, message: 'Bạn đã dùng hết ' + q.quota + ' lần lấy mã. Nhắn shop để được cấp thêm lượt nhé.' };
+  }
   var t = totp_(secret, now);
-  log_(email, 'gpt 2fa · ' + (active[0].name || pin), 1);
-  return { ok: true, code: t.code, secondsLeft: t.secondsLeft, name: active[0].name || '' };
+  if (q.newSession) log_(email, 'gpt 2fa lần ' + q.used + '/' + q.quota + ' · ' + (name || pin), 1);
+  return { ok: true, code: t.code, secondsLeft: t.secondsLeft, name: name, used: q.used, quota: q.quota, sessionLeft: q.sessionLeft };
+}
+
+// ── Lượt lấy mã: tab "GPT lượt" — Email | Mã khách | Tên | Đã lấy | Giới hạn | Bắt đầu lần gần nhất | Reset lúc
+// Cột "Giới hạn" để trống = mặc định CFG.GPT_QUOTA; điền số để cấp riêng cho khách đó. Sửa "Đã lấy" = 0 cũng là reset.
+function gptSheet_() {
+  var ss = sheet_(), sh = ss.getSheetByName(CFG.SHEET_GPT);
+  if (!sh) {
+    sh = ss.insertSheet(CFG.SHEET_GPT);
+    sh.appendRow(['Email ChatGPT', 'Mã khách', 'Tên', 'Đã lấy', 'Giới hạn (trống = ' + CFG.GPT_QUOTA + ')', 'Bắt đầu lần gần nhất', 'Reset lúc']);
+    sh.getRange('A1:G1').setFontWeight('bold'); sh.setFrozenRows(1); sh.getRange('B:B').setNumberFormat('@');
+  }
+  return sh;
+}
+
+function gptUse_(email, pin, name, now) {
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var sh = gptSheet_(), rows = sh.getDataRange().getValues(), r = -1;
+    for (var i = 1; i < rows.length; i++) if (String(rows[i][0]).trim().toLowerCase() === email && String(rows[i][1]).trim().toLowerCase() === pin) { r = i; break; }
+    var row = r > 0 ? rows[r] : [email, pin, name, 0, '', '', ''];
+    var used = Number(row[3]) || 0, quota = Number(row[4]) || CFG.GPT_QUOTA;
+    var start = row[5] ? new Date(row[5]).getTime() : 0;
+    var inSession = start && now - start < CFG.GPT_SESSION_S * 1000 && used > 0;
+    if (inSession) return { ok: true, used: used, quota: quota, newSession: false, sessionLeft: Math.ceil((start + CFG.GPT_SESSION_S * 1000 - now) / 1000) };
+    if (used >= quota) return { ok: false, used: used, quota: quota };
+    used++;
+    if (r > 0) sh.getRange(r + 1, 3, 1, 4).setValues([[name || row[2], used, row[4], new Date(now)]]);
+    else sh.appendRow([email, pin, name, used, '', new Date(now), '']);
+    return { ok: true, used: used, quota: quota, newSession: true, sessionLeft: CFG.GPT_SESSION_S };
+  } finally { lock.releaseLock(); }
+}
+
+function gptUsageAll_() {
+  return gptSheet_().getDataRange().getValues().slice(1).filter(function (r) { return r[0]; }).map(function (r) {
+    return { email: String(r[0]).trim().toLowerCase(), pin: String(r[1]).trim().toLowerCase(), used: Number(r[3]) || 0, quota: Number(r[4]) || CFG.GPT_QUOTA, last: r[5] ? new Date(r[5]).toISOString() : '' };
+  });
+}
+
+function gptReset_(emailRaw, pinRaw) {
+  var email = String(emailRaw || '').trim().toLowerCase(), pin = String(pinRaw || '').trim().toLowerCase();
+  if (!email || !pin) return { ok: false, message: 'Thiếu email / mã khách' };
+  var lock = LockService.getScriptLock(); lock.waitLock(10000);
+  try {
+    var sh = gptSheet_(), rows = sh.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) if (String(rows[i][0]).trim().toLowerCase() === email && String(rows[i][1]).trim().toLowerCase() === pin) {
+      sh.getRange(i + 1, 4).setValue(0); sh.getRange(i + 1, 6).setValue(''); sh.getRange(i + 1, 7).setValue(new Date());
+      log_(email, 'gpt reset lượt · ' + pin, 0);
+      return { ok: true, used: 0, quota: Number(rows[i][4]) || CFG.GPT_QUOTA };
+    }
+    return { ok: true, used: 0, quota: CFG.GPT_QUOTA }; // chưa lấy lần nào
+  } finally { lock.releaseLock(); }
 }
 
 /** Đọc danh sách khách ChatGPT từ backend admin. Trả [{email, code, name, active}] hoặc null nếu lỗi. Cache 60s. */
