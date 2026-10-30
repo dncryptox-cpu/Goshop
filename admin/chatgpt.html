@@ -243,6 +243,10 @@
                                 <i data-lucide="sparkles" class="w-4 h-4 text-purple-200"></i>
                                 <span>Thêm / Gia Hạn AI (Batch)</span>
                             </button>
+                            <button @click="manageGptKeys()" class="px-4 py-2.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2" title="Thêm / đổi / xoá khoá 2FA của các tài khoản ChatGPT (cho godnc.com/vgpt)">
+                                <i data-lucide="key-round" class="w-4 h-4"></i>
+                                <span>Khoá 2FA</span>
+                            </button>
                             <button @click="buildChatgptList()" class="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2" :disabled="chatgptLoading">
                                 <i data-lucide="refresh-cw" class="w-4 h-4" :class="chatgptLoading ? 'animate-spin' : ''"></i>
                                 <span x-text="chatgptLoading ? 'Đang Tải...' : 'Tải Lại'"></span>
@@ -1191,6 +1195,29 @@
                         this.gptUsage = { ...this.gptUsage, [email + '|' + pin]: { email, pin, used: 0, quota: j.quota } };
                         this.showToast(`🔄 Đã reset lượt 2FA cho ${this.getItemUserName(item)}`);
                     } catch (e) { alert('Lỗi reset: ' + e.message); }
+                },
+
+                async _verifyPost(body) {
+                    const res = await fetch(this.CONFIG.VERIFY_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, authToken: this.CONFIG.CHATGPT_API_KEY }) });
+                    return res.json();
+                },
+                // Thêm / đổi / xoá khoá 2FA cho từng email tài khoản ChatGPT. Khoá lưu trong Apps Script, không bao giờ hiện lại.
+                async manageGptKeys() {
+                    try {
+                        const k = await this._verifyPost({ action: 'gpt_keys' });
+                        if (!k.ok) return alert('❌ ' + (k.message || 'Không tải được danh sách'));
+                        const list = k.emails.length ? k.emails.map(e => '• ' + e).join('\n') : '(chưa có)';
+                        const accounts = [...new Set((this.chatgptList || []).map(i => String(i.rootEmail || i.email || '').trim().toLowerCase()).filter(Boolean))];
+                        const noKey = accounts.filter(e => !k.emails.includes(e));
+                        const email = prompt(`Tài khoản đã có khoá 2FA:\n${list}` + (noKey.length ? `\n\nĐang có khách nhưng CHƯA có khoá:\n${noKey.map(e => '• ' + e).join('\n')}` : '') + `\n\nNhập email tài khoản ChatGPT cần thêm / đổi / xoá khoá:`, noKey[0] || '');
+                        if (!email) return;
+                        const secret = prompt(`Dán khoá 2FA (chuỗi chữ dạng JBSW Y3DP …) cho ${email.trim()}.\nĐể TRỐNG = xoá khoá của tài khoản này.`);
+                        if (secret === null) return;
+                        if (!secret.trim() && !confirm(`Xoá khoá 2FA của ${email.trim()}? Khách của tài khoản này sẽ không tự lấy mã được nữa.`)) return;
+                        const r = await this._verifyPost({ action: 'gpt_key_set', email, secret });
+                        if (!r.ok) return alert('❌ ' + (r.message || 'Lỗi'));
+                        alert(r.deleted ? `🗑️ Đã xoá khoá của ${email.trim()}` : `✅ Đã lưu khoá cho ${email.trim()}.\n\nMã hiện tại: ${r.code}\nSo với app Authenticator — phải trùng (hoặc lệch 1 nhịp 30s).`);
+                    } catch (e) { alert('Lỗi: ' + e.message); }
                 },
 
                 // Tin nhắn hướng dẫn khách tự lấy mã 2FA tại godnc.com/vgpt. Trang đó đọc danh sách khách từ chính backend này (?action=list).

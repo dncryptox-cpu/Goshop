@@ -37,9 +37,12 @@ function doPost(e) {
   catch (err) { return json_({ ok: false, message: 'Yêu cầu không hợp lệ' }); }
   if (req.action === 'lookup') return json_(lookup_(req.email, req.pin));
   if (req.action === 'gpt_totp') return json_(gptTotp_(req.email, req.pin));
-  if (req.action === 'gpt_usage' || req.action === 'gpt_reset') {
+  if (/^gpt_(usage|reset|keys|key_set)$/.test(req.action)) {
     if (req.authToken !== CFG.ADMIN_KEY) return json_({ ok: false, message: 'Sai khoá admin' });
-    return json_(req.action === 'gpt_usage' ? { ok: true, quota: CFG.GPT_QUOTA, usage: gptUsageAll_() } : gptReset_(req.email, req.pin));
+    if (req.action === 'gpt_usage') return json_({ ok: true, quota: CFG.GPT_QUOTA, usage: gptUsageAll_() });
+    if (req.action === 'gpt_reset') return json_(gptReset_(req.email, req.pin));
+    if (req.action === 'gpt_keys') return json_({ ok: true, emails: gptKeyEmails_() });
+    return json_(gptKeySet_(req.email, req.secret));
   }
   return json_({ ok: false, message: 'Yêu cầu không hợp lệ' });
 }
@@ -236,7 +239,7 @@ function testLookup() {
 }
 
 // ───────────────────────── ChatGPT 2FA ─────────────────────────
-// Khoá bí mật 2FA lưu ở Script Properties: TOTP_<email> (không nằm trong sheet / trang). Đặt bằng hàm setGptTotp().
+// Khoá bí mật 2FA lưu ở Script Properties: TOTP_<email> (không nằm trong sheet / trang). Thêm ở admin → nút "Khoá 2FA".
 
 function gptTotp_(emailRaw, pinRaw) {
   var email = String(emailRaw || '').trim().toLowerCase();
@@ -386,13 +389,23 @@ function base32_(s) {
   return out;
 }
 
-/** Chạy trong trình soạn: sửa email + khoá rồi bấm Chạy. Log in ra mã hiện tại để so với app Authenticator. Chạy xong XOÁ khoá khỏi code. */
-function setGptTotp() {
-  var email = 'dncethxyz@gmail.com';
-  var secret = 'DAN_KHOA_2FA_VAO_DAY';
-  if (/DAN_KHOA/.test(secret)) throw new Error('Chưa dán khoá 2FA');
-  PropertiesService.getScriptProperties().setProperty('TOTP_' + email.toLowerCase(), secret.replace(/\s/g, '').toUpperCase());
-  Logger.log('Đã lưu. Mã hiện tại: ' + totp_(secret, Date.now()).code + ' — so với app Authenticator phải trùng.');
+// ── Khoá 2FA theo từng tài khoản ChatGPT (nhiều email). Thêm / đổi / xoá ở admin/chatgpt.html → nút "Khoá 2FA".
+// Lưu ở Script Properties: TOTP_<email>. Không bao giờ trả khoá ra ngoài, chỉ trả danh sách email + mã hiện tại để đối chiếu.
+function gptKeyEmails_() {
+  return Object.keys(PropertiesService.getScriptProperties().getProperties())
+    .filter(function (k) { return k.indexOf('TOTP_') === 0; }).map(function (k) { return k.slice(5); }).sort();
+}
+
+function gptKeySet_(emailRaw, secretRaw) {
+  var email = String(emailRaw || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, message: 'Email không hợp lệ' };
+  var props = PropertiesService.getScriptProperties();
+  var secret = String(secretRaw || '').replace(/[\s-]/g, '').toUpperCase();
+  if (!secret) { props.deleteProperty('TOTP_' + email); log_(email, 'gpt xoá khoá 2FA', 0); return { ok: true, deleted: true, emails: gptKeyEmails_() }; }
+  if (!/^[A-Z2-7]+=*$/.test(secret) || secret.replace(/=/g, '').length < 16) return { ok: false, message: 'Khoá 2FA không đúng dạng (chữ A–Z và số 2–7, tối thiểu 16 ký tự)' };
+  props.setProperty('TOTP_' + email, secret.replace(/=/g, ''));
+  log_(email, 'gpt lưu khoá 2FA', 0);
+  return { ok: true, code: totp_(secret, Date.now()).code, emails: gptKeyEmails_() };
 }
 
 // ───────────────────────── tiện ích ─────────────────────────

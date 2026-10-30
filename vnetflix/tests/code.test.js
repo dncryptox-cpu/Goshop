@@ -16,7 +16,7 @@ function makeEnv({ accounts = [], mails = [], gpt = { success: true, data: [] },
   const ctx = {
     console,
     CacheService: { getScriptCache: () => ({ get: k => store.has(k) ? store.get(k) : null, put: (k, v) => store.set(k, v), remove: k => store.delete(k) }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: k => k === 'SHEET_ID' ? 'SHEET' : (props[k] ?? null), setProperty(k, v) { props[k] = v; } }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => k === 'SHEET_ID' ? 'SHEET' : (props[k] ?? null), setProperty(k, v) { props[k] = v; }, deleteProperty(k) { delete props[k]; }, getProperties: () => ({ ...props }) }) },
     UrlFetchApp: { fetch: () => { ctx.fetchCount = (ctx.fetchCount || 0) + 1; return { getContentText: () => JSON.stringify(gpt) }; } },
     SpreadsheetApp: { openById: () => ({ getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = memSheet([])) }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
@@ -240,6 +240,24 @@ t('doPost gpt_totp trả đúng hợp đồng', () => {
   const c = makeEnv({ gpt: GPT, props: P });
   const r = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({ action: 'gpt_totp', email: G, pin: 'KH-CAFARD-01' }) } }).body);
   eq(Object.keys(r).sort(), ['code', 'name', 'ok', 'quota', 'secondsLeft', 'sessionLeft', 'used']);
+});
+
+t('khoá 2FA nhiều tài khoản: admin thêm / đổi / xoá, không lộ khoá, mỗi email dùng khoá riêng', () => {
+  const G2 = 'gpt2@gmail.com';
+  const data = { success: true, data: [...GPT.data, { rootEmail: G2, userCode: 'KH-B-01', expiryDate: ddmmyyyy(fut) }] };
+  const c = makeEnv({ gpt: data });
+  const post = b => JSON.parse(c.doPost({ postData: { contents: JSON.stringify({ authToken: 'c74391ab-gpt-sec-2026', ...b }) } }).body);
+  eq(post({ action: 'gpt_key_set', email: G, secret: 'abc', authToken: 'x' }).ok, false);
+  eq(post({ action: 'gpt_key_set', email: G, secret: 'abc' }).ok, false);
+  let r = post({ action: 'gpt_key_set', email: ' DncEthxyz@gmail.com ', secret: 'gezd gnbv gy3t qojq gezd gnbv gy3t qojq' });
+  eq([r.ok, /^\d{6}$/.test(r.code), r.emails], [true, true, [G]]);
+  eq(c.gptTotp_(G2, 'KH-B-01').ok, false); // G2 chưa có khoá
+  post({ action: 'gpt_key_set', email: G2, secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP' });
+  const k = post({ action: 'gpt_keys' }); eq(k.emails, [G, G2]); if (JSON.stringify(k).includes('JBSW')) throw new Error('lộ khoá');
+  const a = c.gptTotp_(G, 'KH-CAFARD-01').code, b = c.gptTotp_(G2, 'KH-B-01').code;
+  eq([a, b], [c.totp_(RFC, Date.now()).code, c.totp_('JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP', Date.now()).code]);
+  eq(c.gptTotp_(G2, 'KH-CAFARD-01').ok, false); // mã khách của tài khoản khác không dùng được
+  r = post({ action: 'gpt_key_set', email: G2, secret: '' }); eq([r.ok, r.emails], [true, [G]]);
 });
 
 console.log(`\n${pass}/${pass + fail} đạt`);
