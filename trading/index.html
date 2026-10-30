@@ -267,6 +267,11 @@
             var(--canvas); background-attachment: fixed; }
         
 
+        /* Hộp khoá: chữ mờ giả, gợi tò mò */
+        .ghost { display: block; height: 10px; border-radius: 6px; background: rgba(255,255,255,0.10); filter: blur(1.5px); }
+        .lock-card { position: relative; overflow: hidden; }
+        .lock-card::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(120deg, transparent 40%, rgba(151,252,228,0.06) 50%, transparent 60%); }
+        .lock-cover { filter: blur(14px) saturate(120%); transform: scale(1.15); opacity: .55; }
     </style>
 </head>
 <body class="min-h-screen font-sans" x-data="app()" x-init="init()" @paste.window="onPaste($event)" @keydown.window="onKey($event)">
@@ -279,10 +284,10 @@
             <span class="font-semibold text-[15px] whitespace-nowrap">Trading OS</span>
         </button>
         <nav class="hidden md:flex items-center gap-1 mx-auto">
-            <a href="#bang-tin" @click="closeReader(); feedFilter('ARTICLE')" class="lp-link">Bài viết</a>
-            <a href="#bang-tin" @click="closeReader(); feedFilter('TRADES')" class="lp-link">Lệnh chia sẻ</a>
-            <a href="#cach-dung" @click="closeReader()" class="lp-link">Cách dùng</a>
-            <a href="#hoi-dap" @click="closeReader()" class="lp-link">Hỏi đáp</a>
+            <button @click="guestTab('journal')" class="lp-link">Nhật ký</button>
+            <button @click="guestTab('backtest')" class="lp-link">Backtest</button>
+            <button @click="guestTab('resources')" class="lp-link">Tài nguyên</button>
+            <button @click="guestTab('feed')" class="lp-link">Cộng đồng</button>
             <a href="#hoi-vien" class="lp-link">Hội viên</a>
         </nav>
         <div class="flex items-center gap-2 ml-auto md:ml-0">
@@ -290,6 +295,13 @@
             <button @click="openLogin(true)" class="btn btn-primary !py-2 !px-4 text-[14px] whitespace-nowrap max-sm:!hidden">Tạo tài khoản</button>
         </div>
     </div>
+    <nav class="md:hidden flex items-center gap-1 overflow-x-auto mt-2 px-1" style="scrollbar-width:none">
+        <button @click="guestTab('journal')" class="lp-link whitespace-nowrap !text-[14px]">Nhật ký</button>
+        <button @click="guestTab('backtest')" class="lp-link whitespace-nowrap !text-[14px]">Backtest</button>
+        <button @click="guestTab('resources')" class="lp-link whitespace-nowrap !text-[14px]">Tài nguyên</button>
+        <button @click="guestTab('feed')" class="lp-link whitespace-nowrap !text-[14px]">Cộng đồng</button>
+        <a href="#hoi-vien" class="lp-link whitespace-nowrap !text-[14px]">Hội viên</a>
+    </nav>
 </header>
 
 <!-- ═════════════ TRANG CHỦ CÔNG KHAI — phần đầu ═════════════ -->
@@ -361,7 +373,49 @@
         </div>
     </section>
 
-    <div id="bang-tin" class="lp-wrap pt-24 md:pt-32 text-center scroll-mt-20">
+    <section id="tai-nguyen" class="lp-wrap pt-24 md:pt-32 scroll-mt-24">
+        <div class="text-center">
+            <span class="lp-tag">Tài nguyên</span>
+            <h2 class="lp-h2 mt-5">Công cụ mình đang dùng</h2>
+            <p class="mt-4 text-[17px] text-ink-2">Mục có ổ khoá dành cho hội viên.</p>
+        </div>
+        <div class="max-w-4xl mx-auto mt-10 space-y-6">
+            <template x-for="g in resGroups" :key="g.name">
+            <section class="space-y-3 text-left">
+                <h2 class="title-sm" x-text="g.name"></h2>
+                <div class="grid sm:grid-cols-2 gap-3">
+                    <template x-for="r in g.items" :key="r.id">
+                        <div>
+                            <template x-if="!r._locked">
+                                <div class="card p-4 flex gap-3 h-full">
+                                    <a :href="r.url || null" target="_blank" rel="noopener" class="flex-1 min-w-0 space-y-1" :class="r.url ? '' : 'pointer-events-none'">
+                                        <div class="flex items-center gap-2 flex-wrap"><span class="font-semibold" x-text="r.title"></span><span x-show="r.vip" class="chip chip-blue">Hội viên</span></div>
+                                        <p x-show="r.description" class="text-[14px] text-ink-2 leading-relaxed" x-text="r.description"></p>
+                                        <p x-show="r.url" class="caption truncate" x-text="hostOf(r.url)"></p>
+                                    </a>
+                                    <button x-show="isAdmin" @click="openResForm(r)" class="btn btn-gray !p-2 self-start" title="Sửa"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                                </div>
+                            </template>
+                            <template x-if="r._locked">
+                                <button @click="openGate('res', r)" class="card lock-card p-4 flex gap-3 w-full h-full text-left">
+                                    <span class="w-9 h-9 rounded-xl bg-accent-tint text-accent grid place-items-center shrink-0"><i data-lucide="lock" class="w-4 h-4"></i></span>
+                                    <span class="flex-1 min-w-0 space-y-2">
+                                        <span class="flex items-center gap-2 flex-wrap"><span class="font-semibold" x-text="r.title"></span><span class="chip chip-blue">Hội viên</span></span>
+                                        <span class="ghost w-11/12"></span><span class="ghost w-2/3"></span>
+                                        <span class="caption block text-accent">Mở khoá trọn đời · đang miễn phí</span>
+                                    </span>
+                                </button>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </section>
+        </template>
+            <p x-show="res.loaded && !res.items.length && !res.teasers.length" class="caption text-center">Mình đang cập nhật.</p>
+        </div>
+    </section>
+
+    <div id="bang-tin" class="lp-wrap pt-24 md:pt-32 text-center scroll-mt-24">
         <span class="lp-tag">Bảng tin</span>
         <h2 class="lp-h2 mt-5">Bài viết và lệnh mới nhất</h2>
         <p class="mt-4 text-[17px] text-ink-2">Bài chiến lược của mình và lệnh thật anh em trader chia sẻ công khai.</p>
@@ -741,11 +795,6 @@
             </div>
             <button x-show="isAdmin" @click="openResForm()" class="btn btn-primary !py-2 !px-3 text-[14px]"><i data-lucide="plus" class="w-4 h-4"></i><span>Thêm</span></button>
         </div>
-        <button x-show="res.locked > 0 && !isMember" @click="openMemberPage()" class="card w-full p-4 flex items-center gap-3 text-left">
-            <span class="w-10 h-10 rounded-xl bg-accent-tint text-accent grid place-items-center shrink-0"><i data-lucide="lock" class="w-5 h-5"></i></span>
-            <span class="flex-1 min-w-0"><span class="font-semibold block" x-text="res.locked + ' tài nguyên chỉ dành cho hội viên'"></span><span class="caption">Xem cách trở thành hội viên trọn đời (đang miễn phí)</span></span>
-            <i data-lucide="chevron-right" class="w-5 h-5 text-ink-3"></i>
-        </button>
         <p x-show="!res.loaded" class="caption py-10 text-center">Đang tải…</p>
         <div x-show="res.loaded && !res.items.length" class="card p-8 text-center">
             <div class="w-14 h-14 rounded-2xl bg-accent-tint text-accent flex items-center justify-center mx-auto"><i data-lucide="library-big" class="w-7 h-7"></i></div>
@@ -753,17 +802,31 @@
             <p class="text-[15px] text-ink-2 mt-2" x-text="isAdmin ? 'Bấm Thêm để đăng tài nguyên đầu tiên.' : 'Mình sẽ cập nhật sớm.'"></p>
         </div>
         <template x-for="g in resGroups" :key="g.name">
-            <section class="space-y-3">
+            <section class="space-y-3 text-left">
                 <h2 class="title-sm" x-text="g.name"></h2>
                 <div class="grid sm:grid-cols-2 gap-3">
                     <template x-for="r in g.items" :key="r.id">
-                        <div class="card p-4 flex gap-3">
-                            <a :href="r.url || null" target="_blank" rel="noopener" class="flex-1 min-w-0 space-y-1" :class="r.url ? '' : 'pointer-events-none'">
-                                <div class="flex items-center gap-2 flex-wrap"><span class="font-semibold" x-text="r.title"></span><span x-show="r.vip" class="chip chip-blue">Hội viên</span></div>
-                                <p x-show="r.description" class="text-[14px] text-ink-2 leading-relaxed" x-text="r.description"></p>
-                                <p x-show="r.url" class="caption truncate" x-text="hostOf(r.url)"></p>
-                            </a>
-                            <button x-show="isAdmin" @click="openResForm(r)" class="btn btn-gray !p-2 self-start" title="Sửa"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                        <div>
+                            <template x-if="!r._locked">
+                                <div class="card p-4 flex gap-3 h-full">
+                                    <a :href="r.url || null" target="_blank" rel="noopener" class="flex-1 min-w-0 space-y-1" :class="r.url ? '' : 'pointer-events-none'">
+                                        <div class="flex items-center gap-2 flex-wrap"><span class="font-semibold" x-text="r.title"></span><span x-show="r.vip" class="chip chip-blue">Hội viên</span></div>
+                                        <p x-show="r.description" class="text-[14px] text-ink-2 leading-relaxed" x-text="r.description"></p>
+                                        <p x-show="r.url" class="caption truncate" x-text="hostOf(r.url)"></p>
+                                    </a>
+                                    <button x-show="isAdmin" @click="openResForm(r)" class="btn btn-gray !p-2 self-start" title="Sửa"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                                </div>
+                            </template>
+                            <template x-if="r._locked">
+                                <button @click="openGate('res', r)" class="card lock-card p-4 flex gap-3 w-full h-full text-left">
+                                    <span class="w-9 h-9 rounded-xl bg-accent-tint text-accent grid place-items-center shrink-0"><i data-lucide="lock" class="w-4 h-4"></i></span>
+                                    <span class="flex-1 min-w-0 space-y-2">
+                                        <span class="flex items-center gap-2 flex-wrap"><span class="font-semibold" x-text="r.title"></span><span class="chip chip-blue">Hội viên</span></span>
+                                        <span class="ghost w-11/12"></span><span class="ghost w-2/3"></span>
+                                        <span class="caption block text-accent">Mở khoá trọn đời · đang miễn phí</span>
+                                    </span>
+                                </button>
+                            </template>
                         </div>
                     </template>
                 </div>
@@ -809,8 +872,27 @@
 
     <template x-for="p in feed.posts" :key="p.id">
         <div>
+            <!-- Hộp khoá: bài hội viên / bài cần đăng nhập -->
+            <template x-if="p._locked">
+                <article @click="lockedPost(p)" class="card lock-card overflow-hidden cursor-pointer">
+                    <div x-show="p.cover" class="overflow-hidden border-b border-line aspect-[2/1]"><img :src="p.cover || null" loading="lazy" class="w-full h-full object-cover lock-cover" alt=""></div>
+                    <div class="p-5 space-y-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <span class="caption" x-text="(p.author || 'DNC') + ' · ' + timeAgo(p.created_at)"></span>
+                            <span class="chip chip-blue"><i data-lucide="lock" class="w-3 h-3"></i><span x-text="p.visibility === 'vip' ? 'Hội viên' : 'Có tài khoản'"></span></span>
+                        </div>
+                        <h2 class="title-md" x-text="p.kind === 'ARTICLE' ? p.title : (p.pair + (p.direction ? ' ' + (p.direction === 'SHORT' ? 'Short' : 'Long') : '') + ' · ' + (p.kind === 'BT' ? 'lệnh backtest' : 'lệnh thật'))"></h2>
+                        <div class="space-y-2"><span class="ghost w-full"></span><span class="ghost w-11/12"></span><span class="ghost w-3/5"></span></div>
+                        <div class="well p-3 flex items-center gap-3">
+                            <span class="w-8 h-8 rounded-lg bg-accent-tint text-accent grid place-items-center shrink-0"><i data-lucide="lock" class="w-4 h-4"></i></span>
+                            <span class="flex-1 text-[14px]" x-text="p.visibility === 'vip' ? 'Dành cho hội viên — mở khoá trọn đời, đang miễn phí' : 'Đăng nhập để đọc — tạo tài khoản miễn phí'"></span>
+                            <i data-lucide="chevron-right" class="w-4 h-4 text-ink-3"></i>
+                        </div>
+                    </div>
+                </article>
+            </template>
             <!-- Bài viết dài -->
-            <template x-if="p.kind === 'ARTICLE'">
+            <template x-if="!p._locked && p.kind === 'ARTICLE'">
                 <article @click="openReader(p)" class="card overflow-hidden cursor-pointer transition-colors hover:border-[#3A3D45]">
                     <img x-show="p.cover" :src="p.cover" loading="lazy" class="w-full aspect-[2/1] object-cover bg-fill border-b border-line" alt="">
                     <div class="p-5 space-y-2.5">
@@ -832,7 +914,7 @@
                 </article>
             </template>
             <!-- Lệnh chia sẻ -->
-            <template x-if="p.kind !== 'ARTICLE'">
+            <template x-if="!p._locked && p.kind !== 'ARTICLE'">
                 <article class="card overflow-hidden">
                     <div class="flex items-center gap-3 px-4 pt-4">
                         <div class="w-10 h-10 rounded-full flex items-center justify-center font-semibold text-canvas shrink-0" :style="`background:${avatarColor(p.author)}`" x-text="(p.author || '?').slice(0, 1).toUpperCase()"></div>
@@ -1433,6 +1515,50 @@
     </template>
 </div>
 
+<!-- ═════════════ CỔNG HỘI VIÊN (bấm hộp khoá) ═════════════ -->
+<div x-show="gate" x-cloak class="fixed inset-0 z-[46] overflow-y-auto" style="background: inherit" id="gate">
+    <template x-if="gate">
+        <div class="max-w-xl mx-auto px-5 pt-6 pb-20">
+            <div class="flex items-center justify-between gap-3">
+                <button @click="closeGate()" class="flex items-center gap-1.5 text-[15px] min-w-0">
+                    <i data-lucide="chevron-left" class="w-4 h-4 text-accent shrink-0"></i>
+                    <span class="text-accent shrink-0" x-text="gate.from"></span><span class="text-ink-3">·</span><span class="text-ink-2 truncate" x-text="gate.title"></span>
+                </button>
+            </div>
+            <div class="text-center mt-14 font-mono text-[12px] tracking-[0.3em] text-ink-3">DNC TRADING · HỘI VIÊN</div>
+            <div class="card mt-6 p-6 sm:p-8">
+                <h1 class="text-[28px] sm:text-[32px] leading-tight font-semibold tracking-tight">Trang riêng cho<br>anh em Hội Viên</h1>
+                <p class="mt-4 text-[16px] text-ink-2 leading-relaxed">Mình để <b class="text-ink" x-text="gate.title"></b> dành riêng cho anh em Hội Viên. <span x-text="isLocked ? 'Anh em Hội Viên đăng nhập để xem nhé.' : (isMember ? '' : 'Tài khoản của bạn chưa là Hội Viên.')"></span></p>
+
+                <!-- Khách: đăng nhập ngay tại đây -->
+                <template x-if="isLocked">
+                    <form @submit.prevent="gateLogin()" class="mt-7 space-y-4">
+                        <div><label class="label">Tên đăng nhập</label><input x-model="inUser" required autocomplete="username" autocapitalize="none" spellcheck="false" class="field"></div>
+                        <div><label class="label">Mật khẩu</label><input x-model="inPass" type="password" required autocomplete="current-password" class="field"></div>
+                        <p x-show="loginErr" class="text-[13px] text-down" x-text="loginErr"></p>
+                        <button type="submit" class="btn btn-primary w-full !py-3.5 !rounded-xl text-[16px]" :disabled="busy" x-text="busy ? 'Đang vào…' : (gate.kind === 'res' ? 'Vào xem tài nguyên' : 'Vào đọc bài')"></button>
+                    </form>
+                </template>
+                <!-- Đã đăng nhập nhưng chưa là hội viên -->
+                <template x-if="!isLocked && !isMember">
+                    <div class="mt-7 space-y-4">
+                        <div class="well p-4 flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-full grid place-items-center font-semibold text-canvas text-[14px] shrink-0" :style="`background:${avatarColor(username)}`" x-text="(username || '?').slice(0, 1).toUpperCase()"></div>
+                            <div class="flex-1 min-w-0"><div class="font-semibold" x-text="'@' + username"></div><div class="caption">Tài khoản thường</div></div>
+                        </div>
+                        <a href="https://t.me/dnc1m" target="_blank" rel="noopener" class="btn btn-primary w-full !py-3.5 !rounded-xl text-[16px]"><i data-lucide="send" class="w-4 h-4"></i> Nhắn mình để được cấp Hội Viên</a>
+                    </div>
+                </template>
+
+                <div class="border-t border-line mt-8 pt-7 text-center">
+                    <p class="text-[16px] text-ink-2 leading-relaxed">Chưa là Hội Viên? Anh em cũng muốn xem trang này thì tìm hiểu thêm nhé.</p>
+                    <button @click="gate = null; openMemberPage()" class="btn mt-5 !px-6 !py-3 !rounded-xl border border-accent text-accent hover:bg-accent-tint">Tìm hiểu Hội Viên →</button>
+                </div>
+            </div>
+        </div>
+    </template>
+</div>
+
 <!-- ═════════════ TRANG HỘI VIÊN (#hoi-vien) ═════════════ -->
 <div x-show="memberPage" x-cloak class="fixed inset-0 z-[45] overflow-y-auto" style="background: inherit" id="member-page">
     <div class="sticky top-0 z-10 px-3 pt-3">
@@ -1606,8 +1732,8 @@
         return {
             TABS, SLOTS,
             booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false, isMember: false,
-            jView: 'list', memberPage: false,
-            res: { items: [], loaded: false, locked: 0, form: null },
+            jView: 'list', memberPage: false, gate: null,
+            res: { items: [], teasers: [], loaded: false, locked: 0, form: null },
             mem: { open: false, list: [], q: '', filter: 'ALL', loading: false },
             loginOpen: false, loginHint: '', reader: null, art: null,
             inUser: '', inPass: '', inPass2: '', loginErr: '', signupMode: false,
@@ -1646,7 +1772,7 @@
                     const { data: { session } } = await sb.auth.getSession();
                     if (session) await this.applySession(session);
                 } catch (e) { console.warn('Phiên:', e.message); }
-                if (this.isLocked) { this.feed.filter = 'ALL'; this.fromHash(); if (!this.feed.loaded) this.loadFeed(true); }
+                if (this.isLocked) { this.feed.filter = 'ALL'; this.fromHash(); if (!this.feed.loaded) this.loadFeed(true); if (!this.res.loaded) this.loadResources(); }
                 this.booting = false;
                 this.icons();
             },
@@ -1667,7 +1793,7 @@
                 this.gemini = p.gemini_api_key || '';
                 this.isAdmin = !!p.is_admin;
                 this.isMember = !!(p.is_member || p.is_admin);
-                Object.assign(this.res, { items: [], loaded: false, locked: 0 });
+                Object.assign(this.res, { items: [], teasers: [], loaded: false, locked: 0 });
                 this.isLocked = false;
                 this.loginOpen = false;
                 // bảng tin công khai → tải lại theo quyền thành viên
@@ -1742,6 +1868,40 @@
                 this.icons();
             },
             openMemberPage() { location.hash = 'hoi-vien'; },
+            lockedPost(p) {
+                if (p.visibility === 'members' && this.isLocked) return this.openLogin(false, 'Đăng nhập để đọc bài này');
+                this.openGate('post', p);
+            },
+            openGate(kind, it) {
+                this.loginErr = '';
+                this.gate = { kind, id: it.id, from: kind === 'res' ? 'Tài nguyên' : 'Cộng đồng',
+                    title: kind === 'res' ? it.title : (it.kind === 'ARTICLE' ? it.title : `${it.pair} ${it.direction === 'SHORT' ? 'Short' : 'Long'}`) };
+                this.$nextTick(() => { document.getElementById('gate')?.scrollTo(0, 0); this.icons(); });
+            },
+            closeGate() { this.gate = null; this.icons(); },
+            async gateLogin() {
+                await this.login();
+                if (this.isLocked || !this.gate) return;
+                if (!this.isMember) return this.icons();
+                const g = this.gate; this.gate = null;
+                if (g.kind === 'post') this.openReaderById(g.id);
+                else { this.go('resources'); }
+            },
+            guestTab(t) {
+                this.closeReader();
+                if (t === 'journal') return this.openLogin(true, 'Tạo tài khoản miễn phí để ghi Nhật ký giao dịch');
+                if (t === 'backtest') return this.openLogin(true, 'Tạo tài khoản miễn phí để backtest 100 lệnh');
+                const el = document.getElementById(t === 'resources' ? 'tai-nguyen' : 'bang-tin');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+            },
+            withTeasers(real) {
+                const F = this.feed, f = F.filter;
+                const last = real.length ? real[real.length - 1].created_at : null;
+                const ok = t => (f === 'ALL' || (f === 'ARTICLE' && t.kind === 'ARTICLE') || (f === 'TRADES' && t.kind !== 'ARTICLE') || f === t.kind)
+                    && (F.end || !last || t.created_at >= last);
+                return [...real, ...(f === 'MINE' ? [] : (F.teasers || []).filter(ok))]
+                    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+            },
             closeMemberPage() {
                 this.memberPage = false;
                 if (this.isLocked) history.replaceState(null, '', location.pathname + location.search);
@@ -1758,17 +1918,19 @@
             // ═════════════ TÀI NGUYÊN ═════════════
             async loadResources() {
                 try {
-                    const [{ data, error }, lk] = await Promise.all([
+                    const [{ data, error }, tz] = await Promise.all([
                         sb.from('resources').select('*').order('category').order('sort').order('created_at', { ascending: false }),
-                        sb.rpc('resources_locked')]);
+                        sb.rpc('resources_teaser')]);
                     if (error) throw error;
-                    this.res.items = data || []; this.res.locked = Number(lk.data) || 0;
+                    this.res.items = data || [];
+                    this.res.teasers = tz.error ? [] : (tz.data || []).map(r => ({ ...r, vip: true, _locked: true }));
+                    this.res.locked = this.res.teasers.length;
                 } catch (e) { this.showToast('Không tải được tài nguyên: ' + e.message); }
                 this.res.loaded = true; this.icons();
             },
             get resGroups() {
                 const m = new Map();
-                for (const r of this.res.items) { if (!m.has(r.category)) m.set(r.category, []); m.get(r.category).push(r); }
+                for (const r of [...this.res.items, ...this.res.teasers]) { if (!m.has(r.category)) m.set(r.category, []); m.get(r.category).push(r); }
                 return [...m].map(([name, items]) => ({ name, items }));
             },
             openResForm(r) {
@@ -2303,7 +2465,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
             },
 
             // ═════════════ BẢNG TIN (công khai + thành viên) ═════════════
-            get tickerPosts() { return this.feed.posts.filter(p => p.kind !== 'ARTICLE' && p.pair).slice(0, 12); },
+            get tickerPosts() { return this.feed.posts.filter(p => !p._locked && p.kind !== 'ARTICLE' && p.pair).slice(0, 12); },
             DEMO100: 'wlwwlblwlllwwlwbllwwlwlwlbwllwwlllwlwwlwlwlbwwllwlwwlllwwlwlw'.split('').concat(Array(39).fill('')),
             get feedFilters() {
                 return this.isLocked ? [['ALL', 'Tất cả'], ['ARTICLE', 'Bài viết'], ['TRADES', 'Lệnh']]
@@ -2323,8 +2485,9 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     if (this.isLocked) q = q.eq('visibility', 'public');
                     const { data, error } = await q.range(from, from + size - 1);
                     if (error) throw error;
-                    F.posts = reset ? data : [...F.posts, ...data];
+                    if (reset) { const tz = await sb.rpc('posts_teaser'); F.teasers = tz.error ? [] : (tz.data || []).map(x => ({ ...x, _locked: true })); }
                     F.end = data.length < size;
+                    F.posts = this.withTeasers(reset ? data : [...F.posts.filter(x => !x._locked), ...data]);
                     if (data.length && this.userId) {
                         const { data: likes } = await sb.from('post_likes').select('post_id').eq('user_id', this.userId).in('post_id', data.map(p => p.id));
                         for (const l of likes || []) F.liked[l.post_id] = true;
@@ -2866,6 +3029,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
             // ═════════════ PHÍM TẮT ═════════════
             onKey(e) {
+                if (e.key === 'Escape' && this.gate) return this.closeGate();
                 if (e.key === 'Escape' && (this.res.form || this.mem.open)) { this.res.form = null; this.mem.open = false; return; }
                 if (e.key === 'Escape' && this.memberPage && !this.loginOpen) return this.closeMemberPage();
                 if (e.key === 'Escape' && (this.loginOpen || this.art || this.reader)) {
@@ -2884,7 +3048,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     if (e.key === 'ArrowRight') this.btStep(1);
                     return;
                 }
-                if (typing || e.ctrlKey || e.metaKey || e.altKey || this.res.form || this.mem.open || this.memberPage || this.formOpen || this.view || this.share || this.reader || this.art || this.setForm || this.settingsOpen) return;
+                if (typing || e.ctrlKey || e.metaKey || e.altKey || this.gate || this.res.form || this.mem.open || this.memberPage || this.formOpen || this.view || this.share || this.reader || this.art || this.setForm || this.settingsOpen) return;
                 if (this.tab === 'backtest' && this.bt.set) {
                     const k = e.key.toLowerCase();
                     if (k === 'w') { e.preventDefault(); this.btAdd('WIN'); }
