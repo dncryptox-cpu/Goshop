@@ -2,19 +2,21 @@
 const fs = require('fs'), vm = require('vm'), crypto = require('crypto'), path = require('path');
 const SRC = fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8');
 
-function makeEnv({ accounts = [], mails = [] } = {}) {
+function makeEnv({ accounts = [], mails = [], gpt = { success: true, data: [] }, props = {} } = {}) {
   const store = new Map(), logs = [];
   const rows = [['Email', 'Mã', 'Ghi chú', 'Bật'], ...accounts];
   const ctx = {
     console,
     CacheService: { getScriptCache: () => ({ get: k => store.has(k) ? store.get(k) : null, put: (k, v) => store.set(k, v), remove: k => store.delete(k) }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => 'SHEET', setProperty() {} }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => k === 'SHEET_ID' ? 'SHEET' : (props[k] ?? null), setProperty(k, v) { props[k] = v; } }) },
+    UrlFetchApp: { fetch: () => { ctx.fetchCount = (ctx.fetchCount || 0) + 1; return { getContentText: () => JSON.stringify(gpt) }; } },
     SpreadsheetApp: { openById: () => ({ getSheetByName: n => n === 'Tài khoản'
       ? { getDataRange: () => ({ getValues: () => rows }) }
       : { appendRow: r => logs.push(r) } }) },
     GmailApp: { search: (q) => { ctx.lastQuery = q; return [{ getMessages: () => mails.map(mkMsg) }]; } },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: s => ({ setMimeType: () => ({ body: s }) }) },
-    Utilities: { DigestAlgorithm: { SHA_256: 1 }, computeDigest: (_, s) => [...crypto.createHash('sha256').update(s).digest()].map(b => b > 127 ? b - 256 : b) },
+    Utilities: { MacAlgorithm: { HMAC_SHA_1: 1 }, computeHmacSignature: (_, msg, key) => [...crypto.createHmac('sha1', Buffer.from(key.map(b => (b + 256) % 256))).update(Buffer.from(msg.map(b => (b + 256) % 256))).digest()].map(b => b > 127 ? b - 256 : b),
+      DigestAlgorithm: { SHA_256: 1 }, computeDigest: (_, s) => [...crypto.createHash('sha256').update(s).digest()].map(b => b > 127 ? b - 256 : b) },
     Logger: { log() {} },
   };
   vm.createContext(ctx); vm.runInContext(SRC, ctx);
@@ -138,6 +140,67 @@ t('doPost: tra thật trả JSON đúng hợp đồng', () => {
   const r = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({ action: 'lookup', email: A, pin: '' }) } }).body);
   eq(Object.keys(r).sort(), ['items', 'needPin', 'ok', 'windowMin']);
   eq(Object.keys(r.items[0]).sort(), ['at', 'id', 'link', 'title', 'type']);
+});
+
+
+// ───── ChatGPT 2FA ─────
+const RFC = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ'; // "12345678901234567890"
+t('TOTP đúng bộ mẫu RFC 6238', () => {
+  const c = makeEnv();
+  eq(c.totp_(RFC, 59000).code, '287082');
+  eq(c.totp_(RFC, 1111111109000).code, '081804');
+  eq(c.totp_(RFC, 1234567890000).code, '005924');
+  eq(c.totp_('gezd gnbv gy3t qojq gezd gnbv gy3t qojq', 59000).code, '287082');
+  eq(c.totp_(RFC, 59000).secondsLeft, 1);
+});
+const G = 'dncethxyz@gmail.com';
+const fut = new Date(Date.now() + 9 * 864e5), past = new Date(Date.now() - 2 * 864e5);
+const ddmmyyyy = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+const GPT = { success: true, data: [
+  { rootEmail: G, userCode: 'KH-CAFARD-01', userName: 'Cafard', expiryDate: ddmmyyyy(fut) },
+  { email: G, note: '[Khách: Hoan Tran | Mã: KH-HOANTRAN-01] 10 thg 8', expiryDate: ddmmyyyy(fut) },
+  { rootEmail: G, userCode: 'KH-OLD-01', expiryDate: ddmmyyyy(past) },
+  { rootEmail: G, userCode: 'KH-RENEW-01', expiryDate: ddmmyyyy(past) },
+  { rootEmail: G, userCode: 'KH-RENEW-01', expiryDate: ddmmyyyy(fut) },
+] };
+const P = { ['TOTP_' + G]: RFC };
+t('gpt: khách còn hạn lấy được mã 6 số (mã ở cột riêng hoặc trong ghi chú, không phân biệt hoa thường)', () => {
+  const c = makeEnv({ gpt: GPT, props: P });
+  let r = c.gptTotp_(G, 'kh-cafard-01'); eq([r.ok, /^\d{6}$/.test(r.code), r.name], [true, true, 'Cafard']);
+  r = c.gptTotp_(' DncEthxyz@gmail.com ', 'KH-HOANTRAN-01'); eq([r.ok, r.name], [true, 'Hoan Tran']);
+  if (!(r.secondsLeft >= 1 && r.secondsLeft <= 30)) throw new Error('secondsLeft');
+});
+t('gpt: hết hạn → không cho; đã gia hạn (có dòng mới còn hạn) → cho', () => {
+  const c = makeEnv({ gpt: GPT, props: P });
+  const r = c.gptTotp_(G, 'KH-OLD-01'); eq(r.ok, false); if (!/hết hạn/.test(r.message)) throw new Error(r.message);
+  eq(c.gptTotp_(G, 'KH-RENEW-01').ok, true);
+});
+t('gpt: sai mã / thiếu mã / email lạ / chưa cài khoá', () => {
+  const c = makeEnv({ gpt: GPT, props: P });
+  eq(c.gptTotp_(G, '').ok, false);
+  eq(c.gptTotp_(G, 'KH-NFLX-01').message, 'Mã khách không đúng.');
+  eq(c.gptTotp_('khac@gmail.com', 'KH-CAFARD-01').ok, false);
+  const c2 = makeEnv({ gpt: GPT });
+  const r = c2.gptTotp_(G, 'KH-CAFARD-01'); eq(r.ok, false); if (r.code) throw new Error('lộ mã');
+});
+t('gpt: sai mã 5 lần → khoá; giới hạn 20 lần / 10 phút', () => {
+  const c = makeEnv({ gpt: GPT, props: P });
+  for (let i = 0; i < 5; i++) c.gptTotp_(G, 'sai');
+  eq(c.gptTotp_(G, 'KH-CAFARD-01').ok, false);
+  const c2 = makeEnv({ gpt: GPT, props: P });
+  for (let i = 0; i < 20; i++) eq(c2.gptTotp_(G, 'KH-CAFARD-01').ok, true);
+  eq(c2.gptTotp_(G, 'KH-CAFARD-01').ok, false);
+});
+t('gpt: backend lỗi → báo lỗi, không lộ mã; danh sách được cache', () => {
+  const c = makeEnv({ gpt: { success: false }, props: P });
+  const r = c.gptTotp_(G, 'KH-CAFARD-01'); eq(r.ok, false); if (r.code) throw new Error('lộ mã');
+  const c2 = makeEnv({ gpt: GPT, props: P });
+  c2.gptTotp_(G, 'KH-CAFARD-01'); c2.gptTotp_(G, 'KH-HOANTRAN-01'); eq(c2.fetchCount, 1);
+});
+t('doPost gpt_totp trả đúng hợp đồng', () => {
+  const c = makeEnv({ gpt: GPT, props: P });
+  const r = JSON.parse(c.doPost({ postData: { contents: JSON.stringify({ action: 'gpt_totp', email: G, pin: 'KH-CAFARD-01' }) } }).body);
+  eq(Object.keys(r).sort(), ['code', 'name', 'ok', 'secondsLeft']);
 });
 
 console.log(`\n${pass}/${pass + fail} đạt`);

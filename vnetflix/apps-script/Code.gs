@@ -15,7 +15,10 @@ var CFG = {
   LOCK_S: 1800,              // khoá 30 phút
   REQUIRE_DKIM: true,        // chỉ nhận email có chữ ký DKIM hợp lệ của netflix.com
   SHEET_ACCOUNTS: 'Tài khoản',
-  SHEET_LOG: 'Nhật ký'
+  SHEET_LOG: 'Nhật ký',
+  // ChatGPT 2FA — danh sách khách lấy từ backend godnc.com/admin/chatgpt.html
+  GPT_LIST_URL: 'https://script.google.com/macros/s/AKfycbySu9evgLmqMVKSc-Z1cKUIzcfqJH9_pEFDdzOERQ1yP8uLy1hvLqJgNRkOlwDJEOba/exec?action=list',
+  GPT_MAX_LOOKUPS: 20        // số lần lấy mã 2FA tối đa / email / 10 phút
 };
 
 // ───────────────────────── Web app ─────────────────────────
@@ -28,8 +31,9 @@ function doPost(e) {
   var req;
   try { req = JSON.parse((e && e.postData && e.postData.contents) || '{}'); }
   catch (err) { return json_({ ok: false, message: 'Yêu cầu không hợp lệ' }); }
-  if (req.action !== 'lookup') return json_({ ok: false, message: 'Yêu cầu không hợp lệ' });
-  return json_(lookup_(req.email, req.pin));
+  if (req.action === 'lookup') return json_(lookup_(req.email, req.pin));
+  if (req.action === 'gpt_totp') return json_(gptTotp_(req.email, req.pin));
+  return json_({ ok: false, message: 'Yêu cầu không hợp lệ' });
 }
 
 function lookup_(emailRaw, pinRaw) {
@@ -220,6 +224,109 @@ function testLookup() {
     });
   });
   Logger.log('Kết quả trả cho khách: ' + JSON.stringify(findItems_(email, new Date())));
+}
+
+// ───────────────────────── ChatGPT 2FA ─────────────────────────
+// Khoá bí mật 2FA lưu ở Script Properties: TOTP_<email> (không nằm trong sheet / trang). Đặt bằng hàm setGptTotp().
+
+function gptTotp_(emailRaw, pinRaw) {
+  var email = String(emailRaw || '').trim().toLowerCase();
+  var pin = String(pinRaw || '').trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, message: 'Email không hợp lệ' };
+  if (!pin) return { ok: false, message: 'Nhập mã khách shop gửi kèm tài khoản.' };
+
+  var cache = CacheService.getScriptCache();
+  var key = 'g' + hash_(email);
+  if (cache.get('lock_' + key)) return { ok: false, message: 'Nhập sai mã khách quá nhiều lần. Thử lại sau 30 phút hoặc nhắn shop.' };
+  var n = Number(cache.get('n_' + key) || 0) + 1;
+  cache.put('n_' + key, String(n), CFG.LOOKUP_WINDOW_S);
+  if (n > CFG.GPT_MAX_LOOKUPS) return { ok: false, message: 'Lấy mã quá nhiều lần. Đợi 10 phút rồi thử lại.' };
+
+  var secret = PropertiesService.getScriptProperties().getProperty('TOTP_' + email);
+  var list = gptCustomers_();
+  if (list === null) return { ok: false, message: 'Không tải được danh sách khách. Thử lại sau ít phút.' };
+  var mine = list.filter(function (c) { return c.email === email; });
+  if (!mine.length || !secret) {
+    log_(email, 'gpt: ' + (!mine.length ? 'không có trong danh sách' : 'chưa cài khoá 2FA'), 0);
+    return { ok: false, message: !mine.length ? 'Email này chưa có trong danh sách của shop. Kiểm tra lại hoặc nhắn shop.' : 'Tài khoản này chưa bật tự lấy mã 2FA. Nhắn shop nhé.' };
+  }
+  var hit = mine.filter(function (c) { return c.code === pin; });
+  if (!hit.length) {
+    var bad = Number(cache.get('bad_' + key) || 0) + 1;
+    cache.put('bad_' + key, String(bad), CFG.LOCK_S);
+    if (bad >= CFG.MAX_BAD_PIN) { cache.put('lock_' + key, '1', CFG.LOCK_S); log_(email, 'gpt khoá: sai mã khách', 0); }
+    return { ok: false, message: 'Mã khách không đúng.' };
+  }
+  cache.remove('bad_' + key);
+  var active = hit.filter(function (c) { return c.active; });
+  if (!active.length) {
+    log_(email, 'gpt: ' + pin + ' hết hạn', 0);
+    return { ok: false, message: 'Gói của bạn đã hết hạn. Nhắn shop để gia hạn nhé.' };
+  }
+  var now = Date.now();
+  var t = totp_(secret, now);
+  log_(email, 'gpt 2fa · ' + (active[0].name || pin), 1);
+  return { ok: true, code: t.code, secondsLeft: t.secondsLeft, name: active[0].name || '' };
+}
+
+/** Đọc danh sách khách ChatGPT từ backend admin. Trả [{email, code, name, active}] hoặc null nếu lỗi. Cache 60s. */
+function gptCustomers_() {
+  var cache = CacheService.getScriptCache();
+  var raw = cache.get('gpt_list');
+  if (raw) return JSON.parse(raw);
+  var json;
+  try {
+    var res = UrlFetchApp.fetch(CFG.GPT_LIST_URL + '&t=' + Date.now(), { muteHttpExceptions: true, followRedirects: true });
+    json = JSON.parse(res.getContentText());
+  } catch (e) { return null; }
+  if (!json || !json.success || !Array.isArray(json.data)) return null;
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var out = json.data.map(function (it) {
+    var m = String(it.note || '').match(/\[Khách:\s*([^|]+)\|\s*Mã:\s*([^\]]+)\]/);
+    var code = String(it.userCode || (m && m[2]) || '').trim().toLowerCase();
+    var exp = parseDate_(it.expiryDate);
+    var expired = /expired/i.test(String(it.status || '')) && !exp ? true : (exp ? exp < today : false);
+    return { email: String(it.rootEmail || it.email || '').trim().toLowerCase(), code: code, name: String(it.userName || (m && m[1]) || '').trim(), active: !expired };
+  }).filter(function (c) { return c.email && c.code; });
+  try { cache.put('gpt_list', JSON.stringify(out), 60); } catch (e) {}
+  return out;
+}
+
+function parseDate_(v) {
+  if (!v) return null;
+  if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v) ? null : v;
+  var s = String(v).trim(), m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  var d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+/** TOTP chuẩn RFC 6238 (SHA1, 6 số, 30 giây) — giống Google Authenticator. */
+function totp_(secretB32, nowMs) {
+  var key = base32_(secretB32);
+  var step = Math.floor(nowMs / 1000 / 30);
+  var msg = [0, 0, 0, 0, 0, 0, 0, 0];
+  for (var i = 7, x = step; i >= 0; i--) { msg[i] = x & 0xff; x = Math.floor(x / 256); }
+  var h = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_1, msg, key).map(function (b) { return (b + 256) % 256; });
+  var o = h[h.length - 1] & 0xf;
+  var bin = ((h[o] & 0x7f) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3];
+  return { code: String(bin % 1000000).padStart(6, '0'), secondsLeft: 30 - Math.floor(nowMs / 1000) % 30 };
+}
+
+function base32_(s) {
+  var A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567', bits = '', out = [];
+  String(s).toUpperCase().replace(/[^A-Z2-7]/g, '').split('').forEach(function (c) { bits += ('0000' + A.indexOf(c).toString(2)).slice(-5); });
+  for (var i = 0; i + 8 <= bits.length; i += 8) { var b = parseInt(bits.substr(i, 8), 2); out.push(b > 127 ? b - 256 : b); }
+  return out;
+}
+
+/** Chạy trong trình soạn: sửa email + khoá rồi bấm Chạy. Log in ra mã hiện tại để so với app Authenticator. Chạy xong XOÁ khoá khỏi code. */
+function setGptTotp() {
+  var email = 'dncethxyz@gmail.com';
+  var secret = 'DAN_KHOA_2FA_VAO_DAY';
+  if (/DAN_KHOA/.test(secret)) throw new Error('Chưa dán khoá 2FA');
+  PropertiesService.getScriptProperties().setProperty('TOTP_' + email.toLowerCase(), secret.replace(/\s/g, '').toUpperCase());
+  Logger.log('Đã lưu. Mã hiện tại: ' + totp_(secret, Date.now()).code + ' — so với app Authenticator phải trùng.');
 }
 
 // ───────────────────────── tiện ích ─────────────────────────
