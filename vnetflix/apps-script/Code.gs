@@ -37,6 +37,7 @@ function doPost(e) {
   catch (err) { return json_({ ok: false, message: 'Yêu cầu không hợp lệ' }); }
   if (req.action === 'lookup') return json_(lookup_(req.email, req.pin));
   if (req.action === 'gpt_totp') return json_(gptTotp_(req.email, req.pin));
+  if (req.action === 'gpt_login') return json_(gptLogin_(req.email, req.pin));
   if (/^gpt_(usage|reset|keys|key_set)$/.test(req.action)) {
     if (req.authToken !== CFG.ADMIN_KEY) return json_({ ok: false, message: 'Sai khoá admin' });
     if (req.action === 'gpt_usage') return json_({ ok: true, quota: CFG.GPT_QUOTA, usage: gptUsageAll_() });
@@ -241,7 +242,8 @@ function testLookup() {
 // ───────────────────────── ChatGPT 2FA ─────────────────────────
 // Khoá bí mật 2FA lưu ở Script Properties: TOTP_<email> (không nằm trong sheet / trang). Thêm ở admin → nút "Khoá 2FA".
 
-function gptTotp_(emailRaw, pinRaw) {
+/** Kiểm email + mã khách (chặn spam, khoá khi sai nhiều). Trả {ok, email, pin, secret, name} hoặc {ok:false, message}. */
+function gptCheck_(emailRaw, pinRaw) {
   var email = String(emailRaw || '').trim().toLowerCase();
   var pin = String(pinRaw || '').trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, message: 'Email không hợp lệ' };
@@ -275,7 +277,14 @@ function gptTotp_(emailRaw, pinRaw) {
     log_(email, 'gpt: ' + pin + ' hết hạn', 0);
     return { ok: false, message: 'Gói của bạn đã hết hạn. Nhắn shop để gia hạn nhé.' };
   }
-  var name = active[0].name || '';
+  return { ok: true, email: email, pin: pin, secret: secret, name: active[0].name || '' };
+}
+
+function gptTotp_(emailRaw, pinRaw) {
+  var c = gptCheck_(emailRaw, pinRaw);
+  if (!c.ok) return c;
+  var email = c.email, pin = c.pin, secret = c.secret;
+  var name = c.name;
   var now = Date.now();
   var q = gptUse_(email, pin, name, now);
   if (!q.ok) {
@@ -285,6 +294,17 @@ function gptTotp_(emailRaw, pinRaw) {
   var t = totp_(secret, now);
   if (q.newSession) log_(email, 'gpt 2fa lần ' + q.used + '/' + q.quota + ' · ' + (name || pin), 1);
   return { ok: true, code: t.code, secondsLeft: t.secondsLeft, name: name, used: q.used, quota: q.quota, sessionLeft: q.sessionLeft };
+}
+
+/** Thông tin đăng nhập cho khách đã nhập đúng email + mã khách. Không tính lượt 2FA.
+ *  Mật khẩu lưu ở Script Properties: khoá PASS_<email>, vd PASS_dncethxyz@gmail.com */
+function gptLogin_(emailRaw, pinRaw) {
+  var c = gptCheck_(emailRaw, pinRaw);
+  if (!c.ok) return c;
+  var pass = PropertiesService.getScriptProperties().getProperty('PASS_' + c.email);
+  if (!pass) return { ok: false, message: 'Shop chưa cài mật khẩu cho tài khoản này. Nhắn shop nhé.' };
+  log_(c.email, 'gpt xem đăng nhập · ' + (c.name || c.pin), 1);
+  return { ok: true, email: c.email, password: pass, name: c.name };
 }
 
 // ── Lượt lấy mã: tab "GPT lượt" — Email | Mã khách | Tên | Đã lấy | Giới hạn | Bắt đầu lần gần nhất | Reset lúc

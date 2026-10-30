@@ -11,7 +11,11 @@ with sync_playwright() as p:
     for label, vp in [('điện thoại', {'width': 390, 'height': 844}), ('máy tính', {'width': 1280, 'height': 900})]:
         pg = b.new_page(viewport=vp); calls = []
         def api(route):
-            body = json.loads(route.request.post_data); calls.append(body)
+            body = json.loads(route.request.post_data)
+            if body.get('action') == 'gpt_login':
+                r = {'ok': True, 'email': 'dncethxyz@gmail.com', 'password': 'MatKhauTest', 'name': 'Cafard'} if body['pin'] == 'KH-CAFARD-01' else {'ok': False, 'message': 'Mã khách không đúng.'}
+                return route.fulfill(status=200, content_type='application/json', body=json.dumps(r))
+            calls.append(body)
             if body['pin'] != 'KH-CAFARD-01': r = {'ok': False, 'message': 'Mã khách không đúng.'}
             elif len(calls) >= 5: r = {'ok': False, 'quotaOut': True, 'used': 3, 'quota': 3, 'message': 'Bạn đã dùng hết 3 lần lấy mã. Nhắn shop để được cấp thêm lượt nhé.'}
             else: r = {'ok': True, 'code': '0%05d' % (len(calls) * 111), 'secondsLeft': 30 if len(calls) == 3 else 3, 'name': 'Cafard', 'used': 1, 'quota': 3, 'sessionLeft': 4 if len(calls) == 3 else 180}
@@ -20,6 +24,14 @@ with sync_playwright() as p:
         pg.route('**/fonts.googleapis.com/**', lambda r: r.fulfill(body='', content_type='text/css'))
         if ALPINE: pg.route('**/alpinejs**', lambda r: r.fulfill(path=ALPINE, content_type='text/javascript'))
         pg.goto(PAGE); pg.wait_for_function('window.Alpine')
+        check(f'[{label}] hướng dẫn đăng nhập có chatgpt.com + ô Email', 'chatgpt.com' in pg.inner_text('.steps') and 'ô Email' in pg.inner_text('.steps'))
+        check(f'[{label}] mật khẩu không nằm sẵn trên trang', 'MatKhauTest' not in pg.content())
+        pg.fill('#em', 'dncethxyz@gmail.com'); pg.fill('#pin', 'sai'); pg.click('#btn-login'); pg.wait_for_selector('.err:visible')
+        check(f'[{label}] sai mã khách → không hiện mật khẩu', not pg.is_visible('#login'))
+        pg.fill('#pin', 'KH-CAFARD-01'); pg.click('#btn-login'); pg.wait_for_selector('#login:visible')
+        check(f'[{label}] đúng mã → hiện email + mật khẩu', 'dncethxyz@gmail.com' in pg.inner_text('#login') and 'MatKhauTest' in pg.inner_text('#login'))
+        check(f'[{label}] xem mật khẩu không tốn lượt 2FA', len(calls) == 0)
+        pg.screenshot(path=f'/tmp/claude-0/-home-claude/673a18c3-931d-5f8e-b641-bc77168d9c5d/scratchpad/vgpt_{vp["width"]}.png', full_page=True)
         pg.fill('#em', 'dncethxyz@gmail.com'); pg.fill('#pin', 'sai'); pg.click('button[type=submit]')
         pg.wait_for_selector('.err:visible')
         check(f'[{label}] sai mã khách → báo lỗi, không hiện mã', 'không đúng' in pg.inner_text('.err') and not pg.is_visible('#result'))

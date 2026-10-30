@@ -56,6 +56,11 @@
         .warn b { color: #FFE6B5; }
         .mono { font-family: var(--mono); }
         .note { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+        .cred { display: flex; align-items: center; gap: 8px; background: var(--well); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-top: 8px; }
+        .cred span { flex: 1; min-width: 0; font-family: var(--mono); font-size: 15px; color: #fff; overflow-wrap: anywhere; }
+        .chip { flex: none; border: 1px solid var(--line); background: var(--raise); color: var(--ink); border-radius: 8px; padding: 6px 10px; font: 500 13px "Be Vietnam Pro", system-ui, sans-serif; cursor: pointer; }
+        .chip.ok { border-color: var(--gpt); color: var(--gpt-soft); }
+        .link { color: var(--gpt-soft); text-decoration: underline; text-underline-offset: 3px; }
         footer { text-align: center; font-size: 13px; color: var(--ink-3); display: flex; flex-direction: column; gap: 4px; padding-top: 8px; }
         .pulse { animation: pulse 1.4s ease-in-out infinite; } @keyframes pulse { 50% { opacity: .35; } }
         .rise { animation: rise 380ms var(--spring) both; } @keyframes rise { from { opacity: 0; transform: translateY(10px); } }
@@ -67,14 +72,15 @@
     <header>
         <div class="eyebrow">ChatGPT · mã 2 bước</div>
         <h1>Lấy mã 2FA ChatGPT</h1>
-        <p class="lead">ChatGPT hỏi mã xác thực 6 số khi đăng nhập? Lấy mã ngay tại đây, không cần nhắn shop.</p>
+        <p class="lead">Hướng dẫn đăng nhập ChatGPT dùng chung và tự lấy mã xác thực 6 số, không cần nhắn shop.</p>
     </header>
 
     <section class="card">
-        <h2>1. Trên máy của bạn</h2>
+        <h2>1. Đăng nhập ChatGPT</h2>
         <ol class="steps">
-            <li><span>Đăng nhập ChatGPT bằng <b>email + mật khẩu</b> shop đã gửi.</span></li>
-            <li><span><b>Mở sẵn</b> màn hình ChatGPT hỏi <b>"Mã xác thực"</b> / <b>"Enter code"</b>, rồi mới xuống bước 2 bấm Lấy mã.</span></li>
+            <li><span>Vào <a class="link" href="https://chatgpt.com" target="_blank" rel="noopener">chatgpt.com</a> → bấm <b>Đăng nhập</b> (Log in).</span></li>
+            <li><span>Nhập <b>email</b> vào ô <b>Email</b> → <b>Tiếp tục</b>. Nhập <b>mật khẩu</b> → <b>Tiếp tục</b>.<br>Chưa có email / mật khẩu? Điền email + mã khách ở bước 2, bấm <b>Xem email &amp; mật khẩu</b>.</span></li>
+            <li><span>Tới màn hình ChatGPT hỏi <b>mã 6 số</b> ("Enter code") thì <b>giữ nguyên</b> màn hình đó, xuống bước 2 bấm <b>Lấy mã</b>.</span></li>
             <li><span>Chép mã và <b>dán vào ChatGPT ngay</b>. Mã chỉ dùng được <b>khoảng 45–60 giây</b>.</span></li>
         </ol>
     </section>
@@ -96,8 +102,20 @@
             <button type="submit" class="btn btn-primary" :disabled="busy">
                 <span x-show="!busy">Lấy mã</span><span x-show="busy" x-cloak class="pulse">Đang lấy mã…</span>
             </button>
+            <button type="button" id="btn-login" @click="login()" class="btn btn-gray" :disabled="loginBusy">
+                <span x-show="!loginBusy">Xem email &amp; mật khẩu</span><span x-show="loginBusy" x-cloak class="pulse">Đang kiểm tra…</span>
+            </button>
             <label class="remember"><input type="checkbox" x-model="remember"> Nhớ trên máy này</label>
         </form>
+    </section>
+
+    <section x-show="cred" x-cloak id="login" class="card rise">
+        <h2>Thông tin đăng nhập</h2>
+        <p class="label">Email — nhập ở ô Email</p>
+        <div class="cred"><span x-text="cred && cred.email"></span><button type="button" class="chip" :class="{ ok: copiedKey === 'email' }" @click="copyText(cred.email, 'email')" x-text="copiedKey === 'email' ? 'Đã chép ✓' : 'Chép'"></button></div>
+        <p class="label" style="margin-top:14px">Mật khẩu</p>
+        <div class="cred"><span x-text="cred && cred.password"></span><button type="button" class="chip" :class="{ ok: copiedKey === 'pass' }" @click="copyText(cred.password, 'pass')" x-text="copiedKey === 'pass' ? 'Đã chép ✓' : 'Chép'"></button></div>
+        <p class="note" style="margin-top:14px">Tới bước ChatGPT hỏi mã 6 số → quay lại đây bấm <b>Lấy mã</b>. Không đổi mật khẩu, không tắt 2FA, không chia sẻ cho người khác — nếu không cả nhóm sẽ mất tài khoản.</p>
     </section>
 
     <section x-show="code" x-cloak id="result" class="card result rise">
@@ -122,6 +140,7 @@
             email: '', pin: '', remember: true, busy: false, err: '',
             code: '', name: '', left: 0, copied: false, _tick: null, _fetching: false,
             used: 0, quota: 0, session: 0, sessionOver: false,
+            cred: null, loginBusy: false, copiedKey: '',
 
             init() {
                 try { const s = JSON.parse(localStorage.getItem('dnc_gpt') || '{}'); this.email = s.email || ''; this.pin = s.pin || ''; } catch (e) {}
@@ -152,6 +171,24 @@
                     this.err = 'Không kết nối được — kiểm tra mạng rồi thử lại';
                     if (!user) this.session = 0;
                 } finally { this.busy = false; this._fetching = false; }
+            },
+            async login() {
+                this.err = '';
+                if (!this.email.trim() || !this.pin.trim()) { this.err = 'Điền email và mã khách trước nhé.'; return; }
+                this.loginBusy = true;
+                try {
+                    const r = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'gpt_login', email: this.email.trim(), pin: this.pin.trim() }) });
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    const d = await r.json();
+                    if (!d.ok) { this.err = d.message || 'Không xem được thông tin đăng nhập'; this.cred = null; return; }
+                    this.cred = { email: d.email, password: d.password }; this.save();
+                    this.$nextTick(() => document.getElementById('login').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                } catch (e) {
+                    this.err = 'Không kết nối được — kiểm tra mạng rồi thử lại';
+                } finally { this.loginBusy = false; }
+            },
+            async copyText(t, k) {
+                try { await navigator.clipboard.writeText(t); this.copiedKey = k; setTimeout(() => this.copiedKey = '', 2000); } catch (e) {}
             },
             tick() {
                 if (!this.code) return;
