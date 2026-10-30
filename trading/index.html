@@ -283,6 +283,7 @@
             <a href="#bang-tin" @click="closeReader(); feedFilter('TRADES')" class="lp-link">Lệnh chia sẻ</a>
             <a href="#cach-dung" @click="closeReader()" class="lp-link">Cách dùng</a>
             <a href="#hoi-dap" @click="closeReader()" class="lp-link">Hỏi đáp</a>
+            <a href="#hoi-vien" class="lp-link">Hội viên</a>
         </nav>
         <div class="flex items-center gap-2 ml-auto md:ml-0">
             <button @click="openLogin(false)" class="btn btn-gray !py-2 !px-4 text-[14px] whitespace-nowrap">Đăng nhập</button>
@@ -363,7 +364,7 @@
     <div id="bang-tin" class="lp-wrap pt-24 md:pt-32 text-center scroll-mt-20">
         <span class="lp-tag">Bảng tin</span>
         <h2 class="lp-h2 mt-5">Bài viết và lệnh mới nhất</h2>
-        <p class="mt-4 text-[17px] text-ink-2">Bài chiến lược của DNC và lệnh thật trader chia sẻ công khai.</p>
+        <p class="mt-4 text-[17px] text-ink-2">Bài chiến lược của mình và lệnh thật anh em trader chia sẻ công khai.</p>
     </div>
 </div>
 
@@ -397,6 +398,13 @@
             </div>
             <button @click="syncAll()" class="btn btn-plain text-[14px]" :disabled="syncing"><span class="inline-flex" :class="syncing && 'animate-spin'"><i data-lucide="refresh-cw" class="w-4 h-4"></i></span><span class="hidden sm:inline">Đồng bộ</span></button>
         </div>
+
+        <div class="seg !w-auto max-w-max">
+            <button @click="setJView('list')" :class="{ on: jView === 'list' }">Lệnh</button>
+            <button @click="setJView('stats')" :class="{ on: jView === 'stats' }">Thống kê</button>
+        </div>
+
+        <div x-show="jView === 'list'" class="space-y-5">
 
         <!-- Số chính -->
         <section class="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -478,6 +486,71 @@
         <div x-show="failedTrades > 0" x-cloak class="card p-4 flex items-center justify-between gap-3">
             <span class="text-[14px]"><b x-text="failedTrades"></b> lệnh chưa lưu lên server — vẫn giữ trên máy này.</span>
             <button @click="retryTrades()" class="btn btn-primary !py-2 text-[14px]">Lưu lại</button>
+        </div>
+        </div>
+
+        <!-- Thống kê (gộp vào Nhật ký) -->
+        <div x-show="jView === 'stats'" x-cloak class="space-y-5">
+        <section class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <template x-for="k in statCards" :key="k[0]">
+                <div class="card p-4"><div class="caption" x-text="k[0]"></div><div class="title-md num mt-1" :class="k[2]" x-text="k[1]"></div><div class="caption mt-1" x-text="k[3]"></div></div>
+            </template>
+        </section>
+        <section class="card p-5">
+            <div class="flex items-center justify-between"><h3 class="title-sm">Đường vốn</h3><span class="caption num" x-text="money(capital) + ' → ' + money(capitalNow)"></span></div>
+            <div x-show="equity.pts" class="mt-3">
+                <svg viewBox="0 0 600 180" preserveAspectRatio="none" class="w-full h-44">
+                    <defs><linearGradient id="eqfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" :stop-color="equity.up ? '#4ADE9B' : '#FF6B6B'" stop-opacity="0.18"/><stop offset="1" :stop-color="equity.up ? '#4ADE9B' : '#FF6B6B'" stop-opacity="0"/></linearGradient></defs>
+                    <line x1="0" x2="600" :y1="equity.base" :y2="equity.base" stroke="rgba(245,246,247,0.14)" stroke-dasharray="4 4"/>
+                    <polygon :points="equity.area" fill="url(#eqfill)"/>
+                    <polyline :points="equity.pts" fill="none" :stroke="equity.up ? '#4ADE9B' : '#FF6B6B'" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <p x-show="!equity.pts" class="caption py-8 text-center">Cần ít nhất 2 lệnh đã đóng.</p>
+        </section>
+
+        <div class="grid lg:grid-cols-2 gap-5">
+            <!-- Lịch -->
+            <section class="card p-5">
+                <div class="flex items-center justify-between">
+                    <h3 class="title-sm">Lịch lãi / lỗ</h3>
+                    <div class="flex items-center gap-1">
+                        <button @click="calMove(-1)" class="btn btn-gray !p-1.5"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                        <span class="num font-semibold text-[15px] w-[76px] text-center" x-text="(cal.m + 1) + '/' + cal.y"></span>
+                        <button @click="calMove(1)" class="btn btn-gray !p-1.5"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-7 gap-1 mt-4 text-center caption"><template x-for="d in ['T2','T3','T4','T5','T6','T7','CN']" :key="d"><div x-text="d"></div></template></div>
+                <div class="grid grid-cols-7 gap-1 mt-1">
+                    <template x-for="(c, i) in calCells" :key="i">
+                        <div class="aspect-square rounded-[10px] p-1 flex flex-col justify-between text-left" :class="!c ? '' : (c.n ? (c.r > 0 ? 'bg-up-tint' : (c.r < 0 ? 'bg-down-tint' : 'bg-fill')) : 'bg-fill')">
+                            <span x-show="c" class="text-[11px] num" :class="c && c.today ? 'text-accent font-bold' : 'text-ink-3'" x-text="c && c.d"></span>
+                            <span x-show="c && c.n" class="text-[11px] sm:text-[13px] num font-semibold text-right" :class="c && c.r > 0 ? 'text-up' : (c && c.r < 0 ? 'text-down' : 'text-ink-2')" x-text="c && c.n ? fmtR(c.r, true) : ''"></span>
+                        </div>
+                    </template>
+                </div>
+                <div class="flex justify-between caption mt-3"><span>Tháng này: <b class="num" :class="calMonth.r >= 0 ? 'text-up' : 'text-down'" x-text="fmtR(calMonth.r, true)"></b></span><span><span class="num" x-text="calMonth.n"></span> lệnh · <span class="num" x-text="calMonth.days"></span> ngày giao dịch</span></div>
+            </section>
+            <!-- Theo setup + hướng -->
+            <section class="card p-5">
+                <h3 class="title-sm">Theo setup</h3>
+                <p x-show="!bySetup.length" class="caption py-6 text-center">Chưa có dữ liệu.</p>
+                <div class="mt-3 divide-y divide-line">
+                    <template x-for="s in bySetup" :key="s.name">
+                        <div class="flex items-center justify-between py-2.5 text-[15px]">
+                            <span class="truncate pr-3" x-text="s.name"></span>
+                            <span class="flex items-center gap-4 num shrink-0"><span class="caption" x-text="s.n + ' lệnh'"></span><span class="w-14 text-right" x-text="pct(s.wr)"></span><span class="w-16 text-right font-semibold" :class="s.r >= 0 ? 'text-up' : 'text-down'" x-text="fmtR(s.r, true)"></span></span>
+                        </div>
+                    </template>
+                </div>
+                <h3 class="title-sm mt-6">Long vs Short</h3>
+                <div class="grid grid-cols-2 gap-3 mt-3">
+                    <template x-for="d in sideStats" :key="d.name">
+                        <div class="well p-3"><div class="caption" x-text="d.name"></div><div class="font-semibold text-[17px] num mt-0.5" x-text="d.n ? pct(d.wr) : '—'"></div><div class="caption num" x-text="d.n + ' lệnh · ' + fmtR(d.r, true)"></div></div>
+                    </template>
+                </div>
+            </section>
+        </div>
         </div>
     </main>
 
@@ -658,73 +731,44 @@
         </template>
     </main>
 
-    <!-- ───────────── THỐNG KÊ ───────────── -->
-    <main x-show="tab === 'stats'" x-cloak class="max-w-6xl mx-auto px-4 md:px-6 pt-5 pb-tab space-y-5">
-        <div>
-            <div class="eyebrow mb-3">Hiệu suất</div>
-                <h1 class="title-lg">Thống kê</h1>
-            <p class="text-[15px] text-ink-2 mt-1">Từ <span x-text="journal.closed.length"></span> lệnh đã đóng trong nhật ký</p>
-        </div>
-        <section class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <template x-for="k in statCards" :key="k[0]">
-                <div class="card p-4"><div class="caption" x-text="k[0]"></div><div class="title-md num mt-1" :class="k[2]" x-text="k[1]"></div><div class="caption mt-1" x-text="k[3]"></div></div>
-            </template>
-        </section>
-        <section class="card p-5">
-            <div class="flex items-center justify-between"><h3 class="title-sm">Đường vốn</h3><span class="caption num" x-text="money(capital) + ' → ' + money(capitalNow)"></span></div>
-            <div x-show="equity.pts" class="mt-3">
-                <svg viewBox="0 0 600 180" preserveAspectRatio="none" class="w-full h-44">
-                    <defs><linearGradient id="eqfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" :stop-color="equity.up ? '#4ADE9B' : '#FF6B6B'" stop-opacity="0.18"/><stop offset="1" :stop-color="equity.up ? '#4ADE9B' : '#FF6B6B'" stop-opacity="0"/></linearGradient></defs>
-                    <line x1="0" x2="600" :y1="equity.base" :y2="equity.base" stroke="rgba(245,246,247,0.14)" stroke-dasharray="4 4"/>
-                    <polygon :points="equity.area" fill="url(#eqfill)"/>
-                    <polyline :points="equity.pts" fill="none" :stroke="equity.up ? '#4ADE9B' : '#FF6B6B'" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-                </svg>
+    <!-- ───────────── TÀI NGUYÊN ───────────── -->
+    <main x-show="tab === 'resources'" x-cloak class="max-w-5xl mx-auto px-4 md:px-6 pt-5 pb-tab space-y-6">
+        <div class="flex items-end justify-between gap-3">
+            <div>
+                <div class="eyebrow mb-3">Thư viện</div>
+                <h1 class="title-lg">Tài nguyên</h1>
+                <p class="text-[15px] text-ink-2 mt-1">Công cụ, chỉ báo, tài liệu mình chọn lọc cho anh em.</p>
             </div>
-            <p x-show="!equity.pts" class="caption py-8 text-center">Cần ít nhất 2 lệnh đã đóng.</p>
-        </section>
-
-        <div class="grid lg:grid-cols-2 gap-5">
-            <!-- Lịch -->
-            <section class="card p-5">
-                <div class="flex items-center justify-between">
-                    <h3 class="title-sm">Lịch lãi / lỗ</h3>
-                    <div class="flex items-center gap-1">
-                        <button @click="calMove(-1)" class="btn btn-gray !p-1.5"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
-                        <span class="num font-semibold text-[15px] w-[76px] text-center" x-text="(cal.m + 1) + '/' + cal.y"></span>
-                        <button @click="calMove(1)" class="btn btn-gray !p-1.5"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
-                    </div>
-                </div>
-                <div class="grid grid-cols-7 gap-1 mt-4 text-center caption"><template x-for="d in ['T2','T3','T4','T5','T6','T7','CN']" :key="d"><div x-text="d"></div></template></div>
-                <div class="grid grid-cols-7 gap-1 mt-1">
-                    <template x-for="(c, i) in calCells" :key="i">
-                        <div class="aspect-square rounded-[10px] p-1 flex flex-col justify-between text-left" :class="!c ? '' : (c.n ? (c.r > 0 ? 'bg-up-tint' : (c.r < 0 ? 'bg-down-tint' : 'bg-fill')) : 'bg-fill')">
-                            <span x-show="c" class="text-[11px] num" :class="c && c.today ? 'text-accent font-bold' : 'text-ink-3'" x-text="c && c.d"></span>
-                            <span x-show="c && c.n" class="text-[11px] sm:text-[13px] num font-semibold text-right" :class="c && c.r > 0 ? 'text-up' : (c && c.r < 0 ? 'text-down' : 'text-ink-2')" x-text="c && c.n ? fmtR(c.r, true) : ''"></span>
-                        </div>
-                    </template>
-                </div>
-                <div class="flex justify-between caption mt-3"><span>Tháng này: <b class="num" :class="calMonth.r >= 0 ? 'text-up' : 'text-down'" x-text="fmtR(calMonth.r, true)"></b></span><span><span class="num" x-text="calMonth.n"></span> lệnh · <span class="num" x-text="calMonth.days"></span> ngày giao dịch</span></div>
-            </section>
-            <!-- Theo setup + hướng -->
-            <section class="card p-5">
-                <h3 class="title-sm">Theo setup</h3>
-                <p x-show="!bySetup.length" class="caption py-6 text-center">Chưa có dữ liệu.</p>
-                <div class="mt-3 divide-y divide-line">
-                    <template x-for="s in bySetup" :key="s.name">
-                        <div class="flex items-center justify-between py-2.5 text-[15px]">
-                            <span class="truncate pr-3" x-text="s.name"></span>
-                            <span class="flex items-center gap-4 num shrink-0"><span class="caption" x-text="s.n + ' lệnh'"></span><span class="w-14 text-right" x-text="pct(s.wr)"></span><span class="w-16 text-right font-semibold" :class="s.r >= 0 ? 'text-up' : 'text-down'" x-text="fmtR(s.r, true)"></span></span>
-                        </div>
-                    </template>
-                </div>
-                <h3 class="title-sm mt-6">Long vs Short</h3>
-                <div class="grid grid-cols-2 gap-3 mt-3">
-                    <template x-for="d in sideStats" :key="d.name">
-                        <div class="well p-3"><div class="caption" x-text="d.name"></div><div class="font-semibold text-[17px] num mt-0.5" x-text="d.n ? pct(d.wr) : '—'"></div><div class="caption num" x-text="d.n + ' lệnh · ' + fmtR(d.r, true)"></div></div>
-                    </template>
-                </div>
-            </section>
+            <button x-show="isAdmin" @click="openResForm()" class="btn btn-primary !py-2 !px-3 text-[14px]"><i data-lucide="plus" class="w-4 h-4"></i><span>Thêm</span></button>
         </div>
+        <button x-show="res.locked > 0 && !isMember" @click="openMemberPage()" class="card w-full p-4 flex items-center gap-3 text-left">
+            <span class="w-10 h-10 rounded-xl bg-accent-tint text-accent grid place-items-center shrink-0"><i data-lucide="lock" class="w-5 h-5"></i></span>
+            <span class="flex-1 min-w-0"><span class="font-semibold block" x-text="res.locked + ' tài nguyên chỉ dành cho hội viên'"></span><span class="caption">Xem cách trở thành hội viên trọn đời (đang miễn phí)</span></span>
+            <i data-lucide="chevron-right" class="w-5 h-5 text-ink-3"></i>
+        </button>
+        <p x-show="!res.loaded" class="caption py-10 text-center">Đang tải…</p>
+        <div x-show="res.loaded && !res.items.length" class="card p-8 text-center">
+            <div class="w-14 h-14 rounded-2xl bg-accent-tint text-accent flex items-center justify-center mx-auto"><i data-lucide="library-big" class="w-7 h-7"></i></div>
+            <h2 class="title-md mt-4">Chưa có tài nguyên</h2>
+            <p class="text-[15px] text-ink-2 mt-2" x-text="isAdmin ? 'Bấm Thêm để đăng tài nguyên đầu tiên.' : 'Mình sẽ cập nhật sớm.'"></p>
+        </div>
+        <template x-for="g in resGroups" :key="g.name">
+            <section class="space-y-3">
+                <h2 class="title-sm" x-text="g.name"></h2>
+                <div class="grid sm:grid-cols-2 gap-3">
+                    <template x-for="r in g.items" :key="r.id">
+                        <div class="card p-4 flex gap-3">
+                            <a :href="r.url || null" target="_blank" rel="noopener" class="flex-1 min-w-0 space-y-1" :class="r.url ? '' : 'pointer-events-none'">
+                                <div class="flex items-center gap-2 flex-wrap"><span class="font-semibold" x-text="r.title"></span><span x-show="r.vip" class="chip chip-blue">Hội viên</span></div>
+                                <p x-show="r.description" class="text-[14px] text-ink-2 leading-relaxed" x-text="r.description"></p>
+                                <p x-show="r.url" class="caption truncate" x-text="hostOf(r.url)"></p>
+                            </a>
+                            <button x-show="isAdmin" @click="openResForm(r)" class="btn btn-gray !p-2 self-start" title="Sửa"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                        </div>
+                    </template>
+                </div>
+            </section>
+        </template>
     </main>
 
     <!-- Thanh tab dưới (điện thoại) -->
@@ -772,7 +816,7 @@
                     <div class="p-5 space-y-2.5">
                         <div class="flex items-center justify-between gap-3">
                             <span class="eyebrow !text-[11px]" x-text="'Bài viết · ' + (p.author || 'DNC')"></span>
-                            <span x-show="!isLocked && p.visibility === 'members'" class="chip chip-gray">Thành viên</span>
+                            <span x-show="!isLocked && p.visibility !== 'public'" class="chip" :class="p.visibility === 'vip' ? 'chip-blue' : 'chip-gray'" x-text="visLabel(p.visibility)"></span>
                         </div>
                         <h2 class="title-md" x-text="p.title"></h2>
                         <p class="text-[15px] text-ink-2 line-clamp-3" x-text="excerpt(p.body)"></p>
@@ -796,7 +840,7 @@
                             <div class="font-semibold text-[15px] truncate" x-text="p.author || 'Trader'"></div>
                             <div class="caption" x-text="timeAgo(p.created_at) + ' · ' + (p.kind === 'BT' ? 'Backtest' : 'Lệnh thật')"></div>
                         </div>
-                        <span x-show="!isLocked && p.user_id === userId" class="chip" :class="p.visibility === 'public' ? 'chip-blue' : 'chip-gray'" x-text="p.visibility === 'public' ? 'Công khai' : 'Thành viên'"></span>
+                        <span x-show="!isLocked && p.user_id === userId" class="chip" :class="p.visibility === 'members' ? 'chip-gray' : 'chip-blue'" x-text="visLabel(p.visibility)"></span>
                     </div>
                     <div class="px-4 pt-3 flex items-center gap-2 flex-wrap cursor-pointer" @click="openReader(p)">
                         <span class="font-semibold text-[17px]" x-text="p.pair || '—'"></span>
@@ -864,7 +908,7 @@
                 <details><summary>Có mất phí không?</summary><p>Không. Ghi nhật ký, backtest và chia sẻ lệnh đều miễn phí.</p></details>
                 <details><summary>Người khác có thấy số vốn của mình không?</summary><p>Không. Nhật ký chỉ mình bạn xem. Khi bạn chia sẻ một lệnh, bài đăng chỉ có cặp, hướng, giá, R, ảnh chart và ghi chú, không có số vốn hay số tiền.</p></details>
                 <details><summary>Bài công khai và bài thành viên khác gì nhau?</summary><p>Bài công khai ai vào trang cũng đọc được. Bài thành viên chỉ người có tài khoản mới xem. Bạn chọn khi chia sẻ.</p></details>
-                <details><summary>Quên mật khẩu thì làm sao?</summary><p>Nhắn DNC để được đặt lại mật khẩu.</p></details>
+                <details><summary>Quên mật khẩu thì làm sao?</summary><p>Nhắn mình để được đặt lại mật khẩu.</p></details>
             </div>
         </div>
     </section>
@@ -915,7 +959,7 @@
                                     <div class="font-medium text-[15px]" x-text="reader.post?.author || 'Trader'"></div>
                                     <div class="caption" x-text="fmtDate(String(reader.post?.created_at).slice(0, 10)) + (reader.post?.kind === 'ARTICLE' ? ' · ' + readMin(reader.post?.body) + ' phút đọc' : '')"></div>
                                 </div>
-                                <span x-show="!isLocked && (reader.post?.user_id === userId || isAdmin)" class="chip" :class="reader.post?.visibility === 'public' ? 'chip-blue' : 'chip-gray'" x-text="reader.post?.visibility === 'public' ? 'Công khai' : 'Thành viên'"></span>
+                                <span x-show="!isLocked && (reader.post?.user_id === userId || isAdmin)" class="chip" :class="reader.post?.visibility === 'members' ? 'chip-gray' : 'chip-blue'" x-text="visLabel(reader.post?.visibility)"></span>
                                 <template x-if="!isLocked && reader.post?.user_id === userId">
                                     <button @click="editPost(reader.post)" class="btn btn-gray !p-2" title="Sửa"><i data-lucide="pencil" class="w-4 h-4"></i></button>
                                 </template>
@@ -1169,10 +1213,11 @@
                 <div class="space-y-2">
                     <div class="label !mb-0">Ai xem được</div>
                     <div class="seg">
-                        <button @click="share.visibility = 'members'" :class="{ on: share.visibility === 'members' }">Chỉ thành viên</button>
+                        <button @click="share.visibility = 'members'" :class="{ on: share.visibility === 'members' }">Có tài khoản</button>
+                        <button x-show="isAdmin" @click="share.visibility = 'vip'" :class="{ on: share.visibility === 'vip' }">Hội viên</button>
                         <button @click="share.visibility = 'public'" :class="{ on: share.visibility === 'public' }">Công khai</button>
                     </div>
-                    <p class="caption" x-text="share.visibility === 'public' ? 'Ai có link cũng xem được, kể cả chưa đăng nhập. Hiện trên trang chủ.' : 'Chỉ người có tài khoản Trading OS xem được.'"></p>
+                    <p class="caption" x-text="visHint(share.visibility)"></p>
                 </div>
                 <p class="caption flex gap-2"><i data-lucide="lock" class="w-4 h-4 shrink-0"></i><span>Bài hiện R, R:R, giá, ảnh, ghi chú — <b>không</b> hiện số tiền, vốn hay khối lượng.</span></p>
                 <button @click="submitShare()" class="btn btn-primary w-full py-3" :disabled="share.busy" x-text="share.busy ? 'Đang đăng…' : (share.postId ? 'Lưu' : 'Đăng lên Cộng đồng')"></button>
@@ -1206,7 +1251,7 @@
                     <span x-text="signupMode ? 'Đã có tài khoản?' : 'Chưa có tài khoản?'"></span>
                     <button type="button" @click="signupMode = !signupMode; loginErr = ''" class="text-accent font-medium ml-1" x-text="signupMode ? 'Đăng nhập' : 'Đăng ký'"></button>
                 </p>
-                <p class="text-center caption">Quên mật khẩu? Liên hệ DNC để đặt lại.</p>
+                <p class="text-center caption">Quên mật khẩu? Nhắn mình để đặt lại.</p>
             </div>
         </div>
     </template>
@@ -1255,8 +1300,10 @@
                     <div class="label !mb-0">Ai xem được</div>
                     <div class="seg">
                         <button @click="art.visibility = 'public'" :class="{ on: art.visibility === 'public' }">Công khai</button>
-                        <button @click="art.visibility = 'members'" :class="{ on: art.visibility === 'members' }">Chỉ thành viên</button>
+                        <button @click="art.visibility = 'members'" :class="{ on: art.visibility === 'members' }">Có tài khoản</button>
+                        <button @click="art.visibility = 'vip'" :class="{ on: art.visibility === 'vip' }">Hội viên</button>
                     </div>
+                    <p class="caption" x-text="visHint(art.visibility)"></p>
                 </div>
                 <p x-show="art.err" class="text-[13px] text-down" x-text="art.err"></p>
                 <button @click="saveArticle()" class="btn btn-primary w-full py-3" :disabled="art.busy || art.coverBusy" x-text="art.busy ? 'Đang lưu…' : (art.id ? 'Lưu bài viết' : 'Đăng bài viết')"></button>
@@ -1281,6 +1328,12 @@
                     <div class="w-12 h-12 rounded-full flex items-center justify-center font-semibold text-canvas text-[20px]" :style="`background:${avatarColor(username)}`" x-text="(username || '?').slice(0, 1).toUpperCase()"></div>
                     <div><div class="title-sm" x-text="'@' + username"></div><div class="caption">Tên này hiện trên bài chia sẻ</div></div>
                 </div>
+                <button @click="settingsOpen = false; openMemberPage()" class="well w-full p-3 flex items-center gap-3 text-left">
+                    <i :data-lucide="isMember ? 'badge-check' : 'badge'" class="w-5 h-5" :class="isMember ? 'text-accent' : 'text-ink-3'"></i>
+                    <span class="flex-1"><span class="font-semibold block" x-text="isAdmin ? 'Admin · Hội viên trọn đời' : (isMember ? 'Hội viên trọn đời' : 'Tài khoản thường')"></span><span class="caption" x-text="isMember ? 'Xem quyền lợi hội viên' : 'Xem cách trở thành hội viên (đang miễn phí)'"></span></span>
+                    <i data-lucide="chevron-right" class="w-4 h-4 text-ink-3"></i>
+                </button>
+                <button x-show="isAdmin" @click="settingsOpen = false; openMembers()" class="btn btn-gray w-full"><i data-lucide="user-cog" class="w-4 h-4"></i> Quản lý hội viên</button>
                 <section class="space-y-3">
                     <h4 class="caption uppercase tracking-wide">Vốn & rủi ro</h4>
                     <div class="grid grid-cols-2 gap-3">
@@ -1311,6 +1364,118 @@
             </div>
         </div>
     </template>
+</div>
+
+<!-- ═════════════ SHEET: TÀI NGUYÊN (admin) ═════════════ -->
+<div x-show="res.form" x-cloak class="fixed inset-0 z-40 scrim flex items-end md:items-center justify-center md:p-6" @click.self="res.form = null">
+    <template x-if="res.form">
+        <form @submit.prevent="saveRes()" class="sheet w-full md:max-w-lg">
+            <div class="sheet-head border-b border-line">
+                <div class="grabber md:hidden"></div>
+                <div class="flex items-center justify-between px-4 h-12">
+                    <button type="button" @click="res.form = null" class="btn btn-plain !px-1">Huỷ</button>
+                    <span class="title-sm" x-text="res.form.id ? 'Sửa tài nguyên' : 'Tài nguyên mới'"></span>
+                    <button type="submit" class="btn btn-plain !px-1 font-semibold" :disabled="res.form.busy">Lưu</button>
+                </div>
+            </div>
+            <div class="p-4 sm:p-5 space-y-4">
+                <div><label class="label">Mục</label><input x-model="res.form.category" list="res-cats" required maxlength="40" placeholder="vd: Công cụ, Chỉ báo, Sách" class="field">
+                    <datalist id="res-cats"><template x-for="g in resGroups" :key="g.name"><option :value="g.name"></option></template></datalist></div>
+                <div><label class="label">Tên</label><input x-model="res.form.title" required maxlength="120" placeholder="vd: TradingView — chỉ báo FVG" class="field"></div>
+                <div><label class="label">Link</label><input x-model="res.form.url" type="url" maxlength="500" placeholder="https://…" class="field"></div>
+                <div><label class="label">Mô tả</label><textarea x-model="res.form.description" rows="3" maxlength="600" placeholder="Dùng để làm gì, vì sao nên dùng" class="field resize-y"></textarea></div>
+                <div class="space-y-2">
+                    <div class="label !mb-0">Ai xem được</div>
+                    <div class="seg"><button type="button" @click="res.form.vip = false" :class="{ on: !res.form.vip }">Mọi người</button><button type="button" @click="res.form.vip = true" :class="{ on: res.form.vip }">Chỉ hội viên</button></div>
+                </div>
+                <p x-show="res.form.err" class="text-[13px] text-down" x-text="res.form.err"></p>
+                <button x-show="res.form.id" type="button" @click="deleteRes()" class="btn btn-danger w-full" :disabled="res.form.busy">Xoá tài nguyên</button>
+            </div>
+        </form>
+    </template>
+</div>
+
+<!-- ═════════════ SHEET: QUẢN LÝ HỘI VIÊN (admin) ═════════════ -->
+<div x-show="mem.open" x-cloak class="fixed inset-0 z-40 scrim flex items-end md:items-center justify-center md:p-6" @click.self="mem.open = false">
+    <template x-if="mem.open">
+        <div class="sheet w-full md:max-w-lg">
+            <div class="sheet-head border-b border-line">
+                <div class="grabber md:hidden"></div>
+                <div class="flex items-center justify-between px-4 h-12">
+                    <span class="w-12"></span><span class="title-sm">Hội viên</span>
+                    <button @click="mem.open = false" class="btn btn-plain !px-1 font-semibold">Xong</button>
+                </div>
+            </div>
+            <div class="p-4 sm:p-5 space-y-4">
+                <div class="grid grid-cols-3 gap-2 text-center">
+                    <div class="well p-3"><div class="caption">Tài khoản</div><div class="title-md num" x-text="mem.list.length"></div></div>
+                    <div class="well p-3"><div class="caption">Hội viên</div><div class="title-md num text-accent" x-text="mem.list.filter(u => u.is_member || u.is_admin).length"></div></div>
+                    <div class="well p-3"><div class="caption">Chưa cấp</div><div class="title-md num" x-text="mem.list.filter(u => !u.is_member && !u.is_admin).length"></div></div>
+                </div>
+                <input x-model="mem.q" placeholder="Tìm username" class="field">
+                <div class="seg"><button @click="mem.filter = 'ALL'" :class="{ on: mem.filter === 'ALL' }">Tất cả</button><button @click="mem.filter = 'NO'" :class="{ on: mem.filter === 'NO' }">Chưa cấp</button><button @click="mem.filter = 'YES'" :class="{ on: mem.filter === 'YES' }">Hội viên</button></div>
+                <p x-show="mem.loading" class="caption text-center py-6">Đang tải…</p>
+                <div class="divide-y divide-line">
+                    <template x-for="u in memRows" :key="u.id">
+                        <div class="flex items-center gap-3 py-3">
+                            <div class="w-9 h-9 rounded-full grid place-items-center font-semibold text-canvas text-[14px] shrink-0" :style="`background:${avatarColor(u.username)}`" x-text="(u.username || '?').slice(0, 1).toUpperCase()"></div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2"><span class="font-semibold truncate" x-text="'@' + u.username"></span><span x-show="u.is_admin" class="chip chip-violet">Admin</span><span x-show="u.is_member && !u.is_admin" class="chip chip-blue">Hội viên</span></div>
+                                <div class="caption" x-text="'Tạo ' + fmtDate(String(u.created_at).slice(0, 10)) + ' · ' + u.trades + ' lệnh · ' + u.posts + ' bài'"></div>
+                            </div>
+                            <button x-show="!u.is_admin" @click="setMember(u, !u.is_member)" class="btn !py-1.5 !px-3 text-[13px]" :class="u.is_member ? 'btn-gray' : 'btn-primary'" :disabled="u._busy" x-text="u.is_member ? 'Thu hồi' : 'Cấp hội viên'"></button>
+                        </div>
+                    </template>
+                </div>
+                <p x-show="!mem.loading && !memRows.length" class="caption text-center py-6">Không có ai.</p>
+            </div>
+        </div>
+    </template>
+</div>
+
+<!-- ═════════════ TRANG HỘI VIÊN (#hoi-vien) ═════════════ -->
+<div x-show="memberPage" x-cloak class="fixed inset-0 z-[45] overflow-y-auto" style="background: inherit" id="member-page">
+    <div class="sticky top-0 z-10 px-3 pt-3">
+        <div class="capsule mx-auto max-w-3xl flex items-center gap-2 p-1.5 pl-2">
+            <button @click="closeMemberPage()" class="btn btn-plain !py-1.5 !px-2.5"><i data-lucide="chevron-left" class="w-4 h-4"></i><span x-text="isLocked ? 'Trang chủ' : 'Quay lại'"></span></button>
+            <span class="ml-auto"></span>
+            <button x-show="isLocked" @click="openLogin(false)" class="btn btn-gray !py-1.5 !px-3.5 text-[13px]">Đăng nhập</button>
+        </div>
+    </div>
+    <div class="max-w-3xl mx-auto px-5 pt-14 pb-24">
+        <section class="text-center">
+            <span class="lp-tag">Hội viên DNC Trading</span>
+            <h1 class="lp-h1 mt-6">Hội viên trọn đời</h1>
+            <div class="mt-6 flex items-baseline justify-center gap-3">
+                <span class="text-[22px] text-ink-3 line-through num">$200</span>
+                <span class="text-[40px] font-semibold text-accent">Miễn phí</span>
+            </div>
+            <p class="caption mt-1">một lần · trọn đời · giai đoạn đầu</p>
+            <p class="mt-6 text-[17px] text-ink-2 leading-relaxed max-w-[34rem] mx-auto">Giai đoạn đầu mình mở hội viên miễn phí cho anh em đi cùng từ sớm. Khi có giá, hội viên đã vào vẫn giữ quyền lợi trọn đời.</p>
+            <div class="mt-8">
+                <template x-if="isLocked"><button @click="openLogin(true)" class="btn btn-primary !px-6 !py-3">Tạo tài khoản miễn phí</button></template>
+                <template x-if="!isLocked && isMember"><span class="inline-flex items-center gap-2 px-5 py-3 rounded-full border border-line"><i data-lucide="badge-check" class="w-5 h-5 text-accent"></i><span>Bạn đã là hội viên trọn đời</span></span></template>
+                <template x-if="!isLocked && !isMember"><div class="card p-5 text-left space-y-2 max-w-md mx-auto"><div class="font-semibold">Bạn đang dùng tài khoản thường</div><p class="text-[15px] text-ink-2">Nhắn mình tên đăng nhập <b class="text-ink" x-text="'@' + username"></b> để được cấp hội viên.</p></div></template>
+            </div>
+        </section>
+        <section class="mt-20">
+            <h2 class="lp-h2">Có gì cho hội viên</h2>
+            <div class="grid sm:grid-cols-2 gap-3 mt-8">
+                <div class="bento p-6"><i data-lucide="file-lock-2" class="w-6 h-6 text-accent"></i><h3 class="mt-4">Bài viết riêng</h3><p class="mt-2">Bài chiến lược, phân tích và kế hoạch mình chỉ đăng cho hội viên.</p></div>
+                <div class="bento p-6"><i data-lucide="library-big" class="w-6 h-6 text-accent"></i><h3 class="mt-4">Tài nguyên khoá</h3><p class="mt-2">Công cụ, chỉ báo, tài liệu chọn lọc trong mục Tài nguyên.</p></div>
+                <div class="bento p-6"><i data-lucide="notebook-pen" class="w-6 h-6 text-accent"></i><h3 class="mt-4">Nhật ký và Backtest</h3><p class="mt-2">Ghi lệnh kèm chart 3 khung, backtest 100 lệnh, thống kê theo R.</p></div>
+                <div class="bento p-6"><i data-lucide="users" class="w-6 h-6 text-accent"></i><h3 class="mt-4">Cộng đồng</h3><p class="mt-2">Chia sẻ lệnh, hỏi ý kiến, đọc lệnh của trader khác.</p></div>
+            </div>
+        </section>
+        <section class="mt-20">
+            <h2 class="lp-h2">Cách trở thành hội viên</h2>
+            <div class="grid sm:grid-cols-2 gap-3 mt-8">
+                <div class="bento p-6"><div class="step-n">1</div><h3 class="mt-5">Tạo tài khoản</h3><p class="mt-2">Chỉ cần tên đăng nhập và mật khẩu.</p></div>
+                <div class="bento p-6"><div class="step-n">2</div><h3 class="mt-5">Nhắn mình</h3><p class="mt-2">Gửi tên đăng nhập, mình cấp hội viên cho bạn.</p></div>
+            </div>
+        </section>
+        <p class="caption text-center mt-16">Nội dung chia sẻ kinh nghiệm cá nhân, không phải lời khuyên đầu tư.</p>
+    </div>
 </div>
 
 <!-- ═════════════ SHEET: BỘ BACKTEST ═════════════ -->
@@ -1425,8 +1590,8 @@
     const TABS = [
         { id: 'journal', label: 'Nhật ký', icon: 'notebook-pen' },
         { id: 'backtest', label: 'Backtest', icon: 'flask-conical' },
+        { id: 'resources', label: 'Tài nguyên', icon: 'library-big' },
         { id: 'feed', label: 'Cộng đồng', icon: 'users' },
-        { id: 'stats', label: 'Thống kê', icon: 'chart-column' },
     ];
     const MILESTONES = {
         10: '10 lệnh! Phần lớn người bỏ cuộc trước mốc này — bạn đã qua.',
@@ -1440,7 +1605,10 @@
     function app() {
         return {
             TABS, SLOTS,
-            booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false,
+            booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false, isMember: false,
+            jView: 'list', memberPage: false,
+            res: { items: [], loaded: false, locked: 0, form: null },
+            mem: { open: false, list: [], q: '', filter: 'ALL', loading: false },
             loginOpen: false, loginHint: '', reader: null, art: null,
             inUser: '', inPass: '', inPass2: '', loginErr: '', signupMode: false,
             userId: '', username: '',
@@ -1491,13 +1659,15 @@
                     ({ data: p, error } = await sb.from('profiles').select('*').eq('id', this.userId).maybeSingle());
                 }
                 if (error) throw error;
-                if (!p) { this.userId = ''; try { await sb.auth.signOut(); } catch (e) {} throw new Error('Tài khoản chưa có hồ sơ — liên hệ DNC'); }
+                if (!p) { this.userId = ''; try { await sb.auth.signOut(); } catch (e) {} throw new Error('Tài khoản chưa có hồ sơ — nhắn mình để xử lý'); }
                 this.username = p.username || '';
                 this.capital = Number(p.capital) || 10000;
                 this.riskPercent = Number(p.risk_percent) || 5;
                 this.currency = p.currency || 'USD';
                 this.gemini = p.gemini_api_key || '';
                 this.isAdmin = !!p.is_admin;
+                this.isMember = !!(p.is_member || p.is_admin);
+                Object.assign(this.res, { items: [], loaded: false, locked: 0 });
                 this.isLocked = false;
                 this.loginOpen = false;
                 // bảng tin công khai → tải lại theo quyền thành viên
@@ -1532,7 +1702,7 @@
                         this.loginErr = /already|exists|database error/i.test(error.message) ? 'Username đã có người dùng' : (/not allowed|disabled/i.test(error.message) ? 'Hiện chưa mở đăng ký' : error.message);
                         return;
                     }
-                    if (!data.session) return this.loginErr = 'Đã tạo tài khoản nhưng chưa đăng nhập được — liên hệ DNC';
+                    if (!data.session) return this.loginErr = 'Đã tạo tài khoản nhưng chưa đăng nhập được — nhắn mình để xử lý';
                     this.inPass = ''; this.inPass2 = ''; this.signupMode = false;
                     await this.applySession(data.session);
                 } catch (e) { this.loginErr = 'Không kết nối được máy chủ: ' + e.message; }
@@ -1551,8 +1721,12 @@
                 const [t, id] = location.hash.replace(/^#/, '').split('/');
                 if (t === 'p' && id) { if (!this.reader || !this.reader.post || this.reader.post.id !== id) this.openReaderById(id, false); return this.icons(); }
                 if (this.reader) this.reader = null;
-                if (TABS.some(x => x.id === t)) this.tab = t;
+                this.memberPage = t === 'hoi-vien';
+                if (this.memberPage) { document.getElementById('member-page')?.scrollTo(0, 0); return this.icons(); }
+                if (t === 'stats') { this.tab = 'journal'; this.jView = 'stats'; history.replaceState(null, '', '#journal/stats'); }
+                else if (TABS.some(x => x.id === t)) { this.tab = t; if (t === 'journal') this.jView = id === 'stats' ? 'stats' : 'list'; }
                 if (this.isLocked) return this.icons();
+                if (this.tab === 'resources' && !this.res.loaded) this.loadResources();
                 if (this.tab === 'backtest') this.loadSets().then(() => {
                     const s = id && this.bt.sets.find(x => x.id === id);
                     if (s && (!this.bt.set || this.bt.set.id !== s.id)) this.openSet(s, false);
@@ -1561,6 +1735,87 @@
                 if (this.tab === 'feed' && !this.feed.loaded) this.loadFeed(true);
                 this.icons();
             },
+            setJView(v) {
+                this.jView = v;
+                const h = v === 'stats' ? '#journal/stats' : '#journal';
+                if (location.hash !== h) history.replaceState(null, '', h);
+                this.icons();
+            },
+            openMemberPage() { location.hash = 'hoi-vien'; },
+            closeMemberPage() {
+                this.memberPage = false;
+                if (this.isLocked) history.replaceState(null, '', location.pathname + location.search);
+                else this.go(this.tab || 'journal');
+                this.icons();
+            },
+            visLabel(v) { return v === 'public' ? 'Công khai' : (v === 'vip' ? 'Hội viên' : 'Có tài khoản'); },
+            visHint(v) {
+                return v === 'public' ? 'Ai có link cũng xem được, kể cả chưa đăng nhập. Hiện trên trang chủ.'
+                     : v === 'vip' ? 'Chỉ hội viên đọc được.' : 'Chỉ người đã đăng nhập Trading OS xem được.';
+            },
+            hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } },
+
+            // ═════════════ TÀI NGUYÊN ═════════════
+            async loadResources() {
+                try {
+                    const [{ data, error }, lk] = await Promise.all([
+                        sb.from('resources').select('*').order('category').order('sort').order('created_at', { ascending: false }),
+                        sb.rpc('resources_locked')]);
+                    if (error) throw error;
+                    this.res.items = data || []; this.res.locked = Number(lk.data) || 0;
+                } catch (e) { this.showToast('Không tải được tài nguyên: ' + e.message); }
+                this.res.loaded = true; this.icons();
+            },
+            get resGroups() {
+                const m = new Map();
+                for (const r of this.res.items) { if (!m.has(r.category)) m.set(r.category, []); m.get(r.category).push(r); }
+                return [...m].map(([name, items]) => ({ name, items }));
+            },
+            openResForm(r) {
+                this.res.form = r ? { ...r, busy: false, err: '' } : { id: null, category: this.resGroups[0]?.name || '', title: '', url: '', description: '', vip: false, busy: false, err: '' };
+                this.icons();
+            },
+            async saveRes() {
+                const f = this.res.form; if (!f || f.busy) return;
+                f.busy = true; f.err = '';
+                const row = { category: f.category.trim(), title: f.title.trim(), url: (f.url || '').trim(), description: (f.description || '').trim(), vip: !!f.vip };
+                try {
+                    const q = f.id ? sb.from('resources').update(row).eq('id', f.id) : sb.from('resources').insert(row);
+                    const { error } = await q; if (error) throw error;
+                    this.res.form = null; this.showToast('Đã lưu tài nguyên'); await this.loadResources();
+                } catch (e) { f.err = e.message; f.busy = false; }
+            },
+            async deleteRes() {
+                const f = this.res.form; if (!f || !f.id || !confirm('Xoá tài nguyên này?')) return;
+                f.busy = true;
+                const { error } = await sb.from('resources').delete().eq('id', f.id);
+                if (error) { f.err = error.message; f.busy = false; return; }
+                this.res.form = null; this.showToast('Đã xoá'); await this.loadResources();
+            },
+
+            // ═════════════ HỘI VIÊN (admin) ═════════════
+            async openMembers() {
+                Object.assign(this.mem, { open: true, loading: true, q: '', filter: 'ALL' });
+                this.icons();
+                const { data, error } = await sb.rpc('admin_list_users');
+                this.mem.loading = false;
+                if (error) { this.mem.open = false; return this.showToast('Không tải được danh sách: ' + error.message); }
+                this.mem.list = (data || []).map(u => ({ ...u, trades: Number(u.trades) || 0, posts: Number(u.posts) || 0, _busy: false }));
+            },
+            get memRows() {
+                const q = this.mem.q.trim().toLowerCase();
+                return this.mem.list.filter(u => (!q || (u.username || '').toLowerCase().includes(q))
+                    && (this.mem.filter === 'ALL' || (this.mem.filter === 'YES') === !!(u.is_member || u.is_admin)));
+            },
+            async setMember(u, on) {
+                u._busy = true;
+                const { error } = await sb.rpc('admin_set_member', { p_user: u.id, p_on: on });
+                u._busy = false;
+                if (error) return this.showToast('Lỗi: ' + error.message);
+                u.is_member = on;
+                this.showToast(on ? `Đã cấp hội viên cho @${u.username}` : `Đã thu hồi hội viên của @${u.username}`);
+            },
+
             go(t) {
                 this.reader = null;
                 this.tab = t;
@@ -1636,7 +1891,7 @@
             },
             onPaste(e) {
                 if (this.art) return this.pasteArticle(e);
-                if (this.isLocked || this.share || this.settingsOpen || this.setForm || this.reader) return;
+                if (this.isLocked || this.share || this.settingsOpen || this.setForm || this.reader || this.res.form || this.mem.open || this.memberPage) return;
                 const target = this.formOpen ? 'form' : (this.btEdit ? 'btEdit' : (this.tab === 'backtest' && this.bt.set && !this.view ? 'bt' : null));
                 if (!target) return;
                 const item = [...(e.clipboardData ? e.clipboardData.items : [])].find(i => i.type.startsWith('image/'));
@@ -2020,7 +2275,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     if (s.kind === 'TRADE') this.sharedT[s.src.id] = data.id; else this.sharedB[s.src.id] = data.id;
                     if (this.feed.loaded) this.feed.posts.unshift(data);
                     this.share = null;
-                    this.showToast(data.visibility === 'public' ? 'Đã đăng công khai' : 'Đã đăng cho thành viên', () => { this.view = null; this.btEdit = null; this.openReader(data); }, 'Xem', 4000);
+                    this.showToast(data.visibility === 'public' ? 'Đã đăng công khai' : (data.visibility === 'vip' ? 'Đã đăng cho hội viên' : 'Đã đăng cho người có tài khoản'), () => { this.view = null; this.btEdit = null; this.openReader(data); }, 'Xem', 4000);
                 } catch (e) {
                     s.busy = false;
                     this.showToast(/duplicate|unique/i.test(e.message) ? 'Lệnh này đã được chia sẻ rồi' : 'Chưa đăng được: ' + e.message, null, '', 5000);
@@ -2159,7 +2414,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 const url = location.origin + location.pathname + '#p/' + p.id;
                 try { await navigator.clipboard.writeText(url); } catch (e) { prompt('Chép link:', url); }
                 if (this.reader) { this.reader.copied = true; setTimeout(() => { if (this.reader) this.reader.copied = false; }, 2000); }
-                if (p.visibility !== 'public' && !this.isLocked) this.showToast('Bài chỉ thành viên — người chưa đăng nhập không mở được link');
+                if (p.visibility !== 'public' && !this.isLocked) this.showToast(p.visibility === 'vip' ? 'Bài chỉ hội viên đọc được' : 'Bài chỉ người có tài khoản đọc được — người chưa đăng nhập không mở được link');
             },
             openLogin(signup, hint = '') { this.signupMode = signup; this.loginErr = ''; this.loginHint = hint; this.loginOpen = true; this.icons(); },
 
@@ -2220,7 +2475,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         if (this.feed.loaded) this.feed.posts.unshift(data);
                         this.art = null;
                         this.openReader(data);
-                        this.showToast(data.visibility === 'public' ? 'Đã đăng — ai cũng đọc được' : 'Đã đăng cho thành viên');
+                        this.showToast(data.visibility === 'public' ? 'Đã đăng — ai cũng đọc được' : (data.visibility === 'vip' ? 'Đã đăng cho hội viên' : 'Đã đăng cho người có tài khoản'));
                     }
                 } catch (e) {
                     a.busy = false;
@@ -2611,6 +2866,8 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
             // ═════════════ PHÍM TẮT ═════════════
             onKey(e) {
+                if (e.key === 'Escape' && (this.res.form || this.mem.open)) { this.res.form = null; this.mem.open = false; return; }
+                if (e.key === 'Escape' && this.memberPage && !this.loginOpen) return this.closeMemberPage();
                 if (e.key === 'Escape' && (this.loginOpen || this.art || this.reader)) {
                     if (this.loginOpen) this.loginOpen = false; else if (this.art) this.closeArticle(); else if (!this.share) this.closeReader();
                     if (!this.share) return;
@@ -2627,7 +2884,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                     if (e.key === 'ArrowRight') this.btStep(1);
                     return;
                 }
-                if (typing || e.ctrlKey || e.metaKey || e.altKey || this.formOpen || this.view || this.share || this.reader || this.art || this.setForm || this.settingsOpen) return;
+                if (typing || e.ctrlKey || e.metaKey || e.altKey || this.res.form || this.mem.open || this.memberPage || this.formOpen || this.view || this.share || this.reader || this.art || this.setForm || this.settingsOpen) return;
                 if (this.tab === 'backtest' && this.bt.set) {
                     const k = e.key.toLowerCase();
                     if (k === 'w') { e.preventDefault(); this.btAdd('WIN'); }
