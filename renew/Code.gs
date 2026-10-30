@@ -938,10 +938,10 @@ function sendTelegramNotification(message) {
 
     let botToken = props.getProperty('BOT_TOKEN') || props.getProperty('TELEGRAM_BOT_TOKEN');
     if (!botToken || !String(botToken).trim()) {
-      botToken = '7948647340:AAFWFVUHabmWqsoR53cbPgS5CVWWGjaIae4';
-    } else {
-      botToken = String(botToken).trim();
+      Logger.log('[TELEGRAM_CONFIG] Thiếu BOT_TOKEN trong Script Properties — bỏ qua gửi tin.');
+      return false;
     }
+    botToken = String(botToken).trim();
 
     let chatId = props.getProperty('CHAT_ID') || props.getProperty('TELEGRAM_CHAT_ID');
     if (!chatId || !String(chatId).trim()) {
