@@ -33,6 +33,9 @@ def setup(page, responses):
     if ALPINE:
         page.route('**/alpinejs**', lambda r: r.fulfill(path=ALPINE, content_type='text/javascript'))
     page.goto(PAGE); page.wait_for_function('window.Alpine')
+    page.click('button:has-text("dn.insights@gmail.com")')
+    check('bấm chọn nhanh email → điền vào ô', page.input_value('#em') == 'dn.insights@gmail.com')
+    page.fill('#em', '')
 
 with sync_playwright() as p:
     b = p.chromium.launch()
