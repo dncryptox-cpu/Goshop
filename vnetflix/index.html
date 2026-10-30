@@ -82,15 +82,25 @@
         <h2 class="font-semibold text-[17px]">2. Lấy mã tại đây</h2>
         <form @submit.prevent="lookup(true)" class="space-y-3">
             <div>
-                <label class="label" for="em">Email tài khoản Netflix</label>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2" role="group" aria-label="Chọn nhanh email">
-                    <template x-for="m in accounts" :key="m">
-                        <button type="button" @click="pick(m)" class="mono text-[14px] px-3 py-3 rounded-xl border text-left truncate transition-colors"
-                                :class="email.trim().toLowerCase() === m ? 'border-[#E50914] bg-[#E50914]/15 text-white' : 'border-[var(--line,#3a2326)] text-ink-2 hover:text-white'"
-                                x-text="m"></button>
-                    </template>
+                <label class="label" for="em">Chọn email tài khoản Netflix</label>
+                <!-- Đã chọn: chỉ hiện email đó + nút Đổi -->
+                <div x-show="picked" x-cloak class="flex items-center gap-3 rounded-xl border border-[#E50914] bg-[#E50914]/10 px-4 py-3">
+                    <span class="text-[#E50914] text-lg leading-none">✓</span>
+                    <span class="mono text-[15px] text-white flex-1 min-w-0 truncate" x-text="email"></span>
+                    <button type="button" @click="unpick()" class="text-[14px] text-ink-2 underline underline-offset-4 shrink-0">Đổi</button>
                 </div>
-                <input id="em" x-model="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="hoặc gõ email shop đã gửi" class="field mono">
+                <!-- Chưa chọn: danh sách email để bấm -->
+                <div x-show="!picked && !custom" class="space-y-2" role="group" aria-label="Chọn email">
+                    <template x-for="m in accounts" :key="m">
+                        <button type="button" @click="pick(m)" class="w-full mono text-[15px] px-4 py-3.5 rounded-xl border border-[var(--line,#3a2326)] text-left text-white hover:border-[#E50914] truncate" x-text="m"></button>
+                    </template>
+                    <button type="button" @click="custom = true; $nextTick(() => document.getElementById('em').focus())" class="text-[14px] text-ink-2 underline underline-offset-4">Email khác…</button>
+                </div>
+                <!-- Email khác: gõ tay -->
+                <div x-show="custom && !picked" x-cloak>
+                    <input id="em" x-model="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="email shop đã gửi bạn" class="field mono">
+                    <button type="button" @click="custom = false; email = ''" class="mt-2 text-[14px] text-ink-2 underline underline-offset-4">← Chọn từ danh sách</button>
+                </div>
             </div>
             <div x-show="needPin" x-cloak>
                 <label class="label" for="pin">Mã khách</label>
@@ -171,7 +181,7 @@
                 { id: 'TEMP', tab: 'Đang đi du lịch', steps: [
                     'TV báo <b>"Thiết bị không thuộc Hộ gia đình"</b> → chọn <b>"Tôi đang đi du lịch"</b> (hoặc <b>"Xem tạm thời"</b>).',
                     'Chọn <b>"Gửi email"</b>. <span class="text-ink-2">(Đừng chọn tin nhắn SMS.)</span>',
-                    'Xuống bước 2, nhập email tài khoản → bấm <b>Lấy mã</b> → bấm nút để xem <b>mã 4 số</b>.',
+                    'Xuống bước 2, chọn email tài khoản → bấm <b>Lấy mã</b> → bấm nút để xem <b>mã 4 số</b>.',
                     'Nhập 4 số đó trên TV trong vòng 15 phút.'] },
                 { id: 'HOUSEHOLD', tab: 'Cập nhật Hộ gia đình', steps: [
                     'TV báo cần <b>cập nhật Hộ gia đình Netflix</b> → chọn <b>"Cập nhật Hộ gia đình"</b>.',
@@ -186,12 +196,16 @@
             guide: 'TEMP',
             email: '', pin: '', remember: true, needPin: false,
             accounts: ['dnctab2024@gmail.com', 'dn.insights@gmail.com'], // email tài khoản Netflix của shop — bấm chọn khỏi gõ
-            pick(m) { this.email = m; this.err = ''; this.$nextTick(() => { const p = document.getElementById('pin'); if (this.needPin && p) p.focus(); }); },
+            custom: false,
+            get picked() { return this.accounts.includes(this.email.trim().toLowerCase()); },
+            pick(m) { this.email = m; this.custom = false; this.err = ''; this.$nextTick(() => { const p = document.getElementById('pin'); if (this.needPin && p) p.focus(); }); },
+            unpick() { this.email = ''; this.custom = false; this.err = ''; },
             busy: false, err: '', checked: false, items: [], windowMin: 20,
             waiting: false, waitLeft: 0, _timer: null, _deadline: 0, copied: '', nowTick: Date.now(),
 
             init() {
                 try { const s = JSON.parse(localStorage.getItem('dnc_nf') || '{}'); this.email = s.email || ''; this.pin = s.pin || ''; this.needPin = !!s.pin; } catch (e) {}
+                if (this.email && !this.picked) this.custom = true;
                 setInterval(() => { this.nowTick = Date.now(); if (this.waiting) this.waitLeft = Math.max(0, this._deadline - Date.now()); }, 1000);
             },
             save() {
@@ -204,7 +218,7 @@
             },
             async lookup(user) {
                 if (user) { this.stopWait(); this.err = ''; }
-                if (!this.email.trim()) return;
+                if (!this.email.trim()) { if (user) this.err = 'Chọn email tài khoản trước nhé.'; return; }
                 this.busy = user;
                 try {
                     const d = await this.call();

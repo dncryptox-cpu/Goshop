@@ -33,9 +33,11 @@ def setup(page, responses):
     if ALPINE:
         page.route('**/alpinejs**', lambda r: r.fulfill(path=ALPINE, content_type='text/javascript'))
     page.goto(PAGE); page.wait_for_function('window.Alpine')
-    page.click('button:has-text("dn.insights@gmail.com")')
-    check('bấm chọn nhanh email → điền vào ô', page.input_value('#em') == 'dn.insights@gmail.com')
-    page.fill('#em', '')
+    page.click('button:has-text("dn.insights@gmail.com")'); page.wait_for_timeout(150)
+    check('chọn 1 email → chỉ còn email đó + nút Đổi, email kia ẩn', page.is_visible('text=Đổi') and not page.is_visible('button:has-text("dnctab2024@gmail.com")') and page.evaluate("document.body._x_dataStack[0].email") == 'dn.insights@gmail.com')
+    page.click('text=Đổi'); page.wait_for_timeout(150)
+    check('bấm Đổi → hiện lại cả 2 email', page.is_visible('button:has-text("dnctab2024@gmail.com")') and page.is_visible('button:has-text("dn.insights@gmail.com")'))
+    page.click('text=Email khác…')
 
 with sync_playwright() as p:
     b = p.chromium.launch()
