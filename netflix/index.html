@@ -106,7 +106,7 @@
                         <span class="w-2 h-2 rounded-full bg-nf"></span>
                         <span class="font-semibold" x-text="it.title"></span>
                     </div>
-                    <span class="chip" :class="ageMin(it) >= 15 && '!text-warn'" x-text="ago(it)"></span>
+                    <span class="chip" :class="{ '!text-warn': state(it) === 'soon', '!text-down': state(it) === 'expired' }" x-text="ago(it)"></span>
                 </div>
 
                 <template x-if="it.code">
@@ -124,7 +124,8 @@
                         <p class="text-[13px] text-ink-2" x-show="it.type === 'HOUSEHOLD'">Trên trang Netflix, bấm <b>"Xác nhận cập nhật"</b>. Xong quay lại TV, chọn <b>"Tôi đã cập nhật"</b>.</p>
                     </div>
                 </template>
-                <p x-show="ageMin(it) >= 15" class="text-[13px] text-warn">Email này đã gần hết hạn — nếu link báo lỗi, gửi yêu cầu mới trên TV rồi bấm Lấy mã lại.</p>
+                <p x-show="state(it) === 'soon'" class="text-[13px] text-warn" data-warn="soon">Sắp hết hạn (còn <span x-text="Math.max(1, Math.ceil(15 - ageMin(it)))"></span> phút) — dùng ngay. Nếu báo lỗi, gửi yêu cầu mới trên TV rồi bấm Lấy mã lại.</p>
+                <p x-show="state(it) === 'expired'" class="text-[13px] text-down" data-warn="expired">Có thể đã hết hạn (quá 15 phút). Gửi yêu cầu mới trên TV rồi bấm Lấy mã lại.</p>
             </article>
         </template>
 
@@ -228,6 +229,7 @@
             },
             stopWait() { this.waiting = false; clearTimeout(this._timer); },
             ageMin(it) { return (this.nowTick - new Date(it.at).getTime()) / 60000; },
+            state(it) { const m = this.ageMin(it); return m >= 15 ? 'expired' : m >= 10 ? 'soon' : 'fresh'; },
             ago(it) { const m = this.ageMin(it); return m < 1 ? 'vừa xong' : Math.floor(m) + ' phút trước'; },
             async copy(t) {
                 try { await navigator.clipboard.writeText(t); this.copied = t; setTimeout(() => this.copied = '', 2000); } catch (e) {}
