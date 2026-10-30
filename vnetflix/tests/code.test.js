@@ -106,6 +106,18 @@ t('mã khách: thiếu → needPin, sai → báo, đúng → ok', () => {
   r = c.lookup_(A, '999999'); eq([r.ok, r.needPin], [false, true]);
   r = c.lookup_(A, '012345'); eq([r.ok, r.needPin, r.items.length], [true, true, 1]);
 });
+t('nhiều khách chung 1 email: mỗi khách 1 mã, không phân biệt hoa thường, tắt khách thì mã hết hiệu lực', () => {
+  const c = makeEnv({ accounts: [[A, 'linhlinh06', 'Linh', true], [A, 'HoaiAnh', 'Hoài Anh', true], [A, 'KH-NFLX-02', 'Đức', 'FALSE'], ['b@mail.com', 'KH-NFLX-02', 'Vutung', true]], mails: [{ ...TEMP, to: A }] });
+  eq(c.lookup_(A, '').needPin, true);
+  eq(c.lookup_(A, 'hoaianh ').ok, true);
+  eq(c.lookup_(A, 'LINHLINH06').ok, true);
+  eq(c.lookup_(A, 'KH-NFLX-02').ok, false);
+  eq(c.lookup_('b@mail.com', 'kh-nflx-02').ok, true);
+});
+t('có 1 dòng để trống mã → email đó không cần mã', () => {
+  const c = makeEnv({ accounts: [[A, 'x1', '', true], [A, '', '', true]] });
+  eq([c.lookup_(A, '').ok, c.lookup_(A, '').needPin], [true, false]);
+});
 t('sai mã khách 5 lần → khoá, kể cả nhập đúng', () => {
   const c = makeEnv({ accounts: [[A, '1111', '', true]] });
   for (let i = 0; i < 5; i++) c.lookup_(A, '0000');

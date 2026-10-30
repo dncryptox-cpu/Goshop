@@ -1,6 +1,6 @@
 /**
  * Netflix tự xác minh — Apps Script chạy trên Gmail CHUNG (nơi mail các tài khoản Netflix đổ về).
- * Trang khách: godnc.com/netflix  →  POST {action:'lookup', email, pin}
+ * Trang khách: godnc.com/vnetflix  →  POST {action:'lookup', email, pin}
  * Trả: {ok, needPin, windowMin, items:[{id,type,title,link|code,at}]}  hoặc  {ok:false, message, needPin?}
  *
  * Cài đặt: chạy setup() 1 lần → tạo Sheet "Netflix xác minh – danh sách". Deploy → Web app
@@ -52,8 +52,9 @@ function lookup_(emailRaw, pinRaw) {
     return { ok: false, message: 'Email này chưa có trong danh sách của shop. Kiểm tra lại hoặc nhắn shop.' };
   }
 
-  var needPin = !!acc.pin;
-  if (needPin && pin !== acc.pin) {
+  // Mỗi khách 1 dòng (cùng email, mã khách riêng). Dòng nào để trống mã khách = email đó không cần mã.
+  var needPin = !acc.open;
+  if (needPin && acc.pins.indexOf(pin.toLowerCase()) < 0) {
     if (pin) {
       var bad = Number(cache.get('bad_' + key) || 0) + 1;
       cache.put('bad_' + key, String(bad), CFG.LOCK_S);
@@ -169,7 +170,10 @@ function findAccount_(email) {
     rows.forEach(function (r) {
       var em = String(r[0] || '').trim().toLowerCase();
       var on = String(r[3]).trim().toUpperCase() !== 'FALSE';
-      if (em && on) map[em] = { pin: String(r[1] || '').trim() };
+      if (!em || !on) return;
+      var m = map[em] || (map[em] = { pins: [], open: false });
+      var pin = String(r[1] || '').trim().toLowerCase();
+      if (pin) m.pins.push(pin); else m.open = true;
     });
     cache.put('accounts', JSON.stringify(map), 60); // sửa sheet → có hiệu lực sau ≤ 1 phút
   }
@@ -189,7 +193,7 @@ function setup() {
 
   var a = ss.getSheetByName(CFG.SHEET_ACCOUNTS) || ss.insertSheet(CFG.SHEET_ACCOUNTS);
   if (a.getLastRow() === 0) {
-    a.appendRow(['Email Netflix', 'Mã khách (không bắt buộc)', 'Ghi chú', 'Bật (TRUE/FALSE)']);
+    a.appendRow(['Email Netflix', 'Mã khách (mỗi khách 1 dòng)', 'Tên khách / ghi chú', 'Bật (TRUE/FALSE)']);
     a.getRange('A1:D1').setFontWeight('bold');
     a.getRange('B:B').setNumberFormat('@'); // giữ số 0 đầu mã khách
     a.setFrozenRows(1);
