@@ -109,7 +109,7 @@ function sentTo_(m, email) {
   return re.test(to);
 }
 
-var BLOCK_SUBJECT = /(m[aậ]t kh[aẩ]u|password|đặt lại|dat lai|reset|đổi email|thay đổi email|email.*(đã|da) (thay|đổi)|email (address )?(change|updated)|change.*email|thanh toán|payment|billing|hóa đơn|hoá đơn|receipt|thẻ|card|membership|gói dịch vụ|tư cách thành viên|cancel|hủy|huỷ|số điện thoại|phone number)/i;
+var BLOCK_SUBJECT = /(m[aậ]t kh[aẩ]u|password|passwort|kennwort|contrase[ñn]a|mot de passe|senha|đặt lại|dat lai|reset|zurücksetzen|đổi email|thay đổi email|email.*(đã|da) (thay|đổi)|email (address )?(change|updated)|change.*email|e-mail-adresse|thanh toán|payment|zahlung|pago|paiement|pagamento|billing|rechnung|hóa đơn|hoá đơn|receipt|thẻ|card|karte|tarjeta|membership|mitgliedschaft|gói dịch vụ|tư cách thành viên|cancel|kündig|hủy|huỷ|số điện thoại|phone number|telefonnummer)/i;
 
 /** Trả {type,title,link|code} hoặc null. Chỉ nhận đúng 3 loại; mọi thứ khác bỏ qua. */
 function classify_(subject, html, text) {
@@ -131,12 +131,13 @@ function classify_(subject, html, text) {
   var hh = links.filter(isHouseholdLink_)[0];
   if (hh) return { type: 'HOUSEHOLD', title: 'Cập nhật Hộ gia đình', link: hh };
 
-  if (/(sign[- ]?in code|mã đăng nhập|ma dang nhap|login code)/i.test(subject)) {
+  // Mã đăng nhập: Netflix gửi theo ngôn ngữ của tài khoản ("Sign-in code", "Login-Code", "Mã đăng nhập", "code de connexion"…)
+  if (/(code|mã|ma dang nhap|código|codice|kod)/i.test(subject)) {
     var plain = text || html.replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');
     plain = plain.replace(/&nbsp;/g, ' ');
     // ưu tiên dãy 4 số đứng riêng một dòng (đúng chỗ Netflix in mã), sau đó mới tới số đầu tiên
-    var m = plain.match(/^[ \t]*(\d{4})[ \t]*$/m) || plain.match(/(?:^|[^\d])(\d{4})(?!\d)/);
-    if (m) return { type: 'SIGNIN', title: 'Mã đăng nhập', code: m[1] };
+    var m = plain.match(/^[ \t]*(\d[ \t]?\d[ \t]?\d[ \t]?\d)[ \t]*$/m) || plain.match(/(?:^|[^\d])(\d{4})(?!\d)/);
+    if (m) return { type: 'SIGNIN', title: 'Mã đăng nhập', code: m[1].replace(/\s/g, '') };
   }
   return null;
 }
@@ -203,9 +204,18 @@ function setup() {
   return ss.getUrl();
 }
 
-/** Thử nhanh trong trình soạn: đổi email rồi bấm Run, xem Execution log. */
+/** Soi lỗi: đổi email rồi bấm Chạy, xem Nhật ký thực thi — từng email Netflix 20 phút qua và lý do bị bỏ. */
 function testLookup() {
-  Logger.log(JSON.stringify(findItems_('email-tai-khoan@vidu.com', new Date()), null, 2));
+  var email = 'email-tai-khoan@vidu.com';
+  var since = new Date(Date.now() - CFG.WINDOW_MIN * 60000);
+  GmailApp.search('from:netflix.com to:' + email + ' after:' + Math.floor(since.getTime() / 1000), 0, 20).forEach(function (t) {
+    t.getMessages().forEach(function (m) {
+      var why = m.getDate() < since ? 'quá 20 phút' : !isGenuine_(m) ? 'không qua kiểm tra người gửi/DKIM: ' + m.getHeader('Authentication-Results')
+        : !sentTo_(m, email) ? 'không gửi tới email này (To: ' + m.getTo() + ')' : JSON.stringify(classify_(m.getSubject(), m.getBody(), m.getPlainBody()) || 'không thuộc 3 loại');
+      Logger.log(m.getDate() + ' | ' + m.getSubject() + ' → ' + why);
+    });
+  });
+  Logger.log('Kết quả trả cho khách: ' + JSON.stringify(findItems_(email, new Date())));
 }
 
 // ───────────────────────── tiện ích ─────────────────────────

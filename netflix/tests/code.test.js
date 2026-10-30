@@ -47,6 +47,18 @@ t('mã đăng nhập tiếng Anh, mã trong câu', () => {
   const c = makeEnv();
   eq(c.classify_('Your Netflix sign-in code', '', 'Enter this code to sign in: 0371. It expires in 15 minutes.').code, '0371');
 });
+t('mã đăng nhập tiếng Đức "Ihr Login-Code" (mail thật 30/10)', () => {
+  const c = makeEnv();
+  const html = '<h1>Zum Einloggen diesen Code eingeben</h1><td style="letter-spacing:6px">3660</td><p>Dieser Code ist nur 15 Minuten lang gültig.</p><a href="https://www.netflix.com/account/devices">Geräte-Aktivität</a>';
+  eq(c.classify_('Netflix: Ihr Login-Code', html, 'Zum Einloggen diesen Code eingeben\n\n3660\n\nBitte geben Sie den Code ein. Dieser Code ist nur 15 Minuten lang gültig.').code, '3660');
+  eq(c.classify_('Netflix: Ihr Login-Code', html, '').code, '3660');
+  eq(c.classify_('Netflix : votre code de connexion', '', 'Saisissez ce code\n3 6 6 0\n').code, '3660');
+});
+t('chặn mail mật khẩu/thanh toán tiếng Đức, Pháp, TBN', () => {
+  const c = makeEnv();
+  ['Netflix: Code zum Zurücksetzen Ihres Passworts', 'Ihre Zahlung wurde abgelehnt', 'Réinitialisation du mot de passe', 'Tu código para restablecer la contraseña']
+    .forEach(s => eq(c.classify_(s, '', 'Code\n1234\n'), null, s));
+});
 t('chặn email đặt lại mật khẩu / đổi email / thanh toán', () => {
   const c = makeEnv();
   ['Hoàn tất yêu cầu đặt lại mật khẩu', 'Reset your password', 'Email của bạn đã thay đổi', 'Your email address change', 'Cập nhật phương thức thanh toán', 'Your payment was declined']
