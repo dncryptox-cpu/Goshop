@@ -343,12 +343,13 @@ function gptCustomers_() {
   var cache = CacheService.getScriptCache();
   var raw = cache.get('gpt_list');
   if (raw) return JSON.parse(raw);
-  var json;
+  var json, text = '';
   try {
     var res = UrlFetchApp.fetch(CFG.GPT_LIST_URL + '&t=' + Date.now(), { muteHttpExceptions: true, followRedirects: true });
-    json = JSON.parse(res.getContentText());
-  } catch (e) { return null; }
-  if (!json || !json.success || !Array.isArray(json.data)) return null;
+    text = res.getContentText();
+    json = JSON.parse(text);
+  } catch (e) { gptListError_(e.message + (text ? ' | ' + text.slice(0, 150) : '')); return null; }
+  if (!json || !json.success || !Array.isArray(json.data)) { gptListError_('backend trả: ' + text.slice(0, 150)); return null; }
   var today = new Date(); today.setHours(0, 0, 0, 0);
   var out = json.data.map(function (it) {
     var m = String(it.note || '').match(/\[Khách:\s*([^|]+)\|\s*Mã:\s*([^\]]+)\]/);
@@ -359,6 +360,25 @@ function gptCustomers_() {
   }).filter(function (c) { return c.email && c.code; });
   try { cache.put('gpt_list', JSON.stringify(out), 60); } catch (e) {}
   return out;
+}
+
+function gptListError_(msg) {
+  var cache = CacheService.getScriptCache();
+  if (cache.get('gpt_list_err')) return; // ghi tối đa 1 dòng / phút
+  cache.put('gpt_list_err', '1', 60);
+  log_('(hệ thống)', 'gpt lỗi đọc danh sách: ' + msg, 0);
+}
+
+/** Chạy trong trình soạn (chọn testGpt → Chạy): cấp quyền đọc backend + in kết quả để soi lỗi. */
+function testGpt() {
+  var res = UrlFetchApp.fetch(CFG.GPT_LIST_URL + '&t=' + Date.now(), { muteHttpExceptions: true, followRedirects: true });
+  Logger.log('HTTP ' + res.getResponseCode() + ' | ' + res.getContentText().slice(0, 300));
+  CacheService.getScriptCache().remove('gpt_list');
+  var list = gptCustomers_();
+  Logger.log(list === null ? '❌ Không đọc được danh sách' : '✅ Đọc được ' + list.length + ' khách, ví dụ: ' + JSON.stringify(list.slice(0, 3)));
+  gptKeyEmails_().forEach(function (e) {
+    Logger.log('🔑 ' + e + ' — mã hiện tại: ' + totp_(PropertiesService.getScriptProperties().getProperty('TOTP_' + e), Date.now()).code);
+  });
 }
 
 function parseDate_(v) {
