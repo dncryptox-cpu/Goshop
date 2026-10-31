@@ -52,6 +52,13 @@
         .bar.low > i { background: var(--warn); }
         .meta { font-family: var(--mono); font-size: 12px; color: var(--ink-3); }
         .meta.low { color: var(--warn); }
+        .picked { display: flex; align-items: center; gap: 12px; border: 1px solid var(--gpt); background: rgba(16,163,127,0.1); border-radius: 12px; padding: 12px 16px; }
+        .picked .tick { color: var(--gpt-soft); font-size: 18px; line-height: 1; }
+        .picked .pe { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; color: #fff; }
+        .picks { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+        .pick { width: 100%; text-align: left; font-size: 15px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--well); color: #fff; cursor: pointer; overflow: hidden; text-overflow: ellipsis; }
+        .pick:hover { border-color: var(--gpt); }
+        .link { background: none; border: 0; padding: 0; font: 14px "Be Vietnam Pro", system-ui, sans-serif; color: var(--ink-2); text-decoration: underline; text-underline-offset: 4px; cursor: pointer; flex: none; }
         .warn { font-size: 13px; line-height: 1.5; color: #F7D9A0; background: rgba(245,194,107,0.08); border: 1px solid rgba(245,194,107,0.3); border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; }
         .warn b { color: #FFE6B5; }
         .mono { font-family: var(--mono); }
@@ -85,7 +92,24 @@
         <form @submit.prevent="get(true)">
             <div>
                 <label class="label" for="em">Email tài khoản ChatGPT</label>
-                <input id="em" x-model="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" required placeholder="email shop đã gửi bạn" class="field">
+                <!-- Đã chọn: hiện email + nút Đổi -->
+                <div x-show="picked" class="picked">
+                    <span class="tick">✓</span>
+                    <span class="mono pe" x-text="email"></span>
+                    <button type="button" @click="unpick()" class="link">Đổi</button>
+                </div>
+                <!-- Chưa chọn: bấm chọn email của shop -->
+                <div x-show="!picked && !custom" x-cloak class="picks" role="group" aria-label="Chọn email">
+                    <template x-for="m in accounts" :key="m">
+                        <button type="button" @click="pick(m)" class="pick mono" x-text="m"></button>
+                    </template>
+                    <button type="button" @click="custom = true; $nextTick(() => document.getElementById('em').focus())" class="link">Email khác…</button>
+                </div>
+                <!-- Email khác: gõ tay -->
+                <div x-show="custom && !picked" x-cloak>
+                    <input id="em" x-model="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="email shop đã gửi bạn" class="field">
+                    <button type="button" @click="custom = false; email = ''" class="link" style="margin-top:8px">← Chọn từ danh sách</button>
+                </div>
             </div>
             <div>
                 <label class="label" for="pin">Mã khách</label>
@@ -120,11 +144,22 @@
     function gpt() {
         return {
             email: '', pin: '', remember: true, busy: false, err: '',
+            accounts: ['dncethxyz@gmail.com'], // email tài khoản ChatGPT của shop — thêm vào đây khi có tài khoản mới
+            custom: false,
+            get picked() { return this.accounts.includes(this.email.trim().toLowerCase()); },
+            pick(m) { this.email = m; this.custom = false; this.err = ''; this.$nextTick(() => { const p = document.getElementById('pin'); if (p && !this.pin) p.focus(); }); },
+            unpick() { this.email = ''; this.custom = false; this.err = ''; },
             code: '', name: '', left: 0, copied: false, _tick: null, _fetching: false,
             used: 0, quota: 0, session: 0, sessionOver: false,
 
             init() {
                 try { const s = JSON.parse(localStorage.getItem('dnc_gpt') || '{}'); this.email = s.email || ''; this.pin = s.pin || ''; } catch (e) {}
+                // Link shop gửi có thể kèm sẵn: godnc.com/vgpt?ma=KH-TEN-01&email=...
+                const q = new URLSearchParams(location.search);
+                if (q.get('email')) this.email = q.get('email').trim();
+                if (q.get('ma')) this.pin = q.get('ma').trim();
+                if (!this.email && this.accounts.length === 1) this.email = this.accounts[0]; // chỉ 1 tài khoản → chọn sẵn
+                if (this.email && !this.picked) this.custom = true;
                 this._tick = setInterval(() => this.tick(), 1000);
             },
             save() {
