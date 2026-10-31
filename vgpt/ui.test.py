@@ -32,7 +32,7 @@ with sync_playwright() as p:
         pg.wait_for_function("document.querySelector('.code').innerText.replace(' ','') !== '000222'", timeout=8000)
         check(f'[{label}] hết 30s tự lấy mã mới', pg.inner_text('.code').replace(' ', '') == '000333')
         check(f'[{label}] hiện lần 1/3 và thời gian còn lại', '1/3' in pg.inner_text('.who') and ':' in pg.inner_text('.who'))
-        check(f'[{label}] cảnh báo mã sống 45–60 giây', '45–60 giây' in pg.inner_text('.warn'))
+        check(f'[{label}] cảnh báo mã sống 45 giây', 'khoảng 45 giây' in pg.inner_text('.warn'))
         check(f'[{label}] không tràn ngang', pg.evaluate('document.documentElement.scrollWidth <= innerWidth'))
         pg.wait_for_selector('#result', state='hidden', timeout=9000)
         check(f'[{label}] hết phiên → ẩn mã, báo lần sau tính thêm lượt', 'tính thêm 1 lần' in pg.inner_text('form'))
