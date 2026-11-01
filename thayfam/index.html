@@ -145,7 +145,7 @@
 .wk-row{gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
 </style>
 </head>
-<body x-data="app()" x-init="init()">
+<body x-data="app()">
 <div class="wrap">
 
   <!-- ĐĂNG NHẬP -->
@@ -167,7 +167,7 @@
           <div class="sub" x-show="me.name"><b x-text="me.name"></b> · <span x-text="roleName()"></span><span x-show="me.limit" x-text="' · đã thay ' + me.usedToday + '/' + me.limit + ' hôm nay'"></span></div>
         </div>
         <div class="sp"></div>
-        <button class="btn sm" @click="freshUntil = Date.now() + 20000; load(); if (slotsLoaded) loadSlots(); if (wk) loadWeek()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
+        <button class="btn sm" @click="freshUntil = Date.now() + 20000; load(); if (slotsLoaded) bg(() => loadSlots()); if (wk) loadWeek()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
         <a class="btn sm" href="/gg1/" x-show="me.role==='admin' || me.role==='nhanvien'" style="text-decoration:none">GG1</a>
         <label class="btn sm" x-show="me.role==='admin'" style="display:flex;gap:6px;align-items:center;cursor:pointer" :style="autoSync ? 'border-color:var(--ok);color:var(--ok)' : ''" title="Bật: mọi thao tác của admin (thay fam, chuyển khách, đổi mail, cất/kick khách, đóng fam, đã mời) ghi luôn vào data gốc"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')" style="margin:0"> Ghi luôn vào gốc</label>
         <button class="btn sm" @click="logout()">Thoát</button>
@@ -221,7 +221,7 @@
       </template>
 
       <div class="search" x-show="can('search')">
-        <input type="search" x-model="q" @input.debounce.400ms="doSearch()" @keydown.escape="q=''; results=[]" placeholder="Tìm nhanh: RN, email chủ fam, email thành viên, mail phụ…">
+        <input type="search" x-model="q" @focus="warmSearch()" @input.debounce.400ms="doSearch()" @keydown.escape="q=''; results=[]" placeholder="Tìm nhanh: RN, email chủ fam, email thành viên, mail phụ…">
         <span class="mute" style="font-size:12px" x-show="searchOn()" x-text="searching ? 'Đang tìm…' : (searchTotal + ' fam' + (searchTotal>results.length ? ' (hiện ' + results.length + ')' : ''))"></span>
       </div>
 
@@ -1538,12 +1538,17 @@ function app() {
       this.allStale = true;
       clearTimeout(this._aw);
       this._aw = setTimeout(() => {
-        this.loadAll();
-        if (this.can('review')) this.loadReview();
-        if (this.slotsLoaded) this.loadSlots();
+        // Tải lại nền LẦN LƯỢT (không bắn song song — backend đọc cùng 1 sheet, chạy song song chỉ làm chậm nhau)
+        if (this.can('review')) this.bg(() => this.loadReview());
+        if (this.slotsLoaded) this.bg(() => this.loadSlots());
+        if (this.allFams) this.bg(() => this.loadAll());
         if (!quiet && this.searchOn()) this.doSearch();
       }, 300);
     },
+    // Hàng đợi tải nền: chạy từng cái một, cái sau chờ cái trước xong
+    bg(fn) { this._bgq = (this._bgq || Promise.resolve()).then(() => fn()).catch(() => {}); return this._bgq; },
+    // Tab Tất cả (dùng cho tìm nhanh tại máy): chỉ tải khi bắt đầu tìm
+    warmSearch() { if (this.can('all') && (!this.allFams || this.allStale) && !this._allLoading) { this._allLoading = true; this.bg(() => this.loadAll()).then(() => { this._allLoading = false; }); } },
     async loadAll() {
       if (!this.can('all')) return;
       try {
@@ -1590,12 +1595,13 @@ function app() {
         this.blocksOpen = d.blocksOpen || 0; this.blocksDue = d.blocksDue || 0;
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
-        if (this.me.role === 'ctv' && ['due', 'report'].includes(this.tab)) { this.tab = 'slots'; this.loadSlots(); }
-        if (this.can('week') && !this._wkInit) { this._wkInit = true; this.loadWeek(); }
-        if (this.can('all') && !this._allInit) { this._allInit = true; this.loadAll(); }
-        if (this.can('review') && !this._reviewed) { this._reviewed = true; this.loadReview(); }
-        if (this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
-        if (this.can('mailLog') && !this._mailLoaded) { this._mailLoaded = true; this.loadMailLog(); }
+        if (this.me.role === 'ctv' && ['due', 'report'].includes(this.tab)) this.tab = 'slots';
+        // Tab đang mở: tải ngay. Còn lại: xếp hàng tải nền lần lượt. Tab Tuần / Tất cả: chỉ tải khi mở.
+        if (this.tab === 'week' && this.can('week') && !this._wkInit) { this._wkInit = true; this.loadWeek(); }
+        if (this.tab === 'slots' && this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
+        if (this.can('review') && !this._reviewed) { this._reviewed = true; this.bg(() => this.loadReview()); }
+        if (this.can('mailLog') && !this._mailLoaded) { this._mailLoaded = true; this.bg(() => this.loadMailLog()); }
+        if (this.can('slots')) this.bg(() => { if (!this.slotsLoaded && !this.slotsLoading) return this.loadSlots(); });
         this.frs = d.frs.filter(x => !this.skipped.includes(x.row));
       } catch (e) {
         this.error = e.message;
@@ -1841,8 +1847,7 @@ function app() {
     },
     async loadWeek() {
       this.wkLoading = true;
-      if (this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
-      if (this.can('review')) this.loadReview();
+      if (this.can('slots')) this.bg(() => { if (!this.slotsLoaded && !this.slotsLoading) return this.loadSlots(); });
       try { this.wk = await this.api({ action: 'week' }); this.snapSave('week', this.wk); }
       catch (e) { this.error = /không được dùng/.test(e.message) ? 'Apps Script chưa có tab Tuần này: dán Code.gs mới rồi Deploy → New version.' : e.message; }
       this.wkLoading = false;
