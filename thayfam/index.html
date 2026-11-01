@@ -61,6 +61,10 @@
   .badge.st-del{background:var(--bad);color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
   .badge.st-scan{background:#7b3fc4;color:#fff;font-weight:700;font-size:13px;padding:3px 10px}
   .btn.xs{padding:2px 7px;font-size:12px;border-radius:6px;color:var(--mute)}
+  .btn.xs.pri{color:var(--acc-ink)}
+  .pnl{display:block;max-width:760px;white-space:normal;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .pnl-row td{padding-top:0;background:var(--soft,#f7f7f4)}
+  .pnl .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .btn.xs:hover{color:var(--ink);border-color:var(--mute)}
   .acts-td{text-align:right;width:1%}
   .acts-td .acts{justify-content:flex-end;flex-wrap:nowrap;margin:0}
@@ -531,8 +535,8 @@
                 <template x-if="f.customers.length===0"><div class="mute" style="font-size:13px">Không có email khách.</div></template>
                 <table x-show="f.customers.length || (f.slots || []).some(x => !x.email)">
                   <thead><tr><th>Thành viên</th><th>CTV</th><th>HSD</th><th>Còn</th><th class="hide-sm" x-show="me.role !== 'outsource'">Mail phụ</th><th></th></tr></thead>
-                  <tbody>
                     <template x-for="c in f.customers" :key="c.row">
+                    <tbody>
                       <tr :class="f.hit && f.hit.includes(c.email) && 'hit'">
                         <td class="mono"><input type="checkbox" x-show="can('sendMail')" style="margin-right:6px" :checked="!!mailSel[lcm(c.email)]" @change="toggleMail(c.email, f.rn, c.hsd)" title="Chọn để gửi mail"><span x-text="c.masked ? '(khách CTV khác)' : c.email" :class="c.masked && 'mute'"></span><span x-show="isReporter(f, c.email)" title="Đã báo lỗi"> 🚨</span><span class="badge" x-show="mailLog[lcm(c.email)]" style="margin-left:6px;cursor:pointer" :title="mailTip(c.email)" @click="mailInfo = mailInfo === lcm(c.email) ? '' : lcm(c.email)" x-text="'✉ ' + (mailLog[lcm(c.email)] || {}).at"></span><div class="mute" style="font-size:12px;white-space:pre-wrap;font-family:inherit" x-show="mailInfo && mailInfo === lcm(c.email)" x-text="mailTip(c.email)"></div>
                         <div class="mute" style="font-size:12px" x-show="pick.row === c.row">↓ đang tìm fam cho khách này</div>
@@ -586,15 +590,58 @@
                             <div class="mute" style="width:100%;font-size:12px">Mail gốc <b x-text="c.email"></b> sẽ chuyển sang cột Mail phụ để lưu. HSD, CTV giữ nguyên.</div>
                             <div class="err" style="width:100%;margin:0" x-show="em.error" x-text="em.error"></div>
                           </div>
-                        </template></td>
+                        </template>
+</td>
                         <td x-text="c.ctv || '—'"></td>
-                        <td x-text="c.hsd || '—'"></td>
+                        <td><span x-show="c.hsd || c.masked || !c.email || !can('mailPhu')" x-text="c.hsd || '—'"></span><button class="btn xs" style="color:var(--warn)" x-show="!c.hsd && !c.masked && c.email && can('mailPhu')" @click="fillOpen(f, c)" title="Thiếu Ngày mua / HSD: tìm mail chính để lấy data">Điền HSD</button></td>
                         <td :style="c.daysLeft!==null && c.daysLeft<0 ? 'color:var(--bad)' : (c.daysLeft!==null && c.daysLeft<=10 ? 'color:var(--warn)' : '')" x-text="c.daysLeft===null ? '—' : (c.daysLeft<0 ? 'hết ' + (-c.daysLeft) + 'n' : c.daysLeft + ' ngày')"></td>
                         <td class="hide-sm mono mphu" x-show="me.role !== 'outsource'" x-text="c.mailPhu || '—'" :title="c.mailPhu"></td>
-                        <td class="acts-td"><div class="acts"><button class="btn xs" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked && !(c.daysLeft !== null && c.daysLeft < 0)" @click="noJoinCus(f, c)" :disabled="!!c.nj" title="Khách không join nhóm: cất data xuống cuối sheet DATA (Chờ xếp), slot để trống mời sau" x-text="c.nj === 'busy' ? '…' : (c.nj === 'confirm' ? 'Bấm lần nữa' : 'Không join → cất')"></button><button class="btn xs" x-show="can('move') && !c.masked && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn xs" x-show="can('move') && !c.masked && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn xs" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn xs" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked" @click="kickCus(f, c)" :disabled="!!c.kicking" title="Khách không gia hạn: đã xoá khỏi nhóm Gia đình → cất xuống cuối sheet DATA (giữ data), slot thành trống, fam chuyển Còn slot" x-text="c.kicking ? '…' : (c.kickConfirm ? 'Bấm lần nữa' : 'Kick')"></button><button class="btn xs" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: livePhu(c.mailPhu), invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></div></td>
+                        <td class="acts-td"><div class="acts"><button class="btn xs pri" x-show="can('renewCus') && c.email && !c.masked && c.hsd" @click="openGh(c)" title="Gia hạn khách (kể cả chưa tới hạn)">Gia hạn</button><button class="btn xs" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked && !(c.daysLeft !== null && c.daysLeft < 0)" @click="noJoinCus(f, c)" :disabled="!!c.nj" title="Khách không join nhóm: cất data xuống cuối sheet DATA (Chờ xếp), slot để trống mời sau" x-text="c.nj === 'busy' ? '…' : (c.nj === 'confirm' ? 'Bấm lần nữa' : 'Không join → cất')"></button><button class="btn xs" x-show="can('move') && !c.masked && mv.row !== c.row && c.daysLeft !== null && c.daysLeft < 0" @click="mv = { row: c.row, email: '', invited: false }">Chuyển khách vào</button><button class="btn xs" x-show="can('move') && !c.masked && mv.row !== c.row && !(c.daysLeft !== null && c.daysLeft < 0)" @click="mv = { row: c.row, email: '', invited: false, replace: c.email }" title="Khách chưa vào / bỏ slot: đổi sang khách khác. Khách hiện tại được chép xuống cuối sheet DATA">Đổi khách</button><button class="btn xs" x-show="can('move') && can('slots') && c.email && pick.row !== c.row" @click="findSlot(f, c)" title="Tìm fam khác còn slot để chuyển khách này sang">Tìm fam</button><button class="btn xs" style="color:var(--bad)" x-show="can('vacate') && c.email && !c.masked" @click="kickCus(f, c)" :disabled="!!c.kicking" title="Khách không gia hạn: đã xoá khỏi nhóm Gia đình → cất xuống cuối sheet DATA (giữ data), slot thành trống, fam chuyển Còn slot" x-text="c.kicking ? '…' : (c.kickConfirm ? 'Bấm lần nữa' : 'Kick')"></button><button class="btn xs" x-show="can('swapMail') && c.email && em.row !== c.row" @click="em = { row: c.row, newEmail: livePhu(c.mailPhu), invited: false }" title="Đổi sang mail phụ, giữ mail gốc ở cột Mail phụ">Đổi mail</button></div></td>
                       </tr>
+                      <tr x-show="c.fd || c.gh || c.done" class="pnl-row"><td colspan="6"><template x-if="c.fd">
+                          <div class="mv pnl">
+                            <div class="mute" style="font-size:12px;margin-bottom:6px">Tìm dòng có data của khách này (cùng email, hoặc mail chính có Mail phụ = email này, hoặc Mail phụ của dòng này). Chọn 1 dòng → slot này nhận Ngày mua / Số tháng / CTV / HSD, dòng kia xoá trắng. Hoàn tác ở tab Lịch sử.</div>
+                            <div x-show="c.fd.loading" class="mute" style="font-size:13px">Đang tìm…</div>
+                            <div x-show="!c.fd.loading && !c.fd.list.length" class="mute" style="font-size:13px">Không tìm thấy mail chính nào có data. Khách mới thì dùng Đổi khách → nhập đơn mới.</div>
+                            <template x-for="d in c.fd.list" :key="d.row">
+                              <div class="row" style="gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:13px">
+                                <span class="grow"><b x-text="d.rn || 'Đã cất'"></b> dòng <span x-text="d.row"></span> · <span class="mono" x-text="d.email"></span> <span class="mute" x-text="'· HSD ' + (d.hsd || '—') + ' · CTV ' + (d.ctv || '—') + (d.mailPhu ? ' · mail phụ ' + d.mailPhu : '') + (d.why ? ' · ' + d.why : '')"></span></span>
+                                <button class="btn sm pri" :disabled="!!c.fd.busy || !d.hsd" @click="doFill(f, c, d)" x-text="c.fd.busy === d.row ? 'Đang ghi…' : (c.fd.confirm === d.row ? 'Bấm lần nữa' : 'Lấy data này')"></button>
+                              </div>
+                            </template>
+                            <div class="row" style="margin-top:6px"><span class="grow err" style="margin:0" x-show="c.fd.err" x-text="c.fd.err"></span><span class="grow" x-show="!c.fd.err"></span><button class="btn sm" @click="c.fd = null">Đóng</button></div>
+                          </div>
+                        </template>
+                        <template x-if="c.gh">
+                          <div class="mv pnl">
+                            <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">
+                              <span class="mute" style="font-size:13px;width:70px">Gói</span>
+                              <template x-for="m in [1,3,6,12]" :key="m"><button class="chip" :class="c.gh.months===m && 'on'" @click="c.gh.months=m" x-text="m + ' tháng'"></button></template>
+                              <button class="chip" :class="c.gh.product==='YoutubePlus' && 'on'" @click="c.gh.product = c.gh.product==='YoutubePlus' ? 'Youtube' : 'YoutubePlus'">Plus</button>
+                            </div>
+                            <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">
+                              <span class="mute" style="font-size:13px;width:70px">Tặng thêm</span>
+                              <template x-for="d in [0,7,14,30]" :key="d"><button class="chip" :class="c.gh.bonus===d && 'on'" @click="c.gh.bonus=d" x-text="d ? '+' + d + ' ngày' : 'Không'"></button></template>
+                              <input type="number" min="0" max="92" style="width:64px" x-model.number="c.gh.bonus">
+                            </div>
+                            <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px" x-show="c.daysLeft < 0">
+                              <span class="mute" style="font-size:13px;width:70px">Tính từ</span>
+                              <button class="chip" :class="c.gh.base==='hsd' && 'on'" @click="c.gh.base='hsd'" x-text="'HSD cũ ' + c.hsd"></button>
+                              <button class="chip" :class="c.gh.base==='today' && 'on'" @click="c.gh.base='today'">Hôm nay</button>
+                            </div>
+                            <div class="row" style="gap:6px">
+                              <span class="grow" style="font-size:13px">HSD <span x-text="c.hsd"></span> → <b x-text="ghPreview(c)"></b> <span class="mute" x-text="'· ' + (c.gh.product==='YoutubePlus' ? 'YoutubePlus' : 'Youtube') + '-' + c.gh.months"></span></span>
+                              <button class="btn sm" @click="c.gh=null">Huỷ</button>
+                              <button class="btn sm pri" :disabled="c.gh.busy" @click="doGh(c)" x-text="c.gh.busy ? 'Đang ghi…' : (c.gh.confirm ? 'Bấm lần nữa để ghi' : 'Ghi gia hạn')"></button>
+                            </div>
+                            <div class="mute" style="font-size:12px;margin-top:4px">Ghi bản sao + data gốc (Ngày mua / Số tháng), thêm 1 dòng "Gia hạn" vào Tài chính Goshop.</div>
+                          </div>
+                        </template>
+                        <div class="pnl" x-show="c.done" style="font-size:12px;color:var(--ok, #1f6f4a);margin-top:4px" x-text="c.done"></div></td></tr>
+                    </tbody>
                     </template>
                     <template x-for="sl in (f.slots || []).filter(x => !x.email)" :key="'e' + sl.row">
+                    <tbody>
                       <tr>
                         <td class="mono"><span class="mute">(trống)</span> <button class="btn xs" style="margin-left:8px" x-show="can('move') && mv.row !== sl.row" @click="mv = { row: sl.row, email: '', invited: false }">Chuyển khách vào</button>
                         <template x-if="mv.row === sl.row">
@@ -632,8 +679,8 @@
                         </template></td>
                         <td></td><td></td><td></td><td class="hide-sm" x-show="me.role !== 'outsource'"></td><td></td>
                       </tr>
+                    </tbody>
                     </template>
-                  </tbody>
                 </table>
                 <template x-if="pick.row && f.customers.some(c => c.row === pick.row)">
                   <div class="card pk" style="margin-top:10px">
@@ -1804,7 +1851,7 @@ function app() {
     remindLeft() { return this.wk ? this.wk.customers.filter(c => !c.reminded).length : 0; },
     weekLeft() { if (!this.wk) return 0; return (this.frNeed() ? 1 : 0) + this.remindLeft() + this.checkDue().length + this.wk.blocked.filter(b => b.due).length + this.wk.waiting.length; },
     openGh(r) {
-      r.gh = r.gh ? null : { months: [1, 3, 6, 12].includes(Number(r.months)) ? Number(r.months) : 1, bonus: 0, base: r.daysLeft < -7 ? 'today' : 'hsd', product: 'Youtube', busy: false, confirm: false };
+      r.fd = null; r.gh = r.gh ? null : { months: [1, 3, 6, 12].includes(Number(r.months)) ? Number(r.months) : 1, bonus: 0, base: r.daysLeft < -7 ? 'today' : 'hsd', product: 'Youtube', busy: false, confirm: false };
     },
     ghPreview(r) {
       const g = r.gh, p = String(r.hsd || '').split('/').map(Number);
@@ -1824,9 +1871,41 @@ function app() {
         const vnd = n => n ? Number(n).toLocaleString('vi-VN') + 'đ' : '—';
         r.done = '✓ Gia hạn ' + x.sku + (x.bonus ? ' +' + x.bonus + ' ngày' : '') + ': HSD ' + x.oldHsd + ' → ' + x.hsd + '. Tài chính dòng ' + x.tcRow + ': giá ' + vnd(x.price) + ', HH ' + vnd(x.hh) + ', lãi ' + vnd(x.profit) + '.'
           + (x.sync && x.sync.ok ? ' Đã ghi data gốc.' : ' CHƯA ghi data gốc: ' + ((x.sync && x.sync.error) || '') + ' → vào tab Đồng bộ đẩy lại.');
-        r.hsd = x.hsd; r.gh = null;
+        r.hsd = x.hsd; r.daysLeft = hsdDays(x.hsd); r.gh = null;
         this.lastDone = x.email + ' · ' + r.done; this.lastActionId = x.actionId || '';
       } catch (e) { this.error = e.message; if (r.gh) r.gh.busy = false; }
+    },
+    async fillOpen(f, c) {
+      if (c.fd) { c.fd = null; return; }
+      c.gh = null;
+      c.fd = { loading: true, list: [], busy: 0, confirm: 0, err: '' };
+      const me = this.lcm(c.email), seen = {}, list = [];
+      const add = (d, rn, why) => { if (!d || !d.row || d.row === c.row || seen[d.row] || !d.hsd) return; seen[d.row] = 1; list.push({ row: d.row, rn: rn || '', email: d.email, hsd: d.hsd, ctv: d.ctv, mailPhu: d.mailPhu, why }); };
+      try {
+        if (!this.mp.loaded && this.can('mailPhu')) await this.loadMp();
+        (this.mp.merges || []).filter(m => m.bare.row === c.row && !m.done).forEach(m => add(m.data, m.data.rn, m.same ? 'cùng email' : 'mail chính'));
+        const phus = (String(c.mailPhu || '').match(/[^\s@"':,;]+@[^\s@"':,;]+\.[a-z]+/gi) || []).map(e => this.lcm(e)).filter(e => e !== me);
+        for (const q of [me].concat(phus)) {
+          const d = await this.api({ action: 'search', q });
+          const hit = x => { const e = this.lcm(x.email); if (e === me) return 'cùng email'; if (phus.includes(e)) return 'mail phụ của dòng này'; if (String(x.mailPhu || '').toLowerCase().includes(me)) return 'có mail phụ = email này'; return ''; };
+          (d.items || []).forEach(fm => (fm.customers || []).forEach(x => { const w = hit(x); if (w) add(x, fm.rn, w); }));
+          (d.archived || []).forEach(x => { const w = hit(x); if (w) add(x, '', w + ' (đã cất)'); });
+        }
+        c.fd.list = list;
+      } catch (e) { c.fd.err = e.message; }
+      c.fd.loading = false;
+    },
+    async doFill(f, c, d) {
+      const fd = c.fd;
+      if (fd.confirm !== d.row) { fd.confirm = d.row; setTimeout(() => { if (c.fd && c.fd.confirm === d.row) c.fd.confirm = 0; }, 4000); return; }
+      fd.confirm = 0; fd.busy = d.row; fd.err = '';
+      try {
+        const r = await this.api({ action: 'merge', bareRow: c.row, bareEmail: c.email, dataRow: d.row, dataEmail: d.email, keep: 'bare', hsdFrom: 'data' });
+        const mm = (this.mp.merges || []).find(m => m.bare.row === c.row && m.data.row === d.row); if (mm) mm.done = '✓ Đã gộp ở fam ' + f.rn;
+        c.hsd = d.hsd; c.daysLeft = hsdDays(d.hsd); if (!c.ctv) c.ctv = d.ctv; if (this.lcm(d.email) !== this.lcm(c.email)) c.mailPhu = d.email;
+        c.done = '✓ ' + c.email + ' nhận data của ' + (d.rn || 'dòng cất') + ' dòng ' + d.row + ': HSD ' + d.hsd + '. Dòng kia đã xoá trắng' + (r.freed ? ', slot ' + r.freed + ' thành trống' : '') + '. Hoàn tác ở tab Lịch sử.';
+        this.lastDone = c.done; c.fd = null; this.lastActionId = r.actionId || '';
+      } catch (e) { fd.err = e.message; fd.busy = 0; }
     },
     mgCus(f) { return f.customers.filter(c => !c.masked && !(c.daysLeft !== null && c.daysLeft < 0)); },
     mgFree(d) { return (d.slots || []).filter(x => !x.email || (x.daysLeft !== null && x.daysLeft < 0)).map(x => x.row); },
@@ -2495,6 +2574,7 @@ function base32(s) {
   for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
   return new Uint8Array(out);
 }
+function hsdDays(h) { const p = String(h || '').split('/').map(Number); if (p.length !== 3 || !p[2]) return null; const t = new Date(); return Math.round((Date.UTC(p[2], p[1] - 1, p[0]) - Date.UTC(t.getFullYear(), t.getMonth(), t.getDate())) / 864e5); }
 function laterHsd(a, b) { const n = x => { const p = String(x || '').split('/'); return p.length === 3 ? +(p[2] + p[1].padStart(2, '0') + p[0].padStart(2, '0')) : 0; }; return n(a) > n(b); }
 function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return ''; } }
 function lsSet(k, v) { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
