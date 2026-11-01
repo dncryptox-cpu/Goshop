@@ -1539,6 +1539,7 @@ function app() {
       clearTimeout(this._aw);
       this._aw = setTimeout(() => {
         // Tải lại nền LẦN LƯỢT (không bắn song song — backend đọc cùng 1 sheet, chạy song song chỉ làm chậm nhau)
+        this.bg(() => this.load());
         if (this.can('review')) this.bg(() => this.loadReview());
         if (this.slotsLoaded) this.bg(() => this.loadSlots());
         if (this.allFams) this.bg(() => this.loadAll());
@@ -2086,6 +2087,27 @@ function app() {
       } catch (e) { m.error = e.message; }
       m.busy = false;
     },
+    // Cập nhật ngay trên màn hình sau khi chuyển khách (không chờ tải lại); dashboard tải lại nền sau đó để khớp sheet
+    applyMove(res, toRow) {
+      const lc = x => String(x || '').trim().toLowerCase(), em = lc(res.email);
+      const fams = [this.due, this.results, this.reported, this.allFams || []].flat().filter(Boolean);
+      let src = null;
+      fams.forEach(f => { if (!src && f.rn === res.from) src = (f.customers || []).find(x => lc(x.email) === em) || null; });
+      const nc = Object.assign({}, src || {}, { row: toRow, email: res.asEmail || res.email, masked: false });
+      if (res.asEmail) nc.mailPhu = res.email;
+      ['nj', 'kicking', 'kickConfirm', 'kicked', 'done'].forEach(k => delete nc[k]);
+      fams.forEach(f => {
+        if (res.from && res.from !== res.to && f.rn === res.from) {
+          f.customers = (f.customers || []).filter(x => lc(x.email) !== em);
+          if (f.slots) f.slots = f.slots.map(x => lc(x.email) === em ? { row: x.row, email: '' } : x);
+          if (f.status === 'FULL') f.status = 'Còn slot';
+        }
+        if (f.rn === res.to) {
+          f.customers = (f.customers || []).filter(x => x.row !== toRow).concat([Object.assign({}, nc)]).sort((a, b) => a.row - b.row);
+          if (f.slots) f.slots = f.slots.map(x => x.row === toRow ? { row: x.row, email: nc.email } : x);
+        }
+      });
+    },
     async doMove(f, r) {
       const m = this.mv;
       m.error = '';
@@ -2101,6 +2123,7 @@ function app() {
           this.lastActionId = res.actionId;
           this.lastDone = '✓ Đã chuyển ' + res.email + (res.asEmail ? ' (mời bằng mail phụ ' + res.asEmail + ', mail chính lưu ở cột Mail phụ)' : '') + ': ' + res.from + ' → ' + res.to + (res.invited ? ' (đã mời)' : ' (chưa mời)') + (res.overwrote ? ', ' + res.overwrote + ' đã chép xuống cuối sheet DATA' : '') + '. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
           this.mv = {};
+          this.applyMove(res, r.row);
           await this.autoSyncAfter(res);
           this.afterWrite();
         }
