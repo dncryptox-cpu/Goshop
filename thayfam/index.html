@@ -190,7 +190,7 @@
       <header>
         <div>
           <h1>Thay Fam</h1>
-          <div class="sub" x-text="today ? 'Hôm nay ' + today + ' · ' + frs.length + ' FR sẵn sàng' : 'Đang tải…'"></div>
+          <div class="sub" x-text="today ? 'Hôm nay ' + today + ' · ' + frs.length + ' FR sẵn sàng' + ((loading || allStale) ? ' · đang cập nhật…' : '') : 'Đang tải…'"></div>
           <div class="sub" x-show="me.name"><b x-text="me.name"></b> · <span x-text="roleName()"></span><span x-show="me.limit" x-text="' · đã thay ' + me.usedToday + '/' + me.limit + ' hôm nay'"></span></div>
         </div>
         <div class="sp"></div>
@@ -1561,7 +1561,7 @@ function app() {
           if (this.swap && this.swap.f.customers.some(c => c.email === txt) && !this.swap.copied.includes(txt)) this.swap.copied.push(txt);
         }
       });
-      if (this.pass) { this.snapRestore(); this.load(); if (this.allFams) this.warmSearch(); }
+      if (this.pass) { this.snapRestore(); this.load().then(() => { if (this.allFams) this.warmSearch(); }); }
       // Quay lại tab sau ≥60s (iPhone treo tab khi chuyển app): tự tải lại
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { this._hid = Date.now(); return; } if (this.pass && this._hid && Date.now() - this._hid > 60000) this.refreshAll(); }); setInterval(() => this.tickOtp(), 1000); },
     // Mở trang hiện ngay dữ liệu lần trước (lưu trong trình duyệt), rồi cập nhật khi server trả về
@@ -1582,8 +1582,8 @@ function app() {
     bg(fn) { this._bgq = (this._bgq || Promise.resolve()).then(() => fn()).catch(() => {}); return this._bgq; },
     // Tab Tất cả (dùng cho tìm nhanh tại máy): chỉ tải khi bắt đầu tìm
     refreshAll() {
-      this.load(); if (this.slotsLoaded) this.bg(() => this.loadSlots()); if (this.wk) this.loadWeek();
-      if (this.allFams) { this.allStale = true; this._allLoading = false; this.warmSearch(); }
+      if (this.allFams) this.allStale = true;
+      this.load().then(() => { if (this.slotsLoaded) this.bg(() => this.loadSlots()); if (this.wk) this.bg(() => this.loadWeek()); if (this.allFams) { this._allLoading = false; this.warmSearch(); } });
     },
     warmSearch() { if (this.can('all') && (!this.allFams || this.allStale) && !this._allLoading) { this._allLoading = true; this.bg(() => this.loadAll()).then(() => { this._allLoading = false; }); } },
     async loadAll() {
