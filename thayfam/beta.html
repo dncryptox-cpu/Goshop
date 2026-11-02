@@ -218,8 +218,8 @@
       </div>
       <template x-if="notify">
         <div class="card" style="padding:12px 14px">
-          <div class="row"><b class="grow" x-text="'Báo khách ' + notify.rn + ' (' + notify.sent.length + '/' + notify.items.length + ' đã copy)'"></b><button class="btn sm" @click="notify=null">Xong</button></div>
-          <div class="mute" style="font-size:13px;margin:4px 0 8px">Copy tin rồi gửi Zalo cho khách (hoặc gửi CTV). Khách có Zalo là khách đã điền khi báo lỗi.</div>
+          <div class="row"><b class="grow" x-text="'Báo khách ' + notify.rn + ' (' + notify.sent.length + '/' + notify.items.length + ' đã báo)'"></b><button class="btn sm" @click="notify=null">Xong</button></div>
+          <div class="mute" style="font-size:13px;margin:4px 0 8px">Khách đã có SĐT: bấm "Nhắn Zalo" (tự copy tin + mở chat) → Dán, Gửi. Khách chưa có: tìm tay 1 lần rồi lưu SĐT, lần sau khỏi tìm.</div>
           <div class="row" style="gap:6px;margin-bottom:8px">
             <span class="mute" style="font-size:13px">Gửi CTV:</span>
             <template x-for="cv in [...new Set(notify.items.map(i => i.ctv || 'Không rõ CTV'))]" :key="cv">
@@ -230,10 +230,20 @@
             <div class="row" style="padding:6px 0;border-top:1px solid var(--line)">
               <div class="grow" style="min-width:0">
                 <div class="mono ellip" x-text="it.email"></div>
-                <div class="mute" style="font-size:12px" x-text="(it.ctv ? 'CTV ' + it.ctv : 'Không rõ CTV') + (it.zalo ? ' · Zalo ' + it.zalo : '')"></div>
+                <div class="mute" style="font-size:12px"><span x-text="it.ctv ? 'CTV ' + it.ctv : 'Không rõ CTV'"></span>
+                  <template x-if="!it.edit"><span> · <span x-text="it.zalo ? 'Zalo ' + it.zalo : 'chưa có Zalo'" :style="!it.zalo && 'color:var(--warn,#b45309)'"></span> <a href="#" x-show="can('zalo')" @click.prevent="editZalo(it)" x-text="it.zalo ? 'sửa' : '+ thêm SĐT'"></a></span></template>
+                </div>
+                <template x-if="it.edit">
+                  <div class="row" style="gap:6px;margin-top:4px">
+                    <input class="mono" style="width:150px" inputmode="tel" placeholder="SĐT Zalo" x-model="it.zaloInput" @keydown.enter="saveZalo(it)" @keydown.escape="it.edit=false" x-init="$nextTick(() => $el.focus())">
+                    <button class="btn sm pri" @click="saveZalo(it)" :disabled="it.zaloBusy" x-text="it.zaloBusy ? 'Đang lưu…' : 'Lưu'"></button>
+                    <button class="btn sm" @click="it.edit=false">Thôi</button>
+                    <span class="mute" style="font-size:12px;color:var(--bad,#b91c1c)" x-show="it.zaloErr" x-text="it.zaloErr"></span>
+                  </div>
+                </template>
               </div>
-              <a class="btn sm" x-show="it.zalo" :href="'https://zalo.me/' + it.zalo" target="_blank" rel="noopener">Mở Zalo</a>
-              <button class="btn sm" :class="!notify.sent.includes(it.email) && 'pri'" @click="copyNotify(notify, it)" x-text="notify.sent.includes(it.email) ? '✓ Đã copy' : 'Copy tin'"></button>
+              <button class="btn sm" x-show="it.zalo && !it.edit" :class="!notify.sent.includes(it.email) && 'pri'" @click="nhanZalo(notify, it)" x-text="notify.sent.includes(it.email) ? '✓ Đã nhắn' : 'Nhắn Zalo'"></button>
+              <button class="btn sm" :class="!it.zalo && !notify.sent.includes(it.email) && 'pri'" @click="copyNotify(notify, it)" x-text="it.zalo ? 'Copy' : (notify.sent.includes(it.email) ? '✓ Đã copy' : 'Copy tin')"></button>
             </div>
           </template>
         </div>
@@ -1529,7 +1539,7 @@ function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
     tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', lastCopy: '', lastCopyFor: '', notify: null,
-    slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
+    slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, zaloMap: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
       'Đã chuyển nhóm': ['YouTube Premium: bạn đã được chuyển sang nhóm mới', 'Chào bạn,\n\nNhóm YouTube Premium của bạn vừa được chuyển sang nhóm mới. Bạn mở Gmail ({email}), tìm thư mời "Tham gia nhóm gia đình" của Google và bấm Chấp nhận nhé.\n\nHướng dẫn chi tiết: https://godnc.com/fixytb/?email={email}\n\nHạn sử dụng của bạn: {hsd}.\nCảm ơn bạn đã dùng dịch vụ của shop!'],
       'Đang xử lý lỗi': ['Nhóm gia đình bạn đang bị lỗi', 'để được hỗ trợ lại nhắn qua giúp mình nhé 0398057191'],
@@ -1632,6 +1642,7 @@ function app() {
         if (this.tab === 'slots' && this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
         if (this.can('review') && !this._reviewed) { this._reviewed = true; this.bg(() => this.loadReview()); }
         if (this.can('mailLog') && !this._mailLoaded) { this._mailLoaded = true; this.bg(() => this.loadMailLog()); }
+        if (this.can('zalo') && !this._zaloLoaded) { this._zaloLoaded = true; this.bg(() => this.loadZalo()); }
         if (this.can('slots')) this.bg(() => { if (!this.slotsLoaded && !this.slotsLoading) return this.loadSlots(); });
         this.frs = d.frs.filter(x => !this.skipped.includes(x.row));
       } catch (e) {
@@ -1736,6 +1747,34 @@ function app() {
       this.mailSel = m;
     },
     mailTip(email) { const x = this.mailLog[this.lcm(email)]; return x ? 'Đã gửi mail ' + x.at + '\nTiêu đề: ' + x.subject + '\n\n' + x.body : ''; },
+    async loadZalo() {
+      try { const d = await this.api({ action: 'zalo', op: 'list' }); this.zaloMap = d.map || {}; this.fillNotifyZalo(); } catch (e) {}
+    },
+    zaloNorm(v) {
+      let s = String(v || '').replace(/[^0-9+]/g, '');
+      if (s.startsWith('+84')) s = '0' + s.slice(3); else if (s.startsWith('84') && s.length >= 11) s = '0' + s.slice(2); else if (/^[1-9][0-9]{8}$/.test(s)) s = '0' + s;
+      return s;
+    },
+    fillNotifyZalo() {
+      const n = this.notify; if (!n) return;
+      n.items.forEach(i => { const z = this.zaloMap[this.lcm(i.email)]; if (z && !i.edit) i.zalo = z; });
+    },
+    async saveZalo(it) {
+      const z = this.zaloNorm(it.zaloInput);
+      if (!/^0[0-9]{9,10}$/.test(z)) { it.zaloErr = 'SĐT không hợp lệ'; return; }
+      it.zaloErr = ''; it.zaloBusy = true;
+      try {
+        const d = await this.api({ action: 'zalo', op: 'set', email: it.email, zalo: z });
+        this.zaloMap = d.map || this.zaloMap; it.zalo = z; it.edit = false;
+      } catch (e) { it.zaloErr = e.message; }
+      it.zaloBusy = false;
+    },
+    editZalo(it) { it.zaloInput = it.zalo || ''; it.zaloErr = ''; it.edit = true; },
+    // Copy tin + mở chat Zalo của khách trong 1 lần bấm → chỉ còn Dán + Gửi
+    nhanZalo(n, it) {
+      this.copyNotify(n, it);
+      window.open('https://zalo.me/' + it.zalo, '_blank', 'noopener');
+    },
     async loadMailLog() {
       try { const d = await this.api({ action: 'mailLog' }); this.mailLog = d.log || {}; this.mailFrom = d.from || ''; } catch (e) {}
     },
@@ -2560,7 +2599,9 @@ function app() {
         }
         const zaloOf = e => { const x = s.f.report && s.f.report.reporters.find(p => p.email === String(e).toLowerCase()); return x ? x.zalo : ''; };
         const nowStr = new Date().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
-        this.notify = { rn: r.rn, at: nowStr, url: r.fixUrl || FIXYTB_URL, sent: [], ctvSent: [], items: s.f.customers.filter(c => s.sel.includes(c.email)).map(c => ({ email: c.email, ctv: c.ctv, hsd: c.hsd, zalo: zaloOf(c.email) })) };
+        this.notify = { rn: r.rn, at: nowStr, url: r.fixUrl || FIXYTB_URL, sent: [], ctvSent: [], items: s.f.customers.filter(c => s.sel.includes(c.email)).map(c => ({ email: c.email, ctv: c.ctv, hsd: c.hsd, zalo: this.zaloMap[this.lcm(c.email)] || this.zaloNorm(zaloOf(c.email)), edit: false, zaloInput: '', zaloErr: '', zaloBusy: false })) };
+        const seed = this.notify.items.filter(i => i.zalo && !this.zaloMap[this.lcm(i.email)]).map(i => ({ email: i.email, zalo: i.zalo, src: 'baoloi' }));
+        if (seed.length && this.can('zalo')) this.bg(() => this.api({ action: 'zalo', op: 'set', items: seed }).then(d => { this.zaloMap = d.map || this.zaloMap; }));
         if (!this.notify.items.length) this.notify = null;
         if (this.me.role === 'admin') this.openNotes += (r.invited < 5 ? 1 : 0) + (s.note && s.note.trim() ? 1 : 0);
         if (this.me.limit) this.me.usedToday++;
