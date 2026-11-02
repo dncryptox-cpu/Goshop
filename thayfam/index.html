@@ -194,7 +194,7 @@
           <div class="sub" x-show="me.name"><b x-text="me.name"></b> · <span x-text="roleName()"></span><span x-show="me.limit" x-text="' · đã thay ' + me.usedToday + '/' + me.limit + ' hôm nay'"></span></div>
         </div>
         <div class="sp"></div>
-        <button class="btn sm" @click="freshUntil = Date.now() + 20000; load(); if (slotsLoaded) bg(() => loadSlots()); if (wk) loadWeek()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
+        <button class="btn sm" @click="freshUntil = Date.now() + 20000; refreshAll()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
         <a class="btn sm" href="/gg1/" x-show="me.role==='admin' || me.role==='nhanvien'" style="text-decoration:none">GG1</a>
         <label class="btn sm" x-show="me.role==='admin'" style="display:flex;gap:6px;align-items:center;cursor:pointer" :style="autoSync ? 'border-color:var(--ok);color:var(--ok)' : ''" title="Bật: mọi thao tác của admin (thay fam, chuyển khách, đổi mail, cất/kick khách, đóng fam, đã mời) ghi luôn vào data gốc"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')" style="margin:0"> Ghi luôn vào gốc</label>
         <button class="btn sm" @click="logout()">Thoát</button>
@@ -1561,7 +1561,9 @@ function app() {
           if (this.swap && this.swap.f.customers.some(c => c.email === txt) && !this.swap.copied.includes(txt)) this.swap.copied.push(txt);
         }
       });
-      if (this.pass) { this.snapRestore(); this.load(); } setInterval(() => this.tickOtp(), 1000); },
+      if (this.pass) { this.snapRestore(); this.load(); if (this.allFams) this.warmSearch(); }
+      // Quay lại tab sau ≥60s (iPhone treo tab khi chuyển app): tự tải lại
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { this._hid = Date.now(); return; } if (this.pass && this._hid && Date.now() - this._hid > 60000) this.refreshAll(); }); setInterval(() => this.tickOtp(), 1000); },
     // Mở trang hiện ngay dữ liệu lần trước (lưu trong trình duyệt), rồi cập nhật khi server trả về
     // Sau 1 thao tác ghi: tải lại nền (không bắt người dùng chờ)
     afterWrite(quiet) {
@@ -1579,6 +1581,10 @@ function app() {
     // Hàng đợi tải nền: chạy từng cái một, cái sau chờ cái trước xong
     bg(fn) { this._bgq = (this._bgq || Promise.resolve()).then(() => fn()).catch(() => {}); return this._bgq; },
     // Tab Tất cả (dùng cho tìm nhanh tại máy): chỉ tải khi bắt đầu tìm
+    refreshAll() {
+      this.load(); if (this.slotsLoaded) this.bg(() => this.loadSlots()); if (this.wk) this.loadWeek();
+      if (this.allFams) { this.allStale = true; this._allLoading = false; this.warmSearch(); }
+    },
     warmSearch() { if (this.can('all') && (!this.allFams || this.allStale) && !this._allLoading) { this._allLoading = true; this.bg(() => this.loadAll()).then(() => { this._allLoading = false; }); } },
     async loadAll() {
       if (!this.can('all')) return;
@@ -1598,6 +1604,7 @@ function app() {
       if (sl) { this.slots = sl.items.map(f => Object.assign(f, { check: false, mark: {}, saving: false })); this.slotLimit = sl.limit; this.slotPendingH = sl.pendingHours; }
       const w = this.snapGet('week'); if (w) this.wk = w;
       const al = this.snapGet('all'); if (al) this.allFams = al; const aa = this.snapGet('arch'); if (aa) this.allArch = aa;
+      if (al) this.allStale = true; // bản lưu có thể từ hôm trước: tìm qua server cho tới khi tải xong bản mới
     },
 
     async api(body) {
