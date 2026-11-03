@@ -259,6 +259,62 @@ async function proxy(user: any, id: string) {
   return new Response(r.body, { headers: { ...CORS, "Content-Type": r.headers.get("content-type") || "video/mp4" } });
 }
 
+/* ---------------- nói theo nghĩa (ôn chủ động) ---------------- */
+async function recall(target: string, vi: string, b64: string, mime: string) {
+  if (!b64 || b64.length > 4_000_000) throw new UserError("Bản ghi quá dài, nói lại ngắn hơn nhé.");
+  return await gemini([
+    { inlineData: { mimeType: mime || "audio/webm", data: b64 } },
+    { text: `A Vietnamese learner sees the Vietnamese meaning "${String(vi).slice(0, 200)}" and must say the English phrase "${String(target).slice(0, 200)}".
+Listen. Accept small grammar slips or close natural paraphrases with the same meaning. Return ONLY JSON:
+{"heard":"what you heard","correct":true|false,"score":0-100,"tip":"one short Vietnamese sentence: what was missing or mispronounced, or a short praise if correct"}` },
+  ]);
+}
+
+/* ---------------- hội thoại theo tình huống ---------------- */
+function sceneText(scene: any, prof: any, phrases: string[]) {
+  return `You are role-playing to help a Vietnamese English learner practise speaking.
+Learner level: ${LEVELS[prof?.level] || "beginner"}. Scenario: ${String(scene?.t || "").slice(0, 120)}.
+Your role: ${String(scene?.ai || "").slice(0, 300)}
+The learner's goal in this conversation: ${String(scene?.goal || "").slice(0, 300)}
+Rules for your replies: stay in role; use very simple, natural spoken English (A2); 1-2 short sentences; usually end with an easy question so the learner keeps talking.
+When it fits naturally, reuse some phrases the learner studied: ${(phrases || []).slice(0, 12).map((p) => `"${String(p).slice(0, 60)}"`).join(", ") || "(none)"}.`;
+}
+function histText(history: any[]) {
+  return (history || []).slice(-12).map((h) => `${h.r === "ai" ? "YOU" : "LEARNER"}: ${String(h.en || "").slice(0, 300)}`).join("\n");
+}
+async function chat(user: any, body: any) {
+  const { data: prof } = await admin.from("lh_profiles").select("level,goal").eq("id", user.id).single();
+  const base = sceneText(body.scene, prof, body.phrases);
+  if (!body.audio) {
+    return await gemini([{ text: `${base}
+Start the conversation with your first line. Return ONLY JSON:
+{"reply":"your first line","reply_vi":"Vietnamese translation","hint":"a simple English sentence the learner could answer with","hint_vi":"its Vietnamese"}` }]);
+  }
+  if (body.audio.length > 4_000_000) throw new UserError("Bản ghi quá dài, nói ngắn hơn nhé.");
+  return await gemini([
+    { inlineData: { mimeType: body.mime || "audio/webm", data: body.audio } },
+    { text: `${base}
+Conversation so far:
+${histText(body.history)}
+The audio is the learner's next turn. Listen, then return ONLY JSON:
+{"heard":"exactly what the learner said (best guess, English; if they used Vietnamese write it as is)",
+"better":"a natural, correct English version of what they meant (same as heard if already good)",
+"fix_vi":"one short Vietnamese note on the single most important mistake (grammar, word or pronunciation); empty string if none",
+"reply":"your next line in role","reply_vi":"Vietnamese translation of your reply",
+"hint":"a simple English sentence the learner could say next","hint_vi":"its Vietnamese",
+"goal_met":true|false}` },
+  ]);
+}
+async function chatEval(user: any, body: any) {
+  const { data: prof } = await admin.from("lh_profiles").select("level").eq("id", user.id).single();
+  return await gemini([{ text: `Evaluate a Vietnamese learner's speaking in this role-play. Learner level: ${LEVELS[prof?.level] || "beginner"}.
+Scenario: ${String(body.scene?.t || "").slice(0, 120)}. Learner's goal: ${String(body.scene?.goal || "").slice(0, 300)}
+Transcript:
+${histText(body.history)}
+Judge mainly: did they communicate the goal so a listener understands? Be encouraging but honest for their level.
+Return ONLY JSON: {"score":0-100,"passed":true|false (true if score>=60),"summary_vi":"2 short Vietnamese sentences on how they did","tips_vi":["up to 2 short Vietnamese tips"],"useful":[{"en":"a useful phrase for this situation","vi":"meaning"}]}` }]);
+}
+
 /* ---------------- router ---------------- */
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
@@ -272,6 +328,9 @@ Deno.serve(async (req) => {
       case "open": return json(await openLesson(user, body.id));
       case "ask": return json({ answer: await ask(user, body.line, body.question) });
       case "speak": return json(await speak(body.target, body.audio, body.mime));
+      case "recall": return json(await recall(body.target, body.vi, body.audio, body.mime));
+      case "chat": return json(await chat(user, body));
+      case "chat_eval": return json(await chatEval(user, body));
       case "proxy": return await proxy(user, body.id);
       default: return json({ error: "Không rõ thao tác." }, 400);
     }
