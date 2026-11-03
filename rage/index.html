@@ -402,7 +402,7 @@ let session=null,profile=null;
 
 async function api(action,body){
   if(window.__MOCK_API)return window.__MOCK_API(action,body);
-  const r=await fetch(SB_URL+'/functions/v1/luothoc-api',{method:'POST',
+  const r=await fetch(SB_URL+'/functions/v1/rage-api',{method:'POST',
     headers:{'content-type':'application/json',apikey:SB_ANON,Authorization:'Bearer '+session.access_token},
     body:JSON.stringify(Object.assign({action},body))});
   if(action==='proxy'){if(!r.ok)throw new Error('Không phát được video');return r.blob();}
@@ -429,10 +429,10 @@ $('#loginBtn').onclick=()=>authDo('in');
 
 async function boot(s){
   session=s;
-  const {data}=await sb.from('lh_profiles').select('*').eq('id',s.user.id).maybeSingle();
+  const {data}=await sb.from('rage_profiles').select('*').eq('id',s.user.id).maybeSingle();
   profile=data;
   if(!profile){const dn=(s.user.email||'').split('@')[0];
-    await sb.from('lh_profiles').insert({id:s.user.id,display_name:dn});
+    await sb.from('rage_profiles').insert({id:s.user.id,display_name:dn});
     profile={id:s.user.id,display_name:dn,daily_limit:5};}
   $('#meEmail').textContent=s.user.email||'';
   if(!profile.level||!profile.goal){startOnboard();return;}
@@ -450,7 +450,7 @@ function chip(id,set){$(id).onclick=e=>{const b=e.target.closest('.chip-btn');if
   $(id).querySelectorAll('.chip-btn').forEach(x=>x.setAttribute('aria-pressed',x===b));$('#obSave').disabled=!(obLv&&obGoal);};}
 chip('#lvChips',v=>obLv=v);chip('#goalChips',v=>obGoal=v);
 $('#obSave').onclick=async()=>{$('#obSave').disabled=true;
-  const {error}=await sb.from('lh_profiles').update({level:obLv,goal:obGoal}).eq('id',session.user.id);
+  const {error}=await sb.from('rage_profiles').update({level:obLv,goal:obGoal}).eq('id',session.user.id);
   if(error){$('#obSave').disabled=false;$('#obSave').textContent='Lỗi: '+error.message;return;}
   profile.level=obLv;profile.goal=obGoal;show('home');loadHome();};
 
@@ -459,9 +459,9 @@ function vnDayStart(){const d=new Date(Date.now()+7*36e5);d.setUTCHours(0,0,0,0)
 async function loadHome(){
   const uid=session.user.id;
   const [L,D,T]=await Promise.all([
-    sb.from('lh_lessons').select('id,created_at,video:lh_videos(title,platform)').eq('user_id',uid).order('created_at',{ascending:false}).limit(50),
-    sb.from('lh_cards').select('id',{count:'exact',head:true}).eq('user_id',uid).lte('due',new Date().toISOString()),
-    sb.from('lh_lessons').select('id',{count:'exact',head:true}).eq('user_id',uid).gte('created_at',vnDayStart())
+    sb.from('rage_lessons').select('id,created_at,video:rage_videos(title,platform)').eq('user_id',uid).order('created_at',{ascending:false}).limit(50),
+    sb.from('rage_cards').select('id',{count:'exact',head:true}).eq('user_id',uid).lte('due',new Date().toISOString()),
+    sb.from('rage_lessons').select('id',{count:'exact',head:true}).eq('user_id',uid).gte('created_at',vnDayStart())
   ]);
   const ls=L.data||[];
   $('#lcount').textContent=ls.length?ls.length+' video':'';
@@ -483,7 +483,7 @@ async function loadChallenge(){
   if(!start)return;
   const today=vnToday();
   chDayNo=Math.max(1,dayDiff(start,today)+1);
-  const {data}=await sb.from('lh_days').select('day,listened,spoke,posted').eq('user_id',session.user.id).gte('day',start).order('day');
+  const {data}=await sb.from('rage_days').select('day,listened,spoke,posted').eq('user_id',session.user.id).gte('day',start).order('day');
   const byDay={};(data||[]).forEach(r=>byDay[r.day]=r);
   todayRow=byDay[today]||{};
   const full=r=>r&&r.listened&&r.spoke&&r.posted;
@@ -502,10 +502,10 @@ async function loadChallenge(){
 async function markDay(k){
   if(!session||!profile||!profile.challenge_start||todayRow[k])return;
   todayRow[k]=true;
-  await sb.from('lh_days').upsert({user_id:session.user.id,day:vnToday(),[k]:true,updated_at:new Date().toISOString()},{onConflict:'user_id,day'});
+  await sb.from('rage_days').upsert({user_id:session.user.id,day:vnToday(),[k]:true,updated_at:new Date().toISOString()},{onConflict:'user_id,day'});
 }
 $('#chGo').onclick=async()=>{$('#chGo').disabled=true;const t=vnToday();
-  const {error}=await sb.from('lh_profiles').update({challenge_start:t}).eq('id',session.user.id);
+  const {error}=await sb.from('rage_profiles').update({challenge_start:t}).eq('id',session.user.id);
   if(error){$('#chGo').disabled=false;$('#chGo').textContent='Lỗi: '+error.message;return;}
   profile.challenge_start=t;loadChallenge();};
 $('#chOn').onclick=async e=>{const b=e.target.closest('[data-go]');if(!b)return;const g=b.dataset.go;
@@ -516,7 +516,7 @@ $('#chOn').onclick=async e=>{const b=e.target.closest('[data-go]');if(!b)return;
 /* --- Tạo bài đăng --- */
 let shareBlob=null;
 async function todaysPhrases(){
-  const {data}=await sb.from('lh_cards').select('en,vi').eq('user_id',session.user.id).gte('created_at',vnDayStart()).order('created_at',{ascending:false}).limit(3);
+  const {data}=await sb.from('rage_cards').select('en,vi').eq('user_id',session.user.id).gte('created_at',vnDayStart()).order('created_at',{ascending:false}).limit(3);
   return data||[];
 }
 function wrap(ctx,text,maxW){const words=String(text).split(' ');const out=[];let line='';
@@ -710,7 +710,7 @@ async function finishLesson(){
   markDay('listened');
   const hard=results.filter(r=>!r.easy).length;
   $('#doneMsg').textContent=`${rows.length} cụm đã vào lịch ôn. ${hard?hard+' cụm chưa nhớ sẽ quay lại ngày mai.':'Hẹn 3 ngày nữa ôn lại.'}`;
-  if(rows.length){const {error}=await sb.from('lh_cards').upsert(rows,{onConflict:'user_id,en',ignoreDuplicates:true});
+  if(rows.length){const {error}=await sb.from('rage_cards').upsert(rows,{onConflict:'user_id,en',ignoreDuplicates:true});
     if(error)$('#doneMsg').textContent='Không lưu được: '+error.message;}
 }
 
@@ -745,7 +745,7 @@ holdMic($('#shadowMic'),async blob=>{
 /* ================= ÔN BẰNG NÓI ================= */
 let cards=[],ci=0,score=0,answered=false;
 $('#dueBtn').onclick=async()=>{show('review');$('#reviewDone').hidden=true;$('#rcard').hidden=false;$('#rvi').textContent='Đang tải…';$('#rres').hidden=true;
-  const {data,error}=await sb.from('lh_cards').select('*').eq('user_id',session.user.id).lte('due',new Date().toISOString()).order('due').limit(20);
+  const {data,error}=await sb.from('rage_cards').select('*').eq('user_id',session.user.id).lte('due',new Date().toISOString()).order('due').limit(20);
   if(error){$('#rvi').textContent=error.message;return;}cards=data||[];ci=0;score=0;showCard();};
 function showCard(){
   if(ci>=cards.length){$('#rcard').hidden=true;$('#reviewDone').hidden=false;$('#rdoneMsg').textContent=`Nói đúng ${score}/${cards.length} cụm. Cụm đúng sẽ giãn lịch ôn, cụm sai quay lại ngày mai.`;return;}
@@ -758,7 +758,7 @@ function revealCard(ok,html){
   $('#rverdict').innerHTML=html;$('#ren').textContent=c.en;$('#rctx').innerHTML=hiLine(c.line,c.en)+(c.note?`<small>${esc(c.note)}</small>`:'');
   $('#rres').hidden=false;$('#rnext').hidden=false;$('#rmic').hidden=true;$('#rskip').hidden=true;speak(c.line||c.en);
   const step=ok?Math.min(c.step+1,INTERVALS.length-1):0;
-  sb.from('lh_cards').update({step,due:new Date(Date.now()+INTERVALS[step]*DAY).toISOString()}).eq('id',c.id).then(()=>{});
+  sb.from('rage_cards').update({step,due:new Date(Date.now()+INTERVALS[step]*DAY).toISOString()}).eq('id',c.id).then(()=>{});
 }
 holdMic($('#rmic'),async blob=>{
   if(answered)return;const c=cards[ci];$('#rverdict').innerHTML='';$('#rres').hidden=false;$('#rverdict').innerHTML='<p class="note">AI đang nghe…</p>';
@@ -795,7 +795,7 @@ const SCENES=[
  {id:'y-kien',t:'Nêu ý kiến',d:'Đồng ý, không đồng ý lịch sự',ai:'a friend with a strong opinion about AI replacing jobs',goal:'Give your opinion and politely disagree with one point'}
 ];
 let scProg={};
-async function loadScProg(){const {data}=await sb.from('lh_scenes').select('scene_id,best,passed').eq('user_id',session.user.id);
+async function loadScProg(){const {data}=await sb.from('rage_scenes').select('scene_id,best,passed').eq('user_id',session.user.id);
   scProg={};(data||[]).forEach(r=>scProg[r.scene_id]=r);return Object.values(scProg).filter(r=>r.passed).length;}
 async function refreshTalk(){try{const n=await loadScProg();$('#talkN').textContent=n;
   const next=SCENES.find(s=>!(scProg[s.id]&&scProg[s.id].passed));$('#talkSub').textContent=next?`Tiếp theo: ${next.t}`:'Bạn đã qua cả 20 tình huống';}catch(e){}}
@@ -815,7 +815,7 @@ function aiBubble(r){bubble(`<div class="en">${esc(r.reply)}<button class="say" 
 async function startChat(s){
   scene=s;hist=[];turns=0;lastHint=null;show('chat');$('#cTitle').textContent=s.t;$('#cGoal').innerHTML=`<b>Mục tiêu:</b> ${esc(s.goal)}`;
   $('#msgs').innerHTML='';$('#cEval').hidden=true;$('#cLive').hidden=false;$('#cTurn').textContent=`0/${MAX_TURNS}`;$('#cStatus').textContent='AI đang mở đầu…';
-  try{const {data}=await sb.from('lh_cards').select('en').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(12);myPhrases=(data||[]).map(x=>x.en);}catch(e){myPhrases=[];}
+  try{const {data}=await sb.from('rage_cards').select('en').eq('user_id',session.user.id).order('created_at',{ascending:false}).limit(12);myPhrases=(data||[]).map(x=>x.en);}catch(e){myPhrases=[];}
   try{const r=await api('chat',{scene:{t:s.t,ai:s.ai,goal:s.goal},phrases:myPhrases});aiBubble(r);$('#cStatus').textContent='Giữ nút và trả lời. Không biết nói gì thì bấm Gợi ý.';}
   catch(e){$('#cStatus').textContent=e.message;}
 }
@@ -838,7 +838,7 @@ async function endChat(){
   $('#cLive').hidden=true;$('#cEval').hidden=false;$('#cEval').innerHTML='<p class="note">AI đang chấm…</p>';
   try{const r=await api('chat_eval',{scene:{t:scene.t,goal:scene.goal},history:hist});
     const prev=scProg[scene.id],best=Math.max(r.score|0,prev?prev.best:0),passed=!!(r.passed||(prev&&prev.passed));
-    await sb.from('lh_scenes').upsert({user_id:session.user.id,scene_id:scene.id,best,passed,tries:((prev&&prev.tries)||0)+1,updated_at:new Date().toISOString()},{onConflict:'user_id,scene_id'});
+    await sb.from('rage_scenes').upsert({user_id:session.user.id,scene_id:scene.id,best,passed,tries:((prev&&prev.tries)||0)+1,updated_at:new Date().toISOString()},{onConflict:'user_id,scene_id'});
     scProg[scene.id]={scene_id:scene.id,best,passed,tries:((prev&&prev.tries)||0)+1};
     const useful=(r.useful||[]).slice(0,4);
     $('#cEval').innerHTML=`<p class="phrase" style="color:${r.passed?'var(--ok)':'var(--ink)'}">${r.passed?'Qua rồi!':'Gần được rồi'}</p>
@@ -849,7 +849,7 @@ async function endChat(){
     $('#cAgain').onclick=()=>startChat(scene);$('#cNext').onclick=openScenes;
     if($('#cSave'))$('#cSave').onclick=async()=>{const now=Date.now();
       const rows=useful.map(u=>({user_id:session.user.id,en:u.en,vi:u.vi,note:'Từ tình huống: '+scene.t,wrong:[],line:u.en,line_vi:u.vi,step:0,due:new Date(now+DAY).toISOString()}));
-      const {error}=await sb.from('lh_cards').upsert(rows,{onConflict:'user_id,en',ignoreDuplicates:true});$('#cSave').textContent=error?'Lỗi: '+error.message:'Đã lưu, ngày mai ôn';$('#cSave').disabled=true;};
+      const {error}=await sb.from('rage_cards').upsert(rows,{onConflict:'user_id,en',ignoreDuplicates:true});$('#cSave').textContent=error?'Lỗi: '+error.message:'Đã lưu, ngày mai ôn';$('#cSave').disabled=true;};
   }catch(e){$('#cEval').innerHTML=`<p class="note">${esc(e.message)}</p><button class="btn" id="cRetry">Chấm lại</button>`;$('#cRetry').onclick=endChat;}
 }
 $('#cEnd').onclick=endChat;

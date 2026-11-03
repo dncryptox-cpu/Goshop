@@ -1,4 +1,4 @@
-// Lướt Học — Edge Function "api"
+// Rage — Edge Function "rage-api"
 // Secrets cần đặt: GEMINI_API_KEY, RAPIDAPI_KEY (tuỳ chọn: GEMINI_MODEL)
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -156,7 +156,7 @@ function cleanPhrases(raw: any[], lines: any[]) {
 async function getVideo(url: string) {
   const plat = platformOf(url);
   const key = urlKey(url, plat);
-  const { data: hit } = await admin.from("lh_videos").select("*").eq("url_key", key).maybeSingle();
+  const { data: hit } = await admin.from("rage_videos").select("*").eq("url_key", key).maybeSingle();
   if (hit) return hit;
 
   let parts: unknown[], media: any, title = "";
@@ -183,7 +183,7 @@ async function getVideo(url: string) {
   const lines = cleanLines(g.lines);
   if (!lines.length) throw new UserError("Không nghe thấy tiếng Anh trong video này.");
   const row = { url_key: key, url, platform: plat, title: g.title || title || "Video", level: g.level || "", media, lines };
-  const { data, error } = await admin.from("lh_videos").upsert(row, { onConflict: "url_key" }).select().single();
+  const { data, error } = await admin.from("rage_videos").upsert(row, { onConflict: "url_key" }).select().single();
   if (error) throw error;
   return data;
 }
@@ -192,48 +192,48 @@ async function addLesson(user: any, url: string) {
   const m = String(url || "").match(/https?:\/\/\S+/);
   if (!m) throw new UserError("Dán một link video (YouTube, TikTok, Instagram, Facebook, Threads, X…).");
   const link = m[0];
-  const { data: prof } = await admin.from("lh_profiles").select("*").eq("id", user.id).single();
+  const { data: prof } = await admin.from("rage_profiles").select("*").eq("id", user.id).single();
 
   // Bài đã có → mở lại, không tính lượt
   const plat = platformOf(link);
-  const { data: v0 } = await admin.from("lh_videos").select("id").eq("url_key", urlKey(link, plat)).maybeSingle();
+  const { data: v0 } = await admin.from("rage_videos").select("id").eq("url_key", urlKey(link, plat)).maybeSingle();
   if (v0) {
-    const { data: l0 } = await admin.from("lh_lessons").select("id").eq("user_id", user.id).eq("video_id", v0.id).maybeSingle();
+    const { data: l0 } = await admin.from("rage_lessons").select("id").eq("user_id", user.id).eq("video_id", v0.id).maybeSingle();
     if (l0) return await openLesson(user, l0.id);
   }
 
   // Hạn mức theo ngày (giờ Việt Nam)
   const start = new Date(Date.now() + 7 * 3600e3); start.setUTCHours(0, 0, 0, 0);
   const since = new Date(start.getTime() - 7 * 3600e3).toISOString();
-  const { count } = await admin.from("lh_lessons").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", since);
+  const { count } = await admin.from("rage_lessons").select("id", { count: "exact", head: true }).eq("user_id", user.id).gte("created_at", since);
   const limit = prof?.daily_limit ?? 5;
   if ((count ?? 0) >= limit) throw new UserError(`Hôm nay bạn đã học đủ ${limit} video. Mai quay lại nhé, hoặc ôn lại các cụm đã lưu.`);
 
   const video = await getVideo(link);
   const pp = await gemini([{ text: phrasePrompt(video.lines, prof) }]);
   const phrases = cleanPhrases(pp.phrases, video.lines);
-  const { data: les, error } = await admin.from("lh_lessons")
+  const { data: les, error } = await admin.from("rage_lessons")
     .upsert({ user_id: user.id, video_id: video.id, phrases }, { onConflict: "user_id,video_id" }).select().single();
   if (error) throw error;
   return { ...les, video };
 }
 
 async function openLesson(user: any, id: string) {
-  const { data: les } = await admin.from("lh_lessons").select("*, video:lh_videos(*)").eq("id", id).eq("user_id", user.id).single();
+  const { data: les } = await admin.from("rage_lessons").select("*, video:rage_videos(*)").eq("id", id).eq("user_id", user.id).single();
   if (!les) throw new UserError("Không tìm thấy bài học.");
   const v = les.video;
   if (v.media?.type === "mp4" && Date.now() - (v.media.at || 0) > 2 * 3600e3) {
     try {
       const m = await resolveMedia(v.url);
       v.media = { type: "mp4", url: m.video || m.audio, ext: m.video ? m.videoExt : m.audioExt, at: Date.now() };
-      await admin.from("lh_videos").update({ media: v.media }).eq("id", v.id);
+      await admin.from("rage_videos").update({ media: v.media }).eq("id", v.id);
     } catch { /* giữ link cũ */ }
   }
   return les;
 }
 
 async function ask(user: any, line: string, question: string) {
-  const { data: prof } = await admin.from("lh_profiles").select("level,goal").eq("id", user.id).single();
+  const { data: prof } = await admin.from("rage_profiles").select("level,goal").eq("id", user.id).single();
   const q = String(question || "").slice(0, 300);
   return await gemini([{ text: `You are a friendly English coach. Answer in Vietnamese, short (max 90 words), plain text, no markdown headers.
 Learner level: ${LEVELS[prof?.level] || "intermediate"}. Goal: ${GOALS[prof?.goal] || "everyday conversation"}.
@@ -283,7 +283,7 @@ function histText(history: any[]) {
   return (history || []).slice(-12).map((h) => `${h.r === "ai" ? "YOU" : "LEARNER"}: ${String(h.en || "").slice(0, 300)}`).join("\n");
 }
 async function chat(user: any, body: any) {
-  const { data: prof } = await admin.from("lh_profiles").select("level,goal").eq("id", user.id).single();
+  const { data: prof } = await admin.from("rage_profiles").select("level,goal").eq("id", user.id).single();
   const base = sceneText(body.scene, prof, body.phrases);
   if (!body.audio) {
     return await gemini([{ text: `${base}
@@ -306,7 +306,7 @@ The audio is the learner's next turn. Listen, then return ONLY JSON:
   ]);
 }
 async function chatEval(user: any, body: any) {
-  const { data: prof } = await admin.from("lh_profiles").select("level").eq("id", user.id).single();
+  const { data: prof } = await admin.from("rage_profiles").select("level").eq("id", user.id).single();
   return await gemini([{ text: `Evaluate a Vietnamese learner's speaking in this role-play. Learner level: ${LEVELS[prof?.level] || "beginner"}.
 Scenario: ${String(body.scene?.t || "").slice(0, 120)}. Learner's goal: ${String(body.scene?.goal || "").slice(0, 300)}
 Transcript:
