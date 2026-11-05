@@ -59,3 +59,10 @@ drop policy if exists "desk_inbox_files_read" on storage.objects;
 create policy "desk_inbox_files_read" on storage.objects
   for select to authenticated
   using (bucket_id = 'desk-inbox' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- nhắc buổi sáng 8:05 qua bot (mỗi ngày tối đa 1 tin, chỉ gửi khi có việc)
+create extension if not exists pg_net;
+create extension if not exists pg_cron;
+select cron.unschedule('desk-inbox-digest') where exists (select 1 from cron.job where jobname = 'desk-inbox-digest');
+select cron.schedule('desk-inbox-digest', '5 1 * * *',
+  $$ select net.http_get('https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?digest=1') $$);
