@@ -100,6 +100,17 @@ button,input,textarea{font:inherit;color:inherit}
 .reply{display:flex;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel);align-items:flex-end}
 .reply textarea{flex:1;resize:none;min-height:44px;max-height:160px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);outline:none;line-height:1.4}
 .reply textarea:focus{border-color:var(--accent)}
+.attach{width:44px;height:44px;flex:none;border:1px solid var(--line);border-radius:10px;display:grid;place-items:center;cursor:pointer;color:var(--muted);background:var(--bg)}
+.attach:hover{color:var(--accent);border-color:var(--accent)}
+.attach svg{width:20px;height:20px}
+.pending{display:flex;align-items:center;gap:10px;padding:8px 14px 0;background:var(--panel);border-top:1px solid var(--line)}
+.pending img{width:52px;height:52px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.pending span{flex:1;font-size:13px;color:var(--muted)}
+.pending + .reply{border-top:0}
+.shot{display:block;max-width:280px;width:100%;max-height:340px;border-radius:10px;cursor:zoom-in;background:var(--line)}
+.m .b.has-img{padding:4px;width:288px;max-width:100%}.m .b.has-img .cap{padding:6px 9px 3px}
+.viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);display:grid;place-items:center;z-index:10;cursor:zoom-out;padding:16px}
+.viewer img{max-width:100%;max-height:100%;border-radius:8px}
 .note{font-size:12px;color:var(--muted);padding:0 14px 8px;background:var(--panel)}
 .placeholder{flex:1;display:grid;place-items:center;color:var(--muted);text-align:center;padding:20px}
 .kb{flex:1;display:flex;flex-direction:column;padding:16px;gap:10px;min-height:0}
@@ -142,7 +153,7 @@ button,input,textarea{font:inherit;color:inherit}
   const ago = v => { const d = (Date.now() - new Date(v)) / 60000; if (d < 1) return "vừa xong"; if (d < 60) return Math.floor(d) + " phút"; if (d < 1440) return Math.floor(d / 60) + " giờ"; return new Date(v).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }); };
   const hm = v => new Date(v).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
 
-  let S = { tab: "cho_nguoi", tickets: [], sel: null, msgs: [], q: "", draft: {}, kb: null, kbDirty: false, user: "" };
+  let S = { tab: "cho_nguoi", tickets: [], sel: null, msgs: [], q: "", draft: {}, img: {}, busy: false, kb: null, kbDirty: false, user: "" };
   let channel = null;
 
   function toast(text, undo) {
@@ -187,7 +198,15 @@ button,input,textarea{font:inherit;color:inherit}
   async function loadMsgs(id) {
     const { data, error } = await sb.from("support_messages").select("*").eq("ticket_id", id).order("id", { ascending: true });
     if (error) return fail(error);
-    S.msgs = data || [];
+    S.msgs = await signUrls(data || []);
+  }
+  // Ảnh nằm trong bucket riêng tư "support": ký link xem 1 giờ
+  async function signUrls(msgs) {
+    const paths = msgs.filter(m => m.image && !m.image_url).map(m => m.image);
+    if (!paths.length) return msgs;
+    const { data } = await sb.storage.from("support").createSignedUrls(paths, 3600);
+    const map = new Map((data || []).map(d => [d.path, d.signedUrl]));
+    return msgs.map(m => m.image && !m.image_url ? { ...m, image_url: map.get(m.image) } : m);
   }
   function subscribe() {
     if (channel || !sb.channel) return;
@@ -203,7 +222,7 @@ button,input,textarea{font:inherit;color:inherit}
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "support_messages" }, p => {
         if (p.new.ticket_id !== S.sel || S.msgs.some(m => m.id === p.new.id)) return;
-        S.msgs.push(p.new); renderMsgs();
+        signUrls([p.new]).then(([m]) => { if (!S.msgs.some(x => x.id === m.id)) { S.msgs.push(m); S.msgs.sort((a, b) => a.id - b.id); renderMsgs(); } });
       })
       .subscribe();
   }
@@ -225,11 +244,21 @@ button,input,textarea{font:inherit;color:inherit}
     const t = sel(); if (t?.admin_unread) { await markRead(id); renderSide(); }
   }
   async function sendReply() {
-    const t = sel(); const text = (S.draft[t.id] || "").trim(); if (!text) return;
-    S.draft[t.id] = ""; render();
-    const { data, error } = await sb.from("support_messages").insert({ ticket_id: t.id, role: "admin", body: text }).select("*").single();
-    if (error) { S.draft[t.id] = text; render(); return fail(error); }
-    if (data && !S.msgs.some(m => m.id === data.id)) S.msgs.push(data);
+    const t = sel(); const text = (S.draft[t.id] || "").trim(); const img = S.img[t.id] || null;
+    if ((!text && !img) || S.busy) return;
+    S.draft[t.id] = ""; S.img[t.id] = null; S.busy = true; render();
+    const undo = e => { S.draft[t.id] = text; S.img[t.id] = img; S.busy = false; render(); fail(e); };
+    let image = null;
+    if (img) {
+      image = `${t.id}/admin-${Date.now()}.jpg`;
+      const blob = await (await fetch(img)).blob();
+      const { error } = await sb.storage.from("support").upload(image, blob, { contentType: "image/jpeg" });
+      if (error) return undo(error);
+    }
+    const { data, error } = await sb.from("support_messages").insert({ ticket_id: t.id, role: "admin", body: text, image }).select("*").single();
+    S.busy = false;
+    if (error) return undo(error);
+    if (data && !S.msgs.some(m => m.id === data.id)) S.msgs.push(img ? { ...data, image_url: img } : data);
     if (t.status !== "cho_nguoi") await setTicket(t.id, { status: "cho_nguoi" }); // người đã nhảy vào → bot im
     else render();
   }
@@ -315,7 +344,8 @@ button,input,textarea{font:inherit;color:inherit}
     if (!t) { main.innerHTML = `<div class="placeholder">Chọn một cuộc chat ở bên trái.</div>`; return; }
     main.innerHTML = `<div class="thead" id="thead"></div>${t.status === "cho_nguoi" && t.ly_do ? `<div class="reason">Lý do: ${esc(t.ly_do)}</div>` : ""}
       <div class="msgs" id="msgs"></div>
-      <form class="reply" id="reply"><textarea id="rt" rows="1" placeholder="Trả lời khách…" aria-label="Trả lời"></textarea><button class="btn">Gửi</button></form>
+      ${S.img[t.id] ? `<div class="pending"><img src="${S.img[t.id]}" alt="Ảnh sắp gửi"><span>Ảnh sẵn sàng · thêm chữ nếu cần</span><button class="btn ghost sm" type="button" id="dropImg">Bỏ ảnh</button></div>` : ""}
+      <form class="reply" id="reply"><label class="attach" title="Gửi ảnh (hoặc dán ảnh vào ô trả lời)" aria-label="Gửi ảnh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg><input type="file" id="file" accept="image/*" hidden></label><textarea id="rt" rows="1" placeholder="Trả lời khách…" aria-label="Trả lời"></textarea><button class="btn" ${S.busy ? "disabled" : ""}>Gửi</button></form>
       <div class="note">${t.status === "bot" ? "Bạn trả lời thì bot sẽ ngừng, chuyển sang Cần người." : "Khách thấy tin trong vài giây · Enter gửi, Shift+Enter xuống dòng."}</div>`;
     renderHead(); renderMsgs();
     const rt = $("#rt"); rt.value = S.draft[t.id] || "";
@@ -323,6 +353,8 @@ button,input,textarea{font:inherit;color:inherit}
     rt.oninput = () => { S.draft[t.id] = rt.value; grow(); }; grow();
     rt.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendReply(); } };
     $("#reply").onsubmit = e => { e.preventDefault(); sendReply(); };
+    $("#file").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) pickImage(f); };
+    const di = $("#dropImg"); if (di) di.onclick = () => { S.img[t.id] = null; render(); };
   }
   function renderHead() {
     const t = sel(), h = $("#thead"); if (!t || !h) return;
@@ -348,11 +380,39 @@ button,input,textarea{font:inherit;color:inherit}
     const box = $("#msgs"); if (!box) return;
     const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
     box.innerHTML = S.msgs.length ? S.msgs.map(m => m.role === "he_thong" ? `<div class="sys">${esc(m.body)} · ${hm(m.created_at)}</div>`
-      : `<div class="m ${m.role}"><div class="who">${{ khach: "Khách", bot: "Bot", admin: "Bạn" }[m.role]} · ${hm(m.created_at)}</div><div class="b">${linkify(m.body)}</div></div>`).join("")
+      : `<div class="m ${m.role}"><div class="who">${{ khach: "Khách", bot: "Bot", admin: "Bạn" }[m.role]} · ${hm(m.created_at)}</div>${m.image
+          ? `<div class="b has-img">${m.image_url ? `<img class="shot" src="${esc(m.image_url)}" alt="Ảnh" data-view>` : "[Ảnh]"}${m.body ? `<div class="cap">${linkify(m.body)}</div>` : ""}</div>`
+          : `<div class="b">${linkify(m.body)}</div>`}</div>`).join("")
       : `<div class="placeholder">Chưa có tin nhắn.</div>`;
-    if (atBottom || !renderMsgs.done) box.scrollTop = box.scrollHeight;
+    if (atBottom || !renderMsgs.done) { box.scrollTop = box.scrollHeight; box.querySelectorAll("img.shot").forEach(i => { if (!i.complete) i.onload = () => { box.scrollTop = box.scrollHeight; }; }); }
     renderMsgs.done = true;
   }
+
+  function compress(file) {
+    return new Promise((ok, bad) => {
+      if (!/^image\//.test(file.type)) return bad(new Error("Chỉ gửi được ảnh."));
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); ok(c.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); bad(new Error("Không đọc được ảnh này.")); };
+      img.src = url;
+    });
+  }
+  async function pickImage(file) { const t = sel(); if (!t) return; try { S.img[t.id] = await compress(file); render(); } catch (e) { fail(e); } }
+  document.addEventListener("paste", e => {
+    const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith("image/"));
+    if (f && sel()) { e.preventDefault(); pickImage(f); }
+  });
+  document.addEventListener("dragover", e => { if (sel()) e.preventDefault(); });
+  document.addEventListener("drop", e => { const f = e.dataTransfer?.files?.[0]; if (f && sel()) { e.preventDefault(); pickImage(f); } });
+  document.addEventListener("click", e => {
+    const im = e.target.closest("[data-view]"); if (im) { document.body.insertAdjacentHTML("beforeend", `<div class="viewer" id="viewer"><img src="${esc(im.src)}" alt="Ảnh"></div>`); return; }
+    const v = document.getElementById("viewer"); if (v && e.target.closest("#viewer")) v.remove();
+  });
 
   window.addEventListener("beforeunload", e => { if (S.kb !== null && S.kb !== S.kbSaved) { e.preventDefault(); e.returnValue = ""; } });
   boot();

@@ -88,6 +88,19 @@ button,input,textarea{font:inherit;color:inherit}
 .compose textarea{flex:1;resize:none;max-height:140px;min-height:46px;padding:11px 14px;border:1px solid var(--line);border-radius:14px;background:var(--bg);outline:none;font-size:16px;line-height:1.4}
 .compose textarea:focus{border-color:var(--accent)}
 .send{width:46px;height:46px;padding:0;flex:none;border-radius:14px}
+.attach{width:46px;height:46px;flex:none;border:1px solid var(--line);border-radius:14px;background:var(--bg);display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+.attach:hover{color:var(--accent);border-color:var(--accent)}
+.attach svg{width:22px;height:22px}
+.pending{display:flex;align-items:center;gap:10px;padding:8px 16px 0;background:var(--panel);border-top:1px solid var(--line)}
+.pending img{width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.pending span{flex:1;font-size:13px;color:var(--muted)}
+.pending + .compose{border-top:0}
+.shot{display:block;max-width:240px;width:100%;max-height:320px;border-radius:12px;cursor:zoom-in;background:var(--line)}
+.bubble.has-img{padding:4px;width:248px;max-width:100%}
+.bubble.has-img .cap{padding:6px 10px 4px}
+.drop{position:fixed;inset:0;background:color-mix(in srgb,var(--accent) 18%,transparent);border:3px dashed var(--accent);display:grid;place-items:center;font-weight:600;color:var(--accent);z-index:8;pointer-events:none}
+.viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);display:grid;place-items:center;z-index:10;cursor:zoom-out;padding:16px}
+.viewer img{max-width:100%;max-height:100%;border-radius:8px}
 .send svg{width:20px;height:20px}
 .banner{margin:0 16px 10px;padding:10px 14px;border-radius:12px;font-size:14px;background:var(--human);border:1px solid var(--human-line)}
 .foot-link{background:none;border:0;color:var(--muted);font-size:13px;text-decoration:underline;cursor:pointer;padding:0}
@@ -111,6 +124,8 @@ button,input,textarea{font:inherit;color:inherit}
     chat: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 7a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-5l-4.5 4v-4.2A4 4 0 0 1 4 13z"/></svg>',
     send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>',
     person: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
+    image: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>',
+    x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
     reset: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
   };
   const $ = s => document.querySelector(s);
@@ -187,7 +202,9 @@ button,input,textarea{font:inherit;color:inherit}
     const me = m.role === "khach", human = m.role === "admin";
     return `<div class="row ${me ? "me" : "them"} ${human ? "human" : ""}">
       ${me ? "" : `<div class="who-tag">${human ? "Người phụ trách" : "Trợ lý"}</div>`}
-      <div class="bubble">${linkify(m.body)}</div><div class="time">${hm(m.created_at)}</div></div>`;
+      ${m.image_url || m.preview ? `<div class="bubble has-img"><img class="shot" src="${esc(m.preview || m.image_url)}" alt="Ảnh đã gửi" data-view>${m.body ? `<div class="cap">${linkify(m.body)}</div>` : ""}</div>`
+        : m.image ? `<div class="bubble">[Ảnh]${m.body ? "<br>" + linkify(m.body) : ""}</div>` : `<div class="bubble">${linkify(m.body)}</div>`}
+      <div class="time">${hm(m.created_at)}</div></div>`;
   }
   function renderChat() {
     const st = S.ticket.status;
@@ -199,14 +216,17 @@ button,input,textarea{font:inherit;color:inherit}
         <button class="icon-btn" id="newBtn" title="Chat với email khác" aria-label="Chat với email khác">${ICON.reset}</button>
       </header>
       <main class="feed" id="feed" aria-live="polite">${S.msgs.map(msgHtml).join("")}${S.sending && st !== "cho_nguoi" ? '<div class="typing" aria-label="Đang trả lời"><i></i><i></i><i></i></div>' : ""}</main>
-      ${st === "cho_nguoi" ? `<div class="banner">Người phụ trách sẽ trả lời tại đây. Bạn có thể đóng trang, mở lại <b>godnc.com/hotro</b> vẫn xem được.</div>` : ""}
+      ${st === "cho_nguoi" ? `<div class="banner">Người phụ trách sẽ trả lời tại đây, đóng trang rồi mở lại vẫn xem được.</div>` : ""}
       ${fewMsgs ? `<div class="chips">${CHIPS.map(c => `<button class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>` : ""}
+      ${S.img ? `<div class="pending"><img src="${S.img}" alt="Ảnh sắp gửi"><span>Ảnh sẵn sàng · thêm chữ nếu cần rồi bấm gửi</span><button class="icon-btn" type="button" id="dropImg" aria-label="Bỏ ảnh">${ICON.x}</button></div>` : ""}
       <form class="compose" id="compose">
-        <textarea id="text" rows="1" placeholder="Nhập tin nhắn…" aria-label="Tin nhắn" maxlength="1000"></textarea>
+        <label class="attach" title="Gửi ảnh (hoặc dán ảnh vào ô chat)" aria-label="Gửi ảnh">${ICON.image}<input type="file" id="file" accept="image/*" hidden></label>
+        <textarea id="text" rows="1" placeholder="${S.img ? "Thêm chú thích…" : "Nhập tin nhắn…"}" aria-label="Tin nhắn" maxlength="1000"></textarea>
         <button class="btn send" type="submit" aria-label="Gửi" ${S.sending ? "disabled" : ""}>${S.sending ? '<span class="spin"></span>' : ICON.send}</button>
       </form>
       ${st === "bot" ? `<div style="text-align:center;padding:0 16px 10px;background:var(--panel)"><button class="foot-link" id="humanBtn">Muốn nói chuyện với người phụ trách?</button></div>` : ""}`;
     const feed = $("#feed"); feed.scrollTop = feed.scrollHeight;
+    feed.querySelectorAll("img.shot").forEach(i => { if (!i.complete) i.onload = () => { feed.scrollTop = feed.scrollHeight; }; });
     const ta = $("#text"); ta.value = S.draft || "";
     const grow = () => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 140) + "px"; };
     ta.oninput = () => { S.draft = ta.value; grow(); }; grow();
@@ -216,21 +236,60 @@ button,input,textarea{font:inherit;color:inherit}
     document.querySelectorAll("[data-chip]").forEach(b => b.onclick = () => send(b.dataset.chip));
     $("#newBtn").onclick = () => { if (confirm("Bắt đầu chat với email khác? Cuộc chat này vẫn được lưu ở phía shop.")) { save(null); S = { ticket: null, msgs: [], busy: false, sending: false, err: "" }; renderIntro(); } };
     const hb = $("#humanBtn"); if (hb) hb.onclick = askHuman;
+    $("#file").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) pickImage(f); };
+    const di = $("#dropImg"); if (di) di.onclick = () => { S.img = null; renderChat(); };
     startPoll();
   }
 
   async function send(preset) {
     const text = (preset ?? S.draft ?? "").trim();
-    if (!text || S.sending) return;
-    const temp = { id: lastId() + 0.5, role: "khach", body: text, created_at: new Date().toISOString(), temp: true };
-    S.msgs.push(temp); S.draft = ""; S.sending = true; renderChat();
+    const image = preset ? null : S.img;
+    if ((!text && !image) || S.sending) return;
+    const after = lastId();
+    const temp = { id: after + 0.5, role: "khach", body: text, preview: image, created_at: new Date().toISOString(), temp: true };
+    S.msgs.push(temp); S.draft = ""; S.img = null; S.sending = true; renderChat();
     try {
-      const r = await api("send", { token: S.ticket.token, text, after: lastId() === temp.id ? temp.id - 0.5 : lastId() });
+      const r = await api("send", { token: S.ticket.token, text, image, after });
       S.msgs = S.msgs.filter(m => !m.temp); merge(r);
     } catch (e) {
-      S.msgs = S.msgs.filter(m => !m.temp); S.draft = text; toast(e.message);
+      S.msgs = S.msgs.filter(m => !m.temp); S.draft = text; S.img = image; toast(e.message);
     } finally { S.sending = false; renderChat(); }
   }
+
+  /* ---------- ảnh: chọn, dán, kéo thả → nén còn ≤1600px JPEG ---------- */
+  function compress(file) {
+    return new Promise((ok, bad) => {
+      if (!/^image\//.test(file.type)) return bad(new Error("Chỉ gửi được ảnh."));
+      if (file.size > 25 * 1024 * 1024) return bad(new Error("Ảnh quá lớn."));
+      const url = URL.createObjectURL(file), img = new Image();
+      img.onload = () => {
+        const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+        const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url); ok(c.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); bad(new Error("Không đọc được ảnh này.")); };
+      img.src = url;
+    });
+  }
+  async function pickImage(file) {
+    if (!S.ticket || S.sending) return;
+    try { S.img = await compress(file); renderChat(); } catch (e) { toast(e.message); }
+  }
+  document.addEventListener("paste", e => {
+    const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith("image/"));
+    if (f && S.ticket) { e.preventDefault(); pickImage(f); }
+  });
+  let dragN = 0;
+  const dropEl = () => document.querySelector(".drop");
+  document.addEventListener("dragenter", e => { if (!S.ticket || ![...e.dataTransfer.types].includes("Files")) return; dragN++; if (!dropEl()) document.body.insertAdjacentHTML("beforeend", '<div class="drop">Thả ảnh vào đây để gửi</div>'); });
+  document.addEventListener("dragleave", () => { if (--dragN <= 0) { dragN = 0; dropEl()?.remove(); } });
+  document.addEventListener("dragover", e => { if (S.ticket) e.preventDefault(); });
+  document.addEventListener("drop", e => { dragN = 0; dropEl()?.remove(); const f = e.dataTransfer?.files?.[0]; if (f && S.ticket) { e.preventDefault(); pickImage(f); } });
+  document.addEventListener("click", e => {
+    const im = e.target.closest("[data-view]"); if (im) { document.body.insertAdjacentHTML("beforeend", `<div class="viewer" id="viewer"><img src="${esc(im.src)}" alt="Ảnh"></div>`); return; }
+    if (e.target.closest("#viewer")) $("#viewer").remove();
+  });
   async function askHuman() {
     try { merge(await api("human", { token: S.ticket.token, after: lastId() })); renderChat(); } catch (e) { toast(e.message); }
   }

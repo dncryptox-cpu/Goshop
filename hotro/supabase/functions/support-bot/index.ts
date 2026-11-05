@@ -35,15 +35,43 @@ async function ticketByToken(token: string) {
   if (!data) throw new UserError("Không tìm thấy phiên chat, bấm Bắt đầu lại.");
   return data;
 }
-async function addMsg(ticket_id: string, role: string, body: string) {
-  const { data, error } = await db.from("support_messages").insert({ ticket_id, role, body }).select("id, role, body, created_at").single();
+const BUCKET = "support";
+const MAX_IMG = 5 * 1024 * 1024;
+async function addMsg(ticket_id: string, role: string, body: string, image: string | null = null) {
+  const { data, error } = await db.from("support_messages").insert({ ticket_id, role, body, image }).select("id").single();
   if (error) throw error;
   return data;
 }
+// Ảnh để private trong Storage; trả link ký tên 1 giờ cho khách xem
+async function withUrls(msgs: any[]) {
+  const paths = msgs.filter((m) => m.image).map((m) => m.image);
+  if (!paths.length) return msgs;
+  const { data } = await db.storage.from(BUCKET).createSignedUrls(paths, 3600);
+  const map = new Map((data || []).map((d: any) => [d.path, d.signedUrl]));
+  return msgs.map((m) => (m.image ? { ...m, image_url: map.get(m.image) || null } : m));
+}
 async function messagesAfter(ticket_id: string, after = 0) {
-  const { data } = await db.from("support_messages").select("id, role, body, created_at")
+  const { data } = await db.from("support_messages").select("id, role, body, image, created_at")
     .eq("ticket_id", ticket_id).gt("id", after).order("id").limit(200);
-  return data || [];
+  return await withUrls(data || []);
+}
+// "data:image/jpeg;base64,..." → lưu vào Storage, trả đường dẫn
+async function saveImage(ticket_id: string, dataUrl: unknown) {
+  const m = String(dataUrl || "").match(/^data:(image\/(jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) throw new UserError("Ảnh không hợp lệ (chỉ nhận JPG, PNG, WEBP).");
+  const bytes = Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0));
+  if (bytes.length > MAX_IMG) throw new UserError("Ảnh quá lớn (tối đa 5MB).");
+  const path = `${ticket_id}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${m[2] === "jpeg" ? "jpg" : m[2]}`;
+  const { error } = await db.storage.from(BUCKET).upload(path, bytes, { contentType: m[1] });
+  if (error) throw error;
+  return path;
+}
+async function imagePart(path: string) {
+  const { data } = await db.storage.from(BUCKET).download(path);
+  if (!data) return null;
+  const buf = new Uint8Array(await data.arrayBuffer());
+  let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return { inlineData: { mimeType: data.type || "image/jpeg", data: btoa(bin) } };
 }
 const pub = (t: any) => ({ token: t.token, email: t.email, status: t.status });
 
@@ -169,6 +197,7 @@ Luật bắt buộc:
 - Sau khi gọi bao_loi / yeu_cau_moi_lai thành công, báo khách bên mình đã nhận và họ chưa cần làm gì thêm.
 - Chỉ nói "đã ghi nhận", "đang xử lý", "đang xếp nhóm" khi kết quả tra_cuu hoặc công cụ vừa gọi nói đúng như vậy. Không suy ra.
 - Khách báo mất Premium mà tra cứu "binh_thuong": hỏi khách mở link trang Gia đình (trong kiến thức) và cho biết thấy gì (nhóm hoạt động bình thường hay báo không hoạt động), rồi mới bao_loi.
+- Khách gửi ảnh: đọc kỹ ảnh. Ảnh trang Gia đình Google báo nhóm không hoạt động / không còn trong nhóm → tra_cuu rồi xử lý theo kết quả. Ảnh không rõ thì nhờ khách chụp lại. Ảnh chuyển khoản/hoá đơn → chuyen_nguoi.
 - Khách nhắn lặp lại cùng một câu: trả lời ngắn, không lặp lại nguyên văn câu trước.
 KIẾN THỨC CỦA SHOP:
 `;
@@ -195,10 +224,18 @@ async function gemini(body: unknown) {
 async function botReply(t: any) {
   const { data: kb } = await db.from("site_settings").select("value").eq("key", "support_kb").maybeSingle();
   const history = (await messagesAfter(t.id, 0)).filter((m: any) => m.role !== "he_thong").slice(-30);
-  const contents: any[] = history.map((m: any) => ({
-    role: m.role === "khach" ? "user" : "model",
-    parts: [{ text: m.role === "admin" ? "[Người phụ trách] " + m.body : m.body }],
-  }));
+  // Ảnh khách gửi trong 6 tin gần nhất: đưa cả ảnh cho model đọc (vd ảnh chụp trang Gia đình)
+  const recent = new Set(history.slice(-6).map((m: any) => m.id));
+  const contents: any[] = [];
+  for (const m of history) {
+    const parts: any[] = [];
+    const text = (m.role === "admin" ? "[Người phụ trách] " : "") + (m.body || "");
+    if (m.image && m.role === "khach" && recent.has(m.id)) { const p = await imagePart(m.image).catch(() => null); if (p) parts.push(p); }
+    if (m.image && !parts.length) parts.push({ text: "[Đã gửi 1 ảnh]" });
+    if (text.trim()) parts.push({ text });
+    if (!parts.length) continue;
+    contents.push({ role: m.role === "khach" ? "user" : "model", parts });
+  }
   const ctx: { escalate?: string } = {};
   const sys = RULES + String(kb?.value?.text || "") + `\nEmail của phiên chat: ${t.email}. Hôm nay: ${new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.`;
 
@@ -272,12 +309,12 @@ async function handle(b: any) {
 
   if (action === "send") {
     const text = String(b.text || "").trim().slice(0, MAX_LEN);
-    if (!text) throw new UserError("Tin nhắn trống.");
+    if (!text && !b.image) throw new UserError("Tin nhắn trống.");
     const hourAgo = new Date(Date.now() - 3600e3).toISOString();
     const { count } = await db.from("support_messages").select("id", { count: "exact", head: true }).eq("ticket_id", t.id).eq("role", "khach").gte("created_at", hourAgo);
     if ((count || 0) >= MAX_PER_HOUR) throw new UserError("Bạn nhắn hơi nhiều, đợi một lát rồi nhắn tiếp nhé.");
 
-    await addMsg(t.id, "khach", text);
+    await addMsg(t.id, "khach", text, b.image ? await saveImage(t.id, b.image) : null);
     let status = t.status;
     if (status === "dong") { // khách nhắn lại vào phiên đã đóng → mở lại cho bot
       status = "bot";
