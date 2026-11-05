@@ -150,7 +150,7 @@ const TOOLS = [{
         mo_ta: { type: "string" } }, required: ["email", "nhom_hoat_dong", "mo_ta"] } },
     { name: "yeu_cau_moi_lai", description: "Gửi yêu cầu mời lại khi khách đã được mời (trạng thái da_moi) mà vào nhóm không được.",
       parameters: { type: "object", properties: { email: { type: "string" },
-        ly_do: { type: "string", enum: ["Không thấy lời mời", "Bấm tham gia bị lỗi", "Nhóm cũ vẫn hoạt động"] } }, required: ["email", "ly_do"] } },
+        ly_do: { type: "string", format: "enum", enum: ["Không thấy lời mời", "Bấm tham gia bị lỗi", "Nhóm cũ vẫn hoạt động"] } }, required: ["email", "ly_do"] } },
     { name: "xac_nhan_da_vao", description: "Ghi nhận khách đã vào nhóm mới và dùng được Premium.",
       parameters: { type: "object", properties: { email: { type: "string" } }, required: ["email"] } },
     { name: "chuyen_nguoi", description: "Chuyển cuộc chat cho người phụ trách: khách đã chọn gói gia hạn / cần thanh toán, hoàn tiền, khiếu nại, khách bực, hoặc bot không chắc câu trả lời.",
@@ -217,6 +217,7 @@ async function gemini(body: unknown) {
       });
       const d = await r.json();
       if (!d.error) return d;
+      console.error("gemini", model, r.status, String(d.error.message || "").slice(0, 300));
       const busy = r.status === 503 || r.status === 429 || /overloaded|unavailable|high demand|try again/i.test(d.error.message || "");
       if (!busy) break;
       await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
