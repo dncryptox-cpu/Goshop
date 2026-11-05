@@ -88,17 +88,10 @@
       <section x-show="tab==='bl'">
         <div class="card">
           <b>Gửi mail khách lỗi</b>
-          <div class="mute" style="font-size:13px;margin:2px 0 8px">Dán nguyên tin nhắn cũng được, tự lấy email. Mail đang xử lý thì không tạo trùng.</div>
-          <textarea x-model="blText" rows="3" placeholder="vd: abc@gmail.com mất premium, xyz@gmail.com không vào được nhóm"></textarea>
+          <textarea x-model="blText" rows="3" placeholder="Dán email (dán nguyên tin nhắn cũng được)" style="margin-top:8px"></textarea>
           <div class="row" style="margin-top:8px">
-            <span class="mute" style="font-size:13px">Nhóm gia đình:</span>
-            <button class="chip" :class="blAct==='' && 'on'" @click="blAct=''">Chưa rõ</button>
-            <button class="chip" :class="blAct===ON && 'on'" @click="blAct=ON">🟢 Còn hoạt động</button>
-            <button class="chip" :class="blAct===OFF && 'on'" @click="blAct=OFF">🔴 Không hoạt động</button>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <input type="text" x-model="blNote" placeholder="Nhắn kèm (không bắt buộc)" class="grow" @keydown.enter="blAdd()">
-            <button class="btn pri" @click="blAdd()" :disabled="blBusy || !blText.trim()" x-text="blBusy ? 'Đang gửi…' : 'Gửi'"></button>
+            <button class="btn pri grow" @click="blAdd(ON)" :disabled="blBusy || !blText.trim()">🟢 Nhóm còn hoạt động</button>
+            <button class="btn pri grow" style="background:var(--bad);border-color:var(--bad)" @click="blAdd(OFF)" :disabled="blBusy || !blText.trim()">🔴 Nhóm không hoạt động</button>
           </div>
           <div class="hint" x-show="blMsg" x-text="blMsg"></div>
         </div>
@@ -109,17 +102,14 @@
           </template>
         </div>
         <div class="row" style="margin-bottom:10px" x-show="blStep==='xinmail' && blList().length">
-          <button class="btn sm" @click="copy(askText())">📋 Copy tin xin mail chủ gia đình</button>
-        </div>
-        <div class="row" style="margin-bottom:10px" x-show="blStep==='baokhach' && blList().length">
-          <button class="btn sm" @click="copy(fixedText())">📋 Copy tin báo khách đã fix</button>
+          <button class="btn sm" @click="copy(askText())">📋 Copy tin hỏi mail chủ fam</button>
         </div>
 
         <template x-if="!blLoaded"><div class="empty">Đang tải…</div></template>
-        <template x-if="blLoaded && blList().length===0"><div class="empty">Không có gì ở mục này.</div></template>
+        <template x-if="blLoaded && blList().length===0"><div class="empty">Trống.</div></template>
 
         <template x-for="x in blList()" :key="x.id">
-          <div class="card" :style="x.step==='xong' && 'opacity:.6'">
+          <div class="card" :style="x.step==='done' && 'opacity:.55'">
             <div class="row">
               <b class="mono" style="word-break:break-all" x-text="x.email"></b>
               <button class="btn xs" @click="copy(x.email)">copy</button>
@@ -127,61 +117,29 @@
               <span class="grow"></span>
               <span class="mute" style="font-size:12px" x-text="x.at"></span>
             </div>
-
-            <div class="hint mute" x-show="x.found" x-text="x.rn + ' · ' + (x.famStatus || '—') + ' · HSD ' + (x.hsd || '—') + (x.daysLeft !== null ? ' (còn ' + x.daysLeft + ' ngày)' : '') + (x.viaPhu ? ' · khớp qua mail phụ' : '')"></div>
-            <div class="hint" x-show="!x.found" style="color:var(--bad)">Không thấy mail này trong fam nào — kiểm tra lại chính tả</div>
-            <div class="hint" style="color:var(--ok)" x-show="x.swappedAfter && x.step!=='xong' && x.step!=='baokhach'" x-text="'Fam đã thay lúc ' + x.swapAt + ', sau khi báo'"></div>
-            <div class="hint" style="color:var(--warn)" x-show="x.rnAtReport && x.rn && x.rnAtReport!==x.rn" x-text="'Lúc báo ở ' + x.rnAtReport + ', giờ ở ' + x.rn"></div>
-            <div class="hint" x-show="x.activity" x-text="(x.activity===ON ? '🟢 Nhóm còn hoạt động' : '🔴 Nhóm không hoạt động') + (x.owner ? ' · mail chủ GĐ khách thấy: ' + x.owner : '')"></div>
-            <div class="hint" x-show="isAdmin && x.owner && x.ownerMatch!==null && x.ownerMatch!==undefined">
-              <span x-show="x.ownerMatch" style="color:var(--ok)">✓ Khớp chủ fam trong Kho</span>
-              <span x-show="!x.ownerMatch" style="color:var(--bad)" x-text="'✗ Khác chủ fam ' + x.rn + ' (' + (x.famOwner || '—') + ')' + (x.ownerRn ? ' — mail này là chủ ' + x.ownerRn : ' — không phải fam của mình')"></span>
+            <div class="hint mute">
+              <span x-text="x.activity===ON ? '🟢 còn hoạt động' : '🔴 không hoạt động'"></span>
+              <button class="btn xs" x-show="x.step!=='done'" @click="blOp(x, 'set', { activity: x.activity===ON ? OFF : ON })" title="Đổi">đổi</button>
+              <span x-show="x.found" x-text="' · ' + x.rn + ' · ' + (x.famStatus || '—') + ' · HSD ' + (x.hsd || '—') + (x.viaPhu ? ' · qua mail phụ' : '')"></span>
+              <span x-show="!x.found" style="color:var(--bad)"> · không thấy trong fam nào</span>
+              <span x-show="x.swappedAfter && x.step!=='done'" style="color:var(--ok)"> · fam đã thay sau lúc báo</span>
             </div>
-
-            <!-- việc theo bước -->
+            <div class="hint" x-show="x.owner">
+              <span x-text="'Mail chủ fam khách thấy: ' + x.owner"></span>
+              <template x-if="isAdmin && x.ownerMatch===true"><span style="color:var(--ok)"> ✓ khớp</span></template>
+              <template x-if="isAdmin && x.ownerMatch===false"><span style="color:var(--bad)" x-text="' ✗ khác chủ ' + x.rn + (x.ownerRn ? ', là chủ ' + x.ownerRn : ', không phải fam mình')"></span></template>
+            </div>
             <div class="row" style="margin-top:8px">
-              <template x-if="x.step==='chon'">
-                <span class="row">
-                  <span class="mute" style="font-size:13px">Nhóm gia đình khách còn hoạt động không?</span>
-                  <button class="btn sm" @click="blOp(x, 'set', { activity: ON })" :disabled="x.busy">🟢 Còn</button>
-                  <button class="btn sm" @click="blOp(x, 'set', { activity: OFF })" :disabled="x.busy">🔴 Không</button>
-                </span>
-              </template>
               <template x-if="x.step==='xinmail'">
                 <span class="row grow">
-                  <input type="email" x-model="x.ownerIn" placeholder="Mail chủ gia đình khách thấy" class="grow" style="min-width:200px" @keydown.enter="x.ownerIn && blOp(x, 'set', { owner: x.ownerIn })">
-                  <button class="btn sm pri" @click="blOp(x, 'set', { owner: x.ownerIn })" :disabled="x.busy || !(x.ownerIn || '').includes('@')">Lưu</button>
+                  <input type="email" x-model="x.ownerIn" placeholder="Mail chủ fam khách thấy" class="grow" style="min-width:200px" @keydown.enter="(x.ownerIn||'').includes('@') && blOp(x, 'set', { owner: x.ownerIn.trim() })">
+                  <button class="btn sm pri" @click="blOp(x, 'set', { owner: x.ownerIn.trim() })" :disabled="!(x.ownerIn || '').includes('@')">Lưu</button>
                 </span>
               </template>
-              <template x-if="x.step==='fix'">
-                <span class="row">
-                  <button class="btn sm pri" x-show="isAdmin" @click="blOp(x, 'done')" :disabled="x.busy">✓ Đã fix</button>
-                  <span class="mute" style="font-size:13px" x-show="!isAdmin">Đủ thông tin, chờ fix</span>
-                </span>
-              </template>
-              <template x-if="x.step==='baokhach'">
-                <button class="btn sm pri" @click="blOp(x, 'told')" :disabled="x.busy">Đã báo khách</button>
-              </template>
+              <button class="btn sm pri" x-show="isAdmin && x.step==='fix'" @click="blOp(x, 'done')">✓ Done</button>
               <span class="grow"></span>
-              <button class="btn xs" x-show="x.step!=='xong'" @click="x.edit = !x.edit; x.eAct = x.activity; x.eOwner = x.owner">✎ sửa</button>
-              <button class="btn xs" x-show="isAdmin && (x.step==='baokhach' || x.step==='xong')" @click="blOp(x, 'reopen')" :disabled="x.busy">Mở lại</button>
-              <button class="btn xs red" x-show="x.step!=='xong' && (isAdmin || x.status==='Mở')" @click="blOp(x, 'del')" :disabled="x.busy">Xoá</button>
-            </div>
-            <div class="row" style="margin-top:8px" x-show="x.edit">
-              <select x-model="x.eAct"><option value="">Nhóm: chưa rõ</option><option :value="ON">🟢 Còn hoạt động</option><option :value="OFF">🔴 Không hoạt động</option></select>
-              <input type="email" x-model="x.eOwner" placeholder="Mail chủ GĐ" class="grow" style="min-width:180px">
-              <button class="btn sm pri" @click="blOp(x, 'set', { activity: x.eAct, owner: x.eOwner || '' })" :disabled="x.busy">Lưu</button>
-            </div>
-
-            <!-- trao đổi -->
-            <div class="thread">
-              <template x-for="(m, i) in thread(x.note)" :key="i">
-                <div class="msg" :class="m.who===me.name && 'me'"><small x-text="m.who + ' · ' + m.at"></small><span x-text="m.text"></span></div>
-              </template>
-              <div class="row" x-show="x.step!=='xong'">
-                <input type="text" x-model="x.msgIn" placeholder="Nhắn về mail này…" class="grow" @keydown.enter="x.msgIn && blOp(x, 'msg', { text: x.msgIn })">
-                <button class="btn sm" @click="blOp(x, 'msg', { text: x.msgIn })" :disabled="x.busy || !(x.msgIn || '').trim()">Gửi</button>
-              </div>
+              <button class="btn xs" x-show="isAdmin && x.step==='done'" @click="blOp(x, 'reopen')">Mở lại</button>
+              <button class="btn xs red" x-show="x.step!=='done'" @click="blOp(x, 'del')">Xoá</button>
             </div>
             <div class="hint" style="color:var(--bad)" x-show="x.err" x-text="x.err"></div>
           </div>
@@ -256,18 +214,20 @@ const ls = { get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { 
 function app() {
   return {
     ON: 'Đang hoạt động', OFF: 'Không hoạt động',
-    LABEL: { chon: 'Cần hỏi nhóm', xinmail: 'Cần mail chủ GĐ', fix: 'Chờ fix', baokhach: 'Đã fix — báo khách', xong: 'Xong' },
-    BADGE: { chon: 'warn', xinmail: 'warn', fix: 'bad', baokhach: 'ok', xong: '' },
+    LABEL: { xinmail: 'Cần mail chủ fam', fix: 'Chờ fix', done: 'Done' },
+    BADGE: { xinmail: 'warn', fix: 'bad', done: 'ok' },
     pass: ls.get('team_pass'), passInput: '', me: { name: '', role: '' }, loading: false, error: '', toast: '',
     tab: ls.get('team_tab') || 'bl',
-    bl: [], blLoaded: false, blBusy: false, blText: '', blAct: '', blNote: '', blMsg: '', blStep: 'todo',
+    bl: [], blLoaded: false, blBusy: false, blText: '', blMsg: '', blStep: 'todo',
     hts: [], htLoaded: false, htBusy: false, ht: { email: '', price: '', buy: '', reason: '' }, htPreview: null, htMsg: '', htFilter: 'cho',
 
     get isAdmin() { return this.me.role === 'admin'; },
 
     init() {
       this.$watch('tab', v => ls.set('team_tab', v));
-      if (this.pass) this.refresh();
+      // mở trang: hiện ngay bản lần trước, rồi tải bản mới phía sau
+      try { const c = JSON.parse(ls.get('team_cache') || 'null'); if (c && this.pass) { this.me = c.me; this.mergeBl(c.bl); this.hts = c.hts; this.blLoaded = this.htLoaded = true; } } catch (e) {}
+      if (this.pass) this.refresh(!!this.me.role);
       setInterval(() => { if (this.me.role && document.visibilityState === 'visible') this.refresh(true); }, 60000);
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.me.role) this.refresh(true); });
     },
@@ -278,65 +238,71 @@ function app() {
       return d;
     },
     async login() { this.pass = this.passInput; await this.refresh(); if (this.me.role) { ls.set('team_pass', this.pass); this.passInput = ''; } },
-    logout() { this.pass = ''; ls.set('team_pass', ''); this.me = { name: '', role: '' }; this.bl = []; this.hts = []; this.blLoaded = this.htLoaded = false; },
+    logout() { this.pass = ''; ls.set('team_pass', ''); ls.set('team_cache', ''); this.me = { name: '', role: '' }; this.bl = []; this.hts = []; this.blLoaded = this.htLoaded = false; },
     async refresh(quiet) {
       if (!quiet) this.loading = true;
       this.error = '';
       try {
-        const [a, b] = await Promise.all([this.api({ action: 'baoLoi', op: 'list' }), this.api({ action: 'hoanTien', op: 'list' })]);
+        const [a, b] = await Promise.all([this.api({ action: 'baoLoi', op: 'list', fresh: !quiet || undefined }), this.api({ action: 'hoanTien', op: 'list' })]);
         if (a.me) this.me = a.me;
         this.mergeBl(a.items); this.hts = b.items.map(p => Object.assign(p, { busy: false, err: '' }));
         this.blLoaded = this.htLoaded = true;
+        ls.set('team_cache', JSON.stringify({ me: this.me, bl: a.items, hts: b.items }));
       } catch (e) {
         this.error = e.message;
         if (/mật khẩu|key|không hợp lệ/i.test(e.message) && !this.me.role) { this.pass = ''; ls.set('team_pass', ''); }
       }
       this.loading = false;
     },
-    // giữ chữ đang gõ dở khi tải lại
+    /* ---------- Mail lỗi ---------- */
     mergeBl(items) {
       const old = {}; this.bl.forEach(x => old[x.id] = x);
-      this.bl = items.map(x => { const o = old[x.id] || {}; return Object.assign(x, { busy: false, err: '', edit: o.edit || false, eAct: o.eAct, eOwner: o.eOwner, ownerIn: o.ownerIn || '', msgIn: o.msgIn || '' }); });
+      this.bl = items.map(x => this.blWrap(x, old[x.id]));
     },
-
-    /* ---------- Mail lỗi ---------- */
-    blMine(s) { return this.isAdmin ? s === 'fix' : ['chon', 'xinmail', 'baokhach'].includes(s); },
+    blWrap(x, o) { return Object.assign(x, { err: '', ownerIn: (o && o.ownerIn) || '' }); },
+    blMine(s) { return this.isAdmin ? s === 'fix' : s === 'xinmail'; },
     blTodo() { return this.bl.filter(x => this.blMine(x.step)).length; },
     blGroups() {
       const n = k => this.bl.filter(x => x.step === k).length;
-      return [{ key: 'todo', label: this.isAdmin ? 'Cần mình fix' : 'Việc của Tuấn', n: this.blTodo() }]
-        .concat(['chon', 'xinmail', 'fix', 'baokhach', 'xong'].map(k => ({ key: k, label: this.LABEL[k], n: n(k) })))
+      return [{ key: 'todo', label: this.isAdmin ? 'Cần mình fix' : 'Cần hỏi mail chủ fam', n: this.blTodo() }]
+        .concat((this.isAdmin ? ['xinmail', 'done'] : ['fix', 'done']).map(k => ({ key: k, label: this.LABEL[k], n: n(k) })))
         .concat([{ key: 'all', label: 'Tất cả', n: this.bl.length }]);
     },
     blList() {
-      const k = this.blStep, ord = { chon: 1, xinmail: 2, fix: 3, baokhach: 4, xong: 5 };
+      const k = this.blStep, ord = { xinmail: 1, fix: 2, done: 3 };
       return this.bl.filter(x => k === 'all' || (k === 'todo' ? this.blMine(x.step) : x.step === k)).sort((a, b) => (ord[a.step] - ord[b.step]) || (a.atMs - b.atMs));
     },
-    thread(note) {
-      return String(note || '').split('\n').filter(Boolean).map(l => { const p = l.split('|'); return p.length >= 3 ? { at: p[0], who: p[1], text: p.slice(2).join('|') } : { at: '', who: '', text: l }; });
-    },
-    async blAdd() {
-      if (!this.blText.trim()) return;
-      this.blBusy = true; this.blMsg = '';
+    async blAdd(act) {
+      this.blBusy = true; this.blMsg = 'Đang gửi…';
       try {
-        const d = await this.api({ action: 'baoLoi', op: 'add', text: this.blText, activity: this.blAct, note: this.blNote, ctv: this.isAdmin ? 'Tuan' : '' });
-        this.blMsg = '✓ Thêm ' + d.added + ' mail' + (d.dup.length ? ' · ' + d.dup.length + ' mail đang xử lý sẵn: ' + d.dup.join(', ') : '') + (d.notMine.length ? ' · không phải khách của Tuấn: ' + d.notMine.join(', ') : '');
-        this.blText = ''; this.blNote = ''; this.blAct = '';
-        const a = await this.api({ action: 'baoLoi', op: 'list' }); this.mergeBl(a.items);
+        const d = await this.api({ action: 'baoLoi', op: 'add', text: this.blText, activity: act, ctv: this.isAdmin ? 'Tuan' : '' });
+        this.bl = d.items.map(x => this.blWrap(x)).concat(this.bl);
+        this.blMsg = '✓ ' + d.items.length + ' mail' + (d.dup.length ? ' · đang xử lý sẵn: ' + d.dup.join(', ') : '') + (d.notMine.length ? ' · không phải khách Tuấn: ' + d.notMine.join(', ') : '');
+        this.blText = '';
       } catch (e) { this.blMsg = '⚠ ' + e.message; }
       this.blBusy = false;
     },
+    // Đổi ngay trên màn hình, gửi server phía sau; lỗi thì trả lại như cũ
     async blOp(x, op, fields) {
-      x.busy = true; x.err = '';
+      const snap = JSON.stringify(x); x.err = '';
+      if (op === 'del') this.bl = this.bl.filter(y => y.id !== x.id);
+      else if (op === 'done') x.step = 'done';
+      else if (op === 'reopen') x.step = (x.activity === this.ON && !x.owner) ? 'xinmail' : 'fix';
+      else if (op === 'set') {
+        if (fields.activity) x.activity = fields.activity;
+        if (fields.owner !== undefined) { x.owner = fields.owner.toLowerCase(); x.ownerIn = ''; }
+        x.step = (x.activity === this.ON && !x.owner) ? 'xinmail' : 'fix';
+      }
       try {
-        await this.api(Object.assign({ action: 'baoLoi', op: op, id: x.id }, fields || {}));
-        if (op === 'msg') x.msgIn = '';
-        if (op === 'set') x.edit = false;
-        const a = await this.api({ action: 'baoLoi', op: 'list' }); this.mergeBl(a.items);
-      } catch (e) { x.err = e.message; x.busy = false; }
+        const d = await this.api(Object.assign({ action: 'baoLoi', op: op, id: x.id }, fields || {}));
+        if (d.item) { const i = this.bl.findIndex(y => y.id === x.id); if (i >= 0) this.bl.splice(i, 1, this.blWrap(d.item)); }
+      } catch (e) {
+        const back = Object.assign(JSON.parse(snap), { err: e.message });
+        const i = this.bl.findIndex(y => y.id === x.id);
+        if (i >= 0) this.bl.splice(i, 1, back); else this.bl.unshift(back);
+      }
     },
-    askText() { return 'Các khách dưới đây vào YouTube > ảnh đại diện > Gói thành viên gia đình, gửi giúp mình email chủ gia đình đang hiện nhé:\n' + this.blList().map(x => '- ' + x.email).join('\n'); },
-    fixedText() { return 'Đã fix xong, khách kiểm tra lại YouTube Premium giúp mình (chưa thấy thì mở mail nhận lời mời vào nhóm mới):\n' + this.blList().map(x => '- ' + x.email).join('\n'); },
+    askText() { return 'Khách vào YouTube > ảnh đại diện > Gói thành viên gia đình, gửi giúp mình email chủ gia đình đang hiện nhé:\n' + this.blList().map(x => '- ' + x.email).join('\n'); },
 
     /* ---------- Hủy / hoàn tiền ---------- */
     htTodo() { return this.isAdmin ? this.hts.filter(p => p.status === 'Chờ duyệt').length : 0; },
@@ -357,18 +323,22 @@ function app() {
         const d = await this.api(Object.assign({ action: 'hoanTien', op: 'add' }, this.ht));
         this.htMsg = '✓ Đã gửi phiếu ' + d.email + ' · hoàn ' + this.money(d.refund);
         this.ht = { email: '', price: '', buy: '', reason: '' }; this.htPreview = null; this.htFilter = 'cho';
-        const b = await this.api({ action: 'hoanTien', op: 'list' }); this.hts = b.items.map(p => Object.assign(p, { busy: false, err: '' }));
+        this.hts.unshift(Object.assign(d.item, { busy: false, err: '' }));
       } catch (e) { this.htMsg = '⚠ ' + e.message; }
       this.htBusy = false;
     },
     async htOp(p, op) {
-      p.busy = true; p.err = '';
+      const prev = p.status; p.err = '';
+      if (op === 'del') this.hts = this.hts.filter(q => q.id !== p.id);
+      else p.status = op === 'approve' ? 'Đã duyệt' : 'Từ chối';
       try {
         const d = await this.api({ action: 'hoanTien', op: op, id: p.id });
-        if (op === 'approve') this.toast = d.kick ? 'Đã duyệt · ghi Hủy vào mail phụ ' + (d.kick.rn || '') : 'Đã duyệt (mail phụ đã có Hủy sẵn)';
-        const b = await this.api({ action: 'hoanTien', op: 'list' }); this.hts = b.items.map(q => Object.assign(q, { busy: false, err: '' }));
-        setTimeout(() => this.toast = '', 2500);
-      } catch (e) { p.err = e.message; p.busy = false; }
+        if (d.updated) { p.updated = d.updated; p.by = this.me.name; }
+        if (op === 'approve') { this.toast = d.kick ? 'Đã ghi Hủy vào mail phụ ' + (d.kick.rn || '') : 'Mail phụ đã có Hủy sẵn'; setTimeout(() => this.toast = '', 2500); }
+      } catch (e) {
+        if (op === 'del') this.hts.unshift(p);
+        p.status = prev; p.err = e.message;
+      }
     },
     htText(p) {
       return 'THÔNG TIN HOÀN TIỀN\nEmail: ' + p.email + '\nNgày mua: ' + p.buy + '\nHSD: ' + p.hsd + '\nĐã dùng: ' + (p.total - p.left) + '/' + p.total + ' ngày\nGiá gốc: ' + this.money(p.price) + '\nHoàn: ' + this.money(p.refund) + (p.reason ? '\nLý do: ' + p.reason : '');
