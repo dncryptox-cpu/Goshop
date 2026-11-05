@@ -122,9 +122,8 @@ button,input,textarea{font:inherit;color:inherit}
   const SB_KEY = "sb_publishable_GPVgOD3U3O_9yytoRnXv6w_jiiBibnH";
   const FN = SB_URL + "/functions/v1/support-bot";
   const STORE = "hotro_session";
-  const CHIPS = ["Mất YouTube Premium", "Không vào được nhóm mới", "Gia hạn / hỏi giá", "Lấy mã Netflix", "Mã 2FA ChatGPT", "Đổi sang email khác"];
   // Bot gửi nút lựa chọn bằng dòng cuối [[A|B|C]]
-  const splitChoices = body => { const m = String(body || "").match(/\n?\s*\[\[([^\]]+)\]\]\s*$/); return m ? [body.slice(0, m.index).trim(), m[1].split("|").map(x => x.trim()).filter(Boolean).slice(0, 4)] : [body, []]; };
+  const splitChoices = body => { const m = String(body || "").match(/\n?\s*\[\[([^\]]+)\]\]\s*$/); return m ? [body.slice(0, m.index).trim(), m[1].split("|").map(x => x.trim()).filter(Boolean).slice(0, 8)] : [body, []]; };
   const ICON = {
     chat: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 7a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-5l-4.5 4v-4.2A4 4 0 0 1 4 13z"/></svg>',
     send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>',
@@ -207,7 +206,7 @@ button,input,textarea{font:inherit;color:inherit}
     const me = m.role === "khach", human = m.role === "admin";
     const [text, choices] = me ? [m.body, []] : splitChoices(m.body);
     const last = S.msgs.filter(x => x.role !== "he_thong").at(-1) === m;
-    const opts = choices.length && last && !S.sending ? `<div class="opts">${choices.map(c => `<button class="opt" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>` : "";
+    const opts = choices.length && last && !S.sending && !S.ticket.busy ? `<div class="opts">${choices.map(c => `<button class="opt" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>` : "";
     return `<div class="row ${me ? "me" : "them"} ${human ? "human" : ""}">
       ${me ? "" : `<div class="who-tag">${human ? "Người phụ trách" : "Trợ lý"}</div>`}
       ${m.image_url || m.preview ? `<div class="bubble has-img"><img class="shot" src="${esc(m.preview || m.image_url)}" alt="Ảnh đã gửi" data-view>${text ? `<div class="cap">${linkify(text)}</div>` : ""}</div>`
@@ -216,21 +215,19 @@ button,input,textarea{font:inherit;color:inherit}
   }
   function renderChat() {
     const st = S.ticket.status;
-    const fewMsgs = !S.msgs.some(m => m.role === "khach");
     $("#app").innerHTML = `
       <header class="head">
         <div class="badge">${ICON.chat}</div>
         <div class="who"><b>Hỗ trợ khách hàng</b><div class="sub">${statusPill()}<small>${esc(S.ticket.email)}</small></div></div>
         <button class="icon-btn" id="newBtn" title="Chat với email khác" aria-label="Chat với email khác">${ICON.reset}</button>
       </header>
-      <main class="feed" id="feed" aria-live="polite">${S.msgs.map(msgHtml).join("")}${S.sending && st !== "cho_nguoi" ? '<div class="typing" aria-label="Đang trả lời"><i></i><i></i><i></i></div>' : ""}</main>
+      <main class="feed" id="feed" aria-live="polite">${S.msgs.map(msgHtml).join("")}${(S.sending || S.ticket.busy) && st !== "cho_nguoi" ? '<div class="typing" aria-label="Đang trả lời"><i></i><i></i><i></i></div>' : ""}</main>
       ${st === "cho_nguoi" ? `<div class="banner">Người phụ trách sẽ trả lời tại đây, đóng trang rồi mở lại vẫn xem được.</div>` : ""}
-      ${fewMsgs ? `<div class="chips">${CHIPS.map(c => `<button class="chip" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>` : ""}
       ${S.img ? `<div class="pending"><img src="${S.img}" alt="Ảnh sắp gửi"><span>Ảnh sẵn sàng · thêm chữ nếu cần rồi bấm gửi</span><button class="icon-btn" type="button" id="dropImg" aria-label="Bỏ ảnh">${ICON.x}</button></div>` : ""}
       <form class="compose" id="compose">
         <label class="attach" title="Gửi ảnh (hoặc dán ảnh vào ô chat)" aria-label="Gửi ảnh">${ICON.image}<input type="file" id="file" accept="image/*" hidden></label>
         <textarea id="text" rows="1" placeholder="${S.img ? "Thêm chú thích…" : "Nhập tin nhắn…"}" aria-label="Tin nhắn" maxlength="1000"></textarea>
-        <button class="btn send" type="submit" aria-label="Gửi" ${S.sending ? "disabled" : ""}>${S.sending ? '<span class="spin"></span>' : ICON.send}</button>
+        <button class="btn send" type="submit" aria-label="Gửi" ${S.sending || S.ticket.busy ? "disabled" : ""}>${S.sending ? '<span class="spin"></span>' : ICON.send}</button>
       </form>
       ${st === "bot" ? `<div style="text-align:center;padding:0 16px 10px;background:var(--panel)"><button class="foot-link" id="humanBtn">Muốn nói chuyện với người phụ trách?</button></div>` : ""}`;
     const feed = $("#feed"); feed.scrollTop = feed.scrollHeight;
@@ -241,8 +238,8 @@ button,input,textarea{font:inherit;color:inherit}
     ta.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && matchMedia("(pointer:fine)").matches) { e.preventDefault(); send(); } };
     if (!S.sending && matchMedia("(pointer:fine)").matches) ta.focus();
     $("#compose").onsubmit = e => { e.preventDefault(); send(); };
-    document.querySelectorAll("[data-chip]").forEach(b => b.onclick = () => send(b.dataset.chip));
-    $("#newBtn").onclick = () => { if (confirm("Bắt đầu chat với email khác? Cuộc chat này vẫn được lưu ở phía shop.")) { save(null); S = { ticket: null, msgs: [], busy: false, sending: false, err: "" }; renderIntro(); } };
+    document.querySelectorAll("[data-chip]").forEach(b => b.onclick = () => b.dataset.chip === "Nhập email khác" ? newSession() : send(b.dataset.chip));
+    $("#newBtn").onclick = () => { if (confirm("Bắt đầu chat với email khác? Cuộc chat này vẫn được lưu ở phía shop.")) newSession(); };
     const hb = $("#humanBtn"); if (hb) hb.onclick = askHuman;
     $("#file").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) pickImage(f); };
     const di = $("#dropImg"); if (di) di.onclick = () => { S.img = null; renderChat(); };
@@ -252,7 +249,7 @@ button,input,textarea{font:inherit;color:inherit}
   async function send(preset) {
     const text = (preset ?? S.draft ?? "").trim();
     const image = preset ? null : S.img;
-    if ((!text && !image) || S.sending) return;
+    if ((!text && !image) || S.sending || S.ticket.busy) return;
     const after = lastId();
     const temp = { id: after + 0.5, role: "khach", body: text, preview: image, created_at: new Date().toISOString(), temp: true };
     S.msgs.push(temp); S.draft = ""; S.img = null; S.sending = true; renderChat();
@@ -298,6 +295,7 @@ button,input,textarea{font:inherit;color:inherit}
     const im = e.target.closest("[data-view]"); if (im) { document.body.insertAdjacentHTML("beforeend", `<div class="viewer" id="viewer"><img src="${esc(im.src)}" alt="Ảnh"></div>`); return; }
     if (e.target.closest("#viewer")) $("#viewer").remove();
   });
+  function newSession() { save(null); S = { ticket: null, msgs: [], busy: false, sending: false, err: "" }; renderIntro(); }
   async function askHuman() {
     try { merge(await api("human", { token: S.ticket.token, after: lastId() })); renderChat(); } catch (e) { toast(e.message); }
   }
@@ -305,13 +303,13 @@ button,input,textarea{font:inherit;color:inherit}
   /* ---------- nhận tin người phụ trách ---------- */
   function startPoll() {
     stopPoll();
-    const every = S.ticket.status === "cho_nguoi" ? 4000 : 20000;
+    const every = S.ticket.busy ? 1500 : S.ticket.status === "cho_nguoi" ? 4000 : 15000;
     pollTimer = setTimeout(async () => {
       if (document.visibilityState === "visible" && !S.sending) {
         try {
-          const before = S.msgs.length, st = S.ticket.status;
+          const before = S.msgs.length, st = S.ticket.status, busy = S.ticket.busy;
           merge(await api("poll", { token: S.ticket.token, after: lastId() }));
-          if (S.msgs.length !== before || S.ticket.status !== st) {
+          if (S.msgs.length !== before || S.ticket.status !== st || S.ticket.busy !== busy) {
             if (S.msgs.slice(before).some(m => m.role === "admin") && document.hidden === false) try { navigator.vibrate?.(60); } catch (_) {}
             renderChat(); return;
           }

@@ -73,7 +73,8 @@ async function imagePart(path: string) {
   let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
   return { inlineData: { mimeType: data.type || "image/jpeg", data: btoa(bin) } };
 }
-const pub = (t: any) => ({ token: t.token, email: t.email, status: t.status });
+const busyNow = (t: any) => !!t.busy_at && Date.now() - T(t.busy_at) < 90e3; // quá 90s coi như xong (phòng function bị ngắt)
+const pub = (t: any) => ({ token: t.token, email: t.email, status: t.status, busy: busyNow(t), verified: t.verified || null });
 
 /* ---------------- tra cứu Goshop (cùng API trang fixytb) ---------------- */
 async function renewApi(action: string, payload: Record<string, unknown>) {
@@ -163,17 +164,15 @@ async function runTool(name: string, args: any, t: any, ctx: { escalate?: string
   if (name !== "chuyen_nguoi" && email !== t.email) return { loi: "Chỉ tra cứu được email của phiên chat này (" + t.email + ")." };
   try {
     if (name === "tra_cuu") {
-      let r = await renewApi("checkStatusV2", { email });
-      if (r && !r.success && /không hợp lệ/i.test(r.message || "")) r = await renewApi("checkStatus", { email });
-      if (!r || !r.success) return { tim_thay: false, thong_bao: (r && r.message) || "Không tìm thấy email trong hệ thống." };
-      const v = resolve(r);
-      if (v.ctv && v.ctv !== t.ctv) await db.from("support_tickets").update({ ctv: v.ctv }).eq("id", t.id);
+      const v: any = await getKh(t);
+      if (!v.found) return { tim_thay: false, thong_bao: "Không tìm thấy email trong danh sách khách." };
       if (v.can_nguoi) ctx.escalate = ctx.escalate || "Fam lỗi chưa đổi: " + v.can_nguoi;
       return { tim_thay: true, ...v, link_huong_dan: "https://godnc.com/fixytb/?email=" + encodeURIComponent(email) };
     }
     if (name === "bao_loi") {
       const act = args.nhom_hoat_dong ? "Đang hoạt động" : "Không hoạt động";
       const r = await renewApi("submitReport", { email, message: "[hotro bot] " + String(args.mo_ta || "").slice(0, 300), submitted_by: "hotro", activity_status: act });
+      t.kh_at = null;
       return r && r.success ? { ok: true, thong_bao: "Đã ghi nhận báo lỗi." } : { ok: false, loi: (r && r.message) || "Không gửi được" };
     }
     if (name === "yeu_cau_moi_lai") {
@@ -297,7 +296,154 @@ async function escalate(t: any, why: string) {
   await notify(data, "cần người · " + why, true);
 }
 
-/* ---------------- xử lý ---------------- */
+/* ---------------- tra cứu có lưu tạm (API renew chậm ~15-20s) ---------------- */
+async function lookup(t: any) {
+  let r = await renewApi("checkStatusV2", { email: t.email });
+  if (r && !r.success && /không hợp lệ/i.test(r.message || "")) r = await renewApi("checkStatus", { email: t.email });
+  const v = r && r.success ? { found: true, ...resolve(r) } : { found: false };
+  const patch: any = { kh: v, kh_at: new Date().toISOString(), verified: v.found ? "ok" : "not_found" };
+  if (v.found && (v as any).ctv) patch.ctv = (v as any).ctv;
+  await db.from("support_tickets").update(patch).eq("id", t.id);
+  Object.assign(t, patch);
+  return v as any;
+}
+async function getKh(t: any, maxAgeMs = 90e3) {
+  if (t.kh && t.kh_at && Date.now() - T(t.kh_at) < maxAgeMs) return t.kh;
+  return await lookup(t);
+}
+
+/* ---------------- luồng chat cố định: nút bấm không cần AI ---------------- */
+const FAMILY = "https://myaccount.google.com/family/details";
+const C = {
+  mat: "Mất YouTube Premium", vao: "Không vào được nhóm mới", gh: "Gia hạn / hỏi giá", nf: "Lấy mã Netflix", gpt: "Mã 2FA ChatGPT",
+  mail: "Đổi sang email khác", nguoi: "Gặp người phụ trách", khac: "Nhập email khác",
+  binhthuong: "Nhóm vẫn hiện bình thường", khonghd: "Báo không hoạt động",
+  ok: "Đã dùng được Premium", r1: "Không thấy lời mời", r2: "Bấm tham gia bị lỗi", r3: "Nhóm cũ vẫn hoạt động",
+};
+const PRICES: [string, string][] = [["1 tháng", "30k"], ["3 tháng", "80k"], ["6 tháng", "150k"], ["12 tháng", "280k"]];
+const btn = (...xs: string[]) => "\n[[" + xs.join("|") + "]]";
+const MENU = btn(C.mat, C.vao, C.gh, C.nf, C.gpt, C.mail, C.nguoi);
+const guide = (t: any) => "https://godnc.com/fixytb/?email=" + encodeURIComponent(t.email);
+const STEPS = (t: any, v: any) => `Bạn đã được mời vào nhóm mới${v.nhom ? " (" + v.nhom + ")" : ""}. Làm 3 bước, khoảng 1 phút:
+1. Mở trang Gia đình ${FAMILY}. Nhóm cũ báo "không hoạt động" thì bấm Rời khỏi nhóm gia đình. Nhóm cũ vẫn bình thường thì KHÔNG rời.
+2. Đợi 30 giây, mở lại trang Gia đình hoặc Gmail, bấm Tham gia ở lời mời.
+3. Mở YouTube, bấm ảnh đại diện, thấy chữ Premium là xong.
+Hướng dẫn có hình: ${guide(t)}` + btn(C.ok, C.r1, C.r2, C.r3);
+
+type Out = { text: string; escalate?: string };
+function byStatus(t: any, v: any): Out {
+  const n = v.nhom ? `nhóm ${v.nhom}` : "nhóm của bạn", hsd = v.han_su_dung ? ` Hạn của bạn: ${v.han_su_dung}.` : "";
+  switch (v.trang_thai) {
+    case "da_moi": return { text: STEPS(t, v) };
+    case "dang_kiem_tra": return { text: `Bên mình đã nhận báo lỗi, kỹ thuật đang kiểm tra ${n} (thường 15–60 phút).\nBạn ĐỪNG rời nhóm nhé: nhóm vẫn đang chạy, rời lúc này Google sẽ khoá đổi nhóm 12 tháng. Xong mình báo ngay ở đây.` + btn(C.nguoi) };
+    case "dang_xu_ly": return { text: `${n[0].toUpperCase() + n.slice(1)} đang được thay mới.${hsd} Bạn chưa cần làm gì, khi có lời mời mình sẽ hướng dẫn ngay ở đây.\nCần dùng YouTube ngay thì mượn tài khoản tạm tại: ${guide(t)}` + btn(C.nguoi) };
+    case "cho_moi_lai": return { text: `Bên mình đang gửi lại lời mời cho bạn, thường 15–30 phút. Bạn không cần báo lại. Có lời mời thì làm theo hướng dẫn: ${guide(t)}` + btn(C.ok, C.nguoi) };
+    case "het_han": return { text: `Gói của bạn đã hết hạn${v.han_su_dung ? " ngày " + v.han_su_dung : ""} nên chưa được mời vào nhóm mới. Gia hạn xong bạn sẽ được mời lại ngay.` + btn(C.gh, C.nguoi) };
+    case "can_nguoi": return { text: `${n[0].toUpperCase() + n.slice(1)} đang lỗi và chưa có nhóm mới. Mình đã báo người phụ trách đổi nhóm cho bạn, có lời mời mình báo ngay ở đây. Bạn chưa rời nhóm cũ nhé.`, escalate: "Fam lỗi chưa đổi: " + v.can_nguoi };
+    case "da_vao_nhom": return { text: `Bạn đang dùng nhóm mới${v.nhom ? " (" + v.nhom + ")" : ""}, mọi thứ đã ổn.${hsd}\nNếu YouTube lại mất Premium, bạn mở trang Gia đình ${FAMILY} và chọn trang đang hiện thế nào:` + btn(C.binhthuong, C.khonghd) };
+    default: return { text: `${n[0].toUpperCase() + n.slice(1)} đang chạy bình thường, chưa có báo lỗi nào.${hsd}\nNếu YouTube mất Premium, bạn mở trang Gia đình ${FAMILY} rồi chọn trang đang hiện thế nào (hoặc chụp màn hình gửi mình):` + btn(C.binhthuong, C.khonghd) };
+  }
+}
+
+const NOT_FOUND = (t: any) => `Email ${t.email} chưa có trong danh sách khách YouTube Premium của shop, nên mình chưa hỗ trợ được gói YouTube.\nBạn kiểm tra lại email đã dùng để mua gói nhé.` + btn(C.khac, C.nf, C.gpt, C.nguoi);
+
+async function flow(t: any, text: string): Promise<Out | null> {
+  const x = text.trim();
+  // Không cần tra cứu
+  if (x === C.nf) return { text: "Netflix báo xác minh hộ gia đình, truy cập tạm thời hoặc cần mã đăng nhập: bạn vào https://godnc.com/vnetflix để tự lấy mã nhé." + btn(C.nguoi) };
+  if (x === C.gpt) return { text: "ChatGPT hỏi mã 2FA: bạn vào https://godnc.com/vgpt lấy mã 6 số. Mã đổi mỗi 30 giây nên nhập ngay nhé." + btn(C.nguoi) };
+  if (x === C.nguoi) return { text: "Mình đã chuyển cho người phụ trách, bạn đợi chút nhé. Đóng trang rồi mở lại vẫn xem được trả lời.", escalate: "Khách bấm gặp người" };
+
+  const v = await getKh(t);
+  if (!v.found) return { text: NOT_FOUND(t) };
+
+  if (x === C.mat) return byStatus(t, v);
+  if (x === C.vao) return ["da_moi", "cho_moi_lai"].includes(v.trang_thai)
+    ? { text: "Bạn gặp trường hợp nào?" + btn(C.r1, C.r2, C.r3) }
+    : byStatus(t, v);
+  if (x === C.mail) return { text: `Bạn có thể đổi sang một email khác của bạn (hạn sử dụng giữ nguyên). Vào ${guide(t)} , mục "Đổi sang email khác", nhập email mới rồi gửi yêu cầu.` + btn(C.nguoi) };
+  if (x === C.gh) {
+    if (v.ctv && !/^dnc$/i.test(v.ctv)) return { text: `Gói của bạn mua qua cộng tác viên ${v.ctv}${v.han_su_dung ? ", hạn đến " + v.han_su_dung : ""}. Bạn nhắn ${v.ctv} (người đã bán cho bạn) để gia hạn nhé.` + btn(C.nguoi) };
+    return { text: `${v.han_su_dung ? "Hạn của bạn: " + v.han_su_dung + ". " : ""}Bảng giá gia hạn YouTube Premium (hạn mới cộng nối tiếp hạn cũ):\n` + PRICES.map((p) => `• ${p[0]}: ${p[1]}`).join("\n") + "\nBạn chọn gói nào?" + btn(...PRICES.map((p) => `${p[0]} · ${p[1]}`)) };
+  }
+  const pick = PRICES.find((p) => x === `${p[0]} · ${p[1]}`);
+  if (pick) return { text: `Bạn chọn gia hạn ${pick[0]} (${pick[1]}). Mình đã báo người phụ trách, sẽ gửi thông tin chuyển khoản cho bạn ngay trong khung chat này.`, escalate: `Khách chọn gia hạn ${pick[0]} (${pick[1]})` };
+
+  const open = ["dang_kiem_tra", "dang_xu_ly", "cho_moi_lai", "can_nguoi"].includes(v.trang_thai);
+  if (x === C.binhthuong || x === C.khonghd) {
+    if (open || v.trang_thai === "da_moi") return byStatus(t, v);
+    const active = x === C.binhthuong;
+    const r = await renewApi("submitReport", { email: t.email, message: "[hotro] " + x, submitted_by: "hotro", activity_status: active ? "Đang hoạt động" : "Không hoạt động" }).catch(() => null);
+    if (!r || !r.success) return { text: "Mình chưa gửi được báo lỗi do hệ thống đang chậm, mình chuyển người phụ trách xử lý cho bạn nhé.", escalate: "Gửi báo lỗi thất bại (" + x + ")" };
+    const nv = await lookup(t);
+    if (nv.trang_thai === "can_nguoi") return byStatus(t, nv);
+    return active
+      ? { text: `Mình đã báo kỹ thuật kiểm tra ${v.nhom ? "nhóm " + v.nhom : "nhóm của bạn"}, thường xong trong 15–60 phút.\nBạn ĐỪNG rời nhóm nhé: nhóm vẫn đang chạy, rời lúc này Google khoá đổi nhóm 12 tháng. Xong mình báo ngay ở đây.` + btn(C.nguoi) }
+      : { text: `Mình đã ghi nhận nhóm của bạn báo không hoạt động. Bên mình đang chuẩn bị nhóm mới, bạn chưa cần làm gì. Khi có lời mời mình sẽ hướng dẫn ngay ở đây.\nCần dùng YouTube ngay thì mượn tài khoản tạm tại: ${guide(t)}` + btn(C.nguoi) };
+  }
+  if (x === C.ok) {
+    await renewApi("submitRejoin", { email: t.email, type: "da_vao" }).catch(() => null);
+    await lookup(t).catch(() => null);
+    return { text: "Tuyệt quá! Chúc bạn xem YouTube vui vẻ. Có vấn đề gì bạn cứ nhắn mình nhé." + MENU };
+  }
+  if (x === C.r1 || x === C.r2 || x === C.r3) {
+    if (v.trang_thai === "cho_moi_lai") return byStatus(t, v);
+    if (v.trang_thai !== "da_moi") return byStatus(t, v);
+    const r = await renewApi("submitRejoin", { email: t.email, type: "moi_lai", reason: x }).catch(() => null);
+    if (!r || !r.success) return { text: "Mình chưa gửi được yêu cầu mời lại, mình chuyển người phụ trách xử lý cho bạn nhé.", escalate: "Gửi yêu cầu mời lại thất bại (" + x + ")" };
+    await lookup(t).catch(() => null);
+    const tip = x === C.r1 ? "\nTrong lúc chờ, bạn xem thêm mục Quảng cáo/Spam trong Gmail, đôi khi lời mời nằm ở đó." : "";
+    return { text: `Mình đã gửi yêu cầu mời lại (${x}). Thường 15–30 phút, bạn không cần báo lại.${tip}\nCó lời mời mới thì làm lại 3 bước nhé.` + btn(C.ok, C.nguoi) };
+  }
+  return null; // khách tự gõ → AI
+}
+
+/* ---------------- xử lý 1 tin của khách (chạy nền) ---------------- */
+async function processMsg(t: any, text: string, hasImage: boolean) {
+  try {
+    let out: Out | null = hasImage ? null : await flow(t, text);
+    if (!out && t.verified === "not_found") out = { text: NOT_FOUND(t) };
+    if (!out && t.verified !== "ok") { const v = await getKh(t); if (!v.found) out = { text: NOT_FOUND(t) }; }
+    if (!out) {
+      const { text: reply, ctx } = await botReply(t);
+      out = reply ? { text: reply, escalate: ctx.escalate } : ctx.escalate === "Bot (AI) đang lỗi/quá tải"
+        ? { text: "Mình chưa hiểu rõ ý bạn. Bạn chọn mục gần nhất bên dưới nhé, hoặc bấm Gặp người phụ trách." + MENU }
+        : { text: "Mình đã chuyển cho người phụ trách, bạn đợi chút nhé.", escalate: ctx.escalate };
+    }
+    await addMsg(t.id, "bot", out.text);
+    if (out.escalate) await escalate(t, out.escalate);
+  } catch (e) {
+    console.error("processMsg", e);
+    await addMsg(t.id, "bot", "Hệ thống đang chậm, mình chuyển người phụ trách hỗ trợ bạn nhé.").catch(() => null);
+    await escalate(t, "Lỗi xử lý: " + String((e as Error).message || e).slice(0, 120)).catch(() => null);
+  } finally {
+    await db.from("support_tickets").update({ busy_at: null }).eq("id", t.id);
+  }
+}
+
+async function verifyStart(t: any) {
+  try {
+    const v = await lookup(t);
+    if (!v.found) await addMsg(t.id, "bot", NOT_FOUND(t));
+    else if (["da_moi", "can_nguoi", "het_han", "dang_xu_ly", "dang_kiem_tra", "cho_moi_lai"].includes(v.trang_thai)) {
+      const o = byStatus(t, v);
+      await addMsg(t.id, "bot", o.text + (o.text.includes("[[") ? "" : MENU));
+      if (o.escalate) await escalate(t, o.escalate);
+    } else await addMsg(t.id, "bot", `Mình thấy rồi${v.nhom ? ": nhóm " + v.nhom : ""}${v.han_su_dung ? ", hạn của bạn " + v.han_su_dung : ""}. Bạn cần hỗ trợ gì?` + MENU);
+  } catch (e) {
+    console.error("verifyStart", e);
+    await addMsg(t.id, "bot", "Bạn cần hỗ trợ gì?" + MENU).catch(() => null);
+  } finally {
+    await db.from("support_tickets").update({ busy_at: null }).eq("id", t.id);
+  }
+}
+
+// Chạy nền sau khi đã trả lời trình duyệt (khách không phải chờ / F5)
+declare const EdgeRuntime: any;
+function background(p: Promise<unknown>) {
+  if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(p); else return p;
+}
+
 async function handle(b: any) {
   const action = b.action;
   if (action === "start") {
@@ -306,10 +452,12 @@ async function handle(b: any) {
     const since = new Date(Date.now() - 864e5).toISOString();
     const { count } = await db.from("support_tickets").select("id", { count: "exact", head: true }).eq("email", email).gte("created_at", since);
     if ((count || 0) >= MAX_NEW_PER_DAY) throw new UserError("Email này mở quá nhiều phiên hôm nay. Bạn quay lại phiên cũ hoặc thử lại mai nhé.");
-    const { data: t, error } = await db.from("support_tickets").insert({ email }).select("*").single();
+    const { data: t, error } = await db.from("support_tickets").insert({ email, busy_at: new Date().toISOString() }).select("*").single();
     if (error) throw error;
-    await addMsg(t.id, "bot", "Chào bạn 👋 Mình là trợ lý của shop. Bạn đang gặp vấn đề gì? Ví dụ: mất YouTube Premium, không thấy lời mời, cần mã Netflix hoặc mã 2FA ChatGPT.");
-    return { ticket: pub(t), messages: await messagesAfter(t.id, 0) };
+    await addMsg(t.id, "bot", `Chào bạn 👋 Mình là trợ lý của shop. Mình đang kiểm tra email ${email}, chờ mình vài giây nhé…`);
+    const res = { ticket: pub({ ...t }), messages: await messagesAfter(t.id, 0) };
+    await background(verifyStart(t));
+    return res;
   }
 
   const t = await ticketByToken(b.token);
@@ -325,29 +473,23 @@ async function handle(b: any) {
   if (action === "send") {
     const text = String(b.text || "").trim().slice(0, MAX_LEN);
     if (!text && !b.image) throw new UserError("Tin nhắn trống.");
+    if (busyNow(t)) throw new UserError("Mình đang trả lời tin trước, bạn đợi chút nhé.");
     const hourAgo = new Date(Date.now() - 3600e3).toISOString();
     const { count } = await db.from("support_messages").select("id", { count: "exact", head: true }).eq("ticket_id", t.id).eq("role", "khach").gte("created_at", hourAgo);
     if ((count || 0) >= MAX_PER_HOUR) throw new UserError("Bạn nhắn hơi nhiều, đợi một lát rồi nhắn tiếp nhé.");
 
     await addMsg(t.id, "khach", text, b.image ? await saveImage(t.id, b.image) : null);
-    let status = t.status;
-    if (status === "dong") { // khách nhắn lại vào phiên đã đóng → mở lại cho bot
-      status = "bot";
-      await db.from("support_tickets").update({ status, ly_do: "" }).eq("id", t.id);
-    }
-    if (status === "cho_nguoi") {
+    if (t.status === "dong") { t.status = "bot"; await db.from("support_tickets").update({ status: "bot", ly_do: "" }).eq("id", t.id); }
+    if (t.status === "cho_nguoi") {
       const { data } = await db.from("support_tickets").select("*").eq("id", t.id).single();
       await notify(data, "khách nhắn thêm");
-    } else {
-      const { text: reply, ctx } = await botReply({ ...t, status });
-      if (reply) await addMsg(t.id, "bot", reply);
-      if (ctx.escalate) {
-        if (!reply) await addMsg(t.id, "bot", "Mình đã chuyển cho người phụ trách, bạn đợi chút nhé. Bạn có thể để lại trang này, quay lại vẫn xem được trả lời.");
-        await escalate(t, ctx.escalate);
-        status = "cho_nguoi";
-      }
+      return { ticket: pub(t), messages: await messagesAfter(t.id, after) };
     }
-    return { ticket: pub({ ...t, status }), messages: await messagesAfter(t.id, after) };
+    t.busy_at = new Date().toISOString();
+    await db.from("support_tickets").update({ busy_at: t.busy_at }).eq("id", t.id);
+    const res = { ticket: pub({ ...t }), messages: await messagesAfter(t.id, after) };
+    await background(processMsg(t, text, !!b.image));
+    return res;
   }
   throw new UserError("Action không hợp lệ");
 }

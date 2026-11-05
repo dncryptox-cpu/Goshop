@@ -13,7 +13,11 @@ create table if not exists public.support_tickets (
   admin_unread boolean not null default false,
   deleted      boolean not null default false,  -- xoá mềm, hoàn tác được
   msg_count    int not null default 0,
-  notified_at  timestamptz,                     -- lần cuối báo Telegram (chống báo dồn)
+  notified_at  timestamptz,
+  kh           jsonb,                           -- kết quả tra cứu gần nhất
+  kh_at        timestamptz,
+  verified     text,                            -- ok | not_found
+  busy_at      timestamptz,                     -- bot đang xử lý tin                     -- lần cuối báo Telegram (chống báo dồn)
   created_at   timestamptz not null default now(),
   updated_at   timestamptz not null default now()
 );
