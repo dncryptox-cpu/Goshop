@@ -1,5 +1,5 @@
 // Hỗ trợ khách — Edge Function "support-bot" (project Supabase của Trading OS)
-// Secrets cần đặt: GEMINI_API_KEY. Tuỳ chọn: GEMINI_MODEL, TG_BOT_TOKEN + TG_CHAT_ID (báo Telegram khi cần người)
+// Secrets: GEMINI_API_KEY, TG_BOT_TOKEN (dùng chung bot với desk-bot). Tuỳ chọn: GEMINI_MODEL, TG_CHAT_ID
 // Actions (POST JSON): start {email} · send {token,text} · poll {token,after} · human {token}
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -206,7 +206,7 @@ async function botReply(t: any) {
 
 /* ---------------- Telegram ---------------- */
 async function notify(t: any, why: string, force = false) {
-  const token = Deno.env.get("TG_BOT_TOKEN"), chat = Deno.env.get("TG_CHAT_ID");
+  const token = Deno.env.get("TG_BOT_TOKEN"), chat = Deno.env.get("TG_CHAT_ID") || "1134598172"; // cùng chat với desk-bot
   if (!token || !chat) return;
   if (!force && t.notified_at && Date.now() - T(t.notified_at) < 5 * 60e3) return;
   await db.from("support_tickets").update({ notified_at: new Date().toISOString() }).eq("id", t.id);

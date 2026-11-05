@@ -10,7 +10,7 @@
 2. Edge Functions → tạo function **support-bot**, dán `hotro/supabase/functions/support-bot/index.ts`, **tắt "Verify JWT"** (khách không đăng nhập).
 3. Edge Functions → Secrets (DNL tự nhập):
    - `GEMINI_API_KEY` (bắt buộc)
-   - `TG_BOT_TOKEN`, `TG_CHAT_ID` (tuỳ chọn — báo Telegram khi có khách cần người)
+   - `TG_BOT_TOKEN` (dùng chung bot với desk-bot; báo vào chat của DNL, đổi bằng `TG_CHAT_ID`)
 4. Mở godnc.com/hotro, chat thử 1 email thật; mở godnc.com/ticketbox xem ticket hiện ra.
 
 ## Luật bot (trong code, không sửa ở Kiến thức bot)
