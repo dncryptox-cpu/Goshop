@@ -80,9 +80,11 @@ button,input,textarea{font:inherit;color:inherit}
 .typing i{width:7px;height:7px;border-radius:50%;background:var(--muted);animation:b 1.2s infinite}
 .typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
 @keyframes b{0%,60%,100%{opacity:.3;transform:none}30%{opacity:1;transform:translateY(-3px)}}
-.chips{display:flex;gap:8px;overflow-x:auto;padding:0 16px 10px;scrollbar-width:none}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 12px;scrollbar-width:none;background:var(--panel);border-top:1px solid var(--line)}
+.chips + .compose,.chips + .pending{border-top:0}
+.chip:disabled{opacity:.5;cursor:default}
 .chips::-webkit-scrollbar{display:none}
-.chip{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:7px 13px;font-size:14px;cursor:pointer}
+.chip{flex:none;border:1px solid var(--line);background:var(--bg);color:var(--ink);white-space:nowrap;border-radius:99px;padding:7px 13px;font-size:14px;cursor:pointer}
 .chip:hover{border-color:var(--accent);color:var(--accent)}
 .opts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .opt{border:1.5px solid var(--accent);background:var(--panel);color:var(--accent);border-radius:12px;padding:8px 14px;font-size:15px;font-weight:600;cursor:pointer;text-align:left}
@@ -122,6 +124,9 @@ button,input,textarea{font:inherit;color:inherit}
   const SB_KEY = "sb_publishable_GPVgOD3U3O_9yytoRnXv6w_jiiBibnH";
   const FN = SB_URL + "/functions/v1/support-bot";
   const STORE = "hotro_session";
+  // Menu luôn hiện trên ô chat
+  const MENU = ["Mất YouTube Premium", "Không vào được nhóm mới", "Gia hạn / hỏi giá", "Lấy mã Netflix", "Mã 2FA ChatGPT", "Đổi sang email khác", "Gặp người phụ trách"];
+  const MENU_NF = ["Nhập email khác", "Lấy mã Netflix", "Mã 2FA ChatGPT", "Gặp người phụ trách"];
   // Bot gửi nút lựa chọn bằng dòng cuối [[A|B|C]]
   const splitChoices = body => { const m = String(body || "").match(/\n?\s*\[\[([^\]]+)\]\]\s*$/); return m ? [body.slice(0, m.index).trim(), m[1].split("|").map(x => x.trim()).filter(Boolean).slice(0, 8)] : [body, []]; };
   const ICON = {
@@ -206,7 +211,8 @@ button,input,textarea{font:inherit;color:inherit}
     const me = m.role === "khach", human = m.role === "admin";
     const [text, choices] = me ? [m.body, []] : splitChoices(m.body);
     const last = S.msgs.filter(x => x.role !== "he_thong").at(-1) === m;
-    const opts = choices.length && last && !S.sending && !S.ticket.busy ? `<div class="opts">${choices.map(c => `<button class="opt" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>` : "";
+    const dupMenu = choices.every(c => MENU.includes(c) || MENU_NF.includes(c)) && choices.length >= 4; // đã có ở thanh menu dưới
+    const opts = choices.length && !dupMenu && last && !S.sending && !S.ticket.busy ? `<div class="opts">${choices.map(c => `<button class="opt" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>` : "";
     return `<div class="row ${me ? "me" : "them"} ${human ? "human" : ""}">
       ${me ? "" : `<div class="who-tag">${human ? "Người phụ trách" : "Trợ lý"}</div>`}
       ${m.image_url || m.preview ? `<div class="bubble has-img"><img class="shot" src="${esc(m.preview || m.image_url)}" alt="Ảnh đã gửi" data-view>${text ? `<div class="cap">${linkify(text)}</div>` : ""}</div>`
@@ -223,13 +229,14 @@ button,input,textarea{font:inherit;color:inherit}
       </header>
       <main class="feed" id="feed" aria-live="polite">${S.msgs.map(msgHtml).join("")}${(S.sending || S.ticket.busy) && st !== "cho_nguoi" ? '<div class="typing" aria-label="Đang trả lời"><i></i><i></i><i></i></div>' : ""}</main>
       ${st === "cho_nguoi" ? `<div class="banner">Người phụ trách sẽ trả lời tại đây, đóng trang rồi mở lại vẫn xem được.</div>` : ""}
+      ${true ? `<div class="chips" aria-label="Chọn nhanh">${(S.ticket.verified === "not_found" ? MENU_NF : MENU).map(c => `<button class="chip" data-chip="${esc(c)}" ${S.sending || S.ticket.busy ? "disabled" : ""}>${esc(c)}</button>`).join("")}</div>` : ""}
       ${S.img ? `<div class="pending"><img src="${S.img}" alt="Ảnh sắp gửi"><span>Ảnh sẵn sàng · thêm chữ nếu cần rồi bấm gửi</span><button class="icon-btn" type="button" id="dropImg" aria-label="Bỏ ảnh">${ICON.x}</button></div>` : ""}
       <form class="compose" id="compose">
         <label class="attach" title="Gửi ảnh (hoặc dán ảnh vào ô chat)" aria-label="Gửi ảnh">${ICON.image}<input type="file" id="file" accept="image/*" hidden></label>
         <textarea id="text" rows="1" placeholder="${S.img ? "Thêm chú thích…" : "Nhập tin nhắn…"}" aria-label="Tin nhắn" maxlength="1000"></textarea>
         <button class="btn send" type="submit" aria-label="Gửi" ${S.sending || S.ticket.busy ? "disabled" : ""}>${S.sending ? '<span class="spin"></span>' : ICON.send}</button>
       </form>
-      ${st === "bot" ? `<div style="text-align:center;padding:0 16px 10px;background:var(--panel)"><button class="foot-link" id="humanBtn">Muốn nói chuyện với người phụ trách?</button></div>` : ""}`;
+`;
     const feed = $("#feed"); feed.scrollTop = feed.scrollHeight;
     feed.querySelectorAll("img.shot").forEach(i => { if (!i.complete) i.onload = () => { feed.scrollTop = feed.scrollHeight; }; });
     const ta = $("#text"); ta.value = S.draft || "";

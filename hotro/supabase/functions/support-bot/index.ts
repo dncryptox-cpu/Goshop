@@ -402,6 +402,7 @@ async function flow(t: any, text: string): Promise<Out | null> {
 async function processMsg(t: any, text: string, hasImage: boolean) {
   try {
     let out: Out | null = hasImage ? null : await flow(t, text);
+    if (t.status === "cho_nguoi" && out?.escalate) { const { data } = await db.from("support_tickets").select("*").eq("id", t.id).single(); await notify(data, out.escalate, true); out = { text: out.text }; } // đang chờ người: không chuyển lại, chỉ báo
     if (!out && t.verified === "not_found") out = { text: NOT_FOUND(t) };
     if (!out && t.verified !== "ok") { const v = await getKh(t); if (!v.found) out = { text: NOT_FOUND(t) }; }
     if (!out) {
@@ -480,7 +481,8 @@ async function handle(b: any) {
 
     await addMsg(t.id, "khach", text, b.image ? await saveImage(t.id, b.image) : null);
     if (t.status === "dong") { t.status = "bot"; await db.from("support_tickets").update({ status: "bot", ly_do: "" }).eq("id", t.id); }
-    if (t.status === "cho_nguoi") {
+    const isButton = !b.image && (Object.values(C).includes(text) || PRICES.some((p) => text === `${p[0]} · ${p[1]}`));
+    if (t.status === "cho_nguoi" && !isButton) {
       const { data } = await db.from("support_tickets").select("*").eq("id", t.id).single();
       await notify(data, "khách nhắn thêm");
       return { ticket: pub(t), messages: await messagesAfter(t.id, after) };
