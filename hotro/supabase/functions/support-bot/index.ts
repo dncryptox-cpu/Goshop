@@ -309,10 +309,12 @@ const THAYFAM_API = "https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXn
 async function thayfamState(email: string) {
   const key = Deno.env.get("THAYFAM_KEY");
   if (!key) return null;
-  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 25000);
+  const t0 = Date.now();
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 50000); // lệnh search của thayfam chậm (~30s)
   try {
     const r = await fetch(THAYFAM_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "search", q: email, pass: key }), signal: ctl.signal });
     const d = await r.json();
+    console.log("thayfam search", Math.round((Date.now() - t0) / 1000) + "s", (d.items || []).length + " fam");
     if (!d.ok) { console.error("thayfam", d.error); return null; }
     const f = (d.items || []).find((x: any) => (x.customers || []).some((c: any) => String(c.email || "").trim().toLowerCase() === email));
     return f && f.famState ? { ...f.famState, rn: f.rn } : null;
