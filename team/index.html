@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>DNC × Tuấn</title>
+<style>
+  :root{
+    --bg:#f6f5f1; --card:#fff; --ink:#1d1d1b; --mute:#77756e; --line:#e3e1da;
+    --acc:#1f6f4a; --acc-ink:#fff; --warn:#b4540a; --bad:#b42318; --ok:#1f6f4a; --chip:#efeee8; --me:#e8f2ec;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --bg:#161614; --card:#1f1f1c; --ink:#ecebe6; --mute:#9a988f; --line:#33322e;
+    --acc:#3fa673; --acc-ink:#0d1a12; --warn:#e3913f; --bad:#ef6b5e; --ok:#57c08a; --chip:#262623; --me:#1d2b23;
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  [x-cloak]{display:none!important}
+  .wrap{max-width:860px;margin:0 auto;padding:16px}
+  h1{font-size:20px;margin:0}
+  .mute{color:var(--mute)} .grow{flex:1} .mono{font-family:ui-monospace,Menlo,monospace;font-size:14px}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer;white-space:nowrap}
+  .btn:hover{border-color:var(--mute)} .btn[disabled]{opacity:.5;cursor:default}
+  .btn.pri{background:var(--acc);color:var(--acc-ink);border-color:var(--acc);font-weight:600}
+  .btn.sm{padding:4px 9px;font-size:13px} .btn.xs{padding:2px 7px;font-size:12px;border-radius:6px;color:var(--mute)}
+  .btn.red{color:var(--bad)}
+  input,textarea,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px;min-width:0}
+  textarea{width:100%;resize:vertical}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+  .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:14px 0}
+  .tab{border:0;background:none;padding:9px 12px;color:var(--mute);border-bottom:2px solid transparent;margin-bottom:-1px;font:inherit;cursor:pointer}
+  .tab.on{color:var(--ink);border-color:var(--ink);font-weight:600}
+  .n{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--chip);font-size:12px;margin-left:4px;text-align:center}
+  .n.hot{background:var(--warn);color:#fff}
+  .chips{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+  .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:16px;padding:4px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+  .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .badge{font-size:12px;padding:2px 8px;border-radius:10px;background:var(--chip);white-space:nowrap}
+  .badge.bad{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+  .badge.warn{background:color-mix(in srgb,var(--warn) 15%,transparent);color:var(--warn)}
+  .badge.ok{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+  .empty{padding:28px;text-align:center;color:var(--mute)}
+  .thread{margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;display:flex;flex-direction:column;gap:4px}
+  .msg{font-size:14px;padding:5px 9px;border-radius:8px;background:var(--chip);max-width:92%;align-self:flex-start}
+  .msg.me{background:var(--me);align-self:flex-end}
+  .msg small{color:var(--mute);font-size:11px;display:block}
+  .hint{font-size:13px;margin-top:4px}
+  .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px}
+  .calc{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:14px;margin-top:8px}
+  .money{font-weight:700;font-variant-numeric:tabular-nums}
+</style>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+</head>
+<body>
+<div class="wrap" x-data="app()" x-init="init()" x-cloak>
+
+  <!-- ĐĂNG NHẬP -->
+  <template x-if="!me.role">
+    <div class="card" style="max-width:380px;margin:60px auto">
+      <h1>DNC × Tuấn</h1>
+      <div class="mute" style="font-size:13px;margin:6px 0 12px">Nhập key để vào.</div>
+      <form class="row" @submit.prevent="login()">
+        <input type="password" x-model="passInput" placeholder="Key" class="grow" autofocus>
+        <button class="btn pri" :disabled="loading || !passInput" x-text="loading ? '…' : 'Vào'"></button>
+      </form>
+      <div class="hint" style="color:var(--bad)" x-show="error" x-text="error"></div>
+    </div>
+  </template>
+
+  <template x-if="me.role">
+    <div>
+      <div class="row">
+        <h1 class="grow">DNC × Tuấn</h1>
+        <span class="mute" style="font-size:13px" x-text="me.name"></span>
+        <button class="btn sm" @click="refresh()" :disabled="loading" x-text="loading ? 'Đang tải…' : '↻'"></button>
+        <button class="btn sm" @click="logout()">Thoát</button>
+      </div>
+      <div class="hint" style="color:var(--bad)" x-show="error" x-text="error"></div>
+
+      <nav class="tabs">
+        <button class="tab" :class="tab==='bl' && 'on'" @click="tab='bl'">📨 Mail lỗi<span class="n" :class="blTodo() && 'hot'" x-text="blTodo()"></span></button>
+        <button class="tab" :class="tab==='ht' && 'on'" @click="tab='ht'">↩️ Hủy / hoàn tiền<span class="n" :class="htTodo() && 'hot'" x-text="htTodo()"></span></button>
+      </nav>
+
+      <!-- ===================== MAIL LỖI ===================== -->
+      <section x-show="tab==='bl'">
+        <div class="card">
+          <b>Gửi mail khách lỗi</b>
+          <div class="mute" style="font-size:13px;margin:2px 0 8px">Dán nguyên tin nhắn cũng được, tự lấy email. Mail đang xử lý thì không tạo trùng.</div>
+          <textarea x-model="blText" rows="3" placeholder="vd: abc@gmail.com mất premium, xyz@gmail.com không vào được nhóm"></textarea>
+          <div class="row" style="margin-top:8px">
+            <span class="mute" style="font-size:13px">Nhóm gia đình:</span>
+            <button class="chip" :class="blAct==='' && 'on'" @click="blAct=''">Chưa rõ</button>
+            <button class="chip" :class="blAct===ON && 'on'" @click="blAct=ON">🟢 Còn hoạt động</button>
+            <button class="chip" :class="blAct===OFF && 'on'" @click="blAct=OFF">🔴 Không hoạt động</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input type="text" x-model="blNote" placeholder="Nhắn kèm (không bắt buộc)" class="grow" @keydown.enter="blAdd()">
+            <button class="btn pri" @click="blAdd()" :disabled="blBusy || !blText.trim()" x-text="blBusy ? 'Đang gửi…' : 'Gửi'"></button>
+          </div>
+          <div class="hint" x-show="blMsg" x-text="blMsg"></div>
+        </div>
+
+        <div class="chips">
+          <template x-for="g in blGroups()" :key="g.key">
+            <button class="chip" :class="blStep===g.key && 'on'" @click="blStep=g.key" x-text="g.label + ' (' + g.n + ')'"></button>
+          </template>
+        </div>
+        <div class="row" style="margin-bottom:10px" x-show="blStep==='xinmail' && blList().length">
+          <button class="btn sm" @click="copy(askText())">📋 Copy tin xin mail chủ gia đình</button>
+        </div>
+        <div class="row" style="margin-bottom:10px" x-show="blStep==='baokhach' && blList().length">
+          <button class="btn sm" @click="copy(fixedText())">📋 Copy tin báo khách đã fix</button>
+        </div>
+
+        <template x-if="!blLoaded"><div class="empty">Đang tải…</div></template>
+        <template x-if="blLoaded && blList().length===0"><div class="empty">Không có gì ở mục này.</div></template>
+
+        <template x-for="x in blList()" :key="x.id">
+          <div class="card" :style="x.step==='xong' && 'opacity:.6'">
+            <div class="row">
+              <b class="mono" style="word-break:break-all" x-text="x.email"></b>
+              <button class="btn xs" @click="copy(x.email)">copy</button>
+              <span class="badge" :class="BADGE[x.step]" x-text="LABEL[x.step]"></span>
+              <span class="grow"></span>
+              <span class="mute" style="font-size:12px" x-text="x.at"></span>
+            </div>
+
+            <div class="hint mute" x-show="x.found" x-text="x.rn + ' · ' + (x.famStatus || '—') + ' · HSD ' + (x.hsd || '—') + (x.daysLeft !== null ? ' (còn ' + x.daysLeft + ' ngày)' : '') + (x.viaPhu ? ' · khớp qua mail phụ' : '')"></div>
+            <div class="hint" x-show="!x.found" style="color:var(--bad)">Không thấy mail này trong fam nào — kiểm tra lại chính tả</div>
+            <div class="hint" style="color:var(--ok)" x-show="x.swappedAfter && x.step!=='xong' && x.step!=='baokhach'" x-text="'Fam đã thay lúc ' + x.swapAt + ', sau khi báo'"></div>
+            <div class="hint" style="color:var(--warn)" x-show="x.rnAtReport && x.rn && x.rnAtReport!==x.rn" x-text="'Lúc báo ở ' + x.rnAtReport + ', giờ ở ' + x.rn"></div>
+            <div class="hint" x-show="x.activity" x-text="(x.activity===ON ? '🟢 Nhóm còn hoạt động' : '🔴 Nhóm không hoạt động') + (x.owner ? ' · mail chủ GĐ khách thấy: ' + x.owner : '')"></div>
+            <div class="hint" x-show="isAdmin && x.owner && x.ownerMatch!==null && x.ownerMatch!==undefined">
+              <span x-show="x.ownerMatch" style="color:var(--ok)">✓ Khớp chủ fam trong Kho</span>
+              <span x-show="!x.ownerMatch" style="color:var(--bad)" x-text="'✗ Khác chủ fam ' + x.rn + ' (' + (x.famOwner || '—') + ')' + (x.ownerRn ? ' — mail này là chủ ' + x.ownerRn : ' — không phải fam của mình')"></span>
+            </div>
+
+            <!-- việc theo bước -->
+            <div class="row" style="margin-top:8px">
+              <template x-if="x.step==='chon'">
+                <span class="row">
+                  <span class="mute" style="font-size:13px">Nhóm gia đình khách còn hoạt động không?</span>
+                  <button class="btn sm" @click="blOp(x, 'set', { activity: ON })" :disabled="x.busy">🟢 Còn</button>
+                  <button class="btn sm" @click="blOp(x, 'set', { activity: OFF })" :disabled="x.busy">🔴 Không</button>
+                </span>
+              </template>
+              <template x-if="x.step==='xinmail'">
+                <span class="row grow">
+                  <input type="email" x-model="x.ownerIn" placeholder="Mail chủ gia đình khách thấy" class="grow" style="min-width:200px" @keydown.enter="x.ownerIn && blOp(x, 'set', { owner: x.ownerIn })">
+                  <button class="btn sm pri" @click="blOp(x, 'set', { owner: x.ownerIn })" :disabled="x.busy || !(x.ownerIn || '').includes('@')">Lưu</button>
+                </span>
+              </template>
+              <template x-if="x.step==='fix'">
+                <span class="row">
+                  <button class="btn sm pri" x-show="isAdmin" @click="blOp(x, 'done')" :disabled="x.busy">✓ Đã fix</button>
+                  <span class="mute" style="font-size:13px" x-show="!isAdmin">Đủ thông tin, chờ fix</span>
+                </span>
+              </template>
+              <template x-if="x.step==='baokhach'">
+                <button class="btn sm pri" @click="blOp(x, 'told')" :disabled="x.busy">Đã báo khách</button>
+              </template>
+              <span class="grow"></span>
+              <button class="btn xs" x-show="x.step!=='xong'" @click="x.edit = !x.edit; x.eAct = x.activity; x.eOwner = x.owner">✎ sửa</button>
+              <button class="btn xs" x-show="isAdmin && (x.step==='baokhach' || x.step==='xong')" @click="blOp(x, 'reopen')" :disabled="x.busy">Mở lại</button>
+              <button class="btn xs red" x-show="x.step!=='xong' && (isAdmin || x.status==='Mở')" @click="blOp(x, 'del')" :disabled="x.busy">Xoá</button>
+            </div>
+            <div class="row" style="margin-top:8px" x-show="x.edit">
+              <select x-model="x.eAct"><option value="">Nhóm: chưa rõ</option><option :value="ON">🟢 Còn hoạt động</option><option :value="OFF">🔴 Không hoạt động</option></select>
+              <input type="email" x-model="x.eOwner" placeholder="Mail chủ GĐ" class="grow" style="min-width:180px">
+              <button class="btn sm pri" @click="blOp(x, 'set', { activity: x.eAct, owner: x.eOwner || '' })" :disabled="x.busy">Lưu</button>
+            </div>
+
+            <!-- trao đổi -->
+            <div class="thread">
+              <template x-for="(m, i) in thread(x.note)" :key="i">
+                <div class="msg" :class="m.who===me.name && 'me'"><small x-text="m.who + ' · ' + m.at"></small><span x-text="m.text"></span></div>
+              </template>
+              <div class="row" x-show="x.step!=='xong'">
+                <input type="text" x-model="x.msgIn" placeholder="Nhắn về mail này…" class="grow" @keydown.enter="x.msgIn && blOp(x, 'msg', { text: x.msgIn })">
+                <button class="btn sm" @click="blOp(x, 'msg', { text: x.msgIn })" :disabled="x.busy || !(x.msgIn || '').trim()">Gửi</button>
+              </div>
+            </div>
+            <div class="hint" style="color:var(--bad)" x-show="x.err" x-text="x.err"></div>
+          </div>
+        </template>
+      </section>
+
+      <!-- ===================== HỦY / HOÀN TIỀN ===================== -->
+      <section x-show="tab==='ht'">
+        <div class="card">
+          <b>Phiếu hủy / hoàn tiền</b>
+          <div class="mute" style="font-size:13px;margin:2px 0 8px">Tiền hoàn = giá gốc × ngày còn / tổng ngày. Ngày mua để trống thì lấy theo HSD − số tháng trong Kho.</div>
+          <div class="row">
+            <input type="email" x-model="ht.email" placeholder="Email khách" class="grow" style="min-width:200px">
+            <input type="text" inputmode="numeric" x-model="ht.price" placeholder="Giá gốc (vd 350000)" style="width:170px">
+            <input type="text" x-model="ht.buy" placeholder="Ngày mua dd/mm/yyyy" style="width:170px">
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input type="text" x-model="ht.reason" placeholder="Lý do" class="grow">
+            <button class="btn" @click="htCalc()" :disabled="htBusy || !ht.email">Tính</button>
+            <button class="btn pri" @click="htAdd()" :disabled="htBusy || !htPreview || !ht.price">Gửi phiếu</button>
+          </div>
+          <template x-if="htPreview">
+            <div class="calc">
+              <span class="mute">Khách</span><span x-text="htPreview.email + ' · ' + htPreview.rn + ' · ' + (htPreview.months || '?') + ' tháng'"></span>
+              <span class="mute">Ngày mua → HSD</span><span x-text="htPreview.buy + ' → ' + htPreview.hsd"></span>
+              <span class="mute">Ngày còn</span><span x-text="htPreview.left + ' / ' + htPreview.total + ' ngày'"></span>
+              <span class="mute">Hoàn</span><span class="money" x-text="htPreview.price ? money(htPreview.refund) : 'nhập giá gốc'"></span>
+              <span class="mute" x-show="htPreview.dup">⚠</span><span x-show="htPreview.dup" style="color:var(--bad)" x-text="'Đã có phiếu ' + htPreview.dup"></span>
+            </div>
+          </template>
+          <div class="hint" x-show="htMsg" x-text="htMsg"></div>
+        </div>
+
+        <div class="chips">
+          <template x-for="g in htGroups()" :key="g.key">
+            <button class="chip" :class="htFilter===g.key && 'on'" @click="htFilter=g.key" x-text="g.label + ' (' + g.n + ')'"></button>
+          </template>
+        </div>
+        <template x-if="htLoaded && htList().length===0"><div class="empty">Không có phiếu nào.</div></template>
+        <template x-for="p in htList()" :key="p.id">
+          <div class="card" :style="p.status==='Từ chối' && 'opacity:.6'">
+            <div class="row">
+              <b class="mono" style="word-break:break-all" x-text="p.email"></b>
+              <span class="badge" :class="p.status==='Chờ duyệt' ? 'warn' : (p.status==='Đã duyệt' ? 'ok' : '')" x-text="p.status"></span>
+              <span class="grow"></span>
+              <span class="money" x-text="money(p.refund)"></span>
+            </div>
+            <div class="hint mute" x-text="p.rn + ' · mua ' + p.buy + ' · HSD ' + p.hsd + ' · còn ' + p.left + '/' + p.total + ' ngày · gốc ' + money(p.price)"></div>
+            <div class="hint" x-show="p.reason" x-text="'Lý do: ' + p.reason"></div>
+            <div class="hint mute" x-text="p.at + ' · ' + p.by + (p.status!=='Chờ duyệt' ? ' · ' + p.status.toLowerCase() + ' ' + p.updated : '')"></div>
+            <div class="row" style="margin-top:8px">
+              <button class="btn sm pri" x-show="isAdmin && p.status==='Chờ duyệt'" @click="htOp(p, 'approve')" :disabled="p.busy">✓ Duyệt (ghi Hủy vào mail phụ)</button>
+              <button class="btn sm" x-show="isAdmin && p.status==='Chờ duyệt'" @click="htOp(p, 'reject')" :disabled="p.busy">Từ chối</button>
+              <button class="btn sm" @click="copy(htText(p))">📋 Copy thông tin</button>
+              <span class="grow"></span>
+              <button class="btn xs red" x-show="isAdmin || p.status==='Chờ duyệt'" @click="htOp(p, 'del')" :disabled="p.busy">Xoá</button>
+            </div>
+            <div class="hint" style="color:var(--bad)" x-show="p.err" x-text="p.err"></div>
+          </div>
+        </template>
+      </section>
+    </div>
+  </template>
+
+  <div class="toast" x-show="toast" x-text="toast" x-transition></div>
+</div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
+const ls = { get(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+function app() {
+  return {
+    ON: 'Đang hoạt động', OFF: 'Không hoạt động',
+    LABEL: { chon: 'Cần hỏi nhóm', xinmail: 'Cần mail chủ GĐ', fix: 'Chờ fix', baokhach: 'Đã fix — báo khách', xong: 'Xong' },
+    BADGE: { chon: 'warn', xinmail: 'warn', fix: 'bad', baokhach: 'ok', xong: '' },
+    pass: ls.get('team_pass'), passInput: '', me: { name: '', role: '' }, loading: false, error: '', toast: '',
+    tab: ls.get('team_tab') || 'bl',
+    bl: [], blLoaded: false, blBusy: false, blText: '', blAct: '', blNote: '', blMsg: '', blStep: 'todo',
+    hts: [], htLoaded: false, htBusy: false, ht: { email: '', price: '', buy: '', reason: '' }, htPreview: null, htMsg: '', htFilter: 'cho',
+
+    get isAdmin() { return this.me.role === 'admin'; },
+
+    init() {
+      this.$watch('tab', v => ls.set('team_tab', v));
+      if (this.pass) this.refresh();
+      setInterval(() => { if (this.me.role && document.visibilityState === 'visible') this.refresh(true); }, 60000);
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.me.role) this.refresh(true); });
+    },
+    async api(body) {
+      const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({}, body, { pass: this.pass })) });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error || 'Lỗi không rõ');
+      return d;
+    },
+    async login() { this.pass = this.passInput; await this.refresh(); if (this.me.role) { ls.set('team_pass', this.pass); this.passInput = ''; } },
+    logout() { this.pass = ''; ls.set('team_pass', ''); this.me = { name: '', role: '' }; this.bl = []; this.hts = []; this.blLoaded = this.htLoaded = false; },
+    async refresh(quiet) {
+      if (!quiet) this.loading = true;
+      this.error = '';
+      try {
+        const [a, b] = await Promise.all([this.api({ action: 'baoLoi', op: 'list' }), this.api({ action: 'hoanTien', op: 'list' })]);
+        if (a.me) this.me = a.me;
+        this.mergeBl(a.items); this.hts = b.items.map(p => Object.assign(p, { busy: false, err: '' }));
+        this.blLoaded = this.htLoaded = true;
+      } catch (e) {
+        this.error = e.message;
+        if (/mật khẩu|key|không hợp lệ/i.test(e.message) && !this.me.role) { this.pass = ''; ls.set('team_pass', ''); }
+      }
+      this.loading = false;
+    },
+    // giữ chữ đang gõ dở khi tải lại
+    mergeBl(items) {
+      const old = {}; this.bl.forEach(x => old[x.id] = x);
+      this.bl = items.map(x => { const o = old[x.id] || {}; return Object.assign(x, { busy: false, err: '', edit: o.edit || false, eAct: o.eAct, eOwner: o.eOwner, ownerIn: o.ownerIn || '', msgIn: o.msgIn || '' }); });
+    },
+
+    /* ---------- Mail lỗi ---------- */
+    blMine(s) { return this.isAdmin ? s === 'fix' : ['chon', 'xinmail', 'baokhach'].includes(s); },
+    blTodo() { return this.bl.filter(x => this.blMine(x.step)).length; },
+    blGroups() {
+      const n = k => this.bl.filter(x => x.step === k).length;
+      return [{ key: 'todo', label: this.isAdmin ? 'Cần mình fix' : 'Việc của Tuấn', n: this.blTodo() }]
+        .concat(['chon', 'xinmail', 'fix', 'baokhach', 'xong'].map(k => ({ key: k, label: this.LABEL[k], n: n(k) })))
+        .concat([{ key: 'all', label: 'Tất cả', n: this.bl.length }]);
+    },
+    blList() {
+      const k = this.blStep, ord = { chon: 1, xinmail: 2, fix: 3, baokhach: 4, xong: 5 };
+      return this.bl.filter(x => k === 'all' || (k === 'todo' ? this.blMine(x.step) : x.step === k)).sort((a, b) => (ord[a.step] - ord[b.step]) || (a.atMs - b.atMs));
+    },
+    thread(note) {
+      return String(note || '').split('\n').filter(Boolean).map(l => { const p = l.split('|'); return p.length >= 3 ? { at: p[0], who: p[1], text: p.slice(2).join('|') } : { at: '', who: '', text: l }; });
+    },
+    async blAdd() {
+      if (!this.blText.trim()) return;
+      this.blBusy = true; this.blMsg = '';
+      try {
+        const d = await this.api({ action: 'baoLoi', op: 'add', text: this.blText, activity: this.blAct, note: this.blNote, ctv: this.isAdmin ? 'Tuan' : '' });
+        this.blMsg = '✓ Thêm ' + d.added + ' mail' + (d.dup.length ? ' · ' + d.dup.length + ' mail đang xử lý sẵn: ' + d.dup.join(', ') : '') + (d.notMine.length ? ' · không phải khách của Tuấn: ' + d.notMine.join(', ') : '');
+        this.blText = ''; this.blNote = ''; this.blAct = '';
+        const a = await this.api({ action: 'baoLoi', op: 'list' }); this.mergeBl(a.items);
+      } catch (e) { this.blMsg = '⚠ ' + e.message; }
+      this.blBusy = false;
+    },
+    async blOp(x, op, fields) {
+      x.busy = true; x.err = '';
+      try {
+        await this.api(Object.assign({ action: 'baoLoi', op: op, id: x.id }, fields || {}));
+        if (op === 'msg') x.msgIn = '';
+        if (op === 'set') x.edit = false;
+        const a = await this.api({ action: 'baoLoi', op: 'list' }); this.mergeBl(a.items);
+      } catch (e) { x.err = e.message; x.busy = false; }
+    },
+    askText() { return 'Các khách dưới đây vào YouTube > ảnh đại diện > Gói thành viên gia đình, gửi giúp mình email chủ gia đình đang hiện nhé:\n' + this.blList().map(x => '- ' + x.email).join('\n'); },
+    fixedText() { return 'Đã fix xong, khách kiểm tra lại YouTube Premium giúp mình (chưa thấy thì mở mail nhận lời mời vào nhóm mới):\n' + this.blList().map(x => '- ' + x.email).join('\n'); },
+
+    /* ---------- Hủy / hoàn tiền ---------- */
+    htTodo() { return this.isAdmin ? this.hts.filter(p => p.status === 'Chờ duyệt').length : 0; },
+    htGroups() {
+      const n = s => this.hts.filter(p => p.status === s).length;
+      return [{ key: 'cho', label: 'Chờ duyệt', n: n('Chờ duyệt') }, { key: 'duyet', label: 'Đã duyệt', n: n('Đã duyệt') }, { key: 'tuchoi', label: 'Từ chối', n: n('Từ chối') }, { key: 'all', label: 'Tất cả', n: this.hts.length }];
+    },
+    htList() { const m = { cho: 'Chờ duyệt', duyet: 'Đã duyệt', tuchoi: 'Từ chối' }; return this.hts.filter(p => this.htFilter === 'all' || p.status === m[this.htFilter]); },
+    async htCalc() {
+      this.htBusy = true; this.htMsg = ''; this.htPreview = null;
+      try { this.htPreview = await this.api(Object.assign({ action: 'hoanTien', op: 'calc' }, this.ht)); }
+      catch (e) { this.htMsg = '⚠ ' + e.message; }
+      this.htBusy = false;
+    },
+    async htAdd() {
+      this.htBusy = true; this.htMsg = '';
+      try {
+        const d = await this.api(Object.assign({ action: 'hoanTien', op: 'add' }, this.ht));
+        this.htMsg = '✓ Đã gửi phiếu ' + d.email + ' · hoàn ' + this.money(d.refund);
+        this.ht = { email: '', price: '', buy: '', reason: '' }; this.htPreview = null; this.htFilter = 'cho';
+        const b = await this.api({ action: 'hoanTien', op: 'list' }); this.hts = b.items.map(p => Object.assign(p, { busy: false, err: '' }));
+      } catch (e) { this.htMsg = '⚠ ' + e.message; }
+      this.htBusy = false;
+    },
+    async htOp(p, op) {
+      p.busy = true; p.err = '';
+      try {
+        const d = await this.api({ action: 'hoanTien', op: op, id: p.id });
+        if (op === 'approve') this.toast = d.kick ? 'Đã duyệt · ghi Hủy vào mail phụ ' + (d.kick.rn || '') : 'Đã duyệt (mail phụ đã có Hủy sẵn)';
+        const b = await this.api({ action: 'hoanTien', op: 'list' }); this.hts = b.items.map(q => Object.assign(q, { busy: false, err: '' }));
+        setTimeout(() => this.toast = '', 2500);
+      } catch (e) { p.err = e.message; p.busy = false; }
+    },
+    htText(p) {
+      return 'THÔNG TIN HOÀN TIỀN\nEmail: ' + p.email + '\nNgày mua: ' + p.buy + '\nHSD: ' + p.hsd + '\nĐã dùng: ' + (p.total - p.left) + '/' + p.total + ' ngày\nGiá gốc: ' + this.money(p.price) + '\nHoàn: ' + this.money(p.refund) + (p.reason ? '\nLý do: ' + p.reason : '');
+    },
+
+    money(n) { return (Number(n) || 0).toLocaleString('vi-VN') + 'đ'; },
+    async copy(t) {
+      try { await navigator.clipboard.writeText(t); }
+      catch (e) { const a = document.createElement('textarea'); a.value = t; document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove(); }
+      this.toast = 'Đã copy'; setTimeout(() => this.toast = '', 1200);
+    },
+  };
+}
+</script>
+</body>
+</html>
