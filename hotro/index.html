@@ -84,6 +84,9 @@ button,input,textarea{font:inherit;color:inherit}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex:none;border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:7px 13px;font-size:14px;cursor:pointer}
 .chip:hover{border-color:var(--accent);color:var(--accent)}
+.opts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.opt{border:1.5px solid var(--accent);background:var(--panel);color:var(--accent);border-radius:12px;padding:8px 14px;font-size:15px;font-weight:600;cursor:pointer;text-align:left}
+.opt:hover{background:var(--accent);color:var(--accent-ink)}
 .compose{display:flex;gap:8px;align-items:flex-end;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:var(--panel)}
 .compose textarea{flex:1;resize:none;max-height:140px;min-height:46px;padding:11px 14px;border:1px solid var(--line);border-radius:14px;background:var(--bg);outline:none;font-size:16px;line-height:1.4}
 .compose textarea:focus{border-color:var(--accent)}
@@ -119,7 +122,9 @@ button,input,textarea{font:inherit;color:inherit}
   const SB_KEY = "sb_publishable_GPVgOD3U3O_9yytoRnXv6w_jiiBibnH";
   const FN = SB_URL + "/functions/v1/support-bot";
   const STORE = "hotro_session";
-  const CHIPS = ["Mình bị mất YouTube Premium", "Không thấy lời mời vào nhóm", "Cần mã Netflix", "Cần mã 2FA ChatGPT", "Mình muốn gia hạn"];
+  const CHIPS = ["Mất YouTube Premium", "Không vào được nhóm mới", "Gia hạn / hỏi giá", "Lấy mã Netflix", "Mã 2FA ChatGPT", "Đổi sang email khác"];
+  // Bot gửi nút lựa chọn bằng dòng cuối [[A|B|C]]
+  const splitChoices = body => { const m = String(body || "").match(/\n?\s*\[\[([^\]]+)\]\]\s*$/); return m ? [body.slice(0, m.index).trim(), m[1].split("|").map(x => x.trim()).filter(Boolean).slice(0, 4)] : [body, []]; };
   const ICON = {
     chat: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 7a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-5l-4.5 4v-4.2A4 4 0 0 1 4 13z"/></svg>',
     send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>',
@@ -200,11 +205,14 @@ button,input,textarea{font:inherit;color:inherit}
   function msgHtml(m) {
     if (m.role === "he_thong") return `<div class="sys">${esc(m.body.replace(/^Đã chuyển cho người phụ trách:.*/, "Đã chuyển cho người phụ trách"))}</div>`;
     const me = m.role === "khach", human = m.role === "admin";
+    const [text, choices] = me ? [m.body, []] : splitChoices(m.body);
+    const last = S.msgs.filter(x => x.role !== "he_thong").at(-1) === m;
+    const opts = choices.length && last && !S.sending ? `<div class="opts">${choices.map(c => `<button class="opt" data-chip="${esc(c)}">${esc(c)}</button>`).join("")}</div>` : "";
     return `<div class="row ${me ? "me" : "them"} ${human ? "human" : ""}">
       ${me ? "" : `<div class="who-tag">${human ? "Người phụ trách" : "Trợ lý"}</div>`}
-      ${m.image_url || m.preview ? `<div class="bubble has-img"><img class="shot" src="${esc(m.preview || m.image_url)}" alt="Ảnh đã gửi" data-view>${m.body ? `<div class="cap">${linkify(m.body)}</div>` : ""}</div>`
-        : m.image ? `<div class="bubble">[Ảnh]${m.body ? "<br>" + linkify(m.body) : ""}</div>` : `<div class="bubble">${linkify(m.body)}</div>`}
-      <div class="time">${hm(m.created_at)}</div></div>`;
+      ${m.image_url || m.preview ? `<div class="bubble has-img"><img class="shot" src="${esc(m.preview || m.image_url)}" alt="Ảnh đã gửi" data-view>${text ? `<div class="cap">${linkify(text)}</div>` : ""}</div>`
+        : m.image ? `<div class="bubble">[Ảnh]${text ? "<br>" + linkify(text) : ""}</div>` : `<div class="bubble">${linkify(text)}</div>`}
+      <div class="time">${hm(m.created_at)}</div>${opts}</div>`;
   }
   function renderChat() {
     const st = S.ticket.status;
