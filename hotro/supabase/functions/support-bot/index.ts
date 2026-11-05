@@ -206,21 +206,30 @@ Luật bắt buộc:
 KIẾN THỨC CỦA SHOP:
 `;
 
-async function gemini(body: unknown) {
+// Tổng thời gian chờ AI cho 1 tin khách: quá thì chuyển người, không để khách đợi đơ
+const AI_BUDGET_MS = 45000;
+async function gemini(body: unknown, deadline = Date.now() + AI_BUDGET_MS) {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw new UserError("Bot chưa được cấu hình.");
   const models = [...new Set([Deno.env.get("GEMINI_MODEL") || "gemini-3.6-flash", "gemini-flash-latest", "gemini-flash-lite-latest"])];
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
-      const r = await fetch(`${GEM}/${model}:generateContent?key=${key}`, {
-        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-      });
-      const d = await r.json();
+      const left = deadline - Date.now();
+      if (left < 3000) return null;
+      const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), Math.min(left, 25000));
+      let r: Response, d: any;
+      try {
+        r = await fetch(`${GEM}/${model}:generateContent?key=${key}`, {
+          method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctl.signal,
+        });
+        d = await r.json();
+      } catch (e) { console.error("gemini", model, "timeout/network", String(e).slice(0, 120)); break; }
+      finally { clearTimeout(timer); }
       if (!d.error) return d;
       console.error("gemini", model, r.status, String(d.error.message || "").slice(0, 300));
       const busy = r.status === 503 || r.status === 429 || /overloaded|unavailable|high demand|try again/i.test(d.error.message || "");
       if (!busy || r.status === 429) break; // hết hạn mức: thử model khác luôn, không chờ
-      await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
+      await new Promise((ok) => setTimeout(ok, 1200));
     }
   }
   return null;
@@ -244,8 +253,9 @@ async function botReply(t: any) {
   const ctx: { escalate?: string } = {};
   const sys = RULES + String(kb?.value?.text || "") + `\nEmail của phiên chat: ${t.email}. Hôm nay: ${new Date().toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })}.`;
 
+  const deadline = Date.now() + AI_BUDGET_MS;
   for (let step = 0; step < 5; step++) {
-    const d = await gemini({ systemInstruction: { parts: [{ text: sys }] }, contents, tools: TOOLS, generationConfig: { temperature: 0.3 } });
+    const d = await gemini({ systemInstruction: { parts: [{ text: sys }] }, contents, tools: TOOLS, generationConfig: { temperature: 0.3 } }, deadline);
     if (!d) { ctx.escalate = ctx.escalate || "Bot (AI) đang lỗi/quá tải"; return { text: "", ctx }; }
     const content = d.candidates?.[0]?.content;
     const parts = content?.parts || [];
