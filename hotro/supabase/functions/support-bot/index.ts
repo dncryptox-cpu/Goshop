@@ -209,7 +209,7 @@ KIẾN THỨC CỦA SHOP:
 async function gemini(body: unknown) {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw new UserError("Bot chưa được cấu hình.");
-  const models = [...new Set([Deno.env.get("GEMINI_MODEL") || "gemini-3.6-flash", "gemini-flash-latest"])];
+  const models = [...new Set([Deno.env.get("GEMINI_MODEL") || "gemini-3.6-flash", "gemini-flash-latest", "gemini-flash-lite-latest"])];
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const r = await fetch(`${GEM}/${model}:generateContent?key=${key}`, {
@@ -219,7 +219,7 @@ async function gemini(body: unknown) {
       if (!d.error) return d;
       console.error("gemini", model, r.status, String(d.error.message || "").slice(0, 300));
       const busy = r.status === 503 || r.status === 429 || /overloaded|unavailable|high demand|try again/i.test(d.error.message || "");
-      if (!busy) break;
+      if (!busy || r.status === 429) break; // hết hạn mức: thử model khác luôn, không chờ
       await new Promise((ok) => setTimeout(ok, 1500 * (attempt + 1)));
     }
   }
