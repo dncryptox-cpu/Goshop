@@ -27,7 +27,7 @@ create table if not exists public.desk_inbox (
   raw        text not null default '',              -- nguyên văn / chú thích / lời voice
   fwd        text,                                  -- chuyển tiếp từ ai
   title      text,
-  kind       text not null default 'note' check (kind in ('task','customer','idea','note','link')),
+  kind       text not null default 'remind' check (kind in ('shop','personal','trading','crypto','remind')),
   due        date,
   status     text not null default 'inbox' check (status in ('inbox','todo','waiting','done','trash')),
   memo       text,                                  -- ghi chú xử lý

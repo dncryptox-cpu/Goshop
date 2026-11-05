@@ -235,6 +235,10 @@ footer .btn{padding:4px 10px;font-size:12px}
 .iacts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .iacts .btn.ok{background:var(--good);border-color:var(--good);color:#fff}
 .iacts .saved{margin-left:auto}
+.cp{font-family:var(--f-mono);font-size:.92em;background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--ink);border:1px dashed color-mix(in srgb,var(--accent) 55%,transparent);border-radius:5px;padding:0 5px;cursor:copy;overflow-wrap:anywhere;-webkit-user-select:all;user-select:all}
+.cp:hover{background:color-mix(in srgb,var(--accent) 22%,transparent)}
+.cp.ok{background:var(--good);border-color:var(--good);color:#fff}
+#iCats{margin:12px 0 4px}
 .iempty{color:var(--muted);text-align:center;padding:40px 8px}
 .iempty b{display:block;font-family:var(--f-display);font-size:20px;color:var(--ink);margin-bottom:4px}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 14px;font-size:14px;display:flex;gap:14px;align-items:center;box-shadow:0 6px 24px rgba(0,0,0,.2);z-index:20;max-width:calc(100vw - 32px)}
@@ -335,7 +339,8 @@ footer .btn{padding:4px 10px;font-size:12px}
         </div>
         <input id="iq" type="search" placeholder="Tìm" aria-label="Tìm trong Inbox">
       </div>
-      <div id="iList" style="margin-top:12px"></div>
+      <div class="chips" id="iCats" role="group" aria-label="Lọc theo mảng"></div>
+      <div id="iList"></div>
       <div class="saved" id="iNote" style="margin-top:10px"></div>
     </div>
   </section>
@@ -788,10 +793,10 @@ $('nDel').addEventListener('click', ()=>{
 window.addEventListener('beforeunload', ()=>{ Object.keys(noteTimers).forEach(id=>{ clearTimeout(noteTimers[id]); if (noteDirty.has(id)) persistNote(id); }); });
 
 /* ---------- inbox: mọi thứ nhắn vào bot + ghi nhanh trên web ---------- */
-const IKIND = {task:{label:'Việc',m:'build'}, customer:{label:'Khách',m:'ops'}, idea:{label:'Ý tưởng',m:'mind'}, note:{label:'Ghi chú',m:'rest'}, link:{label:'Link',m:'research'}};
+const IKIND = {shop:{label:'Shop',m:'ops'}, personal:{label:'Cá nhân',m:'body'}, trading:{label:'Trading',m:'market'}, crypto:{label:'Crypto',m:'research'}, remind:{label:'Nhớ',m:'mind'}};
 const ISTAT = {inbox:'Mới vào', todo:'Làm', waiting:'Chờ người khác', done:'Xong', trash:'Đã bỏ'};
-const KIND2TAG = {customer:'shop', idea:'idea', link:'research', task:'other', note:'other'};
-let inbox = {}, iView = 'now', iQuery = '', iOpen = null, iLoaded = false, iChannel = null;
+const KIND2TAG = {shop:'shop', trading:'trading', crypto:'trading', personal:'other', remind:'other'};
+let inbox = {}, iCat = 'all', iView = 'now', iQuery = '', iOpen = null, iLoaded = false, iChannel = null;
 const iTimers = {}, iVer = {}, signed = {};
 let toastT = null;
 
@@ -800,7 +805,22 @@ function nextMonday(d){ const w = dow(d); return addDays(d, ((8-w)%7)||7); }
 function fmtDue(d){ if (!d) return ''; const t = todayStr(); if (d===t) return 'Hôm nay'; if (d===addDays(t,1)) return 'Mai'; if (d===addDays(t,-1)) return 'Hôm qua'; return `${WD[dow(d)]} ${d.slice(8)}/${d.slice(5,7)}`; }
 const tsMs = v => v ? new Date(v).getTime() : 0;
 function iHead(it){ return (it.title||'').trim() || (it.raw||'').trim().split('\n')[0].slice(0,90) || (it.files&&it.files.length ? 'Tệp đính kèm' : 'Chưa có nội dung'); }
-function linkify(s){ return escapeHtml(s).replace(/https?:\/\/[^\s<]+/g, u=>`<a href="${u}" target="_blank" rel="noopener">${u}</a>`); }
+/* email, mật khẩu, mã 2FA → ô bấm-là-chép; link → bấm mở */
+const CRED_RE = /(https?:\/\/[^\s<]+)|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)(?:([|:\/\t])([^\s|]+))?(?:\|([^\s|]+))?|((?:pass(?:word)?|pw|mk|m[aậ]t\s*kh[aẩ]u|2fa|otp|code)\s*[:=]\s*)((?:[A-Za-z2-7]{4} ){3,7}[A-Za-z2-7]{4}\b|\S+)|(\b(?=[A-Za-z2-7 ]*[2-7])(?:[A-Za-z2-7]{4} ){3,7}[A-Za-z2-7]{4}\b|\b[A-Z2-7]{16,64}\b)/gi;
+const chip = v => `<span class="cp" role="button" tabindex="0" data-cp="${escapeAttr(v)}" title="Bấm để chép">${escapeHtml(v)}</span>`;
+function linkify(s){
+  s = String(s??''); let out = '', last = 0;
+  s.replace(CRED_RE, (m, url, em, sep, v1, v2, kw, kv, key, off)=>{
+    out += escapeHtml(s.slice(last, off)); last = off + m.length;
+    if (url) out += `<a href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a>`;
+    else if (em) out += chip(em) + (sep ? escapeHtml(sep) + chip(v1) : '') + (v2 ? '|' + chip(v2) : '');
+    else if (kw) out += escapeHtml(kw) + chip(kv.replace(/\s+/g,''));
+    else if (key) out += chip(key.replace(/\s+/g,''));
+    else out += escapeHtml(m);
+    return m;
+  });
+  return out + escapeHtml(s.slice(last));
+}
 
 /* phân nhóm: việc "Hẹn sau" và "Chờ" chỉ hiện ở Cần xử lý khi tới ngày */
 function bucket(it){
@@ -833,6 +853,10 @@ function renderInbox(){
   if (!sb || !sbUser){ box.innerHTML = '<div class="iempty"><b>Cần đăng nhập</b>Inbox lấy dữ liệu từ bot nên chỉ xem được khi đã đăng nhập.</div>'; return; }
   const q = fold(iQuery); const t = todayStr();
   let list = Object.values(inbox).filter(it => (q ? true : bucket(it)===iView) && (!q || fold([it.title,it.raw,it.memo,it.fwd].join(' ')).includes(q)));
+  const cc = {}; list.forEach(it=>{ const k = IKIND[it.kind] ? it.kind : 'personal'; cc[k] = (cc[k]||0)+1; });
+  $('iCats').innerHTML = `<button type="button" data-cat="all" aria-pressed="${iCat==='all'}">Tất cả ${list.length}</button>` +
+    Object.entries(IKIND).map(([k,v])=>`<button type="button" data-cat="${k}" style="--mc:${modeVar(v.m)}" aria-pressed="${iCat===k}">${v.label} ${cc[k]||0}</button>`).join('');
+  if (iCat!=='all') list = list.filter(it => (IKIND[it.kind] ? it.kind : 'personal')===iCat);
   if (q) list = list.filter(it=>it.status!=='trash' || iView==='trash');
   const groups = [];
   if (!q && iView==='now'){
@@ -849,7 +873,7 @@ function renderInbox(){
     groups.push([q?`Kết quả tìm (${list.length})`:'', list.sort((a,b)=>tsMs(b.done_at||b.updated_at)-tsMs(a.done_at||a.updated_at))]);
   }
   if (!list.length){
-    const msg = q ? ['Không thấy', 'Thử từ khác.'] :
+    const msg = q ? ['Không thấy', 'Thử từ khác.'] : iCat!=='all' ? ['Trống', `Không có mục ${IKIND[iCat].label} ở đây.`] :
       iView==='now' ? ['Inbox trống', 'Mọi thứ đã có chỗ. Cứ ném tiếp vào bot.'] :
       iView==='later' ? ['Chưa hẹn gì', 'Đặt ngày cho một mục, nó nằm đây và tự quay lại đúng hôm đó.'] :
       iView==='wait' ? ['Không chờ ai', 'Mục chờ người khác trả lời nằm ở đây. Đặt ngày để nhắc hỏi lại.'] :
@@ -860,7 +884,7 @@ function renderInbox(){
   loadThumbs(list);
 }
 function iItemHtml(it){
-  const k = IKIND[it.kind]||IKIND.note; const t = todayStr();
+  const k = IKIND[it.kind]||IKIND.personal; const t = todayStr();
   const body = (it.raw||'').replace(/\s+/g,' ').trim();
   const dueCls = it.due ? (it.due < t && !['done','trash'].includes(it.status) ? 'late' : it.due===t ? 'today' : '') : '';
   const imgs = (it.files||[]).filter(f=>/^image\//.test(f.type)).slice(0,4);
@@ -871,8 +895,8 @@ function iItemHtml(it){
   const open = iOpen===it.id;
   return `<div class="iit ${it.status} ${open?'open':''}" data-id="${it.id}" style="--mc:${modeVar(k.m)}">
     <div class="ihead" data-tog="${it.id}" role="button" tabindex="0" aria-expanded="${open}">
-      <div><div class="ititle">${escapeHtml(iHead(it))}</div>
-        ${body && (it.title||'').trim() && !open ? `<div class="iprev">${escapeHtml(body.slice(0,240))}</div>` : ''}
+      <div><div class="ititle">${linkify(iHead(it))}</div>
+        ${body && (it.title||'').trim() && !open ? `<div class="iprev">${linkify(body.slice(0,240))}</div>` : ''}
         <div class="imeta"><span class="k">${k.label}</span>${it.due?`<span class="due ${dueCls}">${it.status==='waiting'?'Hỏi lại ':''}${fmtDue(it.due)}</span>`:''}${it.status==='waiting'&&!it.due?'<span>Chờ người khác</span>':''}<span>${it.src==='telegram'?'Bot':'Web'} · ${fmtWhen(tsMs(it.created_at))}</span>${it.fwd?`<span>↪ ${escapeHtml(it.fwd)}</span>`:''}${nf?`<span>📎 ${nf}</span>`:''}</div>
         ${imgs.length && !open ? `<div class="ithumbs">${imgs.map(f=>`<img alt="" data-path="${escapeAttr(f.path)}">`).join('')}</div>` : ''}
       </div>
@@ -970,6 +994,11 @@ function setStatus(id, status, label){
 }
 
 $('iList').addEventListener('click', async e=>{
+  const cp = e.target.closest('.cp');
+  if (cp){ e.stopPropagation(); e.preventDefault(); const v = cp.dataset.cp;
+    try { await navigator.clipboard.writeText(v); } catch(err){ const ta = document.createElement('textarea'); ta.value = v; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+    cp.classList.add('ok'); setTimeout(()=>cp.classList.remove('ok'), 900); toast('Đã chép: '+v); return; }
+  if (e.target.closest('.raw a, .iprev a, .ititle a')) { e.stopPropagation(); return; }
   const a = e.target.closest('[data-a]');
   if (a){
     e.stopPropagation(); const id = +a.dataset.id; const it = inbox[id]; if (!it) return;
@@ -1001,7 +1030,7 @@ $('iList').addEventListener('click', async e=>{
   const h = e.target.closest('[data-tog]');
   if (h){ const id = +h.dataset.tog; iOpen = iOpen===id ? null : id; renderInbox(); if (iOpen) document.querySelector(`.iit[data-id="${id}"]`)?.scrollIntoView({block:'nearest'}); }
 });
-$('iList').addEventListener('keydown', e=>{ if ((e.key==='Enter'||e.key===' ') && e.target.matches('[data-tog]')){ e.preventDefault(); e.target.click(); }});
+$('iList').addEventListener('keydown', e=>{ if ((e.key==='Enter'||e.key===' ') && (e.target.matches('[data-tog]') || e.target.matches('.cp'))){ e.preventDefault(); e.target.click(); }});
 $('iList').addEventListener('input', e=>{
   const f = e.target.dataset.f; if (!f || f==='due' || f==='kind') return;
   const id = +e.target.closest('.iit').dataset.id; const n = $('iSaved-'+id); if (n) n.textContent = 'Đang gõ…';
@@ -1016,6 +1045,7 @@ $('iList').addEventListener('change', e=>{
   iPatch(id, patch); renderInbox();
 });
 $('iView').addEventListener('click', e=>{ const b = e.target.closest('[data-v]'); if (!b) return; iView = b.dataset.v; iOpen = null; renderInbox(); });
+$('iCats').addEventListener('click', e=>{ const b = e.target.closest('[data-cat]'); if (!b) return; iCat = b.dataset.cat; renderInbox(); });
 $('iq').addEventListener('input', e=>{ iQuery = e.target.value; renderInbox(); });
 $('inboxPill').addEventListener('click', ()=>{ iView = 'now'; document.querySelector('[data-tab="inbox"]').click(); });
 
@@ -1040,7 +1070,7 @@ async function flushCaptures(){
     while (true){
       const cur = lsGet('desk.inboxq', []); if (!cur.length) break;
       const c = cur[0];
-      const {data, error} = await sb.from('desk_inbox').insert({user_id:sbUser.id, src:'web', raw:c.raw, kind: /^https?:\/\/\S+$/.test(c.raw)?'link':'task', status:'inbox', created_at:c.created_at}).select().single();
+      const {data, error} = await sb.from('desk_inbox').insert({user_id:sbUser.id, src:'web', raw:c.raw, kind:'personal', status:'inbox', created_at:c.created_at}).select().single();
       if (error) throw error;
       inbox[data.id] = data; lsSet('desk.inboxq', lsGet('desk.inboxq', []).slice(1));
     }

@@ -13,7 +13,7 @@ const CHAT = Deno.env.get("TG_CHAT_ID") || "1134598172";
 const DESK = "https://godnc.com/desk/";
 const TZ_MS = 7 * 3600e3;
 const BUCKET = "desk-inbox";
-const KIND: Record<string, string> = { task: "Việc", customer: "Khách", idea: "Ý tưởng", note: "Ghi chú", link: "Link" };
+const KIND: Record<string, string> = { shop: "Shop", personal: "Cá nhân", trading: "Trading", crypto: "Crypto", remind: "Nhớ" };
 
 const ok = (b: unknown = { ok: true }) => new Response(JSON.stringify(b), { headers: { "Content-Type": "application/json" } });
 const esc = (s: string) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
@@ -116,8 +116,13 @@ async function enrich(raw: string, fwd: string | null, media: { type: string; by
   const prompt = `Bạn là trợ lý phân loại hộp thư cho DNL — chủ shop bán tài khoản YouTube Premium/Netflix/ChatGPT chia sẻ (có CTV Tuấn, Vương, Lộc), đồng thời trade crypto và chạy trail.
 Hôm nay là ${t} (${WD[new Date(t + "T00:00:00Z").getUTCDay()]}), múi giờ GMT+7.
 Đọc mục DNL vừa ghi lại (chữ, ảnh chụp màn hình, voice, file) và trả JSON:
-{"title": tiêu đề ngắn ≤ 12 từ, nói rõ cần làm gì hoặc là gì, tiếng Việt, giữ tên người/email/số quan trọng,
- "kind": "task" (việc phải làm) | "customer" (liên quan khách hàng, gia hạn, lỗi fam, hoàn tiền) | "idea" (ý tưởng) | "link" (chỉ là link để xem) | "note" (thông tin để lưu),
+{"title": tiêu đề ngắn ≤ 12 từ, nói rõ cần làm gì hoặc là gì, tiếng Việt, giữ nguyên tên người, email, số điện thoại,
+ "kind": mảng của mục, chọn 1:
+   "shop" — Goshop: khách, đơn, gia hạn, fam, CTV, email/mật khẩu/2FA tài khoản YouTube, Netflix, ChatGPT, hoàn tiền
+   "trading" — lệnh, setup, chart, sàn, futures, funding, nhật ký giao dịch
+   "crypto" — coin, ví, airdrop, onchain, nắm giữ dài hạn, dự án crypto
+   "personal" — việc cá nhân, gia đình, chạy bộ, sức khoẻ, mua sắm, học, build app riêng
+   "remind" — thứ cần nhớ làm vào lúc nào đó, không gấp, không thuộc rõ mảng nào,
  "due": "YYYY-MM-DD" nếu nội dung nêu rõ thời hạn (mai, thứ 6, tối nay, 20/11...) còn không thì null,
  "transcript": nếu có voice/audio thì chép nguyên lời tiếng Việt, không thì null,
  "summary": nếu là ảnh chụp/file thì tóm tắt 1-2 câu nội dung chính (tên khách, email, yêu cầu), không thì null}`;
@@ -136,7 +141,7 @@ Hôm nay là ${t} (${WD[new Date(t + "T00:00:00Z").getUTCDay()]}), múi giờ GM
       if (!r.ok) { console.error("gemini", model, r.status, (await r.text()).slice(0, 200)); continue; }
       const j = await r.json();
       const out = JSON.parse(j.candidates?.[0]?.content?.parts?.map((p: any) => p.text || "").join("") || "{}");
-      if (!KIND[out.kind]) out.kind = "note";
+      if (!KIND[out.kind]) out.kind = "remind";
       if (out.due && !/^\d{4}-\d{2}-\d{2}$/.test(out.due)) out.due = null;
       out.model = model;
       return out;
@@ -146,11 +151,24 @@ Hôm nay là ${t} (${WD[new Date(t + "T00:00:00Z").getUTCDay()]}), múi giờ GM
 }
 
 /* ---------- tin trả lời trong Telegram ---------- */
+/* email / mật khẩu / mã 2FA → <code> để chạm là chép trong Telegram */
+function creds(raw: string): string[] {
+  const out: string[] = [];
+  const add = (v?: string) => { v = (v || "").trim(); if (v && !out.includes(v)) out.push(v); };
+  for (const line of String(raw || "").split("\n")) {
+    for (const m of line.matchAll(/([\w.+-]+@[\w-]+(?:\.[\w-]+)+)(?:[|:\/\t]([^\s|]+))?(?:\|([^\s|]+))?/g)) { add(m[1]); add(m[2]); add(m[3]); }
+    for (const m of line.matchAll(/(?:pass(?:word)?|pw|mk|m[aậ]t\s*kh[aẩ]u|2fa|otp|code)\s*[:=]\s*((?:[A-Za-z2-7]{4} ){3,7}[A-Za-z2-7]{4}\b|\S+)/gi)) add(m[1].replace(/\s+/g, ""));
+    for (const m of line.matchAll(/\b(?=[A-Za-z2-7 ]*[2-7])(?:[A-Za-z2-7]{4} ){3,7}[A-Za-z2-7]{4}\b|\b[A-Z2-7]{16,64}\b/g)) add(m[0].replace(/\s+/g, ""));
+  }
+  return out.slice(0, 8);
+}
 function card(it: any) {
   const head = it.title || (it.raw || "").split("\n")[0].slice(0, 80) || "Tệp đính kèm";
   const st = it.status === "done" ? "✅ Xong · " : it.status === "trash" ? "🗑 Đã bỏ · " : "📥 ";
   const meta = [KIND[it.kind] || "Ghi chú", it.due ? "hạn " + fmtDue(it.due) : "", (it.files || []).length ? `📎${it.files.length}` : ""].filter(Boolean).join(" · ");
-  return `${st}<b>${esc(head)}</b>\n<i>#${it.id} · ${meta}</i>`;
+  const cs = creds([it.title, it.raw].filter(Boolean).join("\n"));
+  const copy = cs.length ? `\n📋 ${cs.map((c) => `<code>${esc(c)}</code>`).join("  ")}` : "";
+  return `${st}<b>${esc(head)}</b>${copy}\n<i>#${it.id} · ${meta}</i>`;
 }
 function kb(it: any) {
   if (it.status === "done" || it.status === "trash") return { inline_keyboard: [[{ text: "↩️ Mở lại", callback_data: `d:open:${it.id}` }, { text: "Mở Desk", url: DESK }]] };
@@ -178,7 +196,7 @@ async function capture(m: any) {
   // 1) ghi ngay bản thô — kể cả AI/tải file lỗi thì mục vẫn còn
   const ins = await db.from("desk_inbox").upsert({
     user_id: uid, src: "telegram", tg_chat: m.chat.id, tg_msg: m.message_id, tg_group: m.media_group_id || null,
-    raw, fwd, kind: /^https?:\/\/\S+$/.test(raw) ? "link" : "note", status: "inbox",
+    raw, fwd, kind: "remind", status: "inbox",
     created_at: new Date(m.date * 1000).toISOString(),
   }, { onConflict: "tg_chat,tg_msg", ignoreDuplicates: true }).select().maybeSingle();
   if (ins.error) throw ins.error;
