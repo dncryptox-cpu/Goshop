@@ -345,7 +345,7 @@ function byStatus(t: any, v: any): Out {
   }
 }
 
-const NOT_FOUND = (t: any) => `Email ${t.email} chưa có trong danh sách khách YouTube Premium của shop, nên mình chưa hỗ trợ được gói YouTube.\nBạn kiểm tra lại email đã dùng để mua gói nhé.` + btn(C.khac, C.nf, C.gpt, C.nguoi);
+const NOT_FOUND = (t: any) => `Email ${t.email} chưa có trong danh sách khách.\nBạn kiểm tra lại email đã dùng để mua gói nhé.` + btn(C.khac, C.nf, C.gpt, C.nguoi);
 
 async function flow(t: any, text: string): Promise<Out | null> {
   const x = text.trim();
