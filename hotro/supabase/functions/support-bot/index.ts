@@ -26,6 +26,8 @@ const dmy = (v: unknown) => {
   if (/^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}$/.test(s)) return s;
   const t = T(v); return t ? new Date(t).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" }) : s;
 };
+const hm = (v: unknown) => { const t = T(v); if (!t) return ""; const d = new Date(t + 7 * 3600e3), p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} ${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}`; }; // giờ VN
 const mask = (e: string) => { const [u, d] = String(e || "").split("@"); return d ? u.slice(0, 2) + "***@" + d : ""; };
 
 /* ---------------- dữ liệu ---------------- */
@@ -89,8 +91,13 @@ async function renewApi(action: string, payload: Record<string, unknown>) {
 
 // Diễn giải trạng thái cho khách: logic resolve() của fixytb + chặn 2 ca bot không được nói "đang xử lý":
 // fam đang Banned/ver mà chưa có lời mời mới, hoặc báo lỗi mở quá 3 ngày chưa ai xử lý → cần người.
-function resolve(r: any) {
+function resolve(r: any, fs: any = null) {
   const v: any = resolveFam(r);
+  // thayfam đánh dấu "🗑 Đã xoá nhóm · chờ mời FR": nhóm cũ đã ngừng, khách cần rời trước rồi chờ mời
+  if (fs && fs.state === "deleted" && !["da_moi", "da_vao_nhom", "het_han", "cho_moi_lai"].includes(v.trang_thai)) {
+    return { ...v, nhom: fs.rn || v.nhom, trang_thai: "da_xoa_nhom", xoa_luc: fs.at || "",
+      giai_thich: "Admin đã xoá nhóm cũ, đang chờ mời vào nhóm mới. Bảo khách rời nhóm cũ trước rồi đợi mail mời, thường trong buổi." };
+  }
   const fam = r.fam || null, famStatus = String(fam?.status || "");
   const famBad = /ban|ver|lỗi|loi|khoá|khóa|die/i.test(famStatus);
   const open = r.has_ticket && r.status !== "Đã xử lý";
@@ -112,7 +119,7 @@ function resolveFam(r: any) {
   const rjAfter = (t: number) => rj && T(rj.created_at) >= t;
   const fromRejoin = () => {
     if (rj.type === "da_vao") return { ...base, trang_thai: "da_vao_nhom", giai_thich: "Khách đã xác nhận vào nhóm mới." };
-    if (rj.status === "Đã mời lại") return { ...base, trang_thai: "da_moi", giai_thich: "Đã gửi lại lời mời. Khách làm 3 bước rời nhóm cũ → tham gia nhóm mới → kiểm tra Premium." };
+    if (rj.status === "Đã mời lại") return { ...base, trang_thai: "da_moi", luc_moi: hm(rj.done_at || rj.updated_at || rj.created_at), giai_thich: "Đã gửi lại lời mời. Khách làm 3 bước rời nhóm cũ → tham gia nhóm mới → kiểm tra Premium." };
     return { ...base, trang_thai: "cho_moi_lai", giai_thich: "Khách đã yêu cầu mời lại, bên mình đang xử lý." };
   };
   if (fam && fam.due) return { ...base, trang_thai: "dang_xu_ly", giai_thich: "Nhóm đến hạn, bên mình đang xếp nhóm mới. Khách chưa cần làm gì." };
@@ -126,7 +133,7 @@ function resolveFam(r: any) {
       return { ...base, trang_thai: "het_han", giai_thich: "Gói đã hết hạn. Muốn dùng tiếp cần gia hạn → chuyển người phụ trách." };
     }
     if (rjAfter(at)) return fromRejoin();
-    return { ...base, trang_thai: "da_moi", nhom_moi_cua: mask(tf.new_owner), giai_thich: "Đã mời vào nhóm mới. Khách làm 3 bước rời nhóm cũ → tham gia nhóm mới → kiểm tra Premium." };
+    return { ...base, trang_thai: "da_moi", nhom_moi_cua: mask(tf.new_owner), luc_moi: hm(tf.at), giai_thich: "Đã mời vào nhóm mới. Khách làm 3 bước rời nhóm cũ → tham gia nhóm mới → kiểm tra Premium." };
   }
   if (open && r.activity_status === "Đang hoạt động")
     return { ...base, trang_thai: "dang_kiem_tra", giai_thich: "Đã nhận báo lỗi, nhóm vẫn hiện bình thường nên kỹ thuật đang kiểm tra. Dặn khách ĐỪNG rời nhóm." };
@@ -297,10 +304,28 @@ async function escalate(t: any, why: string) {
 }
 
 /* ---------------- tra cứu có lưu tạm (API renew chậm ~15-20s) ---------------- */
+// Trạng thái fam bên thayfam (cần secret THAYFAM_KEY = key 1 tài khoản thayfam; thiếu key thì bỏ qua)
+const THAYFAM_API = "https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec";
+async function thayfamState(email: string) {
+  const key = Deno.env.get("THAYFAM_KEY");
+  if (!key) return null;
+  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const r = await fetch(THAYFAM_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "search", q: email, pass: key }), signal: ctl.signal });
+    const d = await r.json();
+    if (!d.ok) { console.error("thayfam", d.error); return null; }
+    const f = (d.items || []).find((x: any) => (x.customers || []).some((c: any) => String(c.email || "").trim().toLowerCase() === email));
+    return f && f.famState ? { ...f.famState, rn: f.rn } : null;
+  } catch (e) { console.error("thayfam", String(e).slice(0, 120)); return null; }
+  finally { clearTimeout(timer); }
+}
+
 async function lookup(t: any) {
+  const fsP = thayfamState(t.email);
   let r = await renewApi("checkStatusV2", { email: t.email });
   if (r && !r.success && /không hợp lệ/i.test(r.message || "")) r = await renewApi("checkStatus", { email: t.email });
-  const v = r && r.success ? { found: true, ...resolve(r) } : { found: false };
+  const fs = await fsP;
+  const v = r && r.success ? { found: true, ...resolve(r, fs) } : { found: false };
   const patch: any = { kh: v, kh_at: new Date().toISOString(), verified: v.found ? "ok" : "not_found" };
   if (v.found && (v as any).ctv) patch.ctv = (v as any).ctv;
   await db.from("support_tickets").update(patch).eq("id", t.id);
@@ -324,11 +349,10 @@ const PRICES: [string, string][] = [["1 tháng", "30k"], ["3 tháng", "80k"], ["
 const btn = (...xs: string[]) => "\n[[" + xs.join("|") + "]]";
 const MENU = btn(C.mat, C.vao, C.gh, C.nf, C.gpt, C.mail, C.nguoi);
 const guide = (t: any) => "https://godnc.com/fixytb/?email=" + encodeURIComponent(t.email);
-const STEPS = (t: any, v: any) => `Bạn đã được mời vào nhóm mới${v.nhom ? " (" + v.nhom + ")" : ""}. Làm 3 bước, khoảng 1 phút:
+const STEPS = (t: any, v: any) => `Bạn đã được mời vào nhóm mới${v.nhom ? " (" + v.nhom + ")" : ""}${v.luc_moi ? " lúc " + v.luc_moi : ""}. Làm 3 bước, khoảng 1 phút:
 1. Mở trang Gia đình ${FAMILY}. Nhóm cũ báo "không hoạt động" thì bấm Rời khỏi nhóm gia đình. Nhóm cũ vẫn bình thường thì KHÔNG rời.
 2. Đợi 30 giây, mở lại trang Gia đình hoặc Gmail, bấm Tham gia ở lời mời.
-3. Mở YouTube, bấm ảnh đại diện, thấy chữ Premium là xong.
-Hướng dẫn có hình: ${guide(t)}` + btn(C.ok, C.r1, C.r2, C.r3);
+3. Mở YouTube, bấm ảnh đại diện, thấy chữ Premium là xong.` + btn(C.ok, C.r1, C.r2, C.r3);
 
 type Out = { text: string; escalate?: string };
 function byStatus(t: any, v: any): Out {
@@ -337,7 +361,8 @@ function byStatus(t: any, v: any): Out {
     case "da_moi": return { text: STEPS(t, v) };
     case "dang_kiem_tra": return { text: `Bên mình đã nhận báo lỗi, kỹ thuật đang kiểm tra ${n} (thường 15–60 phút).\nBạn ĐỪNG rời nhóm nhé: nhóm vẫn đang chạy, rời lúc này Google sẽ khoá đổi nhóm 12 tháng. Xong mình báo ngay ở đây.` + btn(C.nguoi) };
     case "dang_xu_ly": return { text: `${n[0].toUpperCase() + n.slice(1)} đang được thay mới.${hsd} Bạn chưa cần làm gì, khi có lời mời mình sẽ hướng dẫn ngay ở đây.\nCần dùng YouTube ngay thì mượn tài khoản tạm tại: ${guide(t)}` + btn(C.nguoi) };
-    case "cho_moi_lai": return { text: `Bên mình đang gửi lại lời mời cho bạn, thường 15–30 phút. Bạn không cần báo lại. Có lời mời thì làm theo hướng dẫn: ${guide(t)}` + btn(C.ok, C.nguoi) };
+    case "cho_moi_lai": return { text: `Bên mình đang gửi lại lời mời cho bạn, thường 15–30 phút. Bạn không cần báo lại. Có lời mời thì làm 3 bước: rời nhóm cũ (nếu báo không hoạt động) → bấm Tham gia ở lời mời → kiểm tra YouTube có chữ Premium.` + btn(C.ok, C.nguoi) };
+    case "da_xoa_nhom": return { text: `Nhóm gia đình ${v.nhom || "cũ"} của bạn đã ngừng hoạt động${v.xoa_luc ? " từ " + v.xoa_luc : ""}.\nBạn vui lòng rời nhóm cũ trước: mở ${FAMILY}, bấm Rời khỏi nhóm gia đình.\nSau đó đợi admin mời lại, bạn sẽ nhận được mail mời vào nhóm mới. Thông thường mời lại trong buổi.` + btn(C.nguoi) };
     case "het_han": return { text: `Gói của bạn đã hết hạn${v.han_su_dung ? " ngày " + v.han_su_dung : ""} nên chưa được mời vào nhóm mới. Gia hạn xong bạn sẽ được mời lại ngay.` + btn(C.gh, C.nguoi) };
     case "can_nguoi": return { text: `${n[0].toUpperCase() + n.slice(1)} đang lỗi và chưa có nhóm mới. Mình đã báo người phụ trách đổi nhóm cho bạn, có lời mời mình báo ngay ở đây. Bạn chưa rời nhóm cũ nhé.`, escalate: "Fam lỗi chưa đổi: " + v.can_nguoi };
     case "da_vao_nhom": return { text: `Bạn đang dùng nhóm mới${v.nhom ? " (" + v.nhom + ")" : ""}, mọi thứ đã ổn.${hsd}\nNếu YouTube lại mất Premium, bạn mở trang Gia đình ${FAMILY} và chọn trang đang hiện thế nào:` + btn(C.binhthuong, C.khonghd) };
@@ -369,7 +394,7 @@ async function flow(t: any, text: string): Promise<Out | null> {
   const pick = PRICES.find((p) => x === `${p[0]} · ${p[1]}`);
   if (pick) return { text: `Bạn chọn gia hạn ${pick[0]} (${pick[1]}). Mình đã báo người phụ trách, sẽ gửi thông tin chuyển khoản cho bạn ngay trong khung chat này.`, escalate: `Khách chọn gia hạn ${pick[0]} (${pick[1]})` };
 
-  const open = ["dang_kiem_tra", "dang_xu_ly", "cho_moi_lai", "can_nguoi"].includes(v.trang_thai);
+  const open = ["dang_kiem_tra", "dang_xu_ly", "cho_moi_lai", "can_nguoi", "da_xoa_nhom"].includes(v.trang_thai);
   if (x === C.binhthuong || x === C.khonghd) {
     if (open || v.trang_thai === "da_moi") return byStatus(t, v);
     const active = x === C.binhthuong;
@@ -426,7 +451,7 @@ async function verifyStart(t: any) {
   try {
     const v = await lookup(t);
     if (!v.found) await addMsg(t.id, "bot", NOT_FOUND(t));
-    else if (["da_moi", "can_nguoi", "het_han", "dang_xu_ly", "dang_kiem_tra", "cho_moi_lai"].includes(v.trang_thai)) {
+    else if (["da_moi", "can_nguoi", "het_han", "dang_xu_ly", "dang_kiem_tra", "cho_moi_lai", "da_xoa_nhom"].includes(v.trang_thai)) {
       const o = byStatus(t, v);
       await addMsg(t.id, "bot", o.text + (o.text.includes("[[") ? "" : MENU));
       if (o.escalate) await escalate(t, o.escalate);

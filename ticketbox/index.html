@@ -65,7 +65,18 @@ button,input,textarea{font:inherit;color:inherit}
 .tab.on .n{background:var(--accent);color:var(--accent-ink)}
 .search{padding:10px 12px}
 .list{flex:1;overflow-y:auto}
-.item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer;position:relative}
+.row-it{position:relative;border-bottom:1px solid var(--line)}
+.row-it .pick{position:absolute;left:12px;top:15px;width:18px;height:18px;accent-color:var(--accent);cursor:pointer;z-index:1}
+.item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:12px 14px 12px 40px;cursor:pointer;position:relative}
+.bulk{display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:var(--accent-soft);border-bottom:1px solid var(--line);font-size:13px}
+.bulk b{margin-right:auto}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:6px 11px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted)}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.seg button:not(.on):hover{background:var(--hover);color:var(--ink)}
+.chs{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.chs span{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:2px 9px;color:var(--muted);background:var(--panel)}
 .item:hover{background:var(--hover)}
 .item.sel{background:var(--accent-soft)}
 .item .l1{display:flex;gap:8px;align-items:baseline}
@@ -149,11 +160,11 @@ button,input,textarea{font:inherit;color:inherit}
   const STATUS = { cho_nguoi: ["wait", "Cần người"], bot: ["bot", "Bot đang lo"], dong: ["", "Đã đóng"] };
   const $ = s => document.querySelector(s);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
-  const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, u => `<a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\//, "")}</a>`);
+  const linkify = s => esc(s).replace(/https?:\/\/[^\s<]+[^\s<.,;:!?)]/g, u => `<a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\//, "").replace(/[?#].*$/, "")}</a>`);
   const ago = v => { const d = (Date.now() - new Date(v)) / 60000; if (d < 1) return "vừa xong"; if (d < 60) return Math.floor(d) + " phút"; if (d < 1440) return Math.floor(d / 60) + " giờ"; return new Date(v).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }); };
   const hm = v => new Date(v).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
 
-  let S = { tab: "cho_nguoi", tickets: [], sel: null, msgs: [], q: "", draft: {}, img: {}, busy: false, kb: null, kbDirty: false, user: "" };
+  let S = { tab: "cho_nguoi", tickets: [], sel: null, msgs: [], q: "", draft: {}, img: {}, busy: false, picked: new Set(), kb: null, kbDirty: false, user: "" };
   let channel = null;
 
   function toast(text, undo) {
@@ -278,6 +289,22 @@ button,input,textarea{font:inherit;color:inherit}
       S.tickets.push({ ...ok, deleted: false }); S.tickets.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)); render();
     });
   }
+  async function bulkAction(k) {
+    if (k === "none") { S.picked.clear(); return renderSide(); }
+    const ids = [...S.picked]; if (!ids.length) return;
+    const before = ids.map(id => ({ ...S.tickets.find(t => t.id === id) }));
+    if (k === "xoa" && !confirm("Xoá " + ids.length + " cuộc chat?")) return;
+    const patch = k === "xoa" ? { deleted: true } : { status: k, ...(k === "bot" ? { ly_do: "" } : {}) };
+    const { error } = await sb.from("support_tickets").update(patch).in("id", ids);
+    if (error) return fail(error);
+    if (k === "xoa") { S.tickets = S.tickets.filter(t => !ids.includes(t.id)); if (ids.includes(S.sel)) S.sel = null; }
+    else S.tickets.forEach(t => { if (ids.includes(t.id)) Object.assign(t, patch); });
+    S.picked.clear(); render();
+    toast((k === "xoa" ? "Đã xoá " : "Đã chuyển ") + ids.length + " cuộc chat.", async () => {
+      for (const o of before) await sb.from("support_tickets").update({ status: o.status, ly_do: o.ly_do || "", deleted: false }).eq("id", o.id);
+      await loadTickets(); render();
+    });
+  }
   async function loadKb() {
     const { data, error } = await sb.from("site_settings").select("value").eq("key", "support_kb").maybeSingle();
     if (error) return fail(error);
@@ -321,12 +348,20 @@ button,input,textarea{font:inherit;color:inherit}
       render();
     });
     const list = filtered();
-    $("#list").innerHTML = S.tab === "kb" && !S.q ? `<div class="empty">Kiến thức bot là phần bot dựa vào để trả lời khách. Sửa ở khung bên cạnh.</div>`
-      : list.length ? list.map(t => `<button class="item ${t.id === S.sel ? "sel" : ""} ${t.admin_unread && t.status !== "dong" ? "unread" : ""}" data-id="${t.id}">
+    S.picked = new Set([...S.picked].filter(id => list.some(t => t.id === id)));
+    const bulk = S.picked.size ? `<div class="bulk"><b>Đã chọn ${S.picked.size}</b>
+        <button class="btn ghost sm" data-bulk="cho_nguoi">Cần người</button><button class="btn ghost sm" data-bulk="bot">Bot lo</button>
+        <button class="btn sm" data-bulk="dong">Đóng</button><button class="btn danger sm" data-bulk="xoa">Xoá</button>
+        <button class="btn ghost sm" data-bulk="none">Bỏ chọn</button></div>`
+      : list.length && !(S.tab === "kb" && !S.q) ? `<div class="bulk" style="background:transparent"><label style="display:flex;gap:8px;align-items:center;cursor:pointer;color:var(--muted)"><input type="checkbox" data-bulk="all" style="width:16px;height:16px;accent-color:var(--accent)"> Chọn tất cả (${list.length})</label></div>` : "";
+    $("#list").innerHTML = bulk + (S.tab === "kb" && !S.q ? `<div class="empty">Kiến thức bot là phần bot dựa vào để trả lời khách. Sửa ở khung bên cạnh.</div>`
+      : list.length ? list.map(t => `<div class="row-it"><input type="checkbox" class="pick" data-pick="${t.id}" ${S.picked.has(t.id) ? "checked" : ""} aria-label="Chọn ${esc(t.email)}"><button class="item ${t.id === S.sel ? "sel" : ""} ${t.admin_unread && t.status !== "dong" ? "unread" : ""}" data-id="${t.id}">
         <div class="l1"><span class="em">${esc(t.email)}</span><span class="tm">${ago(t.updated_at)}</span></div>
         <div class="l2">${esc(t.last_text || "—")}</div>
-        <div class="l3">${S.q ? `<span class="tag ${STATUS[t.status][0]}">${STATUS[t.status][1]}</span>` : ""}${t.ctv ? `<span class="tag">CTV ${esc(t.ctv)}</span>` : ""}${t.verified === "not_found" ? `<span class="tag" style="color:var(--err)">Không có trong DS khách</span>` : ""}${t.status === "cho_nguoi" && t.ly_do ? `<span class="tag wait">${esc(t.ly_do.slice(0, 40))}</span>` : ""}</div></button>`).join("")
-      : `<div class="empty">${S.q ? "Không tìm thấy." : S.tab === "cho_nguoi" ? "Không có khách nào đang chờ. 🎉" : "Trống."}</div>`;
+        <div class="l3">${S.q ? `<span class="tag ${STATUS[t.status][0]}">${STATUS[t.status][1]}</span>` : ""}${t.ctv ? `<span class="tag">CTV ${esc(t.ctv)}</span>` : ""}${t.verified === "not_found" ? `<span class="tag" style="color:var(--err)">Không có trong DS khách</span>` : ""}${t.status === "cho_nguoi" && t.ly_do ? `<span class="tag wait">${esc(t.ly_do.slice(0, 40))}</span>` : ""}</div></button></div>`).join("")
+      : `<div class="empty">${S.q ? "Không tìm thấy." : S.tab === "cho_nguoi" ? "Không có khách nào đang chờ. 🎉" : "Trống."}</div>`);
+    document.querySelectorAll("[data-pick]").forEach(c => c.onchange = () => { c.checked ? S.picked.add(c.dataset.pick) : S.picked.delete(c.dataset.pick); renderSide(); });
+    document.querySelectorAll("[data-bulk]").forEach(b => (b.type === "checkbox" ? (b.onchange = () => { list.forEach(t => S.picked.add(t.id)); renderSide(); }) : (b.onclick = () => bulkAction(b.dataset.bulk))));
     document.querySelectorAll("[data-id]").forEach(b => b.onclick = () => openTicket(b.dataset.id));
   }
   function renderMain() {
@@ -363,17 +398,13 @@ button,input,textarea{font:inherit;color:inherit}
       <div class="info"><b>${esc(t.email)}</b><div><span class="tag ${cls}">${label}</span> ${t.ctv ? "· CTV " + esc(t.ctv) + " " : ""}· mở ${hm(t.created_at)}</div></div>
       <div class="acts">
         <button class="btn ghost sm" id="copyEm">Copy email</button>
-        ${t.status !== "bot" ? `<button class="btn ghost sm" id="toBot">Để bot lo tiếp</button>` : `<button class="btn ghost sm" id="toHuman">Mình nhận</button>`}
-        ${t.status !== "dong" ? `<button class="btn sm" id="close">Đóng</button>` : `<button class="btn ghost sm" id="reopen">Mở lại</button>`}
+        <div class="seg" role="group" aria-label="Trạng thái">${[["cho_nguoi", "Cần người"], ["bot", "Bot lo"], ["dong", "Đóng"]].map(([k, l]) => `<button type="button" data-st="${k}" class="${t.status === k ? "on" : ""}" aria-pressed="${t.status === k}">${l}</button>`).join("")}</div>
         <button class="btn danger sm" id="del">Xoá</button>
       </div>`;
     $("#back").onclick = () => { S.sel = null; history.replaceState(null, "", location.pathname); render(); };
     $("#copyEm").onclick = () => navigator.clipboard.writeText(t.email).then(() => toast("Đã copy email."));
     const on = (id, fn) => { const b = $("#" + id); if (b) b.onclick = fn; };
-    on("toBot", () => changeStatus("bot", "Đã giao lại cho bot."));
-    on("toHuman", () => changeStatus("cho_nguoi", "Bot đã dừng, bạn trả lời nhé."));
-    on("close", () => changeStatus("dong", "Đã đóng cuộc chat."));
-    on("reopen", () => changeStatus("cho_nguoi", "Đã mở lại."));
+    h.querySelectorAll("[data-st]").forEach(b => b.onclick = () => { if (b.dataset.st !== t.status) changeStatus(b.dataset.st, { cho_nguoi: "Chuyển sang Cần người, bot im.", bot: "Đã giao lại cho bot.", dong: "Đã đóng cuộc chat." }[b.dataset.st]); });
     on("del", removeTicket);
   }
   function renderMsgs() {
@@ -382,7 +413,8 @@ button,input,textarea{font:inherit;color:inherit}
     box.innerHTML = S.msgs.length ? S.msgs.map(m => m.role === "he_thong" ? `<div class="sys">${esc(m.body)} · ${hm(m.created_at)}</div>`
       : `<div class="m ${m.role}"><div class="who">${{ khach: "Khách", bot: "Bot", admin: "Bạn" }[m.role]} · ${hm(m.created_at)}</div>${m.image
           ? `<div class="b has-img">${m.image_url ? `<img class="shot" src="${esc(m.image_url)}" alt="Ảnh" data-view>` : "[Ảnh]"}${m.body ? `<div class="cap">${linkify(m.body)}</div>` : ""}</div>`
-          : `<div class="b">${linkify(String(m.body).replace(/\n?\s*\[\[([^\]]+)\]\]\s*$/, (_, c) => "\n▸ " + c.split("|").join("  ▸ ")))}</div>`}</div>`).join("")
+          : (() => { const mm = String(m.body).match(/\n?\s*\[\[([^\]]+)\]\]\s*$/); const body = mm ? String(m.body).slice(0, mm.index) : m.body;
+              return `<div class="b">${linkify(body)}${mm ? `<div class="chs">${mm[1].split("|").map(c => `<span>${esc(c)}</span>`).join("")}</div>` : ""}</div>`; })()}</div>`).join("")
       : `<div class="placeholder">Chưa có tin nhắn.</div>`;
     if (atBottom || !renderMsgs.done) { box.scrollTop = box.scrollHeight; box.querySelectorAll("img.shot").forEach(i => { if (!i.complete) i.onload = () => { box.scrollTop = box.scrollHeight; }; }); }
     renderMsgs.done = true;
