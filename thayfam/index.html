@@ -255,6 +255,7 @@
       </div>
 
       <nav class="tabs" x-show="!searchOn()">
+        <button class="tab" x-show="can('baoLoi')" :class="tab==='bl' && 'on'" @click="tab='bl'; loadBl()">📨 Báo lỗi CTV<span class="n" :class="blTodo() && 'hot'" x-text="blLoaded ? blTodo() : '·'"></span></button>
         <button class="tab" x-show="can('week')" :class="tab==='week' && 'on'" @click="tab='week'; loadWeek()">📋 Tuần này<span class="n" :class="weekLeft() && 'hot'" x-text="wk ? weekLeft() : '·'"></span></button>
         <button class="tab" x-show="me.role !== 'ctv'" :class="tab==='due' && 'on'" @click="tab='due'">Đến hạn<span class="n" x-text="due.length"></span></button>
         <button class="tab" x-show="me.role !== 'ctv'" :class="tab==='report' && 'on'" @click="tab='report'">🚨 Khách báo lỗi<span class="n" x-text="reported.length"></span></button>
@@ -1177,6 +1178,109 @@
         </template>
       </section>
 
+      <!-- TAB BÁO LỖI CTV: mỗi email 1 dòng, đi theo bước (thay cho nhắn Zalo bị trôi) -->
+      <section x-show="tab==='bl' && !searchOn()">
+        <div class="card">
+          <b>Gửi mail khách báo lỗi</b>
+          <div class="mute" style="font-size:13px;margin:4px 0 8px">Dán cả tin nhắn cũng được, hệ thống tự lấy email. Email đang mở rồi thì bỏ qua, không tạo trùng.</div>
+          <textarea x-model="blText" rows="3" placeholder="vd: khách abc@gmail.com mất premium…" style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)"></textarea>
+          <div class="row" style="margin-top:8px">
+            <span class="mute" style="font-size:13px">Nhóm gia đình của khách:</span>
+            <button class="chip" :class="blAct==='' && 'on'" @click="blAct=''">Chưa rõ</button>
+            <button class="chip" :class="blAct==='Đang hoạt động' && 'on'" @click="blAct='Đang hoạt động'">🟢 Còn hoạt động</button>
+            <button class="chip" :class="blAct==='Không hoạt động' && 'on'" @click="blAct='Không hoạt động'">🔴 Không hoạt động</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <input type="text" x-show="me.role!=='ctv'" x-model="blCtv" placeholder="CTV (vd: Tuan)" style="width:150px">
+            <input type="text" x-model="blNote" placeholder="Ghi chú (không bắt buộc)" class="grow" style="min-width:160px">
+            <button class="btn pri" @click="blAdd()" :disabled="blBusy || !blText.trim()" x-text="blBusy ? 'Đang gửi…' : 'Gửi'"></button>
+          </div>
+          <div style="font-size:13px;margin-top:6px" x-show="blMsg" x-text="blMsg"></div>
+        </div>
+
+        <div class="chips">
+          <template x-for="g in blGroups()" :key="g.key">
+            <button class="chip" :class="blStep===g.key && 'on'" @click="blStep=g.key" x-text="g.label + ' (' + g.n + ')'"></button>
+          </template>
+          <button class="chip" @click="loadBl()" :disabled="blLoading" x-text="blLoading ? 'Đang tải…' : '↻ Tải lại'"></button>
+        </div>
+        <div class="row" style="margin-bottom:10px" x-show="blStep==='xinmail' && blList().length">
+          <button class="btn sm" @click="blCopyAsk()">📋 Copy tin xin mail chủ gia đình (<span x-text="blList().length"></span> khách)</button>
+        </div>
+        <div class="row" style="margin-bottom:10px" x-show="blStep==='baokhach' && blList().length">
+          <button class="btn sm" @click="blCopyFixed()">📋 Copy tin báo đã fix (<span x-text="blList().length"></span> khách)</button>
+        </div>
+
+        <template x-if="blLoading && !blLoaded"><div class="empty">Đang tải…</div></template>
+        <template x-if="blLoaded && blList().length===0"><div class="empty">Không có mục nào ở bước này.</div></template>
+        <template x-for="x in blList()" :key="x.id">
+          <div class="card" :style="x.step==='xong' && 'opacity:.55'">
+            <div class="row">
+              <b class="mono" style="word-break:break-all" x-text="x.email"></b>
+              <button class="btn xs" @click="copy(x.email)">copy</button>
+              <span class="badge" :class="blBadge(x.step)" x-text="blStepLabel(x.step)"></span>
+              <span class="grow"></span>
+              <span class="mute" style="font-size:12px" x-text="x.at + (me.role!=='ctv' ? ' · ' + (x.ctv || '—') : '')"></span>
+            </div>
+            <div class="row mute" style="font-size:13px;margin-top:6px">
+              <template x-if="x.found">
+                <span>
+                  <button class="btn xs" @click="q = x.rn; doSearch()" x-text="x.rn" style="font-weight:700;color:var(--ink)"></button>
+                  <span x-text="' · ' + (x.famStatus || '—') + ' · HSD ' + (x.hsd || '—') + (x.daysLeft !== null ? ' (còn ' + x.daysLeft + ' ngày)' : '')"></span>
+                  <span x-show="x.viaPhu"> · khớp qua mail phụ</span>
+                </span>
+              </template>
+              <span x-show="!x.found" style="color:var(--bad)">Không thấy email này trong fam nào — kiểm tra lại chính tả / mail phụ</span>
+            </div>
+            <div style="font-size:13px;margin-top:4px;color:var(--ok)" x-show="x.swappedAfter && x.step!=='xong'" x-text="'Fam đã thay lúc ' + x.swapAt + ' (sau khi báo) — có thể đã ổn'"></div>
+            <div style="font-size:13px;margin-top:4px;color:var(--warn)" x-show="x.rnAtReport && x.rn && x.rnAtReport!==x.rn" x-text="'Lúc báo ở ' + x.rnAtReport + ', giờ ở ' + x.rn"></div>
+            <div style="font-size:13px;margin-top:4px" x-show="x.activity" x-text="'Nhóm: ' + (x.activity==='Đang hoạt động' ? '🟢 còn hoạt động' : '🔴 không hoạt động') + (x.owner ? ' · mail chủ GĐ khách thấy: ' + x.owner : '')"></div>
+            <div style="font-size:13px;margin-top:4px" x-show="me.role!=='ctv' && x.owner && x.ownerMatch!==null">
+              <span x-show="x.ownerMatch" style="color:var(--ok)">✓ Khớp chủ fam trong Kho</span>
+              <span x-show="!x.ownerMatch" style="color:var(--bad)" x-text="'✗ Khác chủ fam trong Kho (' + (x.famOwner||'—') + ')' + (x.ownerRn ? ' — mail này là chủ ' + x.ownerRn : ' — không phải fam của mình')"></span>
+            </div>
+            <div class="mute" style="font-size:13px;margin-top:4px;white-space:pre-wrap" x-show="x.note" x-text="'Ghi chú: ' + x.note"></div>
+
+            <!-- hành động theo bước -->
+            <div class="row" style="margin-top:8px">
+              <template x-if="x.step==='chon'">
+                <span class="row">
+                  <span class="mute" style="font-size:13px">Hỏi khách: nhóm gia đình còn hoạt động không?</span>
+                  <button class="btn sm" @click="blSet(x, { activity: 'Đang hoạt động' })" :disabled="x.busy">🟢 Còn hoạt động</button>
+                  <button class="btn sm" @click="blSet(x, { activity: 'Không hoạt động' })" :disabled="x.busy">🔴 Không hoạt động</button>
+                </span>
+              </template>
+              <template x-if="x.step==='xinmail'">
+                <span class="row grow">
+                  <input type="email" x-model="x.ownerIn" placeholder="Mail chủ gia đình khách đang thấy" class="grow" style="min-width:200px" @keydown.enter="blSet(x, { owner: x.ownerIn })">
+                  <button class="btn sm pri" @click="blSet(x, { owner: x.ownerIn })" :disabled="x.busy || !(x.ownerIn||'').includes('@')">Lưu</button>
+                </span>
+              </template>
+              <template x-if="x.step==='fix' && me.role!=='ctv'">
+                <button class="btn sm pri" @click="blOp(x, 'done')" :disabled="x.busy">✓ Đã fix</button>
+              </template>
+              <template x-if="x.step==='fix' && me.role==='ctv'">
+                <span class="mute" style="font-size:13px">Đủ thông tin — chờ admin fix</span>
+              </template>
+              <template x-if="x.step==='baokhach'">
+                <button class="btn sm pri" @click="blOp(x, 'told')" :disabled="x.busy">Đã báo khách</button>
+              </template>
+              <span class="grow"></span>
+              <button class="btn xs" x-show="x.step!=='xong'" @click="x.edit = !x.edit; x.editAct = x.activity; x.editOwner = x.owner; x.editNote = x.note">✎ sửa</button>
+              <button class="btn xs" x-show="me.role!=='ctv' && (x.step==='baokhach' || x.step==='xong')" @click="blOp(x, 'reopen')" :disabled="x.busy">Mở lại</button>
+              <button class="btn xs" x-show="x.step!=='xong' && (me.role!=='ctv' || x.status==='Mở')" @click="blOp(x, 'del')" :disabled="x.busy" style="color:var(--bad)">Xoá</button>
+            </div>
+            <div class="row" style="margin-top:8px" x-show="x.edit">
+              <select x-model="x.editAct"><option value="">Nhóm: chưa rõ</option><option value="Đang hoạt động">🟢 Còn hoạt động</option><option value="Không hoạt động">🔴 Không hoạt động</option></select>
+              <input type="email" x-model="x.editOwner" placeholder="Mail chủ GĐ" style="min-width:180px">
+              <input type="text" x-model="x.editNote" placeholder="Ghi chú" class="grow" style="min-width:140px">
+              <button class="btn sm pri" @click="blSet(x, { activity: x.editAct, owner: x.editOwner || '', note: x.editNote || '' })" :disabled="x.busy">Lưu</button>
+            </div>
+            <div style="font-size:13px;color:var(--bad);margin-top:4px" x-show="x.err" x-text="x.err"></div>
+          </div>
+        </template>
+      </section>
+
       <!-- TAB TÀI KHOẢN (admin) -->
       <section x-show="tab==='users' && !searchOn()">
         <div class="card">
@@ -1543,6 +1647,7 @@ function app() {
     review: [], reviewLoading: false, syncConfirm: '', openRows: [],
     q: '', results: [], searching: false, searchTotal: 0,
     me: { name: '', role: '', perms: [] },
+    bl: [], blLoaded: false, blLoading: false, blBusy: false, blText: '', blAct: '', blCtv: '', blNote: '', blMsg: '', blStep: 'todo',
     notes: [], notesLoading: false, openNotes: 0, noteBusy: false, noteFor: '', noteText: '',
     users: [], usersLoading: false, usersBusy: false, usersLimit: 10, limitInput: 10,
     newUser: { name: '', role: 'outsource', ctv: '' }, newKeyMsg: '', userConfirm: '',
@@ -1634,6 +1739,7 @@ function app() {
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
         if (this.me.role === 'ctv' && ['due', 'report'].includes(this.tab)) this.tab = 'slots';
+        if (this.can('baoLoi') && !this._blInit) { this._blInit = true; if (this.me.role === 'ctv' && this.tab === 'slots') this.tab = 'bl'; this.bg(() => this.loadBl()); }
         // Tab đang mở: tải ngay. Còn lại: xếp hàng tải nền lần lượt. Tab Tuần / Tất cả: chỉ tải khi mở.
         if (this.tab === 'week' && this.can('week') && !this._wkInit) { this._wkInit = true; this.loadWeek(); }
         if (this.tab === 'slots' && this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
@@ -2366,6 +2472,64 @@ function app() {
       this.swap.newTwofa = '';
       this.tickOtp();
     },
+    // ===== Báo lỗi CTV =====
+    async loadBl() {
+      this.blLoading = true;
+      try { const d = await this.api({ action: 'baoLoi', op: 'list' }); this.bl = d.items.map(x => Object.assign(x, { busy: false, err: '', edit: false, ownerIn: '' })); this.blLoaded = true; }
+      catch (e) { this.error = e.message; }
+      this.blLoading = false;
+    },
+    blMine(step) { return this.me.role === 'ctv' ? ['chon', 'xinmail', 'baokhach'].includes(step) : step === 'fix'; },
+    blTodo() { return this.bl.filter(x => this.blMine(x.step)).length; },
+    blGroups() {
+      const n = k => this.bl.filter(x => x.step === k).length;
+      return [
+        { key: 'todo', label: this.me.role === 'ctv' ? 'Việc của bạn' : 'Cần fix', n: this.blTodo() },
+        { key: 'chon', label: 'Cần hỏi nhóm', n: n('chon') },
+        { key: 'xinmail', label: 'Cần mail chủ GĐ', n: n('xinmail') },
+        { key: 'fix', label: 'Chờ fix', n: n('fix') },
+        { key: 'baokhach', label: 'Cần báo khách', n: n('baokhach') },
+        { key: 'xong', label: 'Xong', n: n('xong') },
+        { key: 'all', label: 'Tất cả', n: this.bl.length },
+      ];
+    },
+    blList() {
+      const k = this.blStep;
+      const order = { chon: 1, xinmail: 2, fix: 3, baokhach: 4, xong: 5 };
+      return this.bl.filter(x => k === 'all' || (k === 'todo' ? this.blMine(x.step) : x.step === k))
+        .sort((a, b) => (order[a.step] - order[b.step]) || (a.atMs - b.atMs));
+    },
+    blStepLabel(s) { return ({ chon: 'Cần hỏi: nhóm còn hoạt động?', xinmail: 'Cần mail chủ gia đình', fix: 'Chờ admin fix', baokhach: 'Đã fix — báo khách', xong: 'Xong' })[s] || s; },
+    blBadge(s) { return ({ chon: 'warn', xinmail: 'warn', fix: 'bad', baokhach: 'ok', xong: '' })[s] || ''; },
+    async blAdd() {
+      this.blBusy = true; this.blMsg = '';
+      try {
+        const d = await this.api({ action: 'baoLoi', op: 'add', text: this.blText, activity: this.blAct, ctv: this.blCtv, note: this.blNote });
+        this.blMsg = '✓ Đã thêm ' + d.added + ' email' + (d.dup.length ? ' · ' + d.dup.length + ' email đang mở sẵn (bỏ qua)' : '') + (d.notMine.length ? ' · ' + d.notMine.length + ' email không phải khách của bạn: ' + d.notMine.join(', ') : '');
+        this.blText = ''; this.blNote = ''; this.blAct = '';
+        await this.loadBl();
+      } catch (e) { this.blMsg = '⚠ ' + e.message; }
+      this.blBusy = false;
+    },
+    async blSet(x, fields) { await this.blOp(x, 'set', fields); },
+    async blOp(x, op, fields) {
+      x.busy = true; x.err = '';
+      try {
+        const d = await this.api(Object.assign({ action: 'baoLoi', op: op, id: x.id }, fields || {}));
+        if (op === 'del') this.bl = this.bl.filter(y => y.id !== x.id);
+        else await this.loadBl();
+      } catch (e) { x.err = e.message; }
+      x.busy = false;
+    },
+    async blCopyAsk() {
+      const list = this.blList().map(x => '- ' + x.email).join('\n');
+      await this.copy('Các khách dưới đây vào YouTube > ảnh đại diện > Gói thành viên gia đình, chụp/gửi giúp mình email chủ gia đình đang hiện nhé:\n' + list);
+    },
+    async blCopyFixed() {
+      const list = this.blList().map(x => '- ' + x.email).join('\n');
+      await this.copy('Đã fix xong, khách kiểm tra lại YouTube Premium giúp mình (nếu chưa thấy thì mở mail nhận lời mời vào nhóm mới):\n' + list);
+    },
+
     async loadNotes() {
       this.notesLoading = true;
       try { const d = await this.api({ action: 'notes', op: 'list' }); this.notes = d.items; this.openNotes = d.open; }
