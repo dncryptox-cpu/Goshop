@@ -288,6 +288,22 @@
         .res-more[open] summary i { transform: rotate(180deg); }
         .res-more summary::-webkit-details-marker { display: none; } .res-more summary { list-style: none; }
         .lock-cover { filter: blur(14px) saturate(120%); transform: scale(1.15); opacity: .55; }
+
+        /* 90 ngày */
+        .t9-big { font-size: 44px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+        .t9-big small { font-size: 20px; color: var(--ink-3); font-weight: 600; }
+        .t9-bar { height: 6px; border-radius: 99px; background: var(--well); overflow: hidden; }
+        .t9-bar i { display: block; height: 100%; background: var(--mint); border-radius: 99px; }
+        .t9-dots { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 3px; max-width: 560px; }
+        .t9-dots b { display: block; min-width: 0; aspect-ratio: 1; border-radius: 2px; background: var(--well); }
+        .t9-dots b.on { background: var(--up); } .t9-dots b.miss { background: rgba(255,107,107,0.35); } .t9-dots b.now { outline: 2px solid var(--mint); outline-offset: 1px; }
+        .t9-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 14px 0; border-top: 1px solid var(--line-soft); }
+        .t9-step:first-of-type { border-top: 0; }
+        .t9-step > input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--up); }
+        .t9-rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 18px; font-size: 14px; }
+        .t9-rules dt { color: var(--ink-3); font-size: 12.5px; margin-top: 6px; } .t9-rules dd { white-space: pre-wrap; }
+        .t9-quote { font-size: 15px; line-height: 1.6; color: var(--ink-2); border-left: 3px solid var(--line); padding-left: 12px; }
+        .t9-it { padding: 10px 0; border-top: 1px solid var(--line-soft); } .t9-it:first-child { border-top: 0; }
     </style>
 </head>
 <body class="min-h-screen font-sans" x-data="app()" x-init="init()" @paste.window="onPaste($event)" @keydown.window="onKey($event)">
@@ -303,7 +319,7 @@
             <button @click="guestTab('journal')" class="lp-link">Nhật ký</button>
             <button @click="guestTab('backtest')" class="lp-link">Backtest</button>
             <button @click="guestTab('resources')" class="lp-link">Tài nguyên</button>
-            <button @click="guestTab('feed')" class="lp-link">Cộng đồng</button>
+            <button @click="guestTab('feed')" class="lp-link">Bảng tin</button>
             <a href="#hoi-vien" class="lp-link">Hội viên</a>
         </nav>
         <div class="flex items-center gap-2 ml-auto md:ml-0">
@@ -315,24 +331,52 @@
         <button @click="guestTab('journal')" class="lp-link whitespace-nowrap !text-[14px]">Nhật ký</button>
         <button @click="guestTab('backtest')" class="lp-link whitespace-nowrap !text-[14px]">Backtest</button>
         <button @click="guestTab('resources')" class="lp-link whitespace-nowrap !text-[14px]">Tài nguyên</button>
-        <button @click="guestTab('feed')" class="lp-link whitespace-nowrap !text-[14px]">Cộng đồng</button>
+        <button @click="guestTab('feed')" class="lp-link whitespace-nowrap !text-[14px]">Bảng tin</button>
         <a href="#hoi-vien" class="lp-link whitespace-nowrap !text-[14px]">Hội viên</a>
     </nav>
 </header>
 
-<!-- ═════════════ TRANG CHỦ CÔNG KHAI — phần đầu ═════════════ -->
-<div x-show="isLocked && !booting" x-cloak class="relative overflow-x-clip">
+<!-- ═════════════ THANH TRÊN (đã đăng nhập) ═════════════ -->
+    <header x-show="!isLocked && !booting" x-cloak class="sticky top-0 z-30 px-3 pt-3">
+        <div class="capsule mx-auto max-w-fit flex items-center gap-1 p-1.5 pl-4">
+            <button @click="go('home')" class="flex items-center gap-2 pr-2 shrink-0">
+                <i data-lucide="chart-no-axes-column" class="w-4 h-4 text-accent"></i>
+                <span class="font-semibold text-[15px] whitespace-nowrap">Trading OS</span>
+            </button>
+            <nav class="hidden md:flex items-center gap-0.5">
+                <template x-for="t in navTabs" :key="t.id">
+                    <button @click="go(t.id)" class="pill" :class="{ on: tab === t.id }" x-text="t.label"></button>
+                </template>
+            </nav>
+            <button x-show="tab === 'journal'" @click="openTradeForm()" title="Lệnh mới (N)" class="btn btn-primary !rounded-full !px-3.5 !py-1.5 text-[14px] ml-1"><i data-lucide="plus" class="w-4 h-4"></i><span class="hidden sm:inline">Lệnh mới</span></button>
+            <button @click="openSettings()" class="press w-8 h-8 rounded-full flex items-center justify-center font-semibold text-[13px] text-canvas shrink-0 ml-1 relative overflow-hidden" :style="`background:${avatarColor(username)}`" :title="'@' + username"><span x-text="(username || '?').slice(0, 1).toUpperCase()"></span><img x-show="av(userId)" :src="av(userId) || null" class="absolute inset-0 w-full h-full object-cover" alt="" loading="lazy"></button>
+        </div>
+    </header>
+
+<!-- ═════════════ TRANG CHỦ — phần đầu (chung cho khách và người đã đăng nhập) ═════════════ -->
+<div x-show="onHome && !booting" x-cloak class="relative overflow-x-clip">
     <section class="lp-wrap relative text-center pt-20 md:pt-28 pb-10">
         <div class="lp-glow"></div>
         <h1 class="lp-h1 relative"><span class="fade">Nhật ký giao dịch</span><br><span class="hl">và blog đầu tư</span><br><span class="fade">của mình</span></h1>
-        <p class="relative mt-6 text-[17px] md:text-[18px] leading-relaxed text-ink-2 max-w-[34rem] mx-auto">Lệnh mình vào, chiến lược mình dùng và bài học sau mỗi lần thắng thua. Anh em đọc tự do, muốn ghi nhật ký riêng thì tạo tài khoản miễn phí.</p>
-        <div class="relative mt-9 flex flex-wrap justify-center gap-3">
+        <p class="relative mt-6 text-[17px] md:text-[18px] leading-relaxed text-ink-2 max-w-[34rem] mx-auto">Lệnh mình vào, chiến lược mình dùng và bài học sau mỗi lần thắng thua. <span x-show="isLocked">Anh em đọc tự do, muốn ghi nhật ký riêng thì tạo tài khoản miễn phí.</span></p>
+        <div x-show="isLocked" class="relative mt-9 flex flex-wrap justify-center gap-3">
             <a href="#bang-tin" class="btn btn-primary !px-6 !py-3">Đọc bài mới nhất</a>
             <button @click="openLogin(true)" class="btn btn-gray !px-6 !py-3">Tạo tài khoản miễn phí</button>
         </div>
+        <div x-show="!isLocked" class="relative mt-9 max-w-xl mx-auto">
+            <div class="card p-4 grid grid-cols-3 gap-3 text-left">
+                <div><div class="caption">Vốn hiện tại</div><div class="num font-semibold text-[17px] mt-1" x-text="money(capitalNow)"></div></div>
+                <div><div class="caption">R tháng này</div><div class="num font-semibold text-[17px] mt-1" :class="journal.monthR >= 0 ? 'text-up' : 'text-down'" x-text="fmtR(journal.monthR, true)"></div></div>
+                <div><div class="caption">Đang chạy</div><div class="num font-semibold text-[17px] mt-1" x-text="journal.running + ' lệnh'"></div></div>
+            </div>
+            <div class="mt-5 flex flex-wrap justify-center gap-3">
+                <button @click="go('journal'); $nextTick(() => openTradeForm())" class="btn btn-primary !px-6 !py-3">Ghi lệnh mới</button>
+                <button @click="go('journal')" class="btn btn-gray !px-6 !py-3">Mở Nhật ký</button>
+            </div>
+        </div>
     </section>
-    <div class="lp-horizon"></div>
-    <div class="lp-wrap lp-frame -mt-10">
+    <div x-show="isLocked" class="lp-horizon"></div>
+    <div x-show="isLocked" class="lp-wrap lp-frame -mt-10">
         <div><img src="/trading/assets/preview-journal.webp" alt="Màn hình Nhật ký trong Trading OS" width="1280" height="900" loading="lazy"></div>
     </div>
 
@@ -351,7 +395,7 @@
     </div>
 
     <!-- Tính năng -->
-    <section class="lp-wrap pt-24 md:pt-32">
+    <section x-show="isLocked" class="lp-wrap pt-24 md:pt-32">
         <div class="text-center">
             <span class="lp-tag">Tính năng</span>
             <h2 class="lp-h2 mt-5">Mọi thứ để giữ kỷ luật</h2>
@@ -448,22 +492,6 @@
 <!-- ═════════════ APP ═════════════ -->
 <div x-show="!isLocked" x-cloak>
 
-    <!-- Thanh trên: viên con nhộng nổi -->
-    <header class="sticky top-0 z-30 px-3 pt-3">
-        <div class="capsule mx-auto max-w-fit flex items-center gap-1 p-1.5 pl-4">
-            <button @click="go('journal')" class="flex items-center gap-2 pr-2 shrink-0">
-                <i data-lucide="chart-no-axes-column" class="w-4 h-4 text-accent"></i>
-                <span class="font-semibold text-[15px] whitespace-nowrap">Trading OS</span>
-            </button>
-            <nav class="hidden md:flex items-center gap-0.5">
-                <template x-for="t in TABS" :key="t.id">
-                    <button @click="go(t.id)" class="pill" :class="{ on: tab === t.id }" x-text="t.label"></button>
-                </template>
-            </nav>
-            <button x-show="tab === 'journal'" @click="openTradeForm()" title="Lệnh mới (N)" class="btn btn-primary !rounded-full !px-3.5 !py-1.5 text-[14px] ml-1"><i data-lucide="plus" class="w-4 h-4"></i><span class="hidden sm:inline">Lệnh mới</span></button>
-            <button @click="openSettings()" class="press w-8 h-8 rounded-full flex items-center justify-center font-semibold text-[13px] text-canvas shrink-0 ml-1 relative overflow-hidden" :style="`background:${avatarColor(username)}`" :title="'@' + username"><span x-text="(username || '?').slice(0, 1).toUpperCase()"></span><img x-show="av(userId)" :src="av(userId) || null" class="absolute inset-0 w-full h-full object-cover" alt="" loading="lazy"></button>
-        </div>
-    </header>
 
     <!-- ───────────── NHẬT KÝ ───────────── -->
     <main x-show="tab === 'journal'" class="max-w-6xl mx-auto px-4 md:px-6 pt-5 pb-14 space-y-5">
@@ -864,9 +892,149 @@
         </template>
     </main>
 
+
+    <!-- ═════════════ 90 NGÀY (chỉ admin) ═════════════ -->
+    <template x-if="isAdmin">
+    <main x-show="tab === 't90'" x-cloak class="max-w-3xl mx-auto px-4 md:px-6 pt-5 pb-24 space-y-5">
+        <div>
+            <div class="eyebrow mb-3">Riêng mình · không công khai</div>
+            <h1 class="title-lg">Thử nghiệm 90 ngày</h1>
+            <p class="text-[15px] text-ink-2 mt-1">Không cần giao dịch giỏi. Chỉ cần có mặt mỗi ngày và làm đúng quy trình.</p>
+        </div>
+        <p x-show="!t9.loaded" class="caption py-10 text-center">Đang tải…</p>
+
+        <!-- Bắt đầu -->
+        <template x-if="t9.loaded && !t9Running && t9.setup">
+            <div class="card p-5 space-y-4">
+                <div><h2 class="title-md">Bản cam kết</h2><p class="caption mt-1">Điền một lần. Ô nào chưa biết thì để trống, điền sau.</p></div>
+                <div class="grid sm:grid-cols-2 gap-3">
+                    <template x-for="f in T9F" :key="f[0]">
+                        <label :class="f[3] ? 'sm:col-span-2' : ''"><span class="label" x-text="f[1]"></span>
+                            <template x-if="f[3]"><textarea class="field" rows="2" x-model="t9.setup[f[0]]"></textarea></template>
+                            <template x-if="!f[3]"><input class="field" x-model="t9.setup[f[0]]"></template>
+                        </label>
+                    </template>
+                    <label><span class="label">Ngày xem lại mỗi tuần</span><select class="field" x-model="t9.setup.reviewDow"><template x-for="(w, i) in ['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy']" :key="i"><option :value="String(i)" x-text="w" :selected="String(i) === String(t9.setup.reviewDow)"></option></template></select></label>
+                    <label><span class="label">Ngày bắt đầu</span><input type="date" class="field" x-model="t9.setup.start"></label>
+                </div>
+                <p class="caption" x-text="T9_RULE"></p>
+                <button @click="t9Start()" class="btn btn-primary">Bắt đầu ngày 1</button>
+            </div>
+        </template>
+
+        <template x-if="t9.loaded && t9Running">
+        <div class="space-y-5">
+            <!-- Tiến độ -->
+            <div class="card p-5">
+                <div class="flex items-end justify-between gap-3 flex-wrap">
+                    <div>
+                        <div class="t9-big" x-show="!t9S.before"><span x-text="'Ngày ' + t9S.n"></span><small>/90</small></div>
+                        <div class="t9-big" x-show="t9S.before"><span x-text="'Còn ' + t9Diff(t9Today, t9Plan.start) + ' ngày'"></span><small> tới ngày 1</small></div>
+                        <div class="caption mt-1" x-text="t9Dm(t9Plan.start) + ' → ' + t9Dm(t9S.end)"></div>
+                    </div>
+                    <div class="flex gap-4 text-[13px] text-ink-2">
+                        <span>Có mặt <b class="text-ink num" x-text="t9S.present + '/' + t9S.n"></b></span>
+                        <span>Chuỗi <b class="text-ink num" x-text="t9S.streak"></b> ngày</span>
+                        <span>Giữ quy tắc <b class="text-ink num" x-text="t9S.keptPct"></b></span>
+                    </div>
+                </div>
+                <div class="t9-bar mt-4"><i :style="'width:' + (t9S.n / 90 * 100) + '%'"></i></div>
+                <p class="caption mt-2" x-text="t9S.after ? 'Đã hết 90 ngày. Xem mốc 90 bên dưới.' : (t9S.nextMs === t9S.n ? 'Hôm nay là mốc ngày ' + t9S.n + '.' : 'Còn ' + (t9S.nextMs - t9S.n) + ' ngày tới mốc ngày ' + t9S.nextMs + '.')"></p>
+                <div class="t9-dots mt-3"><template x-for="d in t9S.dots" :key="d.iso"><b :class="d.cls" :title="'Ngày ' + (d.i + 1) + ' · ' + t9Dm(d.iso)"></b></template></div>
+            </div>
+
+            <!-- Mốc -->
+            <template x-if="t9S.msDue">
+                <div class="card p-5 space-y-3">
+                    <h2 class="title-md" x-text="'Mốc ngày ' + t9S.msDue"></h2>
+                    <p class="text-[15px] text-ink-2" x-text="t9MS[t9S.msDue][0] + ' Có mặt ' + t9S.present + '/' + t9S.n + ' ngày, giữ quy tắc ' + t9S.keptPct + '.'"></p>
+                    <div class="seg flex"><template x-for="o in t9MS[t9S.msDue][1]" :key="o"><button @click="t9MsSet(t9S.msDue, { decision: o, at: t9Today })" :class="{ on: (t9.docs['m:' + t9S.msDue] || {}).decision === o }" x-text="o"></button></template></div>
+                    <textarea class="field" rows="2" :placeholder="t9S.msDue === 90 ? 'Điều mình học được' : 'Vì sao mình quyết định vậy'" :value="(t9.docs['m:' + t9S.msDue] || {}).note || ''" @input="t9MsSet(t9S.msDue, { note: $event.target.value })"></textarea>
+                </div>
+            </template>
+
+            <!-- Hôm nay -->
+            <div class="card p-5">
+                <h2 class="title-md" x-text="t9S.before ? 'Chưa tới ngày 1' : (t9S.after ? 'Hôm nay (ngoài 90 ngày)' : 'Hôm nay · ngày ' + t9S.n)"></h2>
+                <div class="t9-step">
+                    <input type="checkbox" :checked="t9Day.c1" @change="t9DaySet({ c1: $event.target.checked })">
+                    <div class="space-y-2">
+                        <div class="font-semibold">Trước phiên: đọc quy tắc, ghi kế hoạch</div>
+                        <details><summary class="caption cursor-pointer">Xem quy tắc của mình</summary>
+                            <dl class="t9-rules mt-2">
+                                <template x-for="f in T9F.filter(f => !['why','focus'].includes(f[0]) && (t9Plan[f[0]] || '').trim())" :key="f[0]"><div><dt x-text="f[1]"></dt><dd x-text="t9Plan[f[0]]"></dd></div></template>
+                                <div class="sm:col-span-2"><dt>Luôn nhớ</dt><dd x-text="T9_RULE"></dd></div>
+                            </dl>
+                        </details>
+                        <textarea class="field" rows="2" placeholder="Hôm nay mình định làm gì? Vào lệnh khi nào, không vào khi nào." :value="t9Day.plan || ''" @input="t9DaySet({ plan: $event.target.value, c1: t9Day.c1 || !!$event.target.value.trim() })"></textarea>
+                    </div>
+                </div>
+                <div class="t9-step">
+                    <input type="checkbox" :checked="t9Day.c2" @change="t9DaySet({ c2: $event.target.checked })">
+                    <div class="space-y-2">
+                        <div class="font-semibold">Trong phiên: chỉ vào khi đủ điều kiện</div>
+                        <div class="caption">Mình có giữ đúng quy tắc không?</div>
+                        <div class="seg inline-flex"><template x-for="[v, l] in [['yes','Giữ đúng'],['no','Phá quy tắc'],['skip','Không giao dịch']]" :key="v"><button @click="t9DaySet({ kept: t9Day.kept === v ? '' : v, c2: true })" :class="{ on: t9Day.kept === v }" x-text="l"></button></template></div>
+                    </div>
+                </div>
+                <div class="t9-step">
+                    <input type="checkbox" :checked="t9Day.c3" @change="t9DaySet({ c3: $event.target.checked })">
+                    <div class="space-y-2">
+                        <div class="font-semibold">Sau phiên: ghi suy nghĩ</div>
+                        <div class="caption">Mình đã nghĩ gì, cảm thấy gì, lỗi nào lặp lại. Vài dòng là đủ.</div>
+                        <textarea class="field" rows="3" placeholder="Viết thật, không cần hay." :value="t9Day.thought || ''" @input="t9DaySet({ thought: $event.target.value, c3: t9Day.c3 || !!$event.target.value.trim() })"></textarea>
+                    </div>
+                </div>
+                <p class="caption mt-3" x-text="t9.saved"></p>
+            </div>
+
+            <!-- Tuần -->
+            <div class="card p-5 space-y-3">
+                <div><h2 class="title-md">Xem lại tuần</h2>
+                <p class="caption mt-1" x-text="t9S.back === 0 ? 'Hôm nay là ngày xem lại. 30 phút, đánh giá quy trình, không kết luận mình giỏi hay dở.' : 'Lần xem lại gần nhất: ' + t9Dm(t9S.wk) + '. Lần tới: ' + t9Dm(t9Add(t9S.wk, 7)) + '.'"></p></div>
+                <template x-for="[k, l] in [['kept','Mình có tuân thủ quy tắc không?'],['repeat','Lỗi nào lặp lại?'],['fix','Tuần tới chỉ cần sửa một điều gì?']]" :key="k">
+                    <label class="block"><span class="label" x-text="l"></span><textarea class="field" rows="2" :value="(t9.docs['w:' + t9S.wk] || {})[k] || ''" @input="t9WeekSet(t9S.wk, k, $event.target.value)"></textarea></label>
+                </template>
+            </div>
+
+            <div class="card p-5">
+                <h2 class="title-md">Câu nhắc khi lung lay</h2>
+                <p class="t9-quote mt-2">Mình không cần giải quyết cả tương lai hôm nay.<br>Mình chỉ cần làm đúng phiên giao dịch kế tiếp, ghi lại, và xem xét vào ngày đã định.</p>
+            </div>
+
+            <div class="card p-5">
+                <h2 class="title-md">Những ngày đã qua</h2>
+                <p x-show="!t9S.past.length" class="caption mt-2">Chưa có ngày nào. Hôm nay là ngày đầu tiên được ghi.</p>
+                <div class="mt-2"><template x-for="d in t9S.past" :key="d.k">
+                    <div class="t9-it">
+                        <div class="caption" x-text="'Ngày ' + d.n + ' · ' + t9Dm(d.iso) + (d.kept ? ' · ' + t9Kept[d.kept] : '')"></div>
+                        <div x-show="(d.plan || '').trim()" class="text-[14px] whitespace-pre-wrap mt-1"><span class="text-ink-3">Kế hoạch: </span><span x-text="d.plan"></span></div>
+                        <div x-show="(d.thought || '').trim()" class="text-[14px] whitespace-pre-wrap mt-1" x-text="d.thought"></div>
+                    </div>
+                </template></div>
+            </div>
+
+            <details class="card p-5">
+                <summary class="font-semibold cursor-pointer">Bản cam kết</summary>
+                <div class="grid sm:grid-cols-2 gap-3 mt-4">
+                    <template x-for="f in T9F" :key="f[0]">
+                        <label :class="f[3] ? 'sm:col-span-2' : ''"><span class="label" x-text="f[1]"></span>
+                            <template x-if="f[3]"><textarea class="field" rows="2" :value="t9Plan[f[0]] || ''" @input="t9PlanSet(f[0], $event.target.value)"></textarea></template>
+                            <template x-if="!f[3]"><input class="field" :value="t9Plan[f[0]] || ''" @input="t9PlanSet(f[0], $event.target.value)"></template>
+                        </label>
+                    </template>
+                    <label><span class="label">Ngày xem lại mỗi tuần</span><select class="field" @change="t9PlanSet('reviewDow', $event.target.value)"><template x-for="(w, i) in ['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy']" :key="i"><option :value="String(i)" x-text="w" :selected="String(i) === String(t9Plan.reviewDow ?? 0)"></option></template></select></label>
+                </div>
+                <div class="mt-4" x-data="{ armed: false }"><button class="btn btn-gray" :class="armed && '!bg-[var(--down)] !text-white'" @click="if (!armed) { armed = true; setTimeout(() => armed = false, 4000); } else { armed = false; t9Restart(); }" x-text="armed ? 'Bấm lần nữa để làm lại (nhật ký cũ vẫn giữ)' : 'Làm lại từ đầu'"></button></div>
+            </details>
+        </div>
+        </template>
+    </main>
+    </template>
+
     <!-- Thanh tab dưới (điện thoại) -->
     <nav class="md:hidden fixed bottom-0 inset-x-0 z-30 bar border-t border-line tabbar flex">
-        <template x-for="t in TABS" :key="t.id">
+        <template x-for="t in navTabs" :key="t.id">
             <button @click="go(t.id)" class="press flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium" :class="tab === t.id ? 'text-accent' : 'text-ink-3'">
                 <i :data-lucide="t.icon" class="w-6 h-6"></i><span x-text="t.label"></span>
             </button>
@@ -875,12 +1043,12 @@
 </div>
 
 <!-- ═════════════ BÀI VIẾT / CỘNG ĐỒNG — công khai (chưa đăng nhập) + thành viên ═════════════ -->
-<main x-show="!booting && (isLocked || tab === 'feed')" x-cloak class="max-w-3xl mx-auto px-4 md:px-6 pt-5 space-y-6" :class="isLocked ? 'pb-16' : 'pb-14'">
-    <template x-if="!isLocked">
+<main x-show="!booting && (onHome || tab === 'feed')" x-cloak class="max-w-3xl mx-auto px-4 md:px-6 pt-5 space-y-6" :class="isLocked ? 'pb-16' : 'pb-14'">
+    <template x-if="!isLocked && tab === 'feed'">
         <div class="flex items-end justify-between gap-3">
             <div>
                 <div class="eyebrow mb-3">Trader chia sẻ</div>
-                <h1 class="title-lg">Cộng đồng</h1>
+                <h1 class="title-lg">Bảng tin</h1>
                 <p class="text-[15px] text-ink-2 mt-1">Bài viết và lệnh trader chia sẻ</p>
             </div>
             <div class="flex items-center gap-1">
@@ -1002,8 +1170,22 @@
 </main>
 
 <!-- ═════════════ TRANG CHỦ CÔNG KHAI — phần cuối ═════════════ -->
-<div x-show="isLocked && !booting" x-cloak class="relative overflow-x-clip">
-    <section id="cach-dung" class="lp-wrap pt-24 md:pt-32 scroll-mt-20">
+<div x-show="onHome && !booting" x-cloak class="relative overflow-x-clip">
+    <section id="hoi-vien-home" class="lp-wrap pt-24 md:pt-32 scroll-mt-20 text-center">
+        <span class="lp-tag">Hội viên</span>
+        <template x-if="isLocked || !isMember">
+            <div>
+                <h2 class="lp-h2 mt-5">Mở khoá toàn bộ tài nguyên</h2>
+                <p class="mt-4 text-[17px] text-ink-2 max-w-[34rem] mx-auto">Bài viết và công cụ có ổ khoá dành cho hội viên. Xem quyền lợi và cách tham gia.</p>
+                <div class="mt-8"><button @click="openMemberPage()" class="btn btn-gray !px-6 !py-3">Tìm hiểu Hội viên</button></div>
+            </div>
+        </template>
+        <template x-if="!isLocked && isMember">
+            <div class="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-full border border-line"><i data-lucide="badge-check" class="w-5 h-5 text-accent"></i><span>Bạn đang là hội viên</span></div>
+        </template>
+    </section>
+
+    <section x-show="isLocked" id="cach-dung" class="lp-wrap pt-24 md:pt-32 scroll-mt-20">
         <h2 class="lp-h2">Bắt đầu trong vài phút</h2>
         <p class="mt-3 text-[17px] text-ink-2">Không cần email, không cần cài app.</p>
         <div class="grid md:grid-cols-3 gap-4 mt-10">
@@ -1013,7 +1195,7 @@
         </div>
     </section>
 
-    <section id="hoi-dap" class="lp-wrap pt-24 md:pt-32 scroll-mt-20">
+    <section x-show="isLocked" id="hoi-dap" class="lp-wrap pt-24 md:pt-32 scroll-mt-20">
         <div class="grid md:grid-cols-[1fr_1.6fr] gap-10">
             <h2 class="lp-h2">Câu hỏi thường gặp</h2>
             <div class="faq border-t border-line">
@@ -1025,7 +1207,7 @@
         </div>
     </section>
 
-    <section class="lp-wrap pt-24 md:pt-32 text-center relative">
+    <section x-show="isLocked" class="lp-wrap pt-24 md:pt-32 text-center relative">
         <div class="lp-glow !top-auto !bottom-[-40%]"></div>
         <h2 class="lp-h2 relative">Cùng mình ghi lại hành trình đầu tư</h2>
         <div class="relative mt-8 flex flex-wrap justify-center gap-3">
@@ -1035,7 +1217,7 @@
         <div class="lp-horizon mt-10"></div>
     </section>
 
-    <footer class="mt-16 border-t border-line">
+    <footer x-show="isLocked" class="mt-16 border-t border-line">
         <div class="lp-wrap py-14 grid gap-10 grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr]">
             <div class="space-y-3 col-span-2 md:col-span-1">
                 <button @click="window.scrollTo({ top: 0, behavior: 'smooth' })" class="flex items-center gap-2">
@@ -1049,7 +1231,7 @@
                     <li><button @click="guestTab('journal')" class="text-ink-2 hover:text-ink">Nhật ký</button></li>
                     <li><button @click="guestTab('backtest')" class="text-ink-2 hover:text-ink">Backtest</button></li>
                     <li><button @click="guestTab('resources')" class="text-ink-2 hover:text-ink">Tài nguyên</button></li>
-                    <li><button @click="guestTab('feed')" class="text-ink-2 hover:text-ink">Cộng đồng</button></li>
+                    <li><button @click="guestTab('feed')" class="text-ink-2 hover:text-ink">Bảng tin</button></li>
                     <li><a href="#hoi-vien" class="text-ink-2 hover:text-ink">Hội viên</a></li>
                 </ul>
             </div>
@@ -1073,7 +1255,7 @@
 <footer x-show="!isLocked && !booting" x-cloak class="border-t border-line pb-tab md:pb-0">
     <div class="max-w-6xl mx-auto px-4 md:px-6 py-10 grid gap-8 grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr]">
         <div class="space-y-2 col-span-2 md:col-span-1">
-            <button @click="go('journal')" class="flex items-center gap-2"><i data-lucide="chart-no-axes-column" class="w-5 h-5 text-accent"></i><span class="font-semibold text-[17px]">Trading OS</span></button>
+            <button @click="go('home')" class="flex items-center gap-2"><i data-lucide="chart-no-axes-column" class="w-5 h-5 text-accent"></i><span class="font-semibold text-[17px]">Trading OS</span></button>
             <p class="text-[14px] text-ink-2 max-w-[22rem]">Nhật ký giao dịch và blog đầu tư của mình.</p>
         </div>
         <div>
@@ -1103,7 +1285,7 @@
         <div>
             <header class="sticky top-0 z-10 px-3 pt-3">
                 <div class="capsule mx-auto max-w-3xl flex items-center gap-2 p-1.5">
-                    <button @click="closeReader()" class="btn btn-plain !py-1.5 !px-2.5"><i data-lucide="chevron-left" class="w-4 h-4"></i><span x-text="isLocked ? 'Trang chủ' : 'Cộng đồng'"></span></button>
+                    <button @click="closeReader()" class="btn btn-plain !py-1.5 !px-2.5"><i data-lucide="chevron-left" class="w-4 h-4"></i><span x-text="onHome ? 'Trang chủ' : 'Bảng tin'"></span></button>
                     <span class="flex-1"></span>
                     <button x-show="reader.post" @click="copyLink(reader.post)" class="btn btn-gray !rounded-full !py-1.5 !px-3 text-[13px]"><i data-lucide="link" class="w-3.5 h-3.5"></i><span x-text="reader.copied ? 'Đã chép' : 'Chép link'"></span></button>
                     <button x-show="isLocked" @click="openLogin(false)" class="btn btn-primary !rounded-full !py-1.5 !px-3.5 text-[13px]">Đăng nhập</button>
@@ -1351,7 +1533,7 @@
                     </div>
                 </div>
                 <div class="flex gap-2 pt-1">
-                    <button x-show="!isShared('TRADE', view.id)" @click="openShare('TRADE', view)" class="btn btn-primary flex-1" :disabled="view._state !== 'ok'"><i data-lucide="share-2" class="w-4 h-4"></i> Chia sẻ lên Cộng đồng</button>
+                    <button x-show="!isShared('TRADE', view.id)" @click="openShare('TRADE', view)" class="btn btn-primary flex-1" :disabled="view._state !== 'ok'"><i data-lucide="share-2" class="w-4 h-4"></i> Chia sẻ lên Bảng tin</button>
                     <button x-show="isShared('TRADE', view.id)" @click="go('feed'); view = null" class="btn btn-gray flex-1 text-accent"><i data-lucide="users" class="w-4 h-4"></i> Đã chia sẻ · Xem</button>
                     <button @click="deleteTrade(view)" class="btn btn-danger" title="Xoá lệnh"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                 </div>
@@ -1391,7 +1573,7 @@
                     <p class="caption" x-text="visHint(share.visibility)"></p>
                 </div>
                 <p class="caption flex gap-2"><i data-lucide="lock" class="w-4 h-4 shrink-0"></i><span>Bài hiện R, R:R, giá, ảnh, ghi chú — <b>không</b> hiện số tiền, vốn hay khối lượng.</span></p>
-                <button @click="submitShare()" class="btn btn-primary w-full py-3" :disabled="share.busy" x-text="share.busy ? 'Đang đăng…' : (share.postId ? 'Lưu' : 'Đăng lên Cộng đồng')"></button>
+                <button @click="submitShare()" class="btn btn-primary w-full py-3" :disabled="share.busy" x-text="share.busy ? 'Đang đăng…' : (share.postId ? 'Lưu' : 'Đăng lên Bảng tin')"></button>
             </div>
         </div>
     </template>
@@ -1963,10 +2145,11 @@
         { key: 'LTF', j: 'imgLtf', bt: 'img', post: 'img_ltf', label: 'Khung vào lệnh' },
     ];
     const TABS = [
+        { id: 'home', label: 'Trang chủ', icon: 'house' },
         { id: 'journal', label: 'Nhật ký', icon: 'notebook-pen' },
         { id: 'backtest', label: 'Backtest', icon: 'flask-conical' },
         { id: 'resources', label: 'Tài nguyên', icon: 'library-big' },
-        { id: 'feed', label: 'Cộng đồng', icon: 'users' },
+        { id: 'feed', label: 'Bảng tin', icon: 'users' },
     ];
     const MILESTONES = {
         10: '10 lệnh! Phần lớn người bỏ cuộc trước mốc này — bạn đã qua.',
@@ -1980,6 +2163,7 @@
     function app() {
         return {
             TABS, SLOTS,
+            t9: { loaded: false, docs: {}, saved: '', setup: null, msNote: '' },
             booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false, isMember: false,
             jView: 'list', memberPage: false, gate: null, rpage: null, rpageGroup: '', planForm: null, nowTs: Date.now(),
             plan: { currency: 'USD', list_price: 200, price: 0, promo_on: false, promo_price: 0, promo_label: '', promo_start: null, promo_end: null }, myAvatar: '', avatarBusy: false, avatars: {},
@@ -1989,7 +2173,7 @@
             inUser: '', inPass: '', inPass2: '', loginErr: '', signupMode: false,
             userId: '', username: '',
             capital: 10000, riskPercent: 5, currency: 'USD', gemini: '',
-            tab: 'journal',
+            tab: 'home',
 
             // Nhật ký
             trades: [], tradesLoaded: false, jFilter: 'ALL', jQuery: '',
@@ -2050,7 +2234,7 @@
                 this.loginOpen = false;
                 // bảng tin công khai → tải lại theo quyền thành viên
                 Object.assign(this.feed, { posts: [], loaded: false, end: false, filter: 'ALL' });
-                if (!location.hash || location.hash === '#') history.replaceState(null, '', '#journal');
+                if (!location.hash || location.hash === '#') history.replaceState(null, '', '#home');
                 this.fromHash();
                 if (this.reader && this.reader.post) this.openReaderById(this.reader.post.id, false);
                 await Promise.all([this.loadTrades(), this.loadMyPosts()]);
@@ -2094,6 +2278,75 @@
                 location.reload();
             },
 
+
+            // ═════════════ 90 NGÀY (riêng admin — cam kết kiểm chứng trading, không ghi lãi/lỗ) ═════════════
+            // Lưu ở bảng desk_docs (RLS: chỉ chủ tài khoản đọc/ghi), kind 't90': 'plan' · 'd:YYYY-MM-DD' · 'w:YYYY-MM-DD' · 'm:30|60|90'
+            get navTabs() { return this.isAdmin ? [...TABS, { id: 't90', label: '90 ngày', icon: 'calendar-check' }] : TABS; },
+            T9F: [
+                ['why', 'Vì sao mình làm việc này', 'Mình muốn nghiêm túc theo đuổi trading vì mình đam mê và muốn biết liệu đây có thể trở thành công việc chính hay không.', 1],
+                ['focus', 'Trọng tâm duy nhất', 'Trong 90 ngày tới, trading là thử nghiệm nghề nghiệp chính. Không mở thêm hướng kiếm tiền mới. Vẫn giữ mức tối thiểu từ nguồn thu hiện có để trang trải.', 1],
+                ['capital', 'Vốn trading riêng', ''], ['lossDay', 'Lỗ tối đa trong ngày', ''], ['lossWeek', 'Lỗ tối đa trong tuần', ''],
+                ['market', 'Thị trường / sản phẩm', ''], ['tf', 'Khung thời gian', ''],
+                ['entry', 'Điều kiện vào lệnh', '', 1], ['exit', 'Điều kiện thoát lệnh', '', 1], ['noTrade', 'Khi nào mình không giao dịch', '', 1],
+                ['risk', 'Rủi ro tối đa mỗi lệnh', ''], ['minN', 'Số phiên tối thiểu để đánh giá', ''],
+            ],
+            T9_RULE: 'Không vay tiền để trading, không lấy tiền sinh hoạt hay quỹ dự phòng. Chạm giới hạn lỗ thì dừng và xem lại nhật ký, không giao dịch để gỡ.',
+            t9Iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); },
+            t9D(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); },
+            t9Add(iso, n) { const d = this.t9D(iso); d.setDate(d.getDate() + n); return this.t9Iso(d); },
+            t9Diff(a, b) { return Math.round((this.t9D(b) - this.t9D(a)) / 864e5); },
+            t9Dm(iso) { const d = this.t9D(iso); return ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][d.getDay()] + ' ' + String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'); },
+            get t9Today() { return this.t9Iso(new Date(this.nowTs)); },
+            get t9Plan() { return this.t9.docs.plan || null; },
+            get t9Running() { return !!(this.t9Plan && this.t9Plan.start); },
+            t9Present(d) { return !!(d && ((d.plan || '').trim() || (d.thought || '').trim() || d.c1 || d.c2 || d.c3 || d.kept)); },
+            async t9Load() {
+                try {
+                    const { data, error } = await sb.from('desk_docs').select('key,data').eq('kind', 't90').limit(2000);
+                    if (error) throw error;
+                    const docs = {}; (data || []).forEach(r => { docs[r.key] = r.data; });
+                    this.t9.docs = docs; this.t9.loaded = true;
+                    if (!this.t9Running) this.t9.setup = this.t9SetupDefaults();
+                } catch (e) { this.t9.loaded = true; this.t9.saved = 'Không tải được: ' + (e.message || e); }
+                this.icons();
+            },
+            t9SetupDefaults() { const p = { ...(this.t9Plan || {}) }; this.T9F.forEach(([k, , ph]) => { if (p[k] == null) p[k] = ph; }); p.reviewDow = p.reviewDow ?? '0'; p.start = this.t9Today; return p; },
+            _t9Timers: {},
+            t9Save(key, data, delay = 600) {
+                this.t9.docs = { ...this.t9.docs, [key]: data };
+                clearTimeout(this._t9Timers[key]);
+                this._t9Timers[key] = setTimeout(async () => {
+                    const { error } = await sb.from('desk_docs').upsert({ user_id: this.userId, kind: 't90', key, data: this.t9.docs[key], updated_at: new Date().toISOString() }, { onConflict: 'user_id,kind,key' });
+                    const t = new Date(); this.t9.saved = error ? 'Chưa lưu được: ' + error.message : 'Đã lưu ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+                }, delay);
+            },
+            t9Start() { const p = { ...this.t9.setup }; p.start = p.start || this.t9Today; this.t9Save('plan', p, 0); this.t9.setup = null; },
+            t9PlanSet(k, v) { this.t9Save('plan', { ...this.t9Plan, [k]: v }); },
+            t9Restart() { const p = { ...this.t9Plan }; delete p.start; this.t9Save('plan', p, 0); this.t9.setup = this.t9SetupDefaults(); },
+            get t9DayKey() { return 'd:' + this.t9Today; },
+            get t9Day() { return this.t9.docs[this.t9DayKey] || {}; },
+            t9DaySet(patch) { this.t9Save(this.t9DayKey, { ...this.t9Day, ...patch }); },
+            get t9S() {
+                const plan = this.t9Plan, today = this.t9Today, start = plan.start, end = this.t9Add(start, 89);
+                const n = Math.min(90, Math.max(0, this.t9Diff(start, today) + 1));
+                let present = 0, kept = 0, keptN = 0, streak = 0;
+                for (let i = 0; i < n; i++) { const d = this.t9.docs['d:' + this.t9Add(start, i)]; if (this.t9Present(d)) present++; if (d && d.kept) { keptN += d.kept !== 'skip'; kept += d.kept === 'yes'; } }
+                for (let i = n - 1; i >= 0; i--) { const iso = this.t9Add(start, i); if (this.t9Present(this.t9.docs['d:' + iso])) streak++; else if (iso !== today) break; }
+                const nextMs = [30, 60, 90].find(m => m >= Math.max(n, 1));
+                const dots = Array.from({ length: 90 }, (_, i) => { const iso = this.t9Add(start, i), on = this.t9Present(this.t9.docs['d:' + iso]); return { iso, i, cls: (on ? 'on' : (iso < today ? 'miss' : '')) + (iso === today ? ' now' : '') }; });
+                const dow = +(plan.reviewDow ?? 0), back = (new Date(this.nowTs).getDay() - dow + 7) % 7, wk = this.t9Add(today, -back);
+                const msDue = [90, 60, 30].find(m => n >= m && !(this.t9.docs['m:' + m] || {}).decision) || [90, 60, 30].find(m => n >= m && n < m + 3) || 0;
+                const past = Object.keys(this.t9.docs).filter(k => k.startsWith('d:') && k !== 'd:' + today && this.t9Present(this.t9.docs[k])).sort().reverse().slice(0, 60)
+                    .map(k => ({ k, iso: k.slice(2), n: this.t9Diff(start, k.slice(2)) + 1, ...this.t9.docs[k] }));
+                return { n, end, before: this.t9Diff(today, start) > 0, after: this.t9Diff(end, today) > 0, present, streak, keptPct: keptN ? Math.round(kept / keptN * 100) + '%' : '—', nextMs, dots, back, wk, msDue, past };
+            },
+            t9MS: { 30: ['Mình có ghi đủ và giữ giới hạn không?', ['Tiếp tục', 'Giảm quy mô', 'Tạm dừng để sửa quy trình']],
+                    60: ['Kết quả dựa trên nhiều phiên theo cùng một hệ thống, hay chỉ vài lệnh may mắn?', ['Tiếp tục', 'Điều chỉnh có ghi chép', 'Tạm dừng']],
+                    90: ['Có đủ dữ liệu cho thấy làm được một cách kỷ luật, lặp lại được, không vượt giới hạn?', ['Tiếp tục 90 ngày nữa', 'Đổi hệ thống', 'Dừng']] },
+            t9MsSet(m, patch) { this.t9Save('m:' + m, { ...(this.t9.docs['m:' + m] || {}), ...patch }, patch.decision ? 0 : 600); },
+            t9WeekSet(wk, k, v) { this.t9Save('w:' + wk, { ...(this.t9.docs['w:' + wk] || {}), [k]: v }); },
+            t9Kept: { yes: 'giữ đúng quy tắc', no: 'phá quy tắc', skip: 'không giao dịch' },
+
             // ═════════════ ĐIỀU HƯỚNG ═════════════
             fromHash() {
                 const [t, id] = location.hash.replace(/^#/, '').split('/');
@@ -2104,15 +2357,19 @@
                 this.memberPage = t === 'hoi-vien';
                 if (this.memberPage) { document.getElementById('member-page')?.scrollTo(0, 0); return this.icons(); }
                 if (t === 'stats') { this.tab = 'journal'; this.jView = 'stats'; history.replaceState(null, '', '#journal/stats'); }
+                else if (t === 't90') { this.tab = this.isAdmin ? 't90' : 'home'; }
                 else if (TABS.some(x => x.id === t)) { this.tab = t; if (t === 'journal') this.jView = id === 'stats' ? 'stats' : 'list'; }
                 if (this.isLocked) return this.icons();
+                if (this.tab === 't90' && !this.isAdmin) this.tab = 'home';
+                if (this.tab === 't90' && !this.t9.loaded) this.t9Load();
                 if (this.tab === 'resources' && !this.res.loaded) this.loadResources();
                 if (this.tab === 'backtest') this.loadSets().then(() => {
                     const s = id && this.bt.sets.find(x => x.id === id);
                     if (s && (!this.bt.set || this.bt.set.id !== s.id)) this.openSet(s, false);
                     if (!id && this.bt.set) this.bt.set = null;
                 });
-                if (this.tab === 'feed' && !this.feed.loaded) this.loadFeed(true);
+                if ((this.tab === 'feed' || this.tab === 'home') && !this.feed.loaded) this.loadFeed(true);
+                if (this.tab === 'home' && !this.res.loaded) this.loadResources();
                 this.icons();
             },
             setJView(v) {
@@ -2174,7 +2431,7 @@
             },
             openGate(kind, it) {
                 this.loginErr = '';
-                this.gate = { kind, id: it.id, from: kind === 'res' ? 'Tài nguyên' : 'Cộng đồng',
+                this.gate = { kind, id: it.id, from: kind === 'res' ? 'Tài nguyên' : 'Bảng tin',
                     title: kind === 'res' ? it.title : (it.kind === 'ARTICLE' ? it.title : `${it.pair} ${it.direction === 'SHORT' ? 'Short' : 'Long'}`) };
                 this.$nextTick(() => { document.getElementById('gate')?.scrollTo(0, 0); this.icons(); });
             },
@@ -2481,6 +2738,7 @@
             // ═════════════ NHẬT KÝ: số liệu ═════════════
             get capitalNow() { return Number(this.capital) + this.trades.reduce((a, t) => a + (Number(t.pnl) || 0), 0); },
             get riskNext() { return Math.round(this.capitalNow * (Number(this.riskPercent) || 5) / 100 * 100) / 100; },
+            get onHome() { return this.isLocked || this.tab === 'home'; },
             get journal() {
                 const closed = this.trades.filter(t => t.status === 'WIN' || t.status === 'LOSS' || t.status === 'BE');
                 const w = closed.filter(t => t.status === 'WIN').length, l = closed.filter(t => t.status === 'LOSS').length;

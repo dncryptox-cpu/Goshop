@@ -287,6 +287,22 @@
         .res-more[open] summary i { transform: rotate(180deg); }
         .res-more summary::-webkit-details-marker { display: none; } .res-more summary { list-style: none; }
         .lock-cover { filter: blur(14px) saturate(120%); transform: scale(1.15); opacity: .55; }
+
+        /* 90 ngày */
+        .t9-big { font-size: 44px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+        .t9-big small { font-size: 20px; color: var(--ink-3); font-weight: 600; }
+        .t9-bar { height: 6px; border-radius: 99px; background: var(--well); overflow: hidden; }
+        .t9-bar i { display: block; height: 100%; background: var(--mint); border-radius: 99px; }
+        .t9-dots { display: grid; grid-template-columns: repeat(30, minmax(0, 1fr)); gap: 3px; max-width: 560px; }
+        .t9-dots b { display: block; min-width: 0; aspect-ratio: 1; border-radius: 2px; background: var(--well); }
+        .t9-dots b.on { background: var(--up); } .t9-dots b.miss { background: rgba(255,107,107,0.35); } .t9-dots b.now { outline: 2px solid var(--mint); outline-offset: 1px; }
+        .t9-step { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 14px 0; border-top: 1px solid var(--line-soft); }
+        .t9-step:first-of-type { border-top: 0; }
+        .t9-step > input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--up); }
+        .t9-rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 18px; font-size: 14px; }
+        .t9-rules dt { color: var(--ink-3); font-size: 12.5px; margin-top: 6px; } .t9-rules dd { white-space: pre-wrap; }
+        .t9-quote { font-size: 15px; line-height: 1.6; color: var(--ink-2); border-left: 3px solid var(--line); padding-left: 12px; }
+        .t9-it { padding: 10px 0; border-top: 1px solid var(--line-soft); } .t9-it:first-child { border-top: 0; }
     </style>
 </head>
 <body class="min-h-screen font-sans" x-data="app()" x-init="init()" @paste.window="onPaste($event)" @keydown.window="onKey($event)">
@@ -327,7 +343,7 @@
                 <span class="font-semibold text-[15px] whitespace-nowrap">Trading OS</span>
             </button>
             <nav class="hidden md:flex items-center gap-0.5">
-                <template x-for="t in TABS" :key="t.id">
+                <template x-for="t in navTabs" :key="t.id">
                     <button @click="go(t.id)" class="pill" :class="{ on: tab === t.id }" x-text="t.label"></button>
                 </template>
             </nav>
@@ -875,9 +891,149 @@
         </template>
     </main>
 
+
+    <!-- ═════════════ 90 NGÀY (chỉ admin) ═════════════ -->
+    <template x-if="isAdmin">
+    <main x-show="tab === 't90'" x-cloak class="max-w-3xl mx-auto px-4 md:px-6 pt-5 pb-24 space-y-5">
+        <div>
+            <div class="eyebrow mb-3">Riêng mình · không công khai</div>
+            <h1 class="title-lg">Thử nghiệm 90 ngày</h1>
+            <p class="text-[15px] text-ink-2 mt-1">Không cần giao dịch giỏi. Chỉ cần có mặt mỗi ngày và làm đúng quy trình.</p>
+        </div>
+        <p x-show="!t9.loaded" class="caption py-10 text-center">Đang tải…</p>
+
+        <!-- Bắt đầu -->
+        <template x-if="t9.loaded && !t9Running && t9.setup">
+            <div class="card p-5 space-y-4">
+                <div><h2 class="title-md">Bản cam kết</h2><p class="caption mt-1">Điền một lần. Ô nào chưa biết thì để trống, điền sau.</p></div>
+                <div class="grid sm:grid-cols-2 gap-3">
+                    <template x-for="f in T9F" :key="f[0]">
+                        <label :class="f[3] ? 'sm:col-span-2' : ''"><span class="label" x-text="f[1]"></span>
+                            <template x-if="f[3]"><textarea class="field" rows="2" x-model="t9.setup[f[0]]"></textarea></template>
+                            <template x-if="!f[3]"><input class="field" x-model="t9.setup[f[0]]"></template>
+                        </label>
+                    </template>
+                    <label><span class="label">Ngày xem lại mỗi tuần</span><select class="field" x-model="t9.setup.reviewDow"><template x-for="(w, i) in ['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy']" :key="i"><option :value="String(i)" x-text="w" :selected="String(i) === String(t9.setup.reviewDow)"></option></template></select></label>
+                    <label><span class="label">Ngày bắt đầu</span><input type="date" class="field" x-model="t9.setup.start"></label>
+                </div>
+                <p class="caption" x-text="T9_RULE"></p>
+                <button @click="t9Start()" class="btn btn-primary">Bắt đầu ngày 1</button>
+            </div>
+        </template>
+
+        <template x-if="t9.loaded && t9Running">
+        <div class="space-y-5">
+            <!-- Tiến độ -->
+            <div class="card p-5">
+                <div class="flex items-end justify-between gap-3 flex-wrap">
+                    <div>
+                        <div class="t9-big" x-show="!t9S.before"><span x-text="'Ngày ' + t9S.n"></span><small>/90</small></div>
+                        <div class="t9-big" x-show="t9S.before"><span x-text="'Còn ' + t9Diff(t9Today, t9Plan.start) + ' ngày'"></span><small> tới ngày 1</small></div>
+                        <div class="caption mt-1" x-text="t9Dm(t9Plan.start) + ' → ' + t9Dm(t9S.end)"></div>
+                    </div>
+                    <div class="flex gap-4 text-[13px] text-ink-2">
+                        <span>Có mặt <b class="text-ink num" x-text="t9S.present + '/' + t9S.n"></b></span>
+                        <span>Chuỗi <b class="text-ink num" x-text="t9S.streak"></b> ngày</span>
+                        <span>Giữ quy tắc <b class="text-ink num" x-text="t9S.keptPct"></b></span>
+                    </div>
+                </div>
+                <div class="t9-bar mt-4"><i :style="'width:' + (t9S.n / 90 * 100) + '%'"></i></div>
+                <p class="caption mt-2" x-text="t9S.after ? 'Đã hết 90 ngày. Xem mốc 90 bên dưới.' : (t9S.nextMs === t9S.n ? 'Hôm nay là mốc ngày ' + t9S.n + '.' : 'Còn ' + (t9S.nextMs - t9S.n) + ' ngày tới mốc ngày ' + t9S.nextMs + '.')"></p>
+                <div class="t9-dots mt-3"><template x-for="d in t9S.dots" :key="d.iso"><b :class="d.cls" :title="'Ngày ' + (d.i + 1) + ' · ' + t9Dm(d.iso)"></b></template></div>
+            </div>
+
+            <!-- Mốc -->
+            <template x-if="t9S.msDue">
+                <div class="card p-5 space-y-3">
+                    <h2 class="title-md" x-text="'Mốc ngày ' + t9S.msDue"></h2>
+                    <p class="text-[15px] text-ink-2" x-text="t9MS[t9S.msDue][0] + ' Có mặt ' + t9S.present + '/' + t9S.n + ' ngày, giữ quy tắc ' + t9S.keptPct + '.'"></p>
+                    <div class="seg flex"><template x-for="o in t9MS[t9S.msDue][1]" :key="o"><button @click="t9MsSet(t9S.msDue, { decision: o, at: t9Today })" :class="{ on: (t9.docs['m:' + t9S.msDue] || {}).decision === o }" x-text="o"></button></template></div>
+                    <textarea class="field" rows="2" :placeholder="t9S.msDue === 90 ? 'Điều mình học được' : 'Vì sao mình quyết định vậy'" :value="(t9.docs['m:' + t9S.msDue] || {}).note || ''" @input="t9MsSet(t9S.msDue, { note: $event.target.value })"></textarea>
+                </div>
+            </template>
+
+            <!-- Hôm nay -->
+            <div class="card p-5">
+                <h2 class="title-md" x-text="t9S.before ? 'Chưa tới ngày 1' : (t9S.after ? 'Hôm nay (ngoài 90 ngày)' : 'Hôm nay · ngày ' + t9S.n)"></h2>
+                <div class="t9-step">
+                    <input type="checkbox" :checked="t9Day.c1" @change="t9DaySet({ c1: $event.target.checked })">
+                    <div class="space-y-2">
+                        <div class="font-semibold">Trước phiên: đọc quy tắc, ghi kế hoạch</div>
+                        <details><summary class="caption cursor-pointer">Xem quy tắc của mình</summary>
+                            <dl class="t9-rules mt-2">
+                                <template x-for="f in T9F.filter(f => !['why','focus'].includes(f[0]) && (t9Plan[f[0]] || '').trim())" :key="f[0]"><div><dt x-text="f[1]"></dt><dd x-text="t9Plan[f[0]]"></dd></div></template>
+                                <div class="sm:col-span-2"><dt>Luôn nhớ</dt><dd x-text="T9_RULE"></dd></div>
+                            </dl>
+                        </details>
+                        <textarea class="field" rows="2" placeholder="Hôm nay mình định làm gì? Vào lệnh khi nào, không vào khi nào." :value="t9Day.plan || ''" @input="t9DaySet({ plan: $event.target.value, c1: t9Day.c1 || !!$event.target.value.trim() })"></textarea>
+                    </div>
+                </div>
+                <div class="t9-step">
+                    <input type="checkbox" :checked="t9Day.c2" @change="t9DaySet({ c2: $event.target.checked })">
+                    <div class="space-y-2">
+                        <div class="font-semibold">Trong phiên: chỉ vào khi đủ điều kiện</div>
+                        <div class="caption">Mình có giữ đúng quy tắc không?</div>
+                        <div class="seg inline-flex"><template x-for="[v, l] in [['yes','Giữ đúng'],['no','Phá quy tắc'],['skip','Không giao dịch']]" :key="v"><button @click="t9DaySet({ kept: t9Day.kept === v ? '' : v, c2: true })" :class="{ on: t9Day.kept === v }" x-text="l"></button></template></div>
+                    </div>
+                </div>
+                <div class="t9-step">
+                    <input type="checkbox" :checked="t9Day.c3" @change="t9DaySet({ c3: $event.target.checked })">
+                    <div class="space-y-2">
+                        <div class="font-semibold">Sau phiên: ghi suy nghĩ</div>
+                        <div class="caption">Mình đã nghĩ gì, cảm thấy gì, lỗi nào lặp lại. Vài dòng là đủ.</div>
+                        <textarea class="field" rows="3" placeholder="Viết thật, không cần hay." :value="t9Day.thought || ''" @input="t9DaySet({ thought: $event.target.value, c3: t9Day.c3 || !!$event.target.value.trim() })"></textarea>
+                    </div>
+                </div>
+                <p class="caption mt-3" x-text="t9.saved"></p>
+            </div>
+
+            <!-- Tuần -->
+            <div class="card p-5 space-y-3">
+                <div><h2 class="title-md">Xem lại tuần</h2>
+                <p class="caption mt-1" x-text="t9S.back === 0 ? 'Hôm nay là ngày xem lại. 30 phút, đánh giá quy trình, không kết luận mình giỏi hay dở.' : 'Lần xem lại gần nhất: ' + t9Dm(t9S.wk) + '. Lần tới: ' + t9Dm(t9Add(t9S.wk, 7)) + '.'"></p></div>
+                <template x-for="[k, l] in [['kept','Mình có tuân thủ quy tắc không?'],['repeat','Lỗi nào lặp lại?'],['fix','Tuần tới chỉ cần sửa một điều gì?']]" :key="k">
+                    <label class="block"><span class="label" x-text="l"></span><textarea class="field" rows="2" :value="(t9.docs['w:' + t9S.wk] || {})[k] || ''" @input="t9WeekSet(t9S.wk, k, $event.target.value)"></textarea></label>
+                </template>
+            </div>
+
+            <div class="card p-5">
+                <h2 class="title-md">Câu nhắc khi lung lay</h2>
+                <p class="t9-quote mt-2">Mình không cần giải quyết cả tương lai hôm nay.<br>Mình chỉ cần làm đúng phiên giao dịch kế tiếp, ghi lại, và xem xét vào ngày đã định.</p>
+            </div>
+
+            <div class="card p-5">
+                <h2 class="title-md">Những ngày đã qua</h2>
+                <p x-show="!t9S.past.length" class="caption mt-2">Chưa có ngày nào. Hôm nay là ngày đầu tiên được ghi.</p>
+                <div class="mt-2"><template x-for="d in t9S.past" :key="d.k">
+                    <div class="t9-it">
+                        <div class="caption" x-text="'Ngày ' + d.n + ' · ' + t9Dm(d.iso) + (d.kept ? ' · ' + t9Kept[d.kept] : '')"></div>
+                        <div x-show="(d.plan || '').trim()" class="text-[14px] whitespace-pre-wrap mt-1"><span class="text-ink-3">Kế hoạch: </span><span x-text="d.plan"></span></div>
+                        <div x-show="(d.thought || '').trim()" class="text-[14px] whitespace-pre-wrap mt-1" x-text="d.thought"></div>
+                    </div>
+                </template></div>
+            </div>
+
+            <details class="card p-5">
+                <summary class="font-semibold cursor-pointer">Bản cam kết</summary>
+                <div class="grid sm:grid-cols-2 gap-3 mt-4">
+                    <template x-for="f in T9F" :key="f[0]">
+                        <label :class="f[3] ? 'sm:col-span-2' : ''"><span class="label" x-text="f[1]"></span>
+                            <template x-if="f[3]"><textarea class="field" rows="2" :value="t9Plan[f[0]] || ''" @input="t9PlanSet(f[0], $event.target.value)"></textarea></template>
+                            <template x-if="!f[3]"><input class="field" :value="t9Plan[f[0]] || ''" @input="t9PlanSet(f[0], $event.target.value)"></template>
+                        </label>
+                    </template>
+                    <label><span class="label">Ngày xem lại mỗi tuần</span><select class="field" @change="t9PlanSet('reviewDow', $event.target.value)"><template x-for="(w, i) in ['Chủ nhật','Thứ Hai','Thứ Ba','Thứ Tư','Thứ Năm','Thứ Sáu','Thứ Bảy']" :key="i"><option :value="String(i)" x-text="w" :selected="String(i) === String(t9Plan.reviewDow ?? 0)"></option></template></select></label>
+                </div>
+                <div class="mt-4" x-data="{ armed: false }"><button class="btn btn-gray" :class="armed && '!bg-[var(--down)] !text-white'" @click="if (!armed) { armed = true; setTimeout(() => armed = false, 4000); } else { armed = false; t9Restart(); }" x-text="armed ? 'Bấm lần nữa để làm lại (nhật ký cũ vẫn giữ)' : 'Làm lại từ đầu'"></button></div>
+            </details>
+        </div>
+        </template>
+    </main>
+    </template>
+
     <!-- Thanh tab dưới (điện thoại) -->
     <nav class="md:hidden fixed bottom-0 inset-x-0 z-30 bar border-t border-line tabbar flex">
-        <template x-for="t in TABS" :key="t.id">
+        <template x-for="t in navTabs" :key="t.id">
             <button @click="go(t.id)" class="press flex-1 flex flex-col items-center justify-center gap-0.5 text-[10px] font-medium" :class="tab === t.id ? 'text-accent' : 'text-ink-3'">
                 <i :data-lucide="t.icon" class="w-6 h-6"></i><span x-text="t.label"></span>
             </button>
@@ -2006,6 +2162,7 @@
     function app() {
         return {
             TABS, SLOTS,
+            t9: { loaded: false, docs: {}, saved: '', setup: null, msNote: '' },
             booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false, isMember: false,
             jView: 'list', memberPage: false, gate: null, rpage: null, rpageGroup: '', planForm: null, nowTs: Date.now(),
             plan: { currency: 'USD', list_price: 200, price: 0, promo_on: false, promo_price: 0, promo_label: '', promo_start: null, promo_end: null }, myAvatar: '', avatarBusy: false, avatars: {},
@@ -2120,6 +2277,75 @@
                 location.reload();
             },
 
+
+            // ═════════════ 90 NGÀY (riêng admin — cam kết kiểm chứng trading, không ghi lãi/lỗ) ═════════════
+            // Lưu ở bảng desk_docs (RLS: chỉ chủ tài khoản đọc/ghi), kind 't90': 'plan' · 'd:YYYY-MM-DD' · 'w:YYYY-MM-DD' · 'm:30|60|90'
+            get navTabs() { return this.isAdmin ? [...TABS, { id: 't90', label: '90 ngày', icon: 'calendar-check' }] : TABS; },
+            T9F: [
+                ['why', 'Vì sao mình làm việc này', 'Mình muốn nghiêm túc theo đuổi trading vì mình đam mê và muốn biết liệu đây có thể trở thành công việc chính hay không.', 1],
+                ['focus', 'Trọng tâm duy nhất', 'Trong 90 ngày tới, trading là thử nghiệm nghề nghiệp chính. Không mở thêm hướng kiếm tiền mới. Vẫn giữ mức tối thiểu từ nguồn thu hiện có để trang trải.', 1],
+                ['capital', 'Vốn trading riêng', ''], ['lossDay', 'Lỗ tối đa trong ngày', ''], ['lossWeek', 'Lỗ tối đa trong tuần', ''],
+                ['market', 'Thị trường / sản phẩm', ''], ['tf', 'Khung thời gian', ''],
+                ['entry', 'Điều kiện vào lệnh', '', 1], ['exit', 'Điều kiện thoát lệnh', '', 1], ['noTrade', 'Khi nào mình không giao dịch', '', 1],
+                ['risk', 'Rủi ro tối đa mỗi lệnh', ''], ['minN', 'Số phiên tối thiểu để đánh giá', ''],
+            ],
+            T9_RULE: 'Không vay tiền để trading, không lấy tiền sinh hoạt hay quỹ dự phòng. Chạm giới hạn lỗ thì dừng và xem lại nhật ký, không giao dịch để gỡ.',
+            t9Iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); },
+            t9D(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); },
+            t9Add(iso, n) { const d = this.t9D(iso); d.setDate(d.getDate() + n); return this.t9Iso(d); },
+            t9Diff(a, b) { return Math.round((this.t9D(b) - this.t9D(a)) / 864e5); },
+            t9Dm(iso) { const d = this.t9D(iso); return ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'][d.getDay()] + ' ' + String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0'); },
+            get t9Today() { return this.t9Iso(new Date(this.nowTs)); },
+            get t9Plan() { return this.t9.docs.plan || null; },
+            get t9Running() { return !!(this.t9Plan && this.t9Plan.start); },
+            t9Present(d) { return !!(d && ((d.plan || '').trim() || (d.thought || '').trim() || d.c1 || d.c2 || d.c3 || d.kept)); },
+            async t9Load() {
+                try {
+                    const { data, error } = await sb.from('desk_docs').select('key,data').eq('kind', 't90').limit(2000);
+                    if (error) throw error;
+                    const docs = {}; (data || []).forEach(r => { docs[r.key] = r.data; });
+                    this.t9.docs = docs; this.t9.loaded = true;
+                    if (!this.t9Running) this.t9.setup = this.t9SetupDefaults();
+                } catch (e) { this.t9.loaded = true; this.t9.saved = 'Không tải được: ' + (e.message || e); }
+                this.icons();
+            },
+            t9SetupDefaults() { const p = { ...(this.t9Plan || {}) }; this.T9F.forEach(([k, , ph]) => { if (p[k] == null) p[k] = ph; }); p.reviewDow = p.reviewDow ?? '0'; p.start = this.t9Today; return p; },
+            _t9Timers: {},
+            t9Save(key, data, delay = 600) {
+                this.t9.docs = { ...this.t9.docs, [key]: data };
+                clearTimeout(this._t9Timers[key]);
+                this._t9Timers[key] = setTimeout(async () => {
+                    const { error } = await sb.from('desk_docs').upsert({ user_id: this.userId, kind: 't90', key, data: this.t9.docs[key], updated_at: new Date().toISOString() }, { onConflict: 'user_id,kind,key' });
+                    const t = new Date(); this.t9.saved = error ? 'Chưa lưu được: ' + error.message : 'Đã lưu ' + String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+                }, delay);
+            },
+            t9Start() { const p = { ...this.t9.setup }; p.start = p.start || this.t9Today; this.t9Save('plan', p, 0); this.t9.setup = null; },
+            t9PlanSet(k, v) { this.t9Save('plan', { ...this.t9Plan, [k]: v }); },
+            t9Restart() { const p = { ...this.t9Plan }; delete p.start; this.t9Save('plan', p, 0); this.t9.setup = this.t9SetupDefaults(); },
+            get t9DayKey() { return 'd:' + this.t9Today; },
+            get t9Day() { return this.t9.docs[this.t9DayKey] || {}; },
+            t9DaySet(patch) { this.t9Save(this.t9DayKey, { ...this.t9Day, ...patch }); },
+            get t9S() {
+                const plan = this.t9Plan, today = this.t9Today, start = plan.start, end = this.t9Add(start, 89);
+                const n = Math.min(90, Math.max(0, this.t9Diff(start, today) + 1));
+                let present = 0, kept = 0, keptN = 0, streak = 0;
+                for (let i = 0; i < n; i++) { const d = this.t9.docs['d:' + this.t9Add(start, i)]; if (this.t9Present(d)) present++; if (d && d.kept) { keptN += d.kept !== 'skip'; kept += d.kept === 'yes'; } }
+                for (let i = n - 1; i >= 0; i--) { const iso = this.t9Add(start, i); if (this.t9Present(this.t9.docs['d:' + iso])) streak++; else if (iso !== today) break; }
+                const nextMs = [30, 60, 90].find(m => m >= Math.max(n, 1));
+                const dots = Array.from({ length: 90 }, (_, i) => { const iso = this.t9Add(start, i), on = this.t9Present(this.t9.docs['d:' + iso]); return { iso, i, cls: (on ? 'on' : (iso < today ? 'miss' : '')) + (iso === today ? ' now' : '') }; });
+                const dow = +(plan.reviewDow ?? 0), back = (new Date(this.nowTs).getDay() - dow + 7) % 7, wk = this.t9Add(today, -back);
+                const msDue = [90, 60, 30].find(m => n >= m && !(this.t9.docs['m:' + m] || {}).decision) || [90, 60, 30].find(m => n >= m && n < m + 3) || 0;
+                const past = Object.keys(this.t9.docs).filter(k => k.startsWith('d:') && k !== 'd:' + today && this.t9Present(this.t9.docs[k])).sort().reverse().slice(0, 60)
+                    .map(k => ({ k, iso: k.slice(2), n: this.t9Diff(start, k.slice(2)) + 1, ...this.t9.docs[k] }));
+                return { n, end, before: this.t9Diff(today, start) > 0, after: this.t9Diff(end, today) > 0, present, streak, keptPct: keptN ? Math.round(kept / keptN * 100) + '%' : '—', nextMs, dots, back, wk, msDue, past };
+            },
+            t9MS: { 30: ['Mình có ghi đủ và giữ giới hạn không?', ['Tiếp tục', 'Giảm quy mô', 'Tạm dừng để sửa quy trình']],
+                    60: ['Kết quả dựa trên nhiều phiên theo cùng một hệ thống, hay chỉ vài lệnh may mắn?', ['Tiếp tục', 'Điều chỉnh có ghi chép', 'Tạm dừng']],
+                    90: ['Có đủ dữ liệu cho thấy làm được một cách kỷ luật, lặp lại được, không vượt giới hạn?', ['Tiếp tục 90 ngày nữa', 'Đổi hệ thống', 'Dừng']] },
+            t9MsSet(m, patch) { this.t9Save('m:' + m, { ...(this.t9.docs['m:' + m] || {}), ...patch }, patch.decision ? 0 : 600); },
+            t9WeekSet(wk, k, v) { this.t9Save('w:' + wk, { ...(this.t9.docs['w:' + wk] || {}), [k]: v }); },
+            t9Kept: { yes: 'giữ đúng quy tắc', no: 'phá quy tắc', skip: 'không giao dịch' },
+
             // ═════════════ ĐIỀU HƯỚNG ═════════════
             fromHash() {
                 const [t, id] = location.hash.replace(/^#/, '').split('/');
@@ -2130,8 +2356,11 @@
                 this.memberPage = t === 'hoi-vien';
                 if (this.memberPage) { document.getElementById('member-page')?.scrollTo(0, 0); return this.icons(); }
                 if (t === 'stats') { this.tab = 'journal'; this.jView = 'stats'; history.replaceState(null, '', '#journal/stats'); }
+                else if (t === 't90') { this.tab = this.isAdmin ? 't90' : 'home'; }
                 else if (TABS.some(x => x.id === t)) { this.tab = t; if (t === 'journal') this.jView = id === 'stats' ? 'stats' : 'list'; }
                 if (this.isLocked) return this.icons();
+                if (this.tab === 't90' && !this.isAdmin) this.tab = 'home';
+                if (this.tab === 't90' && !this.t9.loaded) this.t9Load();
                 if (this.tab === 'resources' && !this.res.loaded) this.loadResources();
                 if (this.tab === 'backtest') this.loadSets().then(() => {
                     const s = id && this.bt.sets.find(x => x.id === id);
