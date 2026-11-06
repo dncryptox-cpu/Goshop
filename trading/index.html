@@ -2184,7 +2184,7 @@
 
 
             // ═════════════ 90 NGÀY (riêng admin) — nhật ký phá trì hoãn ═════════════
-            // Lưu ở bảng desk_docs (RLS: chỉ chủ tài khoản đọc/ghi), kind 't90': 'plan' {start} · 'd:YYYY-MM-DD' {thought}
+            // Lưu ở bảng desk_docs (RLS: chỉ chủ tài khoản đọc/ghi), kind 'settings' (bảng chỉ cho settings/day/note), key 't90:plan' {start} · 't90:d:YYYY-MM-DD' {thought}
             get navTabs() { return this.isAdmin ? [...TABS, { id: 't90', label: '90 ngày', icon: 'calendar-check' }] : TABS; },
             t9Iso(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); },
             t9D(iso) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); },
@@ -2197,9 +2197,9 @@
             t9Present(d) { return !!(d && (d.thought || '').trim()); },
             async t9Load() {
                 try {
-                    const { data, error } = await sb.from('desk_docs').select('key,data').eq('kind', 't90').limit(2000);
+                    const { data, error } = await sb.from('desk_docs').select('key,data').eq('kind', 'settings').like('key', 't90:%').limit(2000);
                     if (error) throw error;
-                    const docs = {}; (data || []).forEach(r => { docs[r.key] = r.data; });
+                    const docs = {}; (data || []).forEach(r => { docs[r.key.slice(4)] = r.data; });
                     this.t9.docs = docs;
                 } catch (e) { this.t9.saved = 'Không tải được: ' + (e.message || e); }
                 this.t9.loaded = true; this.icons();
@@ -2210,7 +2210,7 @@
                 this.t9.saved = 'Đang lưu…';
                 clearTimeout(this._t9Timers[key]);
                 this._t9Timers[key] = setTimeout(async () => {
-                    const { error } = await sb.from('desk_docs').upsert({ user_id: this.userId, kind: 't90', key, data: this.t9.docs[key], updated_at: new Date().toISOString() }, { onConflict: 'user_id,kind,key' });
+                    const { error } = await sb.from('desk_docs').upsert({ user_id: this.userId, kind: 'settings', key: 't90:' + key, data: this.t9.docs[key], updated_at: new Date().toISOString() }, { onConflict: 'user_id,kind,key' });
                     this.t9.saved = error ? 'Chưa lưu được: ' + error.message : 'Đã lưu';
                 }, delay);
             },
