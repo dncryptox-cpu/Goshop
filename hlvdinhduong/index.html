@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <!-- PWA: icon & add-to-home-screen -->
+  <link rel="apple-touch-icon" href="/hlvdinhduong/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/hlvdinhduong/icon-192.png">
+  <link rel="manifest" href="/hlvdinhduong/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Dinh dưỡng">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>HLV Dinh Dưỡng Ultra Runner - Tracking & Nhật Ký Đủ/Thiếu</title>
+  <meta name="description" content="Công cụ tự theo dõi dinh dưỡng và tập luyện chuyên biệt cho vận động viên Ultra Runner. Tự động tính toán target Kcal, Carb, Protein, Fat và nhật ký Đủ/Thiếu theo loại ngày tập.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- HEADER -->
+    <header class="header">
+      <div class="brand">
+        <div class="brand-icon">🏔️</div>
+        <div>
+          <h1 class="brand-title">HLV DINH DƯỠNG</h1>
+          <div class="brand-subtitle">ULTRA RUNNER DASHBOARD • GODNC</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="cloudStatusBadge" class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; cursor: pointer; padding: 6px 10px;" title="Bấm để kiểm tra / Cài đặt Web App">🟡 <span class="cloud-badge-text">Chưa dán Web App URL</span></span>
+        <button id="btnUserBadge" class="btn-icon" style="width: auto; padding: 0 10px; font-size: 0.85rem; gap: 4px;" title="Tài khoản & Đồng bộ">
+          <span>👤</span> <span id="headerUserName">Ultra Runner</span>
+        </button>
+        <button id="btnOpenSettings" class="btn-icon" title="Cài đặt API Key & Web App URL">⚙️</button>
+      </div>
+    </header>
+
+    <!-- BANNER GỢI Ý THỰC ĐƠN TUẦN NÀY (AI WEEKLY REVIEW) -->
+    <section id="aiWeeklyReviewBanner" class="weekly-review-banner hidden">
+      <div class="weekly-review-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 22px;">🤖</span>
+          <div>
+            <h3 style="font-size: 0.95rem; font-weight: 800; color: var(--accent-carb);">GỢI Ý THỰC ĐƠN KHẮC PHỤC TUẦN NÀY (AI WEEKLY REVIEW)</h3>
+            <span id="weeklyReviewMeta" style="font-size: 0.75rem; color: var(--text-sub);">Đã phân tích tự động từ Google Sheet</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 6px;">
+          <button id="btnViewWeeklyMenu" class="btn-primary" style="padding: 6px 12px; font-size: 0.8rem; width: auto;">📋 Xem Thực Đơn Mẫu</button>
+          <button id="btnTriggerWeeklyReview" class="btn-icon" style="width: auto; padding: 0 10px; font-size: 0.8rem;" title="Phân tích lại ngay">⚡ Phân Tích Ngay</button>
+        </div>
+      </div>
+      <div id="weeklyReviewDeficitText" class="weekly-review-deficit" style="font-size: 0.85rem; margin-top: 8px; color: var(--accent-kcal); font-family: monospace;">
+        <!-- Filled dynamically -->
+      </div>
+    </section>
+
+    <!-- DAY TYPE SELECTOR -->
+    <section class="day-selector-card">
+      <div class="day-selector-header">
+        <span class="day-selector-title">1. Chọn Ngày & Loại Ngày Tập Luyện</span>
+        <input type="date" id="dateInput" class="date-picker-input">
+      </div>
+      <div class="day-buttons">
+        <button class="btn-day" data-type="Rest">
+          <span class="day-name">Rest</span>
+          <span class="day-desc">2900k • 375g Carb</span>
+        </button>
+        <button class="btn-day active" data-type="Thuong">
+          <span class="day-name">Thường</span>
+          <span class="day-desc">3500k • 525g Carb</span>
+        </button>
+        <button class="btn-day" data-type="VertNang">
+          <span class="day-name">Vert Nặng</span>
+          <span class="day-desc">4500k • 750g Carb</span>
+        </button>
+        <button class="btn-day" data-type="Peak">
+          <span class="day-name">Peak</span>
+          <span class="day-desc">5000k • 800g Carb</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- PROGRESS DASHBOARD METRICS -->
+    <section class="progress-grid">
+      <!-- KCAL -->
+      <div class="metric-card kcal">
+        <div>
+          <div class="metric-header">
+            <span class="metric-title">Năng Lượng</span>
+            <span class="metric-unit">KCAL</span>
+          </div>
+          <div class="metric-val-group">
+            <div id="valKcal" class="metric-val">0 kcal</div>
+          </div>
+          <div id="badgeKcalRemaining" class="metric-remaining-badge thieu">Còn thiếu 3,500 kcal</div>
+          <div id="subKcal" class="metric-subval">Target: 3,500 kcal</div>
+        </div>
+        <div class="progress-track">
+          <div id="fillKcal" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- CARB -->
+      <div class="metric-card carb">
+        <div>
+          <div class="metric-header">
+            <span class="metric-title">Tỷ Lệ Carb</span>
+            <span class="metric-unit">GRAM</span>
+          </div>
+          <div class="metric-val-group">
+            <div id="valCarb" class="metric-val">0 g</div>
+          </div>
+          <div id="badgeCarbRemaining" class="metric-remaining-badge thieu">Còn thiếu 525 g</div>
+          <div id="subCarb" class="metric-subval">Target: 525 g</div>
+        </div>
+        <div class="progress-track">
+          <div id="fillCarb" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- PROTEIN -->
+      <div class="metric-card protein">
+        <div>
+          <div class="metric-header">
+            <span class="metric-title">Protein</span>
+            <span class="metric-unit">GRAM</span>
+          </div>
+          <div class="metric-val-group">
+            <div id="valProtein" class="metric-val">0 g</div>
+          </div>
+          <div id="badgeProteinRemaining" class="metric-remaining-badge thieu">Còn thiếu 120 g</div>
+          <div id="subProtein" class="metric-subval">Target: 120 g</div>
+        </div>
+        <div class="progress-track">
+          <div id="fillProtein" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- FAT -->
+      <div class="metric-card fat">
+        <div>
+          <div class="metric-header">
+            <span class="metric-title">Fat</span>
+            <span class="metric-unit">GRAM</span>
+          </div>
+          <div class="metric-val-group">
+            <div id="valFat" class="metric-val">0 g</div>
+          </div>
+          <div id="badgeFatRemaining" class="metric-remaining-badge thieu">Còn thiếu 75 g</div>
+          <div id="subFat" class="metric-subval">Target: 75 g</div>
+        </div>
+        <div class="progress-track">
+          <div id="fillFat" class="progress-fill"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RECOVERY CARB ADVICE BANNER -->
+    <div id="alertBanner" class="alert-banner hidden">
+      <div class="alert-icon">⚡</div>
+      <div class="alert-content">
+        <h4>Gợi Ý Nạp Năng Lượng Phục Hồi (>2000 Kcal Burned)</h4>
+        <p>Bài tập hôm nay đốt cháy hơn 2,000 Kcal. <strong>Cân nhắc bù thêm carb lỏng/gel trong lúc tập lần sau</strong> để giảm áp lực ăn bù vào buổi tối và tránh nợ calo cho bài tập hôm sau.</p>
+      </div>
+    </div>
+
+    <!-- SMART INPUT CARD -->
+    <section class="input-card">
+      <h2 class="section-title">2. Ghi Nhận Nhanh Bằng AI (Text / Screenshot)</h2>
+
+      <div class="input-tabs">
+        <button class="tab-btn input-tab-btn active" data-tab="text">📝 Nhập Văn Bản</button>
+        <button class="tab-btn input-tab-btn" data-tab="image">📷 Dán / Tải Ảnh Món/Garmin</button>
+      </div>
+
+      <!-- TEXT TAB -->
+      <div id="tabTextInput" class="input-group">
+        <textarea id="smartTextInput" class="smart-input" placeholder="Ví dụ: 'Sáng nay ăn 2 bát phở bò tái nạm, 1 quả trứng chèn, 1 ly cà phê sữa' hoặc 'Chạy trail 28km vert 1600m hết 4h15p đốt 2400 kcal'"></textarea>
+      </div>
+
+      <!-- IMAGE TAB -->
+      <div id="tabImageInput" class="input-group" style="display: none;">
+        <div id="imageDropzone" class="image-dropzone">
+          <span style="font-size: 28px;">📤</span>
+          <div>Bấm để chọn ảnh, hoặc dán <strong>(Ctrl+V / Cmd+V)</strong> trực tiếp ảnh thực đơn/bài tập Strava</div>
+          <input type="file" id="imageFileInput" accept="image/*" style="display: none;">
+          <img id="imagePreview" class="image-preview" alt="Xem trước ảnh">
+        </div>
+        <input type="text" id="imageNoteInput" class="form-control" placeholder="Ghi chú thêm cho ảnh (không bắt buộc)..." style="margin-top: 10px;">
+      </div>
+
+      <div style="margin-top: 14px; display: flex; justify-content: flex-end;">
+        <button id="btnAnalyzeAi" class="btn-primary">✨ Phân tích bằng Gemini AI</button>
+      </div>
+
+      <!-- AI REVIEW & PREVIEW BOX (EDITABLE PREVIEW) -->
+      <div id="reviewBox" class="review-box" style="display: none;">
+        <div class="review-header">
+          <h4>DỮ LIỆU BÓC TÁCH TỪ GEMINI AI (CÓ THỂ CHỈNH SỬA)</h4>
+          <span style="font-size: 0.8rem; color: var(--text-sub);">Bạn có thể sửa trực tiếp các con số bên dưới trước khi lưu</span>
+        </div>
+        <div id="reviewContent"></div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px;">
+          <button id="btnCancelReview" class="btn-icon" style="width: auto; padding: 0 14px;">Hủy</button>
+          <button id="btnConfirmSave" class="btn-primary" style="background: var(--gradient-protein);">💾 Xác nhận & Lưu vào Sheets</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TODAY'S LOGS AND HISTORY FEED -->
+    <section class="logs-card">
+      <div class="nav-tabs-wrapper">
+        <button class="main-tab active" data-view="nutrition">🍲 Bữa Ăn Hôm Nay</button>
+        <button class="main-tab" data-view="workout">🏃 Bài Tập Hôm Nay</button>
+        <button class="main-tab" data-view="history">📅 Nhật Ký Lịch Sử (Đủ/Thiếu)</button>
+        <button class="main-tab" data-view="user">👤 Người Dùng & Đồng Bộ</button>
+      </div>
+
+      <!-- NUTRITION LOGS VIEW -->
+      <div id="tabNutritionView" class="table-responsive">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Bữa</th>
+              <th>Món Ăn</th>
+              <th>Kcal</th>
+              <th>Carb</th>
+              <th>Protein</th>
+              <th>Fat</th>
+              <th>Nguồn</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="nutritionTableBody">
+            <!-- Loaded dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- WORKOUT LOGS VIEW -->
+      <div id="tabWorkoutView" class="table-responsive" style="display: none;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Môn Tập</th>
+              <th>Quãng Đường</th>
+              <th>Elev Gain</th>
+              <th>Thời Gian</th>
+              <th>Kcal Đốt</th>
+              <th>Ghi Chú</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="workoutTableBody">
+            <!-- Loaded dynamically -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- HISTORY LOGS & SUFFICIENCY JOURNAL VIEW -->
+      <div id="tabHistoryView" style="display: none;">
+        
+        <!-- 7-DAY COMPLIANCE SUMMARY HEADER -->
+        <div class="compliance-summary-card">
+          <div class="compliance-title">📊 TỔNG KẾT TỈ LỆ ĐẠT 7 NGÀY GẦN NHẤT (RECURRING DEFICIT CHECK)</div>
+          <div id="weeklyComplianceBar" class="compliance-badges-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- GITHUB-STYLE CALENDAR HEATMAP FOR KCAL -->
+        <div class="heatmap-container">
+          <div class="heatmap-header">
+            <span class="heatmap-title">🗓️ HEATMAP NĂNG LƯỢNG KCAL (30 NGÀY GẦN NHẤT)</span>
+            <div class="heatmap-legend">
+              <span>Ít</span>
+              <span class="heatmap-cell lvl-thieu" title="Thiếu (<85%)"></span>
+              <span class="heatmap-cell lvl-gandu" title="Gần đủ (85-95%)"></span>
+              <span class="heatmap-cell lvl-du" title="Đủ (95-110%)"></span>
+              <span class="heatmap-cell lvl-vuot" title="Vượt (>110%)"></span>
+              <span>Đạt</span>
+            </div>
+          </div>
+          <div id="kcalHeatmapGrid" class="heatmap-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- HISTORY TABLE -->
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Ngày</th>
+                <th>Loại Ngày</th>
+                <th>Kcal (Nạp/Target)</th>
+                <th>Carb (Nạp/Target)</th>
+                <th>Protein</th>
+                <th>Fat</th>
+                <th>Tập Luyện</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <!-- Loaded dynamically -->
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+
+      <!-- USER PROFILE & MULTI-DEVICE SYNC VIEW -->
+      <div id="tabUserView" style="display: none; padding: 10px 0;">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;" class="user-grid">
+          <!-- HỒ SƠ VẬN ĐỘNG VIÊN -->
+          <div style="background: var(--bg-input); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <h3 style="font-size: 1rem; color: var(--accent-carb); margin-bottom: 14px;">🏃 Thông Tin Cá Nhân VĐV</h3>
+            
+            <div class="form-group">
+              <label for="userNameInput">Tên / Biệt danh VĐV:</label>
+              <input type="text" id="userNameInput" class="form-control" value="DNC Ultra Runner">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+              <div class="form-group">
+                <label for="userHeightInput">Chiều cao (cm):</label>
+                <input type="number" id="userHeightInput" class="form-control" value="170">
+              </div>
+              <div class="form-group">
+                <label for="userWeightInput">Cân nặng (kg):</label>
+                <input type="number" id="userWeightInput" class="form-control" value="65" step="0.1">
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="userGoalInput">Mục tiêu tăng cân / tập luyện:</label>
+              <input type="text" id="userGoalInput" class="form-control" value="+0.3kg/tuần (Kiểm soát leo dốc ultra)">
+            </div>
+            <button id="btnSaveUserProfile" class="btn-primary" style="width: 100%; margin-top: 10px;">💾 Lưu Thông Tin Cá Nhân Lên Cloud Sheets</button>
+          </div>
+
+          <!-- ĐỒNG BỘ ĐA THIẾT BỊ & AI WEEKLY REVIEW -->
+          <div style="background: var(--bg-input); padding: 18px; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <h3 style="font-size: 1rem; color: var(--accent-vert); margin-bottom: 14px;">🔄 Đồng Bộ & Phân Tích AI Tuần</h3>
+            <p style="font-size: 0.825rem; color: var(--text-muted); margin-bottom: 12px;">
+              Đồng bộ dữ liệu đa thiết bị và chạy phân tích AI thực đơn khắc phục điểm hụt:
+            </p>
+            
+            <div class="form-group">
+              <label for="syncLinkInput">1-Click Link Đồng Bộ Cấu Hình:</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="syncLinkInput" class="form-control" readonly style="font-size: 0.775rem; font-family: monospace;">
+                <button id="btnCopySyncLink" class="btn-primary" style="white-space: nowrap; padding: 0 12px; width: auto;">📋 Copy Link</button>
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 14px;">
+              <button id="btnTriggerWeeklyReviewUser" class="btn-primary" style="background: var(--gradient-kcal); width: 100%;">🤖 Phân Tích & Gợi Ý Thực Đơn Khắc Phục Ngay</button>
+              <button id="btnPushLocalToCloud" class="btn-primary" style="background: var(--gradient-carb); width: 100%;">📤 Đẩy Toàn Bộ Dữ Liệu Máy Này Lên Google Sheets</button>
+              <button id="btnFetchCloudConfig" class="btn-primary" style="background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-color); width: 100%;">☁️ Tải Cấu Hình Từ Cloud Sheets Về Máy Này</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+  </div>
+
+  <!-- AI WEEKLY MENU SUGGESTION MODAL -->
+  <div id="weeklyMenuModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 680px;">
+      <div class="modal-header">
+        <h3>🤖 GỢI Ý THỰC ĐƠN TỰ ĐỘNG KHẮC PHỤC TUẦN NÀY</h3>
+        <button id="btnCloseWeeklyMenuModal" class="btn-icon">✕</button>
+      </div>
+      
+      <div id="weeklyMenuModalBody" style="max-height: 70vh; overflow-y: auto; padding-right: 6px;">
+        <!-- Filled dynamically -->
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+        <button id="btnDismissWeeklyMenuModal" class="btn-primary" style="width: auto;">Đã Hiểu & Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT ITEM MODAL -->
+  <div id="editItemModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="editModalTitle">✏️ Chỉnh Sửa Dữ Liệu</h3>
+        <button id="btnCloseEditModal" class="btn-icon">✕</button>
+      </div>
+      
+      <form id="editItemForm">
+        <input type="hidden" id="editItemRowIndex">
+        <input type="hidden" id="editItemType">
+
+        <!-- NUTRITION EDIT FIELDS -->
+        <div id="editNutritionFields">
+          <div class="form-group">
+            <label for="editItemBua">Bữa ăn:</label>
+            <select id="editItemBua" class="form-control">
+              <option value="Sáng">Sáng</option>
+              <option value="Trưa">Trưa</option>
+              <option value="Tối">Tối</option>
+              <option value="Phụ">Phụ</option>
+              <option value="Trong tập">Trong tập</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="editItemTenMon">Tên món ăn:</label>
+            <input type="text" id="editItemTenMon" class="form-control">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label for="editItemKcal">Năng lượng (Kcal):</label>
+              <input type="number" id="editItemKcal" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="editItemCarb">Carb (g):</label>
+              <input type="number" id="editItemCarb" class="form-control">
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label for="editItemProtein">Protein (g):</label>
+              <input type="number" id="editItemProtein" class="form-control">
+            </div>
+            <div class="form-group">
+              <label for="editItemFat">Fat (g):</label>
+              <input type="number" id="editItemFat" class="form-control">
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKOUT EDIT FIELDS -->
+        <div id="editWorkoutFields" style="display: none;">
+          <div class="form-group">
+            <label for="editWorkoutMon">Môn tập:</label>
+            <input type="text" id="editWorkoutMon" class="form-control">
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label for="editWorkoutKm">Quãng đường (km):</label>
+              <input type="number" id="editWorkoutKm" class="form-control" step="0.1">
+            </div>
+            <div class="form-group">
+              <label for="editWorkoutGain">Elev Gain (m):</label>
+              <input type="number" id="editWorkoutGain" class="form-control">
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label for="editWorkoutTime">Thời gian (giờ):</label>
+              <input type="number" id="editWorkoutTime" class="form-control" step="0.1">
+            </div>
+            <div class="form-group">
+              <label for="editWorkoutKcal">Calo đốt (Kcal):</label>
+              <input type="number" id="editWorkoutKcal" class="form-control">
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+          <button type="button" id="btnCancelEditItem" class="btn-icon" style="width: auto; padding: 0 14px;">Hủy</button>
+          <button type="submit" class="btn-primary" style="width: auto;">💾 Lưu Thay Đổi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>⚙️ Cấu Hình Kết Nối API & Sheets</h3>
+        <button id="btnCloseSettings" class="btn-icon">✕</button>
+      </div>
+      <div class="form-group">
+        <label for="webAppUrlInput">Google Apps Script Web App URL:</label>
+        <input type="text" id="webAppUrlInput" class="form-control" placeholder="https://script.google.com/macros/s/.../exec">
+        <small style="color: var(--text-sub); display: block; margin-top: 4px;">Dán URL Web App sau khi deploy file Code.gs trong thư mục gas/.</small>
+      </div>
+      <div class="form-group">
+        <label for="geminiKeyInput">Gemini API Key (Bóc tách AI):</label>
+        <input type="password" id="geminiKeyInput" class="form-control" placeholder="AIzaSy...">
+        <small style="color: var(--text-sub); display: block; margin-top: 4px;">Lấy API Key miễn phí tại Google AI Studio (aistudio.google.com).</small>
+      </div>
+      <div class="form-group">
+        <label for="geminiModelSelect">Gemini Model (GA hiện tại):</label>
+        <select id="geminiModelSelect" class="form-control">
+          <option value="gemini-3.6-flash">gemini-3.6-flash (Mặc định • Đa năng • Khuyến nghị)</option>
+          <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Siêu nhanh • Trích xuất nhẹ)</option>
+          <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+        </select>
+        <small style="color: var(--text-sub); display: block; margin-top: 4px;">⚠️ Luôn dùng model GA active. Tránh dùng tên model cũ đã shutdown (404).</small>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 20px;">
+        <button id="btnModalSyncLink" class="btn-icon" style="width: auto; padding: 0 12px; font-size: 0.825rem;" title="Copy Sync Link">🔗 Copy Link Đồng Bộ</button>
+        <button id="btnSaveSettings" class="btn-primary" style="width: auto;">💾 Lưu Cấu Hình</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/gemini.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <!-- PWA: icon & add-to-home-screen -->
+  <link rel="apple-touch-icon" href="/renewyt/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/renewyt/icon-192.png">
+  <link rel="manifest" href="/renewyt/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Renew YT">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Renew YouTube Premium — CTV Portal Go DNC</title>
+    <meta name="description" content="Trang CTV xem danh sách gia hạn YouTube Premium và xác nhận đã nhắn khách.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #f3f4f6;
+        }
+        [x-cloak] { display: none !important; }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0b0f19;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+<body x-data="ctvRenewApp()" x-init="initApp()" class="antialiased min-h-screen flex flex-col justify-between relative overflow-x-hidden"
+      style="background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.12), transparent 50%), radial-gradient(circle at bottom left, rgba(236, 72, 153, 0.08), transparent 50%), #0b0f19;">
+
+    <!-- Top Accent Line -->
+    <div class="h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
+
+    <!-- MÀN HÌNH ĐĂNG NHẬP -->
+    <div x-show="!isLoggedIn" x-cloak class="min-h-[90vh] flex flex-col items-center justify-center p-4">
+        <div class="w-full max-w-md bg-gray-900/80 border border-white/10 backdrop-blur-xl rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden space-y-6">
+            <div class="absolute -top-20 -right-20 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="text-center space-y-2">
+                <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/30">
+                    <i data-lucide="shield-check" class="w-7 h-7 text-white"></i>
+                </div>
+                <h1 class="text-xl sm:text-2xl font-black text-white tracking-tight">CTV Đăng Nhập</h1>
+                <p class="text-xs text-gray-400">Danh sách gia hạn YouTube Premium - Go DNC</p>
+            </div>
+
+            <!-- Form Đăng Nhập -->
+            <form @submit.prevent="submitLogin()" class="space-y-4">
+                <!-- Thông báo lỗi đăng nhập -->
+                <div x-show="loginError" x-cloak class="bg-red-500/15 text-red-400 border border-red-500/30 p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2.5">
+                    <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+                    <span x-text="loginError"></span>
+                </div>
+
+                <!-- Dropdown Chọn CTV -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">Chọn CTV</label>
+                    <select x-model="loginForm.ctv" required
+                            class="w-full bg-gray-950/80 border border-white/10 rounded-xl py-3 px-4 text-sm font-medium text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
+                        <template x-for="c in ctvList" :key="c">
+                            <option :value="c" x-text="c"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- Ô nhập Mật khẩu -->
+                <div>
+                    <label class="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">Mật khẩu</label>
+                    <input type="password" x-model="loginForm.pass" required placeholder="Nhập mật khẩu CTV..."
+                           class="w-full bg-gray-950/80 border border-white/10 rounded-xl py-3 px-4 text-sm font-medium text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
+                </div>
+
+                <!-- Nút Đăng nhập -->
+                <button type="submit" :disabled="loggingIn"
+                        class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white py-3.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 active:scale-98 disabled:opacity-50 cursor-pointer">
+                    <template x-if="!loggingIn">
+                        <span class="flex items-center gap-2">
+                            <span>Đăng Nhập</span>
+                            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                        </span>
+                    </template>
+                    <template x-if="loggingIn">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                            <span>Đang xác thực...</span>
+                        </span>
+                    </template>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MÀN HÌNH CHÍNH (SAU KHI ĐĂNG NHẬP) -->
+    <div x-show="isLoggedIn" x-cloak class="min-h-screen flex flex-col justify-between">
+        
+        <!-- Header Top Bar -->
+        <header class="bg-gray-900/90 border-b border-white/10 backdrop-blur-md sticky top-0 z-40">
+            <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+                <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center font-bold text-white shadow-md flex-shrink-0">
+                        <i data-lucide="youtube" class="w-5 h-5"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h1 class="font-extrabold text-sm sm:text-base text-white tracking-tight flex items-center gap-2 truncate">
+                            <span>Renew YouTube</span>
+                            <span class="text-[10px] uppercase font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">CTV Portal</span>
+                        </h1>
+                        <p class="text-xs text-gray-400 truncate">CTV: <strong class="text-amber-300 font-semibold" x-text="loggedInCtv"></strong></p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <button @click="loadData()" title="Tải lại dữ liệu"
+                            class="p-2 text-gray-400 hover:text-white bg-gray-800/80 hover:bg-gray-800 rounded-xl border border-white/5 transition-all cursor-pointer">
+                        <i data-lucide="refresh-cw" class="w-4 h-4" :class="loading ? 'animate-spin text-indigo-400' : ''"></i>
+                    </button>
+
+                    <button @click="logout()"
+                            class="px-3 py-2 text-xs font-bold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer">
+                        <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                        <span class="hidden sm:inline">Đăng Xuất</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <main class="flex-grow max-w-6xl mx-auto w-full px-3 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-6">
+
+            <!-- Stat Cards Summary -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-3">
+                <div class="bg-gray-900/80 border border-white/10 rounded-2xl p-3 text-center cursor-pointer hover:bg-gray-800/80 transition-all"
+                     @click="filterStatus = 'all'">
+                    <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Tổng Khách</p>
+                    <p class="text-base sm:text-xl font-black text-white mt-0.5" x-text="customers.length"></p>
+                </div>
+                <div class="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3 text-center cursor-pointer hover:bg-emerald-500/20 transition-all"
+                     @click="filterStatus = 'da_join'">
+                    <p class="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider flex items-center justify-center gap-1">
+                        <i data-lucide="user-check" class="w-3 h-3 text-emerald-400"></i>
+                        <span>Đã Join Fam</span>
+                    </p>
+                    <p class="text-base sm:text-xl font-black text-emerald-300 mt-0.5" x-text="countJoined"></p>
+                </div>
+                <div class="bg-sky-500/10 border border-sky-500/20 rounded-2xl p-3 text-center cursor-pointer hover:bg-sky-500/20 transition-all"
+                     @click="filterStatus = 'chua_join'">
+                    <p class="text-[10px] font-semibold text-sky-400 uppercase tracking-wider flex items-center justify-center gap-1">
+                        <i data-lucide="clock" class="w-3 h-3 text-sky-400"></i>
+                        <span>Chưa Join</span>
+                    </p>
+                    <p class="text-base sm:text-xl font-black text-sky-300 mt-0.5" x-text="countNotJoined"></p>
+                </div>
+                <div class="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 text-center cursor-pointer hover:bg-amber-500/20 transition-all"
+                     @click="filterStatus = 'chua_nhan'">
+                    <p class="text-[10px] font-semibold text-amber-400 uppercase tracking-wider">Chưa Nhắn</p>
+                    <p class="text-base sm:text-xl font-black text-amber-300 mt-0.5" x-text="countUnnotified"></p>
+                </div>
+                <div class="bg-teal-500/10 border border-teal-500/20 rounded-2xl p-3 text-center cursor-pointer hover:bg-teal-500/20 transition-all"
+                     @click="filterStatus = 'da_nhan'">
+                    <p class="text-[10px] font-semibold text-teal-400 uppercase tracking-wider">Đã Nhắn</p>
+                    <p class="text-base sm:text-xl font-black text-teal-300 mt-0.5" x-text="countNotified"></p>
+                </div>
+                <div class="bg-red-500/10 border border-red-500/20 rounded-2xl p-3 text-center cursor-pointer hover:bg-red-500/20 transition-all"
+                     @click="filterStatus = 'dong_trung'">
+                    <p class="text-[10px] font-semibold text-red-400 uppercase tracking-wider flex items-center justify-center gap-1">
+                        <span>Dòng Trùng</span>
+                        <i data-lucide="alert-triangle" class="w-3 h-3 text-red-400"></i>
+                    </p>
+                    <p class="text-base sm:text-xl font-black text-red-400 mt-0.5" x-text="countDuplicateRows"></p>
+                </div>
+            </div>
+
+            <!-- ALERT BANNER: KHI CÓ EMAIL TRÙNG KHÁCH -->
+            <div x-show="countDuplicateRows > 0" x-cloak
+                 class="bg-red-500/15 border border-red-500/30 p-3.5 rounded-2xl text-xs font-bold flex items-center justify-between gap-3 text-red-200">
+                <div class="flex items-center gap-2.5 min-w-0">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-red-400 flex-shrink-0"></i>
+                    <span class="truncate">Phát hiện <strong class="text-red-400 underline" x-text="countDuplicateRows"></strong> dòng trùng email (Mời nhiều Fam hoặc trùng giữa Mail chính/Mail phụ).</span>
+                </div>
+                <button @click="filterStatus = 'dong_trung'"
+                        class="px-3 py-1 rounded-xl bg-red-600 hover:bg-red-500 text-white text-[11px] font-extrabold flex-shrink-0 transition-all cursor-pointer">
+                    Lọc Dòng Trùng
+                </button>
+            </div>
+
+            <!-- Filter & Search Controls -->
+            <div class="bg-gray-900/80 border border-white/10 rounded-2xl p-3 sm:p-4 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                
+                <!-- Segment Filter Buttons -->
+                <div class="flex items-center gap-2 overflow-x-auto">
+                    <div class="grid grid-cols-3 sm:flex bg-gray-950 p-1 rounded-xl border border-white/10 text-xs font-medium w-full sm:w-auto gap-1 sm:gap-0">
+                        <button @click="filterStatus = 'all'"
+                                :class="filterStatus === 'all' ? 'bg-indigo-600 text-white font-extrabold shadow-sm' : 'text-gray-400 hover:text-white'"
+                                class="px-3 py-2 rounded-lg transition-all text-center cursor-pointer">
+                            Tất cả (<span x-text="customers.length"></span>)
+                        </button>
+                        <button @click="filterStatus = 'da_join'"
+                                :class="filterStatus === 'da_join' ? 'bg-emerald-600 text-white font-extrabold shadow-sm' : 'text-emerald-400 hover:text-white'"
+                                class="px-3 py-2 rounded-lg transition-all text-center cursor-pointer">
+                            Đã Join (<span x-text="countJoined"></span>)
+                        </button>
+                        <button @click="filterStatus = 'chua_join'"
+                                :class="filterStatus === 'chua_join' ? 'bg-sky-600 text-white font-extrabold shadow-sm' : 'text-sky-400 hover:text-white'"
+                                class="px-3 py-2 rounded-lg transition-all text-center cursor-pointer">
+                            Chưa Join (<span x-text="countNotJoined"></span>)
+                        </button>
+                        <button @click="filterStatus = 'chua_nhan'"
+                                :class="filterStatus === 'chua_nhan' ? 'bg-amber-600 text-white font-extrabold shadow-sm' : 'text-gray-400 hover:text-white'"
+                                class="px-3 py-2 rounded-lg transition-all text-center cursor-pointer">
+                            Chưa nhắn (<span x-text="countUnnotified"></span>)
+                        </button>
+                        <button @click="filterStatus = 'da_nhan'"
+                                :class="filterStatus === 'da_nhan' ? 'bg-teal-600 text-white font-extrabold shadow-sm' : 'text-gray-400 hover:text-white'"
+                                class="px-3 py-2 rounded-lg transition-all text-center cursor-pointer">
+                            Đã nhắn (<span x-text="countNotified"></span>)
+                        </button>
+                        <button @click="filterStatus = 'dong_trung'"
+                                :class="filterStatus === 'dong_trung' ? 'bg-red-600 text-white font-extrabold shadow-sm' : 'text-red-400 hover:text-white'"
+                                class="px-3 py-2 rounded-lg transition-all text-center cursor-pointer">
+                            Trùng (<span x-text="countDuplicateRows"></span>)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Search Input -->
+                <div class="relative w-full sm:w-64">
+                    <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                    <input type="text" x-model="searchQuery" placeholder="Tìm theo email..."
+                           class="w-full bg-gray-950 border border-white/10 rounded-xl py-2.5 pl-9 pr-8 text-xs font-medium text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500 transition-all">
+                    <button x-show="searchQuery" @click="searchQuery = ''" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white text-xs p-1">✕</button>
+                </div>
+            </div>
+
+            <!-- Global Toast / Alert -->
+            <div x-show="toast.message" x-cloak
+                 :class="toast.type === 'error' ? 'bg-red-500/20 text-red-300 border-red-500/40' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'"
+                 class="border p-3.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2 transition-all shadow-lg">
+                <div class="flex items-center gap-2 min-w-0">
+                    <i :data-lucide="toast.type === 'error' ? 'alert-circle' : 'check-circle'" class="w-4 h-4 flex-shrink-0"></i>
+                    <span class="truncate" x-text="toast.message"></span>
+                </div>
+                <button @click="toast.message = ''" class="text-gray-400 hover:text-white flex-shrink-0">&times;</button>
+            </div>
+
+            <!-- Loading State -->
+            <div x-show="loading" class="py-12 text-center space-y-3">
+                <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-indigo-500 mx-auto"></i>
+                <p class="text-xs text-gray-400 font-medium">Đang tải danh sách gia hạn của bạn...</p>
+            </div>
+
+            <!-- Empty State -->
+            <div x-show="!loading && filteredCustomers.length === 0" class="py-12 text-center space-y-3 bg-gray-900/40 border border-white/5 rounded-3xl">
+                <div class="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center mx-auto text-gray-500">
+                    <i data-lucide="inbox" class="w-6 h-6"></i>
+                </div>
+                <p class="text-sm font-semibold text-gray-300">Không tìm thấy khách hàng nào</p>
+                <p class="text-xs text-gray-500" x-text="searchQuery ? 'Thử thay đổi từ khóa tìm kiếm' : 'Hiện chưa có dữ liệu gia hạn phù hợp'"></p>
+            </div>
+
+            <!-- CUSTOMER LIST SECTION -->
+            <div x-show="!loading && filteredCustomers.length > 0">
+                
+                <!-- Table View (Desktop) -->
+                <div class="hidden md:block bg-gray-900/70 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-gray-950/80 text-gray-400 uppercase tracking-wider font-bold border-b border-white/10">
+                                <th class="py-3.5 px-4 w-12 text-center">STT</th>
+                                <th class="py-3.5 px-4 text-center">Ngày Mời</th>
+                                <th class="py-3.5 px-4 text-center">Trạng Thái Join</th>
+                                <th class="py-3.5 px-4">Email Khách</th>
+                                <th class="py-3.5 px-4">Mail Phụ</th>
+                                <th class="py-3.5 px-4">Ngày Mua / HSD</th>
+                                <th class="py-3.5 px-4 text-center">Số Tháng</th>
+                                <th class="py-3.5 px-4 text-center">Đã Nhắn Khách</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5 font-medium">
+                            <template x-for="(item, index) in filteredCustomers" :key="item.row">
+                                <tr :class="item.daNhanKhach ? 'bg-emerald-950/10 hover:bg-emerald-950/20' : (item.isDuplicateRow ? 'bg-red-950/20 hover:bg-red-950/30' : 'hover:bg-white/[0.02]')" class="transition-colors">
+                                    <td class="py-3.5 px-4 text-center text-gray-500" x-text="index + 1"></td>
+                                    
+                                    <!-- CỘT NỔI BẬT: NGÀY MỜI -->
+                                    <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                        <template x-if="item.ngayMoi">
+                                            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/35 text-xs font-black shadow-sm">
+                                                <i data-lucide="calendar" class="w-3.5 h-3.5 text-amber-400"></i>
+                                                <span x-text="item.ngayMoi"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="!item.ngayMoi">
+                                            <span class="text-gray-600 font-normal">-</span>
+                                        </template>
+                                    </td>
+
+                                    <!-- CỘT THEO DÕI: TRẠNG THÁI JOIN FAM (CỘT G) -->
+                                    <td class="py-3.5 px-4 text-center whitespace-nowrap">
+                                        <template x-if="item.hasJoined">
+                                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-black shadow-sm">
+                                                <i data-lucide="user-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                                                <span>Đã Join</span>
+                                            </span>
+                                        </template>
+                                        <template x-if="!item.hasJoined">
+                                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-sky-500/15 text-sky-300 border border-sky-500/30 text-xs font-bold">
+                                                <i data-lucide="clock" class="w-3.5 h-3.5 text-sky-400"></i>
+                                                <span>Chưa Join</span>
+                                            </span>
+                                        </template>
+                                    </td>
+
+                                    <!-- EMAIL KHÁCH (AUTO COPY ON CLICK + BADGE CẢNH BÁO TRÙNG ĐỎ) -->
+                                    <td class="py-3.5 px-4">
+                                        <button @click="copyText(item.emailKhach, 'Email khách')"
+                                                title="Bấm để sao chép"
+                                                class="font-bold text-white hover:text-indigo-300 transition-colors flex items-center gap-1.5 group text-left cursor-pointer">
+                                            <span x-text="item.emailKhach"></span>
+                                            <i data-lucide="copy" class="w-3.5 h-3.5 text-gray-500 group-hover:text-indigo-400 transition-colors"></i>
+                                        </button>
+
+                                        <!-- ĐỎ: CHỈ HIỆN KHI EMAIL CHÍNH BỊ TRÙNG -->
+                                        <template x-if="item.mainIsDup">
+                                            <div class="mt-1">
+                                                <span class="bg-red-500/20 text-red-300 border border-red-500/40 text-[10px] font-extrabold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                                                    <span>🚨 Trùng (<span x-text="item.mainCount"></span> dòng)</span>
+                                                </span>
+                                            </div>
+                                        </template>
+                                    </td>
+                                    
+                                    <!-- MAIL PHỤ (AUTO COPY ON CLICK + BADGE CẢNH BÁO TRÙNG ĐỎ KHI TRÙNG) -->
+                                    <td class="py-3.5 px-4">
+                                        <button x-show="item.mailPhu && item.mailPhu !== '-'"
+                                                @click="copyText(item.mailPhu, 'Mail phụ')"
+                                                title="Bấm để sao chép"
+                                                class="text-amber-300 font-bold hover:text-amber-200 transition-colors flex items-center gap-1.5 group text-left cursor-pointer">
+                                            <span x-text="item.mailPhu"></span>
+                                            <i data-lucide="copy" class="w-3.5 h-3.5 text-amber-400/70 group-hover:text-amber-300 transition-colors"></i>
+                                        </button>
+
+                                        <!-- ĐỎ: CHỈ HIỆN KHI MAIL PHỤ BỊ TRÙNG VỚI HÀNG KHÁC -->
+                                        <template x-if="item.subIsDup">
+                                            <div class="mt-1">
+                                                <span class="bg-red-500/20 text-red-300 border border-red-500/40 text-[10px] font-extrabold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                                                    <span>🚨 Mail phụ trùng (<span x-text="item.subCount"></span> dòng)</span>
+                                                </span>
+                                            </div>
+                                        </template>
+
+                                        <span x-show="!item.mailPhu || item.mailPhu === '-'" class="text-gray-500">-</span>
+                                    </td>
+                                    
+                                    <td class="py-3.5 px-4">
+                                        <div class="text-gray-300" x-text="item.ngayMua || '-'"></div>
+                                        <div class="text-[10px] text-indigo-400 font-semibold" x-text="'HSD: ' + (item.hsd || '-')"></div>
+                                    </td>
+
+                                    <td class="py-3.5 px-4 text-center">
+                                        <span class="px-2 py-0.5 rounded-md bg-gray-800 text-gray-300 text-[11px] font-bold" x-text="item.soThang ? item.soThang + 'T' : '-'"></span>
+                                    </td>
+
+                                    <!-- Interactive Checkbox -->
+                                    <td class="py-3.5 px-4 text-center">
+                                        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                                            <input type="checkbox"
+                                                   :checked="item.daNhanKhach"
+                                                   :disabled="item.updating"
+                                                   @change="toggleNhanKhach(item)"
+                                                   class="w-4 h-4 rounded text-indigo-600 bg-gray-950 border-gray-700 focus:ring-indigo-500 focus:ring-offset-gray-900 cursor-pointer disabled:opacity-50">
+                                            <span x-show="item.updating" class="text-[10px] text-indigo-400 animate-pulse">Lưu...</span>
+                                            <span x-show="!item.updating"
+                                                  :class="item.daNhanKhach ? 'text-emerald-400 font-bold' : 'text-gray-500'"
+                                                  class="text-[11px]"
+                                                  x-text="item.daNhanKhach ? 'Đã nhắn' : 'Chưa nhắn'"></span>
+                                        </label>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Card List View (Mobile Optimized UI) -->
+                <div class="block md:hidden space-y-3">
+                    <template x-for="(item, index) in filteredCustomers" :key="item.row">
+                        <div class="bg-gray-900/90 border rounded-2xl p-4 shadow-xl space-y-3 transition-all relative overflow-hidden"
+                             :class="item.daNhanKhach ? 'border-emerald-500/40 border-l-4 border-l-emerald-500 bg-gradient-to-r from-emerald-950/20 to-gray-900/90' : (item.isDuplicateRow ? 'border-red-500/40 border-l-4 border-l-red-500 bg-red-950/15' : 'border-white/10 border-l-4 border-l-amber-500/80 bg-gray-900/90')">
+                            
+                            <!-- Mobile Card Top Bar: STT + Ngày Mời Badge + Trạng Thái Join + HSD -->
+                            <div class="flex items-center justify-between gap-2 border-b border-white/5 pb-2.5">
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <span class="px-2 py-0.5 rounded-md bg-gray-800 text-gray-400 font-extrabold text-[11px]" x-text="'#' + (index + 1)"></span>
+                                    
+                                    <!-- TRẠNG THÁI JOIN FAM (CỘT G) -->
+                                    <template x-if="item.hasJoined">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/35 text-[11px] font-black">
+                                            <i data-lucide="user-check" class="w-3 h-3 text-emerald-400"></i>
+                                            <span>Đã Join</span>
+                                        </span>
+                                    </template>
+                                    <template x-if="!item.hasJoined">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/35 text-[11px] font-bold">
+                                            <i data-lucide="clock" class="w-3 h-3 text-sky-400"></i>
+                                            <span>Chưa Join</span>
+                                        </span>
+                                    </template>
+
+                                    <!-- NGÀY MỜI NỔI BẬT -->
+                                    <template x-if="item.ngayMoi">
+                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/35 text-[11px] font-black">
+                                            <i data-lucide="calendar" class="w-3 h-3 text-amber-400"></i>
+                                            <span>Mời: <strong x-text="item.ngayMoi"></strong></span>
+                                        </span>
+                                    </template>
+                                </div>
+
+                                <!-- HSD & Số Tháng -->
+                                <div class="flex items-center gap-1.5 text-[11px] font-semibold text-gray-400">
+                                    <span class="text-indigo-300 font-bold" x-text="'HSD: ' + (item.hsd || '-')"></span>
+                                    <span x-show="item.soThang" class="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-extrabold" x-text="item.soThang + 'T'"></span>
+                                </div>
+                            </div>
+
+                            <!-- CẢNH BÁO ĐỎ KHI TRÙNG EMAIL -->
+                            <template x-if="item.isDuplicateRow">
+                                <div class="bg-red-500/20 border border-red-500/40 text-red-300 px-3 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1.5 shadow-sm">
+                                    <i data-lucide="alert-triangle" class="w-3.5 h-3.5 flex-shrink-0 text-red-400"></i>
+                                    <span x-text="item.mainIsDup ? ('🚨 Trùng ' + item.mainCount + ' dòng') : ('🚨 Mail phụ trùng ' + item.subCount + ' dòng')"></span>
+                                </div>
+                            </template>
+
+                            <!-- EMAIL KHÁCH (DỄ BẤM SAO CHÉP TRÊN MOBILE) -->
+                            <div @click="copyText(item.emailKhach, 'Email khách')"
+                                 class="bg-gray-950/80 border border-white/10 hover:border-indigo-500/50 p-2.5 rounded-xl flex items-center justify-between gap-2 active:scale-98 transition-all cursor-pointer group">
+                                <div class="min-w-0 flex items-center gap-2">
+                                    <div class="w-6 h-6 rounded-lg bg-indigo-500/20 flex items-center justify-center text-indigo-400 flex-shrink-0">
+                                        <i data-lucide="mail" class="w-3.5 h-3.5"></i>
+                                    </div>
+                                    <span class="text-xs font-bold text-white truncate group-hover:text-indigo-300" x-text="item.emailKhach"></span>
+                                </div>
+                                <div class="flex items-center gap-1 text-[10px] text-gray-400 group-hover:text-indigo-400 bg-gray-900 px-2 py-1 rounded-lg border border-white/5 flex-shrink-0 font-semibold">
+                                    <span>Sao chép</span>
+                                    <i data-lucide="copy" class="w-3 h-3"></i>
+                                </div>
+                            </div>
+
+                            <!-- MAIL PHỤ (NẾU CÓ) -->
+                            <template x-if="item.mailPhu && item.mailPhu !== '-'">
+                                <div @click="copyText(item.mailPhu, 'Mail phụ')"
+                                     class="bg-amber-500/10 border border-amber-500/30 hover:border-amber-500/50 p-2.5 rounded-xl flex items-center justify-between gap-2 active:scale-98 transition-all cursor-pointer group">
+                                    <div class="min-w-0 flex items-center gap-2">
+                                        <i data-lucide="mail-plus" class="w-3.5 h-3.5 text-amber-400 flex-shrink-0"></i>
+                                        <span class="text-[11px] font-bold text-amber-300 truncate group-hover:text-amber-200" x-text="'Mail phụ: ' + item.mailPhu"></span>
+                                    </div>
+                                    <div class="flex items-center gap-1 text-[10px] text-amber-400 bg-amber-950/60 px-2 py-1 rounded-lg border border-amber-500/20 flex-shrink-0 font-bold">
+                                        <span>Copy Mail phụ</span>
+                                        <i data-lucide="copy" class="w-3 h-3"></i>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- ACTION BUTTON: ĐÃ NHẮN KHÁCH (NÚT BẤM TO NỔI BẬT DỄ BẤM TRÊN MOBILE) -->
+                            <button @click="toggleNhanKhach(item)"
+                                    :disabled="item.updating"
+                                    :class="item.daNhanKhach ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30' : 'bg-gray-950 text-amber-300 border-amber-500/30 hover:bg-gray-800'"
+                                    class="w-full py-2.5 px-4 rounded-xl border text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-98 shadow-sm cursor-pointer">
+                                <template x-if="item.updating">
+                                    <span class="flex items-center gap-1.5 text-indigo-400 animate-pulse">
+                                        <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+                                        <span>Đang lưu trạng thái...</span>
+                                    </span>
+                                </template>
+                                <template x-if="!item.updating">
+                                    <span class="flex items-center gap-2">
+                                        <i :data-lucide="item.daNhanKhach ? 'check-circle-2' : 'circle'"
+                                           :class="item.daNhanKhach ? 'text-emerald-400' : 'text-amber-400'" class="w-4 h-4"></i>
+                                        <span x-text="item.daNhanKhach ? 'ĐÃ NHẮN KHÁCH' : 'CHƯA NHẮN KHÁCH (Bấm để đổi)'"></span>
+                                    </span>
+                                </template>
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="py-4 text-center text-xs text-gray-500 border-t border-white/5">
+            Go DNC Subscription System &copy; 2026. All rights reserved.
+        </footer>
+    </div>
+
+    <script>
+        function ctvRenewApp() {
+            return {
+                // Config URL Web App Apps Script
+                webAppUrl: 'https://script.google.com/macros/s/AKfycbxdo7fbmW5MYHTD4XRes7wvSs4BpDjnOe76IPHZ1uyjvtutU247FTbR5Y4r65ZyS-XqfQ/exec',
+                
+                // Form Đăng nhập
+                ctvList: ['Dnc', 'Tuan', 'Vương', 'Loc'],
+                loginForm: {
+                    ctv: 'Dnc',
+                    pass: ''
+                },
+                loggingIn: false,
+                loginError: '',
+
+                // Trạng thái đã Đăng nhập
+                isLoggedIn: false,
+                loggedInCtv: '',
+                loggedInPass: '',
+
+                // Dữ liệu danh sách
+                customers: [],
+                loading: false,
+                filterStatus: 'all', // 'all', 'chua_nhan', 'da_nhan', 'dong_trung'
+                searchQuery: '',
+
+                toast: {
+                    message: '',
+                    type: 'success'
+                },
+
+                initApp() {
+                    // Kiểm tra session cũ từ localStorage (F5 không bị đăng xuất)
+                    const savedCtv = localStorage.getItem('RENEWYT_CTV');
+                    const savedPass = localStorage.getItem('RENEWYT_PASS');
+                    if (savedCtv && savedPass) {
+                        this.loggedInCtv = savedCtv;
+                        this.loggedInPass = savedPass;
+                        this.loginForm.ctv = savedCtv;
+                        this.loginForm.pass = savedPass;
+                        this.isLoggedIn = true;
+                        this.loadData();
+                    }
+
+                    this.$nextTick(() => {
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    });
+                },
+
+                showToast(msg, type = 'success') {
+                    this.toast.message = msg;
+                    this.toast.type = type;
+                    setTimeout(() => {
+                        if (this.toast.message === msg) this.toast.message = '';
+                    }, 4000);
+                },
+
+                // AUTO COPY FUNCTION
+                async copyText(text, typeName = 'Email') {
+                    if (!text || text === '-') return;
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        this.showToast(`Đã sao chép ${typeName}: ${text}`);
+                    } catch (err) {
+                        const input = document.createElement('input');
+                        input.value = text;
+                        document.body.appendChild(input);
+                        input.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(input);
+                        this.showToast(`Đã sao chép ${typeName}: ${text}`);
+                    }
+                },
+
+                // 1. ĐĂNG NHẬP
+                async submitLogin(isAutoLogin = false) {
+                    this.loginError = '';
+                    if (!this.loginForm.ctv || !this.loginForm.pass) {
+                        this.loginError = 'Vui lòng nhập đầy đủ tên CTV và mật khẩu';
+                        return;
+                    }
+
+                    if (!isAutoLogin) this.loggingIn = true;
+                    else this.loading = true;
+
+                    try {
+                        const url = `${this.webAppUrl}?ctv=${encodeURIComponent(this.loginForm.ctv)}&pass=${encodeURIComponent(this.loginForm.pass)}`;
+                        const res = await fetch(url).then(r => r.json());
+
+                        if (!res || !res.ok) {
+                            this.loginError = (res && res.error) ? res.error : 'Sai mật khẩu hoặc lỗi kết nối!';
+                            localStorage.removeItem('RENEWYT_CTV');
+                            localStorage.removeItem('RENEWYT_PASS');
+                            this.isLoggedIn = false;
+                            return;
+                        }
+
+                        localStorage.setItem('RENEWYT_CTV', this.loginForm.ctv);
+                        localStorage.setItem('RENEWYT_PASS', this.loginForm.pass);
+
+                        this.loggedInCtv = this.loginForm.ctv;
+                        this.loggedInPass = this.loginForm.pass;
+                        this.isLoggedIn = true;
+                        this.customers = (res.data || []).map(item => ({ ...item, updating: false }));
+
+                    } catch (err) {
+                        this.loginError = 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra đường truyền!';
+                    } finally {
+                        this.loggingIn = false;
+                        this.loading = false;
+                        this.$nextTick(() => {
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        });
+                    }
+                },
+
+                // 2. ĐĂNG XUẤT
+                logout() {
+                    localStorage.removeItem('RENEWYT_CTV');
+                    localStorage.removeItem('RENEWYT_PASS');
+                    this.isLoggedIn = false;
+                    this.loggedInCtv = '';
+                    this.loggedInPass = '';
+                    this.customers = [];
+                    this.loginError = '';
+                    this.loginForm.pass = '';
+                    this.$nextTick(() => {
+                        if (typeof lucide !== 'undefined') lucide.createIcons();
+                    });
+                },
+
+                // 3. TẢI LẠI DỮ LIỆU
+                async loadData() {
+                    if (!this.isLoggedIn) return;
+                    this.loading = true;
+                    try {
+                        const url = `${this.webAppUrl}?ctv=${encodeURIComponent(this.loggedInCtv)}&pass=${encodeURIComponent(this.loggedInPass)}`;
+                        const res = await fetch(url).then(r => r.json());
+
+                        if (res && res.ok) {
+                            this.customers = (res.data || []).map(item => ({ ...item, updating: false }));
+                            this.showToast('Đã cập nhật danh sách mới nhất');
+                        } else {
+                            this.showToast(res.error || 'Lỗi tải dữ liệu', 'error');
+                            if (res && res.error === 'sai mật khẩu') {
+                                this.logout();
+                                this.loginError = 'Mật khẩu đã bị thay đổi. Vui lòng đăng nhập lại!';
+                            }
+                        }
+                    } catch (err) {
+                        this.showToast('Lỗi kết nối máy chủ', 'error');
+                    } finally {
+                        this.loading = false;
+                        this.$nextTick(() => {
+                            if (typeof lucide !== 'undefined') lucide.createIcons();
+                        });
+                    }
+                },
+
+                // 4. TOGGLE ĐÃ NHẮN KHÁCH (ĐỒNG BỘ CẢ CÁC DÒNG TRÙNG)
+                async toggleNhanKhach(item) {
+                    const nextVal = !item.daNhanKhach;
+                    const mainEmail = (item.emailKhach || '').trim().toLowerCase();
+                    
+                    // Tìm tất cả dòng trùng cùng email
+                    const matchingItems = this.customers.filter(c => (c.emailKhach || '').trim().toLowerCase() === mainEmail);
+                    matchingItems.forEach(c => c.updating = true);
+
+                    try {
+                        const payload = {
+                            ctv: this.loggedInCtv,
+                            pass: this.loggedInPass,
+                            sheetName: item.sheetName,
+                            row: item.row,
+                            daNhanKhach: nextVal
+                        };
+
+                        const res = await fetch(this.webAppUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload)
+                        }).then(r => r.json());
+
+                        if (res && res.ok) {
+                            item.daNhanKhach = nextVal;
+                            
+                            // Nếu có các dòng trùng cùng email, đồng bộ cập nhật trên backend & UI
+                            if (matchingItems.length > 1) {
+                                for (const otherItem of matchingItems) {
+                                    if (otherItem.row !== item.row || otherItem.sheetName !== item.sheetName) {
+                                        otherItem.daNhanKhach = nextVal;
+                                        fetch(this.webAppUrl, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                            body: JSON.stringify({
+                                                ctv: this.loggedInCtv,
+                                                pass: this.loggedInPass,
+                                                sheetName: otherItem.sheetName,
+                                                row: otherItem.row,
+                                                daNhanKhach: nextVal
+                                            })
+                                        }).catch(() => {});
+                                    }
+                                }
+                                this.showToast(`Đã đồng bộ ${matchingItems.length} dòng cho email ${item.emailKhach}`);
+                            } else {
+                                this.showToast(`Đã ${nextVal ? 'tích Đã nhắn' : 'bỏ tích'} cho ${item.emailKhach}`);
+                            }
+                        } else {
+                            this.showToast(res.error || 'Cập nhật thất bại!', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('Lỗi kết nối khi lưu trạng thái', 'error');
+                    } finally {
+                        matchingItems.forEach(c => c.updating = false);
+                    }
+                },
+
+                // COMPUTED: XỬ LÝ PHÁT HIỆN DÒNG TRÙNG EMAIL THỰC SỰ
+                get processedCustomers() {
+                    if (!this.customers || this.customers.length === 0) return [];
+
+                    const emailToRows = {};
+
+                    // Thu thập tất cả email xuất hiện ở Email chính hoặc Mail phụ
+                    this.customers.forEach(item => {
+                        const main = (item.emailKhach || '').trim().toLowerCase();
+                        const sub = (item.mailPhu || '').trim().toLowerCase();
+
+                        if (main && main !== '-') {
+                            if (!emailToRows[main]) emailToRows[main] = new Set();
+                            emailToRows[main].add(item.row);
+                        }
+                        if (sub && sub !== '-' && sub !== 'cấp') {
+                            if (!emailToRows[sub]) emailToRows[sub] = new Set();
+                            emailToRows[sub].add(item.row);
+                        }
+                    });
+
+                    return this.customers.map(item => {
+                        const main = (item.emailKhach || '').trim().toLowerCase();
+                        const sub = (item.mailPhu || '').trim().toLowerCase();
+
+                        const mainRows = main ? Array.from(emailToRows[main] || []) : [];
+                        const subRows = (sub && sub !== '-' && sub !== 'cấp') ? Array.from(emailToRows[sub] || []) : [];
+
+                        // Email chính bị xuất hiện ở >= 2 dòng
+                        const mainIsDup = mainRows.length > 1;
+                        // Mail phụ bị xuất hiện ở >= 2 dòng (trùng với email chính dòng khác)
+                        const subIsDup = subRows.length > 1;
+                        const isDuplicateRow = mainIsDup || subIsDup;
+
+                        return {
+                            ...item,
+                            isDuplicateRow,
+                            mainIsDup,
+                            mainCount: mainRows.length,
+                            subIsDup,
+                            subCount: subRows.length
+                        };
+                    });
+                },
+
+                // GETTERS FILTER
+                get countJoined() {
+                    return this.customers.filter(c => c.hasJoined).length;
+                },
+
+                get countNotJoined() {
+                    return this.customers.filter(c => !c.hasJoined).length;
+                },
+
+                get countUnnotified() {
+                    return this.customers.filter(c => !c.daNhanKhach).length;
+                },
+
+                get countNotified() {
+                    return this.customers.filter(c => c.daNhanKhach).length;
+                },
+
+                get countDuplicateRows() {
+                    return this.processedCustomers.filter(c => c.isDuplicateRow).length;
+                },
+
+                get filteredCustomers() {
+                    return this.processedCustomers.filter(item => {
+                        if (this.filterStatus === 'da_join' && !item.hasJoined) return false;
+                        if (this.filterStatus === 'chua_join' && item.hasJoined) return false;
+                        if (this.filterStatus === 'chua_nhan' && item.daNhanKhach) return false;
+                        if (this.filterStatus === 'da_nhan' && !item.daNhanKhach) return false;
+                        if (this.filterStatus === 'dong_trung' && !item.isDuplicateRow) return false;
+
+                        if (this.searchQuery.trim()) {
+                            const q = this.searchQuery.trim().toLowerCase();
+                            const em = (item.emailKhach || '').toLowerCase();
+                            const mp = (item.mailPhu || '').toLowerCase();
+                            return em.includes(q) || mp.includes(q);
+                        }
+                        return true;
+                    });
+                }
+            };
+        }
+    </script>
+</body>
+</html>

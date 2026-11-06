@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <!-- PWA: icon & add-to-home-screen -->
+  <link rel="apple-touch-icon" href="/ctv/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/ctv/icon-192.png">
+  <link rel="manifest" href="/ctv/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="CTV">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CTV Dashboard - Gia Hạn Youtube</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f7fe;
+            color: #262626;
+        }
+
+        .card-shadow {
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#1890ff', 'primary-light': '#e6f7ff' }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body x-data="ctvApp()" x-init="initApp()" class="antialiased text-gray-800">
+    <!-- Maintenance Screen Overlay -->
+    <div x-show="isMaintenanceMode" x-cloak style="display: none;" class="fixed inset-0 z-[9999] bg-[#0B0F19] flex flex-col items-center justify-center p-6 text-center">
+        <i data-lucide="settings" class="w-24 h-24 text-primary animate-spin-slow mb-8 opacity-80" style="animation-duration: 3s;"></i>
+        <h1 class="text-4xl md:text-5xl font-black text-white mb-4 tracking-tight">HỆ THỐNG ĐANG BẢO TRÌ</h1>
+        <p class="text-gray-400 text-lg md:text-xl max-w-xl mx-auto leading-relaxed">
+            Chúng tôi đang tiến hành nâng cấp hệ thống để mang lại trải nghiệm tốt hơn. 
+            Vui lòng quay lại sau ít phút. Xin lỗi vì sự bất tiện này!
+        </p>
+    </div>
+
+    <!-- Login Screen -->
+    <div x-show="!isLoggedIn" x-cloak class="min-h-screen flex flex-col items-center justify-center p-4">
+        <div class="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-sm border border-gray-100">
+            <div
+                class="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center text-white font-bold shadow-lg shadow-primary/30 mx-auto mb-6">
+                <i data-lucide="shield-check" class="w-8 h-8"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-center text-gray-900 mb-2">CTV Đăng Nhập</h2>
+            <p class="text-sm text-center text-gray-500 mb-8">Vui lòng đăng nhập để quản lý khách hàng</p>
+
+            <form @submit.prevent="login()" class="space-y-5">
+                <div x-show="loginError" x-cloak
+                    class="bg-red-50 text-red-600 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                    <span x-text="loginError"></span>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Tên Đăng
+                        Nhập</label>
+                    <input type="text" x-model="loginForm.username" required
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-primary/10 transition-all font-medium text-gray-900">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Mật Khẩu</label>
+                    <input type="password" x-model="loginForm.password" required
+                        class="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:bg-white focus:ring-4 focus:ring-primary/10 transition-all font-medium text-gray-900">
+                </div>
+                <button type="submit"
+                    class="w-full bg-primary hover:bg-blue-600 text-white py-3.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-xl shadow-primary/20 mt-4">
+                    <span>Đăng Nhập</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header x-show="isLoggedIn" x-cloak
+        class="bg-white border-b border-gray-200 py-4 px-6 md:px-12 flex items-center justify-between shadow-sm sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <div
+                class="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-primary/30">
+                <i data-lucide="youtube" class="w-5 h-5"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg tracking-tight text-gray-900">CTV Portal</h1>
+                <p class="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Quản lý Gia hạn Youtube</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-4">
+            <span class="text-xs font-bold text-gray-500" x-show="!isLoading">
+                <span class="text-green-500" x-text="getYoutubeCustomers().length"></span> Khách hàng
+            </span>
+            <button @click="fetchSheetData()"
+                class="p-2 text-gray-400 hover:text-primary hover:bg-primary-light rounded-lg transition-all"
+                :class="{'animate-spin text-primary': isLoading}" title="Làm mới">
+                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+            </button>
+            <button @click="logout()"
+                class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                title="Đăng xuất">
+                <i data-lucide="log-out" class="w-5 h-5"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Tabs Navigation -->
+    <div x-show="isLoggedIn" x-cloak class="max-w-7xl mx-auto px-4 md:px-8 mt-6">
+        <div class="flex gap-4 border-b border-gray-200">
+            <button @click="currentTab = 'customers'"
+                :class="currentTab === 'customers' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="px-4 py-3 font-bold text-sm border-b-2 transition-all">Danh sách Khách Hàng</button>
+            <button @click="currentTab = 'requests'"
+                :class="currentTab === 'requests' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="px-4 py-3 font-bold text-sm border-b-2 transition-all flex items-center gap-2">
+                Yêu Cầu Gia Hạn
+                <span x-show="getPendingRequestsCount() > 0"
+                    class="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full"
+                    x-text="getPendingRequestsCount()"></span>
+            </button>
+            <button @click="currentTab = 'forecast'"
+                :class="currentTab === 'forecast' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="px-4 py-3 font-bold text-sm border-b-2 transition-all flex items-center gap-2">
+                <i data-lucide="trending-up" class="w-4 h-4"></i>
+                Dự Báo Đến Hạn
+            </button>
+            <a href="./renew/"
+                class="px-4 py-3 font-bold text-sm border-b-2 border-transparent text-rose-600 hover:text-rose-700 transition-all flex items-center gap-2 whitespace-nowrap ml-auto bg-rose-50/70 hover:bg-rose-100 rounded-t-xl">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-500"></i>
+                <span>Trang Báo Lỗi Fam (RN) ↗</span>
+            </a>
+        </div>
+    </div>
+
+    <main x-show="isLoggedIn && currentTab === 'customers'" x-cloak class="max-w-7xl mx-auto p-4 md:p-8 pt-6">
+        <div x-show="isLoading" class="flex flex-col items-center justify-center py-20 text-gray-400">
+            <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-primary mb-4"></i>
+            <p class="font-medium text-sm">Đang tải dữ liệu từ Google Sheets...</p>
+        </div>
+
+        <div x-show="!isLoading" x-cloak>
+            <!-- Summary Cards (4 Cards) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <!-- Card 1: Quá hạn — Chờ CTV gửi YC -->
+                <div @click="summaryCardFilter = summaryCardFilter === 'overdue_ctv' ? null : 'overdue_ctv'"
+                    :class="summaryCardFilter === 'overdue_ctv' ? 'ring-2 ring-red-500 bg-red-50/80 shadow-md' : 'bg-white hover:border-red-200 hover:shadow-sm'"
+                    class="rounded-2xl border border-gray-100 p-4 transition-all cursor-pointer flex items-center justify-between group">
+                    <div>
+                        <p class="text-[11px] font-bold text-red-500 uppercase tracking-wider mb-1">Quá hạn — Chờ CTV gửi YC</p>
+                        <p class="text-2xl font-black text-red-600" x-text="getOverduePendingCtvCount()"></p>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-500 group-hover:scale-110 transition-transform shrink-0">
+                        <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+                <!-- Card 2: Quá hạn — Chờ Admin duyệt -->
+                <div @click="summaryCardFilter = summaryCardFilter === 'overdue_admin' ? null : 'overdue_admin'"
+                    :class="summaryCardFilter === 'overdue_admin' ? 'ring-2 ring-purple-600 bg-purple-50/80 shadow-md' : 'bg-white hover:border-purple-200 hover:shadow-sm'"
+                    class="rounded-2xl border border-gray-100 p-4 transition-all cursor-pointer flex items-center justify-between group">
+                    <div>
+                        <p class="text-[11px] font-bold text-purple-600 uppercase tracking-wider mb-1">Quá hạn — Chờ Admin duyệt</p>
+                        <p class="text-2xl font-black text-purple-700" x-text="getOverduePendingAdminCount()"></p>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600 group-hover:scale-110 transition-transform shrink-0">
+                        <i data-lucide="user-check" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+                <!-- Card 3: Sắp hết hạn (<=3 ngày) -->
+                <div @click="summaryCardFilter = summaryCardFilter === 'expiring_soon' ? null : 'expiring_soon'"
+                    :class="summaryCardFilter === 'expiring_soon' ? 'ring-2 ring-orange-500 bg-orange-50/80 shadow-md' : 'bg-white hover:border-orange-200 hover:shadow-sm'"
+                    class="rounded-2xl border border-gray-100 p-4 transition-all cursor-pointer flex items-center justify-between group">
+                    <div>
+                        <p class="text-[11px] font-bold text-orange-500 uppercase tracking-wider mb-1">Sắp hết hạn (≤3 ngày)</p>
+                        <p class="text-2xl font-black text-orange-600" x-text="getExpiringSoonCount()"></p>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500 group-hover:scale-110 transition-transform shrink-0">
+                        <i data-lucide="clock" class="w-5 h-5"></i>
+                    </div>
+                </div>
+
+                <!-- Card 4: Đã gia hạn hôm nay -->
+                <div @click="summaryCardFilter = summaryCardFilter === 'renewed_today' ? null : 'renewed_today'"
+                    :class="summaryCardFilter === 'renewed_today' ? 'ring-2 ring-green-500 bg-green-50/80 shadow-md' : 'bg-white hover:border-green-200 hover:shadow-sm'"
+                    class="rounded-2xl border border-gray-100 p-4 transition-all cursor-pointer flex items-center justify-between group">
+                    <div>
+                        <p class="text-[11px] font-bold text-green-600 uppercase tracking-wider mb-1">Đã gia hạn hôm nay</p>
+                        <p class="text-2xl font-black text-green-600" x-text="getRenewedTodayCount()"></p>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform shrink-0">
+                        <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                <div
+                    class="p-6 border-b border-gray-100 flex flex-wrap items-center justify-between gap-6 bg-gray-50/50">
+                    <div class="flex flex-wrap items-center gap-6">
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                <i data-lucide="user" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <label
+                                    class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">CTV
+                                    Phụ Trách</label>
+                                <select x-model="ytbFilterStaff" :disabled="currentUser?.role !== 'admin'"
+                                    class="bg-transparent text-sm font-bold text-gray-900 focus:outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <option value="all">Tất cả CTV & Nhân viên</option>
+                                    <option value="Tuan">CTV Tuấn</option>
+                                    <option value="Vuong">CTV Vương</option>
+                                    <option value="Dnc">Dnc</option>
+                                    <option value="Loc">Lộc</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
+
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-600">
+                                <i data-lucide="filter" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <label
+                                    class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Lọc
+                                    Trạng Thái</label>
+                                <select x-model="ytbFilterStatus"
+                                    class="bg-transparent text-sm font-bold text-gray-900 focus:outline-none cursor-pointer">
+                                    <option value="all">Tất cả trạng thái</option>
+                                    <option value="Còn HSD">Còn hạn sử dụng</option>
+                                    <option value="Chờ GH">Đến hạn (Chờ gia hạn)</option>
+                                    <option value="Đã nhắc GH">Đã nhắc gia hạn</option>
+                                    <option value="Đã GH">Đã gia hạn thành công</option>
+                                    <option value="Hủy GH">Đã hủy</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
+
+                        <div class="flex items-center gap-3">
+                            <div class="relative">
+                                <i data-lucide="search"
+                                    class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                                <input type="text" x-model="searchQuery" placeholder="Tìm kiếm Email..."
+                                    class="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 w-full sm:w-64 transition-all">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="px-6 py-3 border-b border-gray-100 bg-white flex items-center gap-2 overflow-x-auto hide-scrollbar">
+                    <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mr-2 whitespace-nowrap">Lọc theo ngày:</span>
+                    <button @click="selectedDateFilter = null" 
+                        :class="selectedDateFilter === null ? 'bg-gray-800 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                        class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap">
+                        Tất cả
+                    </button>
+                    <template x-for="opt in dateOptions" :key="opt.daysMatch">
+                        <button @click="selectedDateFilter = selectedDateFilter === opt.daysMatch ? null : opt.daysMatch"
+                            :class="selectedDateFilter === opt.daysMatch ? 'bg-primary text-white shadow-md shadow-primary/20' : (opt.daysMatch === 0 ? 'bg-blue-50 border border-blue-200 text-blue-700 hover:border-primary' : 'bg-white border border-gray-200 text-gray-600 hover:border-primary hover:text-primary')"
+                            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap inline-flex items-center gap-1.5">
+                            <i x-show="opt.daysMatch === 0 && selectedDateFilter !== 0" data-lucide="calendar" class="w-3 h-3"></i>
+                            <span x-text="opt.label"></span>
+                        </button>
+                    </template>
+                </div>
+
+                <template x-if="forecastMonthFilter">
+                    <div class="px-6 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between text-xs text-blue-900 font-bold">
+                        <span class="flex items-center gap-2">
+                            <i data-lucide="trending-up" class="w-4 h-4 text-primary"></i>
+                            <span>Đang lọc theo dự báo: <strong class="text-primary" x-text="forecastMonthFilter === 'overdue' ? 'Đã quá hạn' : forecastMonthFilter.label"></strong></span>
+                        </span>
+                        <button @click="forecastMonthFilter = null" class="px-2.5 py-1 bg-white border border-blue-200 rounded-lg text-blue-700 hover:bg-blue-100 text-xs font-bold transition-all flex items-center gap-1 shadow-sm">
+                            <span>Xóa lọc</span>
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                </template>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead
+                            class="bg-white border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            <tr>
+                                <th class="px-6 py-4">Khách Hàng</th>
+                                <th class="px-6 py-4 text-center">Ngày Đăng Ký</th>
+                                <th class="px-6 py-4 text-center">Hạn Sử Dụng</th>
+                                <th class="px-6 py-4 text-center">Trạng Thái Xử Lý</th>
+                                <th class="px-6 py-4 text-right">Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <template x-for="customer in getYoutubeCustomers()" :key="customer.email">
+                                <tr class="hover:bg-blue-50/50 transition-colors group">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center gap-3">
+                                            <div
+                                                class="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center text-red-500">
+                                                <i data-lucide="play" class="w-4 h-4"></i>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-bold text-gray-900 cursor-pointer hover:text-primary hover:underline transition-all"
+                                                    @click="copyText(customer.email)" title="Nhấn để copy"
+                                                    x-text="customer.email"></p>
+                                                <template x-if="customer.secondaryEmail">
+                                                    <p class="text-xs font-medium text-gray-500 cursor-pointer hover:text-primary hover:underline transition-all mt-0.5 flex items-center gap-1"
+                                                        @click="copyText(customer.secondaryEmail)" title="Nhấn để copy">
+                                                        <i data-lucide="mail" class="w-3 h-3"></i>
+                                                        <span x-text="customer.secondaryEmail"></span>
+                                                    </p>
+                                                </template>
+                                                <div class="flex flex-wrap items-center gap-2 mt-1">
+                                                    <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-md inline-flex items-center gap-1 border shadow-xs"
+                                                        :class="getPlanBadgeClass(customer.plan)">
+                                                        <i x-show="isPlusPlan(customer.plan)" data-lucide="sparkles" class="w-3 h-3 text-purple-600"></i>
+                                                        <span x-text="formatPlanName(customer.plan)"></span>
+                                                    </span>
+                                                    <template x-if="customer.note">
+                                                        <span class="text-[10px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded inline-flex items-center gap-1 max-w-[200px] truncate" :title="customer.note">
+                                                            <i data-lucide="file-text" class="w-3 h-3 text-amber-500 shrink-0"></i>
+                                                            <span x-text="customer.note"></span>
+                                                        </span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span
+                                            class="text-xs font-medium text-gray-600 bg-gray-100 px-2.5 py-1 rounded-md"
+                                            x-text="customer.purchaseDate"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <p class="text-sm font-bold text-gray-900" x-text="customer.expiry"></p>
+                                        <div class="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                                            :class="customer.days < 0 ? 'bg-red-50 text-red-600' : (customer.days <= 7 ? 'bg-orange-50 text-orange-600' : 'bg-green-50 text-green-600')">
+                                            <i data-lucide="clock" class="w-3 h-3"></i>
+                                            <span
+                                                x-text="customer.days < 0 ? ('Quá hạn ' + Math.abs(customer.days) + ' ngày') : ('Còn ' + customer.days + ' ngày')"></span>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <select x-model="customer.renewalStatus"
+                                            @change="saveStatus(customer.email, customer.renewalStatus, customer.note)"
+                                            class="border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold focus:outline-none transition-all cursor-pointer shadow-sm"
+                                            :class="{
+                                                    'bg-purple-50 text-purple-700 border-purple-200': customer.renewalStatus === 'Còn HSD',
+                                                    'bg-orange-50 text-orange-700 border-orange-200': customer.renewalStatus === 'Chờ GH', 
+                                                    'bg-blue-50 text-blue-700 border-blue-200': customer.renewalStatus === 'Đã nhắc GH', 
+                                                    'bg-green-50 text-green-700 border-green-200': customer.renewalStatus === 'Đã GH', 
+                                                    'bg-red-50 text-red-700 border-red-200': customer.renewalStatus === 'Hủy GH'
+                                                }">
+                                            <option value="Còn HSD" class="text-purple-600">Còn HSD</option>
+                                            <option value="Chờ GH" class="text-orange-600">Chờ Gia Hạn</option>
+                                            <option value="Đã nhắc GH" class="text-blue-600">Đã Nhắc Khách</option>
+                                            <option value="Đã GH" class="text-green-600">Đã Gia Hạn</option>
+                                            <option value="Hủy GH" class="text-red-600">Khách Hủy</option>
+                                        </select>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button @click="openUpdateModal(customer)"
+                                            class="bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all px-3 py-2 rounded-lg inline-flex items-center gap-1.5 ml-auto shadow-sm">
+                                            <i data-lucide="edit-3" class="w-4 h-4"></i>
+                                            <span class="text-[11px] font-bold uppercase tracking-wider">Cập Nhật</span>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="getYoutubeCustomers().length === 0">
+                                <tr>
+                                    <td colspan="5" class="px-6 py-16 text-center">
+                                        <div
+                                            class="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mx-auto mb-4 text-gray-300">
+                                            <i data-lucide="check-circle" class="w-8 h-8"></i>
+                                        </div>
+                                        <p class="text-gray-900 font-bold mb-1">Không có khách hàng nào</p>
+                                        <p class="text-sm text-gray-500">Tất cả khách hàng Youtube trong bộ lọc hiện tại
+                                            đã được xử lý.</p>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Requests Tab -->
+    <main x-show="isLoggedIn && currentTab === 'requests'" x-cloak class="max-w-7xl mx-auto p-4 md:p-8 pt-6">
+        <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead
+                        class="bg-white border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        <tr>
+                            <th class="px-6 py-4">CTV Yêu Cầu</th>
+                            <th class="px-6 py-4">Khách Hàng</th>
+                            <th class="px-6 py-4 text-center">Gia Hạn Thêm</th>
+                            <th class="px-6 py-4 text-center">Trạng Thái</th>
+                            <th class="px-6 py-4 text-right">Hành Động</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        <template x-for="req in getVisibleRequests()" :key="req.id">
+                            <tr class="hover:bg-gray-50 transition-colors">
+                                <td class="px-6 py-4">
+                                    <p class="text-sm font-bold text-gray-900" x-text="req.staff"></p>
+                                    <p class="text-xs text-gray-500 mt-0.5" x-text="req.createdAt"></p>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <p class="text-sm font-bold text-gray-900 cursor-pointer hover:text-primary hover:underline transition-all"
+                                        @click="copyText(req.email)" title="Nhấn để copy"
+                                        x-text="req.email"></p>
+                                    <template x-if="req.months > 0">
+                                        <p class="text-xs text-gray-500 mt-0.5">Từ <span x-text="req.oldExpiry || '--'"></span> lên
+                                            <span class="font-bold text-green-600" x-text="req.newExpiry || '--'"></span></p>
+                                    </template>
+                                    <template x-if="!req.months || req.months <= 0">
+                                        <p class="text-xs text-amber-700 font-medium mt-0.5" x-text="req.note || 'Không có ghi chú'"></p>
+                                    </template>
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <template x-if="req.months > 0">
+                                        <span class="text-xs font-bold text-primary bg-primary/10 px-2 py-1 rounded-md"
+                                            x-text="req.months + ' Tháng'"></span>
+                                    </template>
+                                    <template x-if="!req.months || req.months <= 0">
+                                        <span class="text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md">Ghi chú</span>
+                                    </template>
+                                </td>
+                                <td class="px-6 py-4 text-center">
+                                    <template x-if="currentUser?.role === 'admin'">
+                                        <select x-model="req.status" @change="updateRequestStatus(req.id, req.status)"
+                                            class="border rounded-lg px-2 py-1.5 text-xs font-bold focus:outline-none transition-all cursor-pointer shadow-sm w-full"
+                                            :class="getStatusBadgeClass(req.status)">
+                                            <option value="Chờ Duyệt">Chờ Duyệt</option>
+                                            <option value="Đã Duyệt">Đã Duyệt</option>
+                                            <option value="Từ Chối">Từ Chối</option>
+                                            <option value="Còn HSD">Còn HSD</option>
+                                            <option value="Chờ GH">Chờ Gia Hạn</option>
+                                            <option value="Đã nhắc GH">Đã Nhắc Khách</option>
+                                            <option value="Đã GH">Đã Gia Hạn</option>
+                                            <option value="Hủy GH">Khách Hủy</option>
+                                        </select>
+                                    </template>
+                                    <template x-if="currentUser?.role !== 'admin'">
+                                        <span class="text-xs font-bold px-3 py-1 rounded-full border"
+                                            :class="getStatusBadgeClass(req.status)"
+                                            x-text="req.status"></span>
+                                    </template>
+                                </td>
+                                <td class="px-6 py-4 text-right">
+                                    <div class="flex items-center justify-end gap-2"
+                                        x-show="(req.status === 'Chờ Duyệt' || req.status === 'pending') && currentUser?.role !== 'admin' && currentUser?.name === req.staff">
+                                        <button @click="cancelRequest(req.id)"
+                                            class="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 text-xs font-bold transition-all"
+                                            title="Hủy bỏ">
+                                            Hủy bỏ
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <template x-if="getVisibleRequests().length === 0">
+                            <tr>
+                                <td colspan="5" class="px-6 py-16 text-center text-gray-500 text-sm">Chưa có yêu cầu gia
+                                    hạn nào.</td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- Forecast Tab -->
+    <main x-show="isLoggedIn && currentTab === 'forecast'" x-cloak class="max-w-7xl mx-auto p-4 md:p-8 pt-6">
+        <div x-show="isLoading" class="flex flex-col items-center justify-center py-20 text-gray-400">
+            <i data-lucide="loader-2" class="w-10 h-10 animate-spin text-primary mb-4"></i>
+            <p class="font-medium text-sm">Đang tải dữ liệu từ Google Sheets...</p>
+        </div>
+
+        <div x-show="!isLoading" x-cloak class="space-y-6">
+            <!-- Controls & Header -->
+            <div class="bg-white rounded-2xl border border-gray-100 p-6 card-shadow flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                        <i data-lucide="trending-up" class="w-5 h-5 text-primary"></i>
+                        Dự Báo Khách Đến Hạn Theo Tháng
+                    </h2>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Thống kê số lượng khách hàng đến hạn theo từng tháng để chuẩn bị Fam/Slot kho & kế hoạch gia hạn.
+                    </p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-4">
+                    <!-- CTV Selector indicator -->
+                    <div class="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                        <i data-lucide="user" class="w-4 h-4 text-blue-600"></i>
+                        <span class="text-xs font-bold text-gray-700">CTV:</span>
+                        <select x-model="ytbFilterStaff" :disabled="currentUser?.role !== 'admin'"
+                            class="bg-transparent text-xs font-bold text-gray-900 focus:outline-none cursor-pointer">
+                            <option value="all">Tất cả CTV & Nhân viên</option>
+                            <option value="Tuan">CTV Tuấn</option>
+                            <option value="Vuong">CTV Vương</option>
+                            <option value="Dnc">Dnc</option>
+                            <option value="Loc">Lộc</option>
+                        </select>
+                    </div>
+
+                    <!-- Forecast Range selector -->
+                    <div class="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                        <i data-lucide="calendar" class="w-4 h-4 text-primary"></i>
+                        <span class="text-xs font-bold text-gray-700">Dự báo:</span>
+                        <select x-model.number="forecastMonthsCount"
+                            class="bg-transparent text-xs font-bold text-primary focus:outline-none cursor-pointer">
+                            <option :value="3">3 tháng tới</option>
+                            <option :value="6">6 tháng tới</option>
+                            <option :value="12">12 tháng tới</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Card -->
+            <div class="bg-white rounded-2xl border border-gray-100 card-shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50/50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            <tr>
+                                <th class="px-6 py-4">Tháng</th>
+                                <th class="px-6 py-4 text-center">Tổng Khách</th>
+                                <th class="px-6 py-4 text-center text-blue-600 bg-blue-50/40">Gói Thường</th>
+                                <th class="px-6 py-4 text-center text-purple-600 bg-purple-50/40">Gói Plus</th>
+                                <template x-for="planName in getForecastPlans()" :key="planName">
+                                    <th class="px-6 py-4 text-center">
+                                        <span class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase border shadow-xs inline-flex items-center gap-1"
+                                            :class="getPlanBadgeClass(planName)">
+                                            <i x-show="isPlusPlan(planName)" data-lucide="sparkles" class="w-3 h-3 text-purple-600"></i>
+                                            <span x-text="formatPlanName(planName)"></span>
+                                        </span>
+                                    </th>
+                                </template>
+                                <th class="px-6 py-4 text-right">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            <template x-for="row in getForecastRows()" :key="row.id">
+                                <tr class="hover:bg-blue-50/40 transition-colors cursor-pointer"
+                                    :class="row.type === 'overdue' ? 'bg-red-50/20' : (row.isCurrentMonth ? 'bg-blue-50/20 font-medium' : '')"
+                                    @click="filterByForecastRow(row)">
+                                    <td class="px-6 py-4">
+                                        <div class="flex items-center gap-2.5">
+                                            <div class="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs"
+                                                :class="row.type === 'overdue' ? 'bg-red-100 text-red-600' : (row.isCurrentMonth ? 'bg-primary text-white' : 'bg-gray-100 text-gray-700')">
+                                                <i x-show="row.type === 'overdue'" data-lucide="alert-triangle" class="w-4 h-4"></i>
+                                                <span x-show="row.type !== 'overdue'" x-text="row.month || '?'"></span>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm font-bold text-gray-900 flex items-center gap-2" x-text="row.label">
+                                                </p>
+                                                <span x-show="row.isCurrentMonth" class="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">Tháng hiện tại</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <div class="inline-flex flex-col items-center">
+                                            <span class="text-base font-black" :class="row.type === 'overdue' ? 'text-red-600' : 'text-gray-900'" x-text="row.total"></span>
+                                            <div class="w-16 bg-gray-100 h-1.5 rounded-full overflow-hidden mt-1">
+                                                <div class="h-full rounded-full transition-all duration-500"
+                                                    :class="row.type === 'overdue' ? 'bg-red-500' : 'bg-primary'"
+                                                    :style="`width: ${row.percentage}%`"></div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center bg-blue-50/20">
+                                        <span class="text-xs font-bold px-2.5 py-1 rounded-md bg-blue-100/70 text-blue-800"
+                                            x-text="row.normalCount || 0"></span>
+                                    </td>
+                                    <td class="px-6 py-4 text-center bg-purple-50/20">
+                                        <span class="text-xs font-bold px-2.5 py-1 rounded-md bg-purple-100/70 text-purple-800"
+                                            x-text="row.plusCount || 0"></span>
+                                    </td>
+                                    <template x-for="planName in getForecastPlans()" :key="planName">
+                                        <td class="px-6 py-4 text-center">
+                                            <span class="text-xs font-black px-2.5 py-1 rounded-md border shadow-xs"
+                                                :class="row.planCounts[planName] > 0 ? getPlanBadgeClass(planName) : 'bg-gray-50 text-gray-300 border-gray-100 font-normal'"
+                                                x-text="row.planCounts[planName] || 0"></span>
+                                        </td>
+                                    </template>
+                                    <td class="px-6 py-4 text-right">
+                                        <button @click.stop="filterByForecastRow(row)"
+                                            class="px-3 py-1.5 rounded-xl bg-white border border-gray-200 hover:border-primary text-gray-700 hover:text-primary text-xs font-bold transition-all shadow-sm inline-flex items-center gap-1">
+                                            <span>Xem chi tiết</span>
+                                            <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Update Modal -->
+    <div x-show="showModal" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div @click="showModal = false" class="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"></div>
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl relative overflow-hidden"
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="opacity-0 scale-95 transform translate-y-8"
+            x-transition:enter-end="opacity-100 scale-100 transform translate-y-0">
+
+            <div class="p-6 border-b border-gray-100">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="w-12 h-12 bg-primary/10 text-primary rounded-full flex items-center justify-center">
+                        <i data-lucide="edit-3" class="w-6 h-6"></i>
+                    </div>
+                    <button @click="showModal = false"
+                        class="text-gray-400 hover:text-gray-600 bg-gray-50 hover:bg-gray-100 p-2 rounded-full transition-colors">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <h2 class="text-xl font-bold text-gray-900">Cập Nhật Khách Hàng</h2>
+                <div class="flex items-center gap-2 mt-1">
+                    <p class="text-sm text-gray-500 font-medium cursor-pointer hover:text-primary hover:underline transition-all inline-block"
+                        @click="copyText(updateForm.email)" title="Nhấn để copy"
+                        x-text="updateForm.email"></p>
+                    <template x-if="updateForm.plan">
+                        <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-md inline-flex items-center gap-1 border shadow-xs"
+                            :class="getPlanBadgeClass(updateForm.plan)">
+                            <i x-show="isPlusPlan(updateForm.plan)" data-lucide="sparkles" class="w-3 h-3 text-purple-600"></i>
+                            <span x-text="formatPlanName(updateForm.plan)"></span>
+                        </span>
+                    </template>
+                </div>
+
+                <!-- Modal Mode Selector -->
+                <div class="flex bg-gray-100 p-1 rounded-xl mt-4">
+                    <button type="button" @click="updateForm.mode = 'note'"
+                        :class="updateForm.mode === 'note' ? 'bg-white text-primary shadow-sm font-bold' : 'text-gray-500 font-medium'"
+                        class="flex-1 py-2 text-xs rounded-lg transition-all text-center">
+                        📝 Ghi Chú Trạng Thái
+                    </button>
+                    <button type="button" @click="updateForm.mode = 'renew'"
+                        :class="updateForm.mode === 'renew' ? 'bg-white text-primary shadow-sm font-bold' : 'text-gray-500 font-medium'"
+                        class="flex-1 py-2 text-xs rounded-lg transition-all text-center">
+                        📅 Yêu Cầu Gia Hạn HSD
+                    </button>
+                </div>
+            </div>
+
+            <form @submit.prevent="submitUpdate()" class="p-6 space-y-5 bg-gray-50/50">
+                <!-- Mode 1: Ghi Chú Trạng Thái -->
+                <div x-show="updateForm.mode === 'note'" class="space-y-4">
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Trạng Thái Xử Lý</label>
+                        <select x-model="updateForm.status"
+                            class="w-full bg-white border border-gray-200 rounded-xl py-3 px-4 text-sm font-bold focus:outline-none focus:border-primary transition-all cursor-pointer">
+                            <option value="Còn HSD" class="text-purple-600">Còn HSD</option>
+                            <option value="Chờ GH" class="text-orange-600">Chờ Gia Hạn</option>
+                            <option value="Đã nhắc GH" class="text-blue-600">Đã Nhắc Khách</option>
+                            <option value="Đã GH" class="text-green-600">Đã Gia Hạn</option>
+                            <option value="Hủy GH" class="text-red-600">Khách Hủy</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Ghi Chú Phụ (Tuỳ chọn)</label>
+                        <textarea x-model="updateForm.note" rows="3" placeholder="Nhập ghi chú thêm cho khách hàng..."
+                            class="w-full bg-white border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary transition-all text-gray-900"></textarea>
+                    </div>
+                </div>
+
+                <!-- Mode 2: Yêu Cầu Gia Hạn HSD -->
+                <div x-show="updateForm.mode === 'renew'" class="space-y-4">
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Hạn Sử Dụng Cũ</label>
+                        <input type="text" x-model="updateForm.oldExpiry" readonly
+                            class="w-full bg-gray-100 border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none text-gray-500 font-bold cursor-not-allowed">
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <div class="flex-1">
+                            <label class="block text-[11px] font-bold text-primary uppercase tracking-widest mb-2">Số tháng cộng thêm</label>
+                            <div class="relative">
+                                <input type="number" x-model.number="updateForm.months" @input="calculateNewDate()" min="1"
+                                    class="w-full bg-white border border-primary/30 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 font-bold text-primary transition-all">
+                                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-primary/50 uppercase">Tháng</span>
+                            </div>
+                        </div>
+                        <div class="flex-1">
+                            <label class="block text-[11px] font-bold text-green-600 uppercase tracking-widest mb-2">HSD Mới Sẽ Là</label>
+                            <input type="date" x-model="updateForm.newExpiry"
+                                class="w-full bg-white border border-green-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-500/10 text-green-700 font-bold uppercase transition-all">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-widest mb-2">Ghi Chú Yêu Cầu (Tuỳ chọn)</label>
+                        <input type="text" x-model="updateForm.note" placeholder="VD: Khách chuyển khoản gia hạn 1 năm..."
+                            class="w-full bg-white border border-gray-200 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary transition-all text-gray-900">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 pt-4">
+                    <button type="button" @click="showModal = false"
+                        class="flex-1 py-3 text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 rounded-xl transition-all">Hủy</button>
+                    <button type="submit"
+                        class="flex-[2] bg-primary hover:bg-blue-600 text-white py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2 shadow-xl shadow-primary/20">
+                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                        <span x-text="updateForm.mode === 'note' ? 'Lưu Trạng Thái & Ghi Chú' : (currentUser?.role === 'admin' ? 'Xác Nhận Gia Hạn' : 'Gửi Yêu Cầu Gia Hạn')"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast-container"></div>
+
+    <script>
+        function ctvApp() {
+            return {
+                CONFIG: {
+                    SHEET_ID: '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c',
+                    WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxzXvVjASViAK--nYwzfJ_iTbK8e7Ilfd9xjbDdzS3SdXPTgdPRVSd9M4ORimanRWZN/exec', // PASTE GOOGLE APPS SCRIPT URL HERE IF NEEDED
+                    FINANCIAL_WEBAPP_URL: 'https://script.google.com/macros/s/AKfycbxoBHLdCgValY0h2LtV5jDo1hhidv0nW_QXZ9rDf0RM0bl2ktpHpL38Utk2NbHos4PF/exec',
+                    TABS: ['APP_DATA']
+                },
+                ctvAccounts: {
+                    'tuan': { username: 'tuan', password: '123', name: 'Tuan', role: 'ctv' },
+                    'vuong': { username: 'vuong', password: '123', name: 'Vương', role: 'ctv' },
+                    'dnc': { username: 'dnc', password: 'dnc1m@', name: 'Dnc', role: 'admin' },
+                    'loc': { username: 'loc', password: '123', name: 'Lộc', role: 'ctv' },
+                    'admin': { username: 'admin', password: 'dnc1m@', name: 'all', role: 'admin' }
+                },
+                isLoggedIn: false,
+                loginForm: { username: '', password: '' },
+                loginError: '',
+                currentUser: null,
+                isLoading: false,
+                customers: [],
+                searchQuery: '',
+                ytbFilterStaff: 'all', // Default to all
+                ytbFilterStatus: 'all',
+                summaryCardFilter: null,
+                ctvNotesMap: {},
+                showModal: false,
+                updateForm: { email: '', oldExpiry: '', months: 1, newExpiry: '', mode: 'note', status: 'Còn HSD', note: '' },
+                currentTab: 'customers',
+                renewalRequests: [],
+                selectedDateFilter: null,
+                dateOptions: [],
+                forecastMonthsCount: 6,
+                forecastMonthFilter: null,
+                isMaintenanceMode: false,
+
+                bulkFamText: '',
+                bulkFamResults: [],
+                famReportsList: [],
+                isLoadingFam: false,
+                ctvReportActivityStatus: '',
+                famLastUpdated: '',
+                famMsg: { text: '', type: '' },
+                famStats: { total: 0, new: 0, processing: 0, resolved: 0 },
+                FAM_TRACKER_URL: 'https://script.google.com/macros/s/AKfycbxzXvVjASViAK--nYwzfJ_iTbK8e7Ilfd9xjbDdzS3SdXPTgdPRVSd9M4ORimanRWZN/exec',
+
+                formatFamDate(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
+                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                    } catch (e) { return isoStr; }
+                },
+
+                calcFamDuration(startIso, endIso) {
+                    if (!startIso || !endIso) return '';
+                    try {
+                        const s = new Date(startIso).getTime();
+                        const e = new Date(endIso).getTime();
+                        if (isNaN(s) || isNaN(e) || e <= s) return '';
+                        const diffMins = Math.round((e - s) / 60000);
+                        if (diffMins < 60) return ` (sau ${diffMins} phút)`;
+                        const hrs = Math.floor(diffMins / 60);
+                        const mins = diffMins % 60;
+                        return ` (sau ${hrs}h ${mins}m)`;
+                    } catch (err) { return ''; }
+                },
+
+                async callFamApi(action, payload) {
+                    const webAppUrl = localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec';
+                    const url = new URL(webAppUrl);
+                    url.searchParams.append('action', action);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        return await response.json();
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        throw err;
+                    }
+                },
+
+                hashCode(str) {
+                    let hash = 0;
+                    for (let i = 0; i < str.length; i++) {
+                        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                        hash |= 0;
+                    }
+                    return hash;
+                },
+
+                async fetchFamReports() {
+                    if (!this.currentUser) return;
+                    this.isLoadingFam = true;
+                    const ctvName = (this.currentUser.role === 'admin' && this.currentUser.name === 'all') ? '' : this.currentUser.name;
+
+                    try {
+                        const data = await this.callFamApi('listCtvReports', { ctvName: ctvName });
+                        if (data.success) {
+                            this.famReportsList = data.reports || [];
+                            this.calculateFamStats();
+                        }
+                    } catch (err) {
+                        console.error('Lỗi fetch fam reports:', err);
+                    } finally {
+                        this.isLoadingFam = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                calculateFamStats() {
+                    this.famStats.total = this.famReportsList.length;
+                    this.famStats.new = this.famReportsList.filter(r => r.status === 'Mới').length;
+                    this.famStats.processing = this.famReportsList.filter(r => r.status === 'Đang xử lý').length;
+                    this.famStats.resolved = this.famReportsList.filter(r => r.status === 'Đã xử lý').length;
+                },
+
+                async submitBulkFam() {
+                    if (!this.bulkFamText.trim() || !this.currentUser) return;
+                    this.isLoadingFam = true;
+                    this.famMsg = { text: '', type: '' };
+                    const ctvName = this.currentUser.name;
+
+                    try {
+                        const data = await this.callFamApi('submitBulkReport', { 
+                            rawText: this.bulkFamText, 
+                            ctvName: ctvName,
+                            activity_status: this.ctvReportActivityStatus 
+                        });
+                        if (data.success) {
+                            this.bulkFamResults = data.results || [];
+                            this.famLastUpdated = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                            this.famMsg = { text: data.message, type: 'success' };
+                            this.fetchFamReports();
+                        } else {
+                            this.famMsg = { text: data.message || 'Lỗi xử lý danh sách', type: 'error' };
+                        }
+                    } catch (err) {
+                        this.famMsg = { text: err.message || 'Lỗi kết nối máy chủ.', type: 'error' };
+                    } finally {
+                        this.isLoadingFam = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async refreshBulkFamStatus() {
+                    if (!this.bulkFamText.trim()) return;
+                    this.isLoadingFam = true;
+
+                    try {
+                        const data = await this.callFamApi('checkBulkStatus', { rawText: this.bulkFamText });
+                        if (data.success) {
+                            this.bulkFamResults = data.results || [];
+                            this.famLastUpdated = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                            this.famMsg = { text: data.message || 'Đã làm mới trạng thái mới nhất cho danh sách.', type: 'success' };
+                            this.fetchFamReports();
+                        } else {
+                            this.famMsg = { text: data.message || 'Lỗi làm mới trạng thái', type: 'error' };
+                        }
+                    } catch (err) {
+                        this.famMsg = { text: err.message || 'Lỗi kết nối máy chủ.', type: 'error' };
+                    } finally {
+                        this.isLoadingFam = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async initApp() {
+                    this.fetchSystemConfig();
+                    setInterval(() => this.fetchSystemConfig(), 30000); // Tự động làm mới mỗi 30s
+                    const savedUser = localStorage.getItem('goshop_ctv_user');
+                    if (savedUser) {
+                        this.currentUser = JSON.parse(savedUser);
+                        this.isLoggedIn = true;
+                        this.ytbFilterStaff = this.currentUser.name;
+                        this.fetchSheetData(); // only fetch data if logged in
+                    }
+                    this.generateDateOptions();
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async fetchSystemConfig() {
+                    try {
+                        const response = await fetch(`https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:json&sheet=SYSTEM_CONFIG&t=${Date.now()}`);
+                        const text = await response.text();
+                        const jsonStr = text.substring(text.indexOf('({') + 1, text.lastIndexOf('})') + 1);
+                        const data = JSON.parse(jsonStr);
+                        
+                        if (data.table && data.table.rows) {
+                            data.table.rows.forEach(row => {
+                                if (row.c && row.c[0] && row.c[1]) {
+                                    if (row.c[0].v === "MAINTENANCE_MODE") {
+                                        const val = row.c[1].v;
+                                        if (typeof val === 'boolean') {
+                                            this.isMaintenanceMode = val;
+                                        } else {
+                                            this.isMaintenanceMode = String(val).trim().toUpperCase() === "TRUE";
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    } catch (e) {
+                        console.error('Error fetching system config', e);
+                    }
+                },
+
+                generateDateOptions() {
+                    const today = new Date();
+                    const options = [];
+                    for(let i = -3; i <= 3; i++) {
+                        const d = new Date(today);
+                        d.setDate(today.getDate() + i);
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        options.push({
+                            label: i === 0 ? 'Hôm nay' : `${dd}/${mm}`,
+                            daysMatch: i
+                        });
+                    }
+                    this.dateOptions = options;
+                },
+
+                login() {
+                    const uname = this.loginForm.username.trim().toLowerCase();
+                    const acc = this.ctvAccounts[uname];
+                    if (acc && acc.password === this.loginForm.password) {
+                        this.isLoggedIn = true;
+                        this.currentUser = acc;
+                        this.ytbFilterStaff = acc.name;
+                        this.loginError = '';
+                        localStorage.setItem('goshop_ctv_user', JSON.stringify(acc));
+                        this.fetchSheetData();
+                        this.$nextTick(() => lucide.createIcons());
+                    } else {
+                        this.loginError = 'Sai tên đăng nhập hoặc mật khẩu';
+                    }
+                },
+
+                logout() {
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    this.loginForm = { username: '', password: '' };
+                    localStorage.removeItem('goshop_ctv_user');
+                    this.customers = [];
+                },
+
+                parseCSV(csv) {
+                    if (!csv || csv.includes('html')) return [];
+                    const lines = csv.split(/\r?\n/);
+                    if (lines.length < 2) return [];
+                    
+                    const parseLine = (str) => {
+                        const res = [];
+                        let cell = '';
+                        let inQuote = false;
+                        const len = str.length;
+                        for (let i = 0; i < len; i++) {
+                            const c = str[i];
+                            if (c === '"') {
+                                if (inQuote && i + 1 < len && str[i + 1] === '"') {
+                                    cell += '"';
+                                    i++;
+                                } else {
+                                    inQuote = !inQuote;
+                                }
+                            } else if (c === ',' && !inQuote) {
+                                res.push(cell.trim());
+                                cell = '';
+                            } else {
+                                cell += c;
+                            }
+                        }
+                        res.push(cell.trim());
+                        return res;
+                    };
+
+                    const headers = parseLine(lines[0]);
+                    return lines.slice(1).map(line => {
+                        if (!line.trim()) return null;
+                        const values = parseLine(line);
+                        const row = {};
+                        headers.forEach((h, i) => {
+                            if (h) row[h] = values[i] || '';
+                        });
+                        return row;
+                    }).filter(Boolean);
+                },
+
+                getField(r, patterns) {
+                    if (!r) return '';
+                    const keys = Object.keys(r);
+                    for (const pattern of patterns) {
+                        const patLower = pattern.toLowerCase().trim();
+                        const matchKey = keys.find(k => {
+                            const kLower = k.toLowerCase().trim();
+                            return kLower === patLower || kLower.includes(patLower);
+                        });
+                        if (matchKey && r[matchKey] !== undefined && r[matchKey] !== null && String(r[matchKey]).trim() !== '') {
+                            return String(r[matchKey]).trim();
+                        }
+                    }
+                    return '';
+                },
+
+                async fetchSheetData() {
+                    this.isLoading = true;
+                    try {
+                        await this.fetchRequests();
+                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=APP_DATA&t=${Date.now()}`;
+                        const response = await fetch(url);
+                        const csvText = await response.text();
+
+                        const appData = this.parseCSV(csvText);
+                        const customerMap = {};
+
+                        appData.forEach((r, index) => {
+                            const email = this.getField(r, ['Email khách', 'Email', 'Mail']);
+                            if (!email || !email.includes('@')) return;
+
+                            const emailLower = email.toLowerCase();
+                            let daysRaw = this.getField(r, ['Số ngày còn lại', 'Ngày còn lại', 'Days Left', 'Days']);
+                            let days = parseInt(daysRaw);
+                            if (isNaN(days)) days = null;
+
+                            let expiry = this.getField(r, ['Date', 'HSD', 'Hạn sử dụng', 'Hạn dùng', 'Hết hạn', 'Expiry', 'Renew']);
+                            let purchaseDate = this.getField(r, ['Ngày mua', 'Ngày đăng ký', 'Ngày đk', 'Ngày ĐK', 'Purchase Date', 'Start']);
+                            let plan = this.getField(r, ['Phân loại', 'Gói', 'Product', 'Plan']) || '--';
+                            let secondaryEmail = this.getField(r, ['Mail phụ', 'Email phụ', 'Sub Email', 'Secondary']);
+                            let staff = this.getField(r, ['CTV', 'Nhân viên', 'Staff', 'Sales']) || 'Unassigned';
+
+                            // Tự động tính HSD nếu thiếu nhưng có số ngày còn lại
+                            if ((!expiry || expiry === '--') && days !== null) {
+                                const d = new Date();
+                                d.setDate(d.getDate() + days);
+                                const dd = String(d.getDate()).padStart(2, '0');
+                                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                const yyyy = d.getFullYear();
+                                expiry = `${dd}/${mm}/${yyyy}`;
+                            }
+
+                            // Tự động tính số ngày còn lại nếu thiếu hoặc 0 nhưng có HSD dạng date
+                            if (expiry && expiry !== '--' && (days === null || days === 0)) {
+                                let expDate;
+                                if (expiry.includes('/')) {
+                                    const parts = expiry.split('/');
+                                    if (parts.length === 3) {
+                                        expDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                                    }
+                                } else if (expiry.includes('-')) {
+                                    expDate = new Date(expiry);
+                                }
+                                if (expDate && !isNaN(expDate.getTime())) {
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    const diffTime = expDate.getTime() - today.getTime();
+                                    days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                }
+                            }
+
+                            if (!expiry) expiry = '--';
+                            if (days === null) days = 0;
+
+                            const noteInfo = this.ctvNotesMap[emailLower];
+                            const renewalStatus = noteInfo ? noteInfo.status : (days > 0 ? 'Còn HSD' : 'Chờ GH');
+                            const note = noteInfo ? noteInfo.note : '';
+                            const updatedAt = noteInfo ? noteInfo.updatedAt : '';
+
+                            const customerObj = {
+                                email: email,
+                                secondaryEmail: secondaryEmail,
+                                plan: plan,
+                                expiry: expiry,
+                                purchaseDate: purchaseDate || '--',
+                                days: days,
+                                staff: staff,
+                                renewalStatus: renewalStatus,
+                                note: note,
+                                updatedAt: updatedAt
+                            };
+
+                            if (!customerMap[emailLower]) {
+                                customerMap[emailLower] = customerObj;
+                            } else {
+                                const existing = customerMap[emailLower];
+                                const existingDays = existing.days !== null ? existing.days : -9999;
+                                const currentDays = days !== null ? days : -9999;
+
+                                if (currentDays > existingDays || (existing.expiry === '--' && expiry !== '--')) {
+                                    customerMap[emailLower] = customerObj;
+                                }
+                            }
+                        });
+
+                        this.customers = Object.values(customerMap);
+
+                    } catch (error) {
+                        console.error('Error fetching sheet data:', error);
+                        this.showToast('Lỗi tải dữ liệu. Vui lòng kiểm tra kết nối mạng.');
+                    } finally {
+                        this.isLoading = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                normalizeStr(str) {
+                    if (!str) return '';
+                    return String(str)
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/đ/g, 'd')
+                        .replace(/Đ/g, 'D')
+                        .toLowerCase()
+                        .trim();
+                },
+
+                getStaffCustomers() {
+                    let list = this.customers;
+                    if (this.ytbFilterStaff && this.ytbFilterStaff !== 'all') {
+                        const targetNorm = this.normalizeStr(this.ytbFilterStaff);
+                        list = list.filter(c => this.normalizeStr(c.staff).includes(targetNorm));
+                    }
+                    return list;
+                },
+
+                hasPendingRenewalRequest(email) {
+                    if (!email) return false;
+                    const emailLower = String(email).toLowerCase().trim();
+                    return this.renewalRequests.some(r => 
+                        r.email && 
+                        String(r.email).toLowerCase().trim() === emailLower && 
+                        r.months > 0 &&
+                        (r.status === 'Chờ Duyệt' || r.status === 'pending')
+                    );
+                },
+
+                getOverduePendingCtvCount() {
+                    return this.getStaffCustomers().filter(c => 
+                        c.days < 0 && 
+                        c.renewalStatus !== 'Đã GH' && 
+                        c.renewalStatus !== 'Đã Gia Hạn' &&
+                        !this.hasPendingRenewalRequest(c.email)
+                    ).length;
+                },
+
+                getOverduePendingAdminCount() {
+                    return this.getStaffCustomers().filter(c => 
+                        c.days < 0 && 
+                        c.renewalStatus !== 'Đã GH' && 
+                        c.renewalStatus !== 'Đã Gia Hạn' &&
+                        this.hasPendingRenewalRequest(c.email)
+                    ).length;
+                },
+
+                getExpiringSoonCount() {
+                    return this.getStaffCustomers().filter(c => 
+                        c.days >= 0 && c.days <= 3 && 
+                        c.renewalStatus !== 'Đã GH' && 
+                        c.renewalStatus !== 'Đã Gia Hạn'
+                    ).length;
+                },
+
+                getRenewedTodayCount() {
+                    return this.getStaffCustomers().filter(c => 
+                        (c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn') && 
+                        this.isToday(c.updatedAt)
+                    ).length;
+                },
+
+                isToday(dateStr) {
+                    if (!dateStr || dateStr === '--') return false;
+                    const str = String(dateStr).trim();
+                    const today = new Date();
+                    const todayDd = String(today.getDate()).padStart(2, '0');
+                    const todayMm = String(today.getMonth() + 1).padStart(2, '0');
+                    const todayYyyy = String(today.getFullYear());
+                    
+                    if (str.includes('/')) {
+                        const parts = str.split('/');
+                        if (parts.length >= 3) {
+                            const d = String(parseInt(parts[0])).padStart(2, '0');
+                            const m = String(parseInt(parts[1])).padStart(2, '0');
+                            const y = parts[2].substring(0, 4);
+                            return d === todayDd && m === todayMm && y === todayYyyy;
+                        }
+                    }
+                    
+                    if (str.includes('-')) {
+                        const parts = str.split('-');
+                        if (parts.length >= 3) {
+                            const y = parts[0];
+                            const m = String(parseInt(parts[1])).padStart(2, '0');
+                            const d = String(parseInt(parts[2])).padStart(2, '0');
+                            return d === todayDd && m === todayMm && y === todayYyyy;
+                        }
+                    }
+                    
+                    return false;
+                },
+
+                getYoutubeCustomers() {
+                    let filtered = this.customers;
+
+                    if (this.searchQuery) {
+                        const q = this.searchQuery.toLowerCase();
+                        filtered = filtered.filter(c =>
+                            c.email.toLowerCase().includes(q) ||
+                            (c.secondaryEmail && c.secondaryEmail.toLowerCase().includes(q))
+                        );
+                    }
+
+                    if (this.ytbFilterStaff && this.ytbFilterStaff !== 'all') {
+                        const targetNorm = this.normalizeStr(this.ytbFilterStaff);
+                        filtered = filtered.filter(c => this.normalizeStr(c.staff).includes(targetNorm));
+                    }
+                    if (this.ytbFilterStatus !== 'all') {
+                        filtered = filtered.filter(c => c.renewalStatus === this.ytbFilterStatus);
+                    }
+                    
+                    if (this.selectedDateFilter !== null) {
+                        filtered = filtered.filter(c => c.days === this.selectedDateFilter);
+                    }
+
+                    if (this.summaryCardFilter === 'overdue_ctv') {
+                        filtered = filtered.filter(c => c.days < 0 && c.renewalStatus !== 'Đã GH' && c.renewalStatus !== 'Đã Gia Hạn' && !this.hasPendingRenewalRequest(c.email));
+                    } else if (this.summaryCardFilter === 'overdue_admin') {
+                        filtered = filtered.filter(c => c.days < 0 && c.renewalStatus !== 'Đã GH' && c.renewalStatus !== 'Đã Gia Hạn' && this.hasPendingRenewalRequest(c.email));
+                    } else if (this.summaryCardFilter === 'expiring_soon') {
+                        filtered = filtered.filter(c => c.days >= 0 && c.days <= 3 && c.renewalStatus !== 'Đã GH' && c.renewalStatus !== 'Đã Gia Hạn');
+                    } else if (this.summaryCardFilter === 'renewed_today') {
+                        filtered = filtered.filter(c => (c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn') && this.isToday(c.updatedAt));
+                    }
+
+                    if (this.forecastMonthFilter) {
+                        if (this.forecastMonthFilter === 'overdue') {
+                            const isDone = (c) => c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn';
+                            filtered = filtered.filter(c => c.days < 0 && !isDone(c));
+                        } else if (typeof this.forecastMonthFilter === 'object') {
+                            const targetM = this.forecastMonthFilter.month;
+                            const targetY = this.forecastMonthFilter.year;
+                            filtered = filtered.filter(c => {
+                                const my = this.getCustomerExpiryMonthYear(c);
+                                return my && my.month === targetM && my.year === targetY;
+                            });
+                        }
+                    }
+
+                    const isDefaultView = !this.searchQuery && this.selectedDateFilter === null && this.ytbFilterStatus === 'all' && !this.summaryCardFilter && !this.forecastMonthFilter;
+
+                    if (isDefaultView) {
+                        const isDone = (c) => c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn';
+                        const isOverdue = (c) => c.days < 0 && !isDone(c);
+                        const isExpiringSoon = (c) => c.days >= 0 && c.days <= 3 && !isDone(c);
+
+                        return filtered.slice().sort((a, b) => {
+                            const aGroup = isOverdue(a) ? 1 : (isExpiringSoon(a) ? 2 : 3);
+                            const bGroup = isOverdue(b) ? 1 : (isExpiringSoon(b) ? 2 : 3);
+
+                            if (aGroup !== bGroup) {
+                                return aGroup - bGroup;
+                            }
+
+                            return a.days - b.days;
+                        });
+                    }
+
+                    return filtered.slice().sort((a, b) => a.days - b.days);
+                },
+
+                isPlusPlan(planStr) {
+                    if (!planStr) return false;
+                    return String(planStr).toLowerCase().includes('plus');
+                },
+
+                formatPlanName(planName) {
+                    if (!planName || planName === '--') return 'Gói Thường';
+                    const str = String(planName).trim();
+                    if (!this.isPlusPlan(str)) {
+                        return 'Gói Thường';
+                    }
+                    return str;
+                },
+
+                getPlanBadgeClass(planName) {
+                    if (!planName || planName === '--') return 'bg-gray-100 text-gray-600 border-gray-200';
+                    const isPlus = this.isPlusPlan(planName);
+                    if (isPlus) {
+                        return 'bg-purple-100 text-purple-800 border-purple-200/80 font-black';
+                    }
+                    return 'bg-blue-100 text-blue-800 border-blue-200/80 font-black';
+                },
+
+                getForecastPlans() {
+                    const staffCustomers = this.getStaffCustomers();
+                    const plansSet = new Set();
+                    staffCustomers.forEach(c => {
+                        const p = (c.plan || 'Chưa phân loại').trim();
+                        if (p) plansSet.add(p);
+                    });
+                    const list = Array.from(plansSet);
+                    return list.length > 0 ? list.sort() : ['Mặc định'];
+                },
+
+                getForecastRows() {
+                    const staffCustomers = this.getStaffCustomers();
+                    const plans = this.getForecastPlans();
+                    const totalValidCustomers = staffCustomers.length || 1;
+
+                    const isDone = (c) => c.renewalStatus === 'Đã GH' || c.renewalStatus === 'Đã Gia Hạn';
+                    const overdueCustomers = staffCustomers.filter(c => c.days < 0 && !isDone(c));
+                    
+                    const overduePlanCounts = {};
+                    plans.forEach(p => overduePlanCounts[p] = 0);
+                    let overdueNormalCount = 0;
+                    let overduePlusCount = 0;
+
+                    overdueCustomers.forEach(c => {
+                        const p = (c.plan || 'Chưa phân loại').trim();
+                        overduePlanCounts[p] = (overduePlanCounts[p] || 0) + 1;
+                        if (this.isPlusPlan(c.plan)) {
+                            overduePlusCount++;
+                        } else {
+                            overdueNormalCount++;
+                        }
+                    });
+
+                    const rows = [
+                        {
+                            id: 'overdue',
+                            type: 'overdue',
+                            label: 'Đã quá hạn',
+                            month: null,
+                            year: null,
+                            isCurrentMonth: false,
+                            total: overdueCustomers.length,
+                            normalCount: overdueNormalCount,
+                            plusCount: overduePlusCount,
+                            percentage: Math.min(100, Math.round((overdueCustomers.length / totalValidCustomers) * 100)),
+                            planCounts: overduePlanCounts
+                        }
+                    ];
+
+                    const now = new Date();
+                    const currentYear = now.getFullYear();
+                    const currentMonth = now.getMonth() + 1;
+                    const count = this.forecastMonthsCount || 6;
+
+                    const nonOverdueCustomers = staffCustomers.filter(c => !(c.days < 0 && !isDone(c)));
+
+                    for (let i = 0; i < count; i++) {
+                        const d = new Date(currentYear, currentMonth - 1 + i, 1);
+                        const m = d.getMonth() + 1;
+                        const y = d.getFullYear();
+                        const label = `Tháng ${String(m).padStart(2, '0')}/${y}`;
+
+                        const matchingCustomers = nonOverdueCustomers.filter(c => {
+                            const my = this.getCustomerExpiryMonthYear(c);
+                            return my && my.month === m && my.year === y;
+                        });
+
+                        const monthPlanCounts = {};
+                        plans.forEach(p => monthPlanCounts[p] = 0);
+                        let monthNormalCount = 0;
+                        let monthPlusCount = 0;
+
+                        matchingCustomers.forEach(c => {
+                            const p = (c.plan || 'Chưa phân loại').trim();
+                            monthPlanCounts[p] = (monthPlanCounts[p] || 0) + 1;
+                            if (this.isPlusPlan(c.plan)) {
+                                monthPlusCount++;
+                            } else {
+                                monthNormalCount++;
+                            }
+                        });
+
+                        rows.push({
+                            id: `month_${y}_${m}`,
+                            type: 'month',
+                            label: label,
+                            month: m,
+                            year: y,
+                            isCurrentMonth: i === 0,
+                            total: matchingCustomers.length,
+                            normalCount: monthNormalCount,
+                            plusCount: monthPlusCount,
+                            percentage: Math.min(100, Math.round((matchingCustomers.length / totalValidCustomers) * 100)),
+                            planCounts: monthPlanCounts
+                        });
+                    }
+
+                    const processedCustomerSet = new Set();
+                    overdueCustomers.forEach(c => processedCustomerSet.add(c.email));
+                    rows.forEach(r => {
+                        if (r.type === 'month') {
+                            nonOverdueCustomers.forEach(c => {
+                                const my = this.getCustomerExpiryMonthYear(c);
+                                if (my && my.month === r.month && my.year === r.year) {
+                                    processedCustomerSet.add(c.email);
+                                }
+                            });
+                        }
+                    });
+
+                    const unknownCustomers = staffCustomers.filter(c => !processedCustomerSet.has(c.email));
+                    if (unknownCustomers.length > 0) {
+                        const unknownPlanCounts = {};
+                        plans.forEach(p => unknownPlanCounts[p] = 0);
+                        let unknownNormalCount = 0;
+                        let unknownPlusCount = 0;
+
+                        unknownCustomers.forEach(c => {
+                            const p = (c.plan || 'Chưa phân loại').trim();
+                            unknownPlanCounts[p] = (unknownPlanCounts[p] || 0) + 1;
+                            if (this.isPlusPlan(c.plan)) {
+                                unknownPlusCount++;
+                            } else {
+                                unknownNormalCount++;
+                            }
+                        });
+
+                        rows.push({
+                            id: 'unknown',
+                            type: 'unknown',
+                            label: 'Khác / Không xác định',
+                            month: null,
+                            year: null,
+                            isCurrentMonth: false,
+                            total: unknownCustomers.length,
+                            normalCount: unknownNormalCount,
+                            plusCount: unknownPlusCount,
+                            percentage: Math.min(100, Math.round((unknownCustomers.length / totalValidCustomers) * 100)),
+                            planCounts: unknownPlanCounts
+                        });
+                    }
+
+                    return rows;
+                },
+
+                getCustomerExpiryMonthYear(c) {
+                    if (!c.expiry || c.expiry === '--') return null;
+                    const str = String(c.expiry).trim();
+                    if (str.includes('/')) {
+                        const parts = str.split('/');
+                        if (parts.length >= 3) {
+                            const m = parseInt(parts[1], 10);
+                            const y = parseInt(parts[2], 10);
+                            if (!isNaN(m) && !isNaN(y)) return { month: m, year: y };
+                        }
+                    }
+                    if (str.includes('-')) {
+                        const parts = str.split('-');
+                        if (parts.length >= 3) {
+                            const y = parseInt(parts[0], 10);
+                            const m = parseInt(parts[1], 10);
+                            if (!isNaN(m) && !isNaN(y)) return { month: m, year: y };
+                        }
+                    }
+                    return null;
+                },
+
+                filterByForecastRow(row) {
+                    this.currentTab = 'customers';
+                    this.summaryCardFilter = null;
+                    this.searchQuery = '';
+                    this.selectedDateFilter = null;
+                    this.ytbFilterStatus = 'all';
+
+                    if (row.type === 'overdue') {
+                        this.forecastMonthFilter = 'overdue';
+                    } else if (row.type === 'month') {
+                        this.forecastMonthFilter = { month: row.month, year: row.year, label: row.label };
+                    } else {
+                        this.forecastMonthFilter = null;
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async saveStatus(email, status, note = '') {
+                    const todayStr = new Date().toLocaleDateString('vi-VN');
+                    const c = this.customers.find(x => x.email === email);
+                    if (c) {
+                        c.renewalStatus = status;
+                        c.note = note;
+                        c.updatedAt = todayStr;
+                    }
+
+                    if (this.CONFIG.WEBAPP_URL) {
+                        try {
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'text/plain' },
+                                body: JSON.stringify({
+                                    action: 'save_ctv_note',
+                                    email: email,
+                                    status: status,
+                                    note: note,
+                                    staff: this.currentUser?.name || 'CTV'
+                                })
+                            });
+                        } catch (e) { }
+                    }
+                    this.showToast('Đã lưu trạng thái & ghi chú!');
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                openUpdateModal(customer) {
+                    this.updateForm = {
+                        email: customer.email,
+                        plan: customer.plan,
+                        oldExpiry: customer.expiry,
+                        months: 1,
+                        newExpiry: '',
+                        mode: 'note',
+                        status: customer.renewalStatus || 'Còn HSD',
+                        note: customer.note || ''
+                    };
+                    this.calculateNewDate(customer.expiry);
+                    this.showModal = true;
+                },
+
+                calculateNewDate(oldExpiryStr) {
+                    const expiry = oldExpiryStr || this.updateForm.oldExpiry;
+                    let date;
+                    if (expiry && expiry !== '--') {
+                        if (expiry.includes('/')) {
+                            const parts = expiry.split('/');
+                            if (parts.length === 3) date = new Date(`${parts[2]}-${parts[1]}-${parts[0]}T00:00:00`);
+                        } else {
+                            date = new Date(expiry);
+                        }
+                    }
+                    if (!date || isNaN(date.getTime())) date = new Date();
+
+                    date.setMonth(date.getMonth() + (this.updateForm.months || 1));
+                    const dd = String(date.getDate()).padStart(2, '0');
+                    const mm = String(date.getMonth() + 1).padStart(2, '0');
+                    const yyyy = date.getFullYear();
+                    this.updateForm.newExpiry = `${yyyy}-${mm}-${dd}`;
+                },
+
+                async submitUpdate() {
+                    if (this.updateForm.mode === 'note') {
+                        await this.saveStatus(this.updateForm.email, this.updateForm.status, this.updateForm.note);
+                        this.showModal = false;
+                        return;
+                    }
+
+                    // Mode 'renew'
+                    if (this.currentUser?.role !== 'admin') {
+                        const req = {
+                            id: Date.now(),
+                            email: this.updateForm.email,
+                            oldExpiry: this.updateForm.oldExpiry,
+                            months: this.updateForm.months,
+                            newExpiry: this.updateForm.newExpiry,
+                            staff: this.currentUser.name,
+                            status: 'pending',
+                            createdAt: new Date().toLocaleDateString('vi-VN'),
+                            type: 'Gia Hạn',
+                            note: this.updateForm.note || ''
+                        };
+                        this.renewalRequests.push(req);
+
+                        if (this.CONFIG.WEBAPP_URL) {
+                            try {
+                                await fetch(this.CONFIG.WEBAPP_URL, {
+                                    method: 'POST',
+                                    mode: 'no-cors',
+                                    headers: { 'Content-Type': 'text/plain' },
+                                    body: JSON.stringify({
+                                        action: 'request_update_hsd',
+                                        requestData: req
+                                    })
+                                });
+                            } catch (e) { }
+                        }
+
+                        this.saveStatus(this.updateForm.email, 'Đã GH', this.updateForm.note || ('Yêu cầu gia hạn ' + this.updateForm.months + ' tháng'));
+
+                        this.showToast('Đã gửi yêu cầu gia hạn cho Admin duyệt!');
+                        this.showModal = false;
+                        return;
+                    }
+
+                    // Direct update for Admin
+                    if (this.CONFIG.WEBAPP_URL) {
+                        try {
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'text/plain' },
+                                body: JSON.stringify({
+                                    action: 'update_hsd',
+                                    email: this.updateForm.email,
+                                    newExpiry: this.updateForm.newExpiry
+                                })
+                            });
+                        } catch (e) { }
+                    }
+
+                    const c = this.customers.find(x => x.email === this.updateForm.email);
+                    if (c) {
+                        const parts = this.updateForm.newExpiry.split('-');
+                        c.expiry = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        c.days = (this.updateForm.months || 1) * 30;
+                    }
+                    this.saveStatus(this.updateForm.email, 'Đã GH', this.updateForm.note || ('Gia hạn ' + this.updateForm.months + ' tháng'));
+
+                    this.showToast('Cập nhật HSD thành công!');
+                    this.showModal = false;
+                },
+
+                getVisibleRequests() {
+                    if (this.currentUser?.role === 'admin') {
+                        return this.renewalRequests.slice().reverse();
+                    }
+                    return this.renewalRequests.filter(r => r.staff === this.currentUser?.name).reverse();
+                },
+
+                getStatusBadgeClass(status) {
+                    if (!status) return 'bg-gray-50 text-gray-700 border-gray-200';
+                    const s = String(status).toLowerCase();
+                    if (s.includes('chờ duyệt') || s === 'pending') return 'bg-orange-50 text-orange-700 border-orange-200';
+                    if (s.includes('chờ gh') || s.includes('chờ gia hạn')) return 'bg-amber-50 text-amber-700 border-amber-200';
+                    if (s.includes('đã duyệt') || s === 'approved') return 'bg-green-50 text-green-700 border-green-200';
+                    if (s.includes('đã gh') || s.includes('còn hsd')) return 'bg-purple-50 text-purple-700 border-purple-200';
+                    if (s.includes('nhắc')) return 'bg-blue-50 text-blue-700 border-blue-200';
+                    if (s.includes('từ chối') || s === 'rejected' || s.includes('hủy')) return 'bg-red-50 text-red-700 border-red-200';
+                    return 'bg-gray-50 text-gray-700 border-gray-200';
+                },
+
+                async fetchRequests() {
+                    try {
+                        const url = `https://docs.google.com/spreadsheets/d/${this.CONFIG.SHEET_ID}/gviz/tq?tqx=out:csv&sheet=YEU_CAU&t=${Date.now()}`;
+                        const response = await fetch(url);
+                        const csvText = await response.text();
+                        
+                        const appData = this.parseCSV(csvText);
+                        const ctvNotesMap = {};
+                        const requests = [];
+
+                        appData.forEach(obj => {
+                            const reqId = parseInt(this.getField(obj, ['ID']));
+                            if (!reqId) return;
+
+                            const emailVal = this.getField(obj, ['Email', 'Email khách']);
+                            const monthsRaw = this.getField(obj, ['Tháng Gia Hạn', 'Tháng', 'Months']);
+                            const statusVal = this.getField(obj, ['Trạng Thái', 'Status']);
+                            const noteVal = this.getField(obj, ['Ghi Chú', 'Ghi chu', 'Note']);
+                            const staffVal = this.getField(obj, ['CTV Yêu Cầu', 'CTV', 'Staff']);
+                            const createdAtVal = this.getField(obj, ['Thời Gian', 'Ngày']);
+
+                            const monthsNum = parseInt(monthsRaw) || 0;
+
+                            if (emailVal) {
+                                ctvNotesMap[emailVal.toLowerCase()] = {
+                                    status: statusVal,
+                                    note: noteVal,
+                                    staff: staffVal,
+                                    updatedAt: createdAtVal
+                                };
+                            }
+
+                            requests.push({
+                                id: reqId,
+                                email: emailVal,
+                                oldExpiry: this.getField(obj, ['HSD Cũ', 'HSD Cu', 'Old Expiry']),
+                                months: monthsNum,
+                                newExpiry: this.getField(obj, ['HSD Mới', 'HSD Moi', 'New Expiry']),
+                                staff: staffVal,
+                                createdAt: createdAtVal,
+                                status: statusVal || 'Chờ Duyệt',
+                                note: noteVal
+                            });
+                        });
+
+                        this.ctvNotesMap = ctvNotesMap;
+                        this.renewalRequests = requests;
+                    } catch (e) {
+                        console.error('Error fetching requests:', e);
+                    }
+                },
+
+                getPendingRequestsCount() {
+                    return this.getVisibleRequests().filter(r => r.status === 'Chờ Duyệt' || r.status === 'pending').length;
+                },
+
+                async updateRequestStatus(reqId, newStatus) {
+                    const req = this.renewalRequests.find(r => r.id === reqId);
+                    if (!req) return;
+
+                    req.status = newStatus;
+
+                    if (this.CONFIG.WEBAPP_URL) {
+                        try {
+                            await fetch(this.CONFIG.WEBAPP_URL, {
+                                method: 'POST',
+                                mode: 'no-cors',
+                                headers: { 'Content-Type': 'text/plain' },
+                                body: JSON.stringify({
+                                    action: 'change_request_status',
+                                    reqId: reqId,
+                                    statusStr: newStatus
+                                })
+                            });
+                        } catch (e) { }
+                    }
+
+                    const c = this.customers.find(x => x.email === req.email);
+                    if (c) {
+                        c.renewalStatus = newStatus;
+                        if (newStatus === 'Đã Duyệt' || newStatus === 'approved' || newStatus === 'Đã GH') {
+                            if (req.newExpiry) {
+                                const parts = req.newExpiry.split('-');
+                                if (parts.length === 3) c.expiry = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                            }
+                            if (req.months > 0) c.days = req.months * 30;
+                        }
+                    }
+
+                    this.showToast('Đã cập nhật trạng thái: ' + newStatus);
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                async cancelRequest(reqId) {
+                    const req = this.renewalRequests.find(r => r.id === reqId);
+                    if (req) {
+                        req.status = 'rejected';
+                        
+                        if (this.CONFIG.WEBAPP_URL) {
+                            try {
+                                await fetch(this.CONFIG.WEBAPP_URL, {
+                                    method: 'POST',
+                                    mode: 'no-cors',
+                                    headers: { 'Content-Type': 'text/plain' },
+                                    body: JSON.stringify({
+                                        action: 'cancel_request',
+                                        reqId: reqId
+                                    })
+                                });
+                            } catch (e) {}
+                        }
+                        
+                        const c = this.customers.find(x => x.email === req.email);
+                        if (c) {
+                            this.saveStatus(c.email, 'Chờ GH', 'Hủy yêu cầu gia hạn');
+                        }
+                        
+                        this.showToast('Đã hủy yêu cầu!');
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                copyText(text) {
+                    if (!text || text === '--') return;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            this.showToast('Đã sao chép: ' + text);
+                        }).catch(() => {
+                            this.fallbackCopyText(text);
+                        });
+                    } else {
+                        this.fallbackCopyText(text);
+                    }
+                },
+
+                fallbackCopyText(text) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        this.showToast('Đã sao chép: ' + text);
+                    } catch (err) {
+                        console.error('Fallback copy error:', err);
+                    }
+                    document.body.removeChild(textarea);
+                },
+
+                showToast(message) {
+                    const container = document.getElementById('toast-container');
+                    const toast = document.createElement('div');
+                    toast.className = 'fixed bottom-8 right-8 bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl z-[100] transform transition-all duration-300 translate-y-20 opacity-0 flex items-center gap-3';
+                    toast.innerHTML = `<i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i><span class="font-bold text-sm tracking-wide">${message}</span>`;
+                    container.appendChild(toast);
+
+                    setTimeout(() => toast.classList.remove('translate-y-20', 'opacity-0'), 100);
+                    setTimeout(() => {
+                        toast.classList.add('translate-y-20', 'opacity-0');
+                        setTimeout(() => toast.remove(), 300);
+                    }, 3000);
+
+                    lucide.createIcons();
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <!-- PWA: icon & add-to-home-screen -->
+  <link rel="apple-touch-icon" href="/dnperp/icon-180.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/dnperp/icon-192.png">
+  <link rel="manifest" href="/dnperp/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Spread">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Entropy ↔ Lighter Spread Monitor | HIP-3 & Robinhood Perp Arbitrage</title>
+  <meta name="description" content="Dashboard theo dõi realtime basis chênh lệch giá, funding rate, margin public, nhật ký giao dịch & cẩm nang kiến thức Spread Trading cho Hyperliquid & Lighter.">
+  
+  <!-- Google Fonts: Fraunces & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="js/lightweight-charts.standalone.production.js"></script>
+  <script src="js/storageAdapter.js"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Background Leather Texture Overlay -->
+  <div class="leather-bg-overlay"></div>
+
+  <!-- PHASE 11: PASSCODE GATEKEEPER OVERLAY SCREEN -->
+  <!-- 
+    NOTE ON CLIENT-SIDE SECURITY LIMITATION:
+    This is a client-side gatekeeper screen using Web Crypto SHA-256 hash comparison.
+    Since this is a static build hosted on GitHub Pages, it prevents casual passersby 
+    from viewing personal dashboard data. It is NOT enterprise server authentication.
+  -->
+  <div class="passcode-gate-wrapper" id="passcodeGate">
+    <div class="passcode-card">
+      <div class="passcode-header">
+        <div class="lock-icon">🔒</div>
+        <h2 class="passcode-title">Entropy ↔ Lighter Monitor</h2>
+        <p class="passcode-subtitle">Nhập mật khẩu để truy cập Dashboard cá nhân</p>
+      </div>
+
+      <form class="passcode-form" id="passcodeForm" onsubmit="event.preventDefault(); window.verifyAndUnlockPasscode && window.verifyAndUnlockPasscode();">
+        <div class="form-group">
+          <input type="password" id="passcodeInput" class="text-input mono-num" placeholder="••••••••" autofocus autocomplete="current-password">
+        </div>
+        <div id="passcodeError" class="passcode-error hidden">❌ Mật khẩu không đúng. Vui lòng thử lại!</div>
+        <button type="submit" class="btn btn-primary btn-full-width" id="btnUnlockPasscode">
+          🔒 Vào Dashboard
+        </button>
+        <button type="button" class="btn-link" id="btnResetPasscode" style="margin-top: 10px; font-size: 12px; color: var(--text-gold); background: none; border: none; cursor: pointer; text-decoration: underline; opacity: 0.9;">
+          ⚡ Khôi phục mật khẩu mặc định (`dnperp2026`)
+        </button>
+      </form>
+
+      <div class="passcode-footer">
+        <p class="disclaimer">⚠️ Lớp khóa riêng tư cá nhân cho godnc.com/dnperp • Session Storage active</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN DASHBOARD APP WRAPPER (Hidden until Passcode Unlocked) -->
+  <div class="app-layout-container hidden" id="appWrapper">
+    <!-- Desktop Left Sidebar (~240px wide) -->
+    <aside class="app-sidebar" id="appSidebar">
+      <div class="sidebar-top">
+        <div class="brand-badge">
+          <span class="pulse-dot"></span>
+          <span class="brand-name">ENTROPY ↔ LIGHTER</span>
+        </div>
+        <h2 class="sidebar-title">dnperp monitor</h2>
+        <p class="sidebar-subtitle">Delta-Neutral Arbitrage</p>
+      </div>
+
+      <!-- Navigation Menu Items -->
+      <nav class="sidebar-nav">
+        <button class="sidebar-nav-btn active" data-view="overview" id="navOverview">
+          <span class="nav-icon">📊</span>
+          <span class="nav-text" data-i18n="navOverview">Tổng Quan</span>
+        </button>
+
+        <button class="sidebar-nav-btn" data-view="journal" id="navJournal">
+          <span class="nav-icon">📓</span>
+          <span class="nav-text" data-i18n="navJournal">Nhật Ký Giao Dịch</span>
+        </button>
+
+        <button class="sidebar-nav-btn" data-view="knowledge" id="navKnowledge">
+          <span class="nav-icon">📚</span>
+          <span class="nav-text" data-i18n="navKnowledge">Kiến Thức</span>
+        </button>
+
+        <button class="sidebar-nav-btn" data-view="settings" id="navSettings">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-text" data-i18n="navSettings">Cài Đặt</span>
+        </button>
+      </nav>
+
+      <!-- Sidebar Footer (Wallet status & Lock button) -->
+      <div class="sidebar-footer">
+        <div class="lang-switch-box-sidebar">
+          <button class="lang-btn active" id="langBtnVI" data-lang="VI">🇻🇳 VI</button>
+          <button class="lang-btn" id="langBtnEN" data-lang="EN">🇬🇧 EN</button>
+        </div>
+        <div class="sidebar-wallet-pill" id="displayHlWalletSub">Ví: Chưa thiết lập</div>
+        <button class="btn btn-outline btn-full-width" id="btnLockSession">🔒 Lock Session</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area (Right Side on Desktop) -->
+    <main class="app-main-content" id="appMainContent">
+      <!-- Top Bar Header -->
+      <header class="main-top-header">
+        <div class="top-header-left">
+          <span class="status-indicator live" id="connectionStatus">
+            <span class="indicator-dot"></span>
+            <span class="indicator-text" id="statusLabel" data-i18n="statusLive">KẾT NỐI SỐNG</span>
+          </span>
+          <span class="timer-box" style="font-size: 12px; color: var(--text-muted);">
+            <span data-i18n="updateIn">Cập nhật: </span>
+            <strong id="countdownTimer" class="mono-num">10s</strong>
+          </span>
+        </div>
+
+        <div class="top-header-right">
+          <button class="btn btn-outline btn-xs" id="btnManualRefresh">
+            🔄 <span data-i18n="btnRefresh">Làm mới</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Top Alert Banner -->
+      <div id="alertBannerContainer" class="alert-banner-container hidden">
+        <div class="alert-banner warning" id="alertBanner">
+          <div class="banner-icon">⚠️</div>
+          <div class="banner-text" id="alertBannerText">Cảnh báo: Basis đang vượt ngưỡng!</div>
+          <button class="banner-close" onclick="document.getElementById('alertBannerContainer').classList.add('hidden')">✕</button>
+        </div>
+      </div>
+
+      <!-- Snapshot Loss Alert Banner (Phase 17) -->
+      <div id="snapshotLossAlertBannerContainer" class="alert-banner-container hidden">
+        <div class="alert-banner danger" id="snapshotLossAlertBanner">
+          <div class="banner-icon">⚠️</div>
+          <div class="banner-text" id="snapshotLossAlertBannerText">
+            ⚠️ Mất mốc theo dõi vị thế trước đó — có thể đã bỏ lỡ ghi nhận 1 số lệnh đã đóng/thanh lý trong thời gian này. Kiểm tra lại lịch sử giao dịch thật trên Hyperliquid/Lighter nếu cần đối chiếu.
+          </div>
+          <button class="banner-close" onclick="document.getElementById('snapshotLossAlertBannerContainer').classList.add('hidden')">✕</button>
+        </div>
+      </div>
+
+      <!-- VIEW 1: TỔNG QUAN (OVERVIEW DASHBOARD PANEL) -->
+      <div class="view-panel" id="view-overview">
+        
+        <!-- 1. Stat Tile Grid (Tread.fi Style - 6 Compact Metrics) -->
+        <div class="stat-tile-grid">
+          <div class="stat-tile">
+            <span class="tile-label" data-i18n="jStatPosition">VỊ THẾ & VỐN</span>
+            <span class="tile-val mono-num" id="jValPosition">$0 / $0</span>
+            <span class="tile-sub" id="jSubPosition">0 vị thế mở</span>
+          </div>
+
+          <div class="stat-tile">
+            <span class="tile-label" data-i18n="jStatApr">APR TỔNG (NĂM HÓA)</span>
+            <span class="tile-val mono-num positive" id="jValApr">+0.00%</span>
+            <span class="tile-sub">PnL + Funding (30d)</span>
+          </div>
+
+          <div class="stat-tile">
+            <span class="tile-label" data-i18n="jStatFunding">FUNDING TÍCH LUỸ</span>
+            <span class="tile-val mono-num" id="jValFunding">+$0.00</span>
+            <span class="tile-sub">Tổng nhận từ các lệnh</span>
+          </div>
+
+          <div class="stat-tile">
+            <span class="tile-label" data-i18n="jStatWinRate">WIN RATE</span>
+            <span class="tile-val mono-num" id="jValWinRate">0.0%</span>
+            <span class="tile-sub" id="jSubWinRate">0 / 0 lệnh thắng</span>
+          </div>
+
+          <div class="stat-tile">
+            <span class="tile-label" data-i18n="jStatAvgBasis">BASIS TB BẮT ĐƯỢC</span>
+            <span class="tile-val mono-num" id="jValAvgBasis">+0.00%</span>
+            <span class="tile-sub">Chênh lệch vào − ra</span>
+          </div>
+
+          <div class="stat-tile">
+            <span class="tile-label" data-i18n="jStatAvgHold">THỜI GIAN GIỮ TB</span>
+            <span class="tile-val mono-num" id="jValAvgHold">0.0h</span>
+            <span class="tile-sub">Thời gian giữ lệnh</span>
+          </div>
+        </div>
+
+        <!-- 2. Margin Monitor Tiles (Hyperliquid & Lighter Margin Row) -->
+        <div class="margin-tiles-row">
+          <div class="margin-tile" id="cardHlMargin">
+            <div class="m-tile-header">
+              <span>💧 <strong>Hyperliquid (Entropy)</strong></span>
+              <span class="margin-status-badge safe" id="hlMarginBadge">AN TOÀN</span>
+            </div>
+            <div class="m-tile-body">
+              <div class="m-tile-pct-row">
+                <span class="m-tile-label">Margin used:</span>
+                <span class="m-tile-val mono-num" id="hlMarginPct">0.0%</span>
+              </div>
+              <div class="meter-track"><div class="meter-fill safe" id="hlMarginFill" style="width: 0%"></div></div>
+              <div class="m-tile-sub">Tài sản: <strong id="hlAccountValue" class="mono-num">$0.00</strong> • Used: <strong id="hlTotalMarginUsed" class="mono-num">$0.00</strong></div>
+            </div>
+          </div>
+
+          <div class="margin-tile" id="cardLtMargin">
+            <div class="m-tile-header">
+              <span>⚡ <strong>Lighter (Robinhood)</strong></span>
+              <span class="margin-status-badge safe" id="ltMarginBadge">AN TOÀN</span>
+            </div>
+            <div class="m-tile-body">
+              <div class="m-tile-pct-row">
+                <span class="m-tile-label">Margin used:</span>
+                <span class="m-tile-val mono-num" id="ltMarginPct">0.0%</span>
+              </div>
+              <div class="meter-track"><div class="meter-fill safe" id="ltMarginFill" style="width: 0%"></div></div>
+              <div class="m-tile-sub">Khả dụng: <strong id="ltFreeMargin" class="mono-num">$1,000.00</strong> • Cảnh báo: <strong id="ltWarnAt" class="mono-num">> 75.0%</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Desktop 2-Column Split View: Tracked Pairs Mini List (Left) & Pair Detail/Chart (Right) -->
+        <div class="overview-split-grid">
+          <!-- Left Column: Compact Accounts / Tracked Pairs Mini List -->
+          <div class="panel-box pairs-list-panel">
+            <div class="panel-header">
+              <h3 class="panel-title">📊 Cặp Theo Dõi</h3>
+              <span class="threshold-pill" style="padding: 2px 8px; font-size: 11px;"><span id="trackedPairsCount">2</span> cặp</span>
+            </div>
+            <div class="pairs-mini-list" id="pairsMiniList">
+              <!-- Rendered dynamically by app.js -->
+            </div>
+            <button class="btn btn-xs btn-outline btn-full-width open-settings-trigger" style="margin-top: 12px;" id="btnManagePairs" data-target="pairsManagerSection">⚙️ Quản Lý Cặp</button>
+          </div>
+
+          <!-- Right Column: Selected Pair Details & Chart -->
+          <div class="panel-box pair-detail-panel" id="pairDetailPanel">
+            <div id="selectedPairCardContainer">
+              <!-- Selected Pair Card rendered dynamically by app.js -->
+            </div>
+
+            <!-- Dynamic 24h Chart for Selected Pair -->
+            <div class="chart-section-inline" style="margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.05);">
+              <div class="section-header" style="margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <h4 class="panel-title" style="font-size: 14px;" data-i18n="chartTitle">📈 Lịch Sử Dao Động Basis</h4>
+                </div>
+                <div class="chart-controls">
+                  <button class="chart-tab active" data-time="24h">24H</button>
+                  <button class="chart-tab" data-time="6h">6H</button>
+                  <button class="chart-tab" data-time="1h">1H</button>
+                  <button class="btn btn-xs btn-outline" id="btnClearHistory">Xoá lịch sử</button>
+                </div>
+              </div>
+
+              <!-- Phase 16: Dynamic Pair Tabs Bar -->
+              <div class="pair-chart-tabs" id="basisPairTabsContainer" style="display: flex; gap: 8px; overflow-x: auto; margin-bottom: 12px; padding-bottom: 4px;">
+                <!-- Populated dynamically by app.js from trackedPairs -->
+              </div>
+
+              <div class="chart-container" style="height: 220px;">
+                <canvas id="basisChart"></canvas>
+              </div>
+              <div class="chart-legend-custom" id="chartLegendContainer"></div>
+
+              <!-- Phase 16: Real Candlestick Price Charts Section -->
+              <div class="real-candlestick-section" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <div class="section-header" style="margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                  <h4 class="panel-title" style="font-size: 14px;">📊 Chart Giá Thật Từ Sàn (<span id="candleSelectedPairName" style="color: var(--text-gold);">OAI</span>)</h4>
+                  <div class="chart-controls" id="candleTimeframeToolbar">
+                    <button class="candle-tf-btn active" data-tf="1h">1H</button>
+                    <button class="candle-tf-btn" data-tf="4h">4H</button>
+                    <button class="candle-tf-btn" data-tf="1d">1D</button>
+                  </div>
+                </div>
+
+                <!-- 2 Side-by-Side Price Charts (Desktop 2-col, Mobile 1-col) -->
+                <div class="price-charts-grid">
+                  <div class="price-chart-card">
+                    <div class="price-chart-header">
+                      <span>💧 Hyperliquid (Entropy) Price</span>
+                      <span class="mono-num" style="color: var(--accent-safe); font-size: 12px;" id="hlPriceVal">—</span>
+                    </div>
+                    <div id="hlCandleChartContainer" class="lightweight-chart-box"></div>
+                  </div>
+
+                  <div class="price-chart-card">
+                    <div class="price-chart-header">
+                      <div>
+                        <span>⚡ Lighter (Robinhood Chain) Price</span>
+                        <div style="font-size: 10px; color: var(--text-dim);" id="ltPriceNote">Dữ liệu giá từ Mark Price / Trade History</div>
+                      </div>
+                      <span class="mono-num" style="color: var(--text-gold); font-size: 12px;" id="ltPriceVal">—</span>
+                    </div>
+                    <div id="ltCandleChartContainer" class="lightweight-chart-box"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Realtime Positions Panel (Entropy & Lighter Auto-positions) -->
+        <div class="panel-box">
+          <div class="panel-header">
+            <h3 class="panel-title">⚡ Vị Thế Realtime Tự Động Từ Ví</h3>
+            <button class="btn btn-xs btn-outline" id="btnRefreshLivePositions">🔄 Refresh Vị Thế</button>
+          </div>
+          <div id="livePositionsContainer" class="live-positions-grid">
+            <!-- Populated dynamically by app.js -->
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW 2: NHẬT KÝ GIAO DỊCH (DATA TABLE & FILTERS) -->
+      <div class="view-panel hidden" id="view-journal">
+        <div class="panel-box">
+          <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
+            <h3 class="panel-title">📓 Lịch Sử Lệnh Giao Dịch</h3>
+            <button class="btn btn-primary btn-sm" id="btnOpenAddTradeModal">➕ Nhập Lệnh Mới</button>
+          </div>
+
+          <!-- Filter Toolbar (Nguyên tắc #6) -->
+          <div class="journal-filter-toolbar">
+            <div class="filter-item">
+              <label>Cặp:</label>
+              <select id="filterJournalPair" class="text-input" style="padding: 4px 8px; font-size: 12px;">
+                <option value="ALL">Tất cả các cặp</option>
+              </select>
+            </div>
+            <div class="filter-item">
+              <label>Trạng thái:</label>
+              <select id="filterJournalStatus" class="text-input" style="padding: 4px 8px; font-size: 12px;">
+                <option value="ALL">Tất cả trạng thái</option>
+                <option value="OPEN">Đang mở (OPEN)</option>
+                <option value="CLOSED">Đã đóng (CLOSED)</option>
+                <option value="LIQUIDATED">Bị thanh lý (LIQUIDATED)</option>
+              </select>
+            </div>
+            <div class="filter-item" style="flex: 1; min-width: 160px;">
+              <input type="text" id="searchJournal" class="text-input" placeholder="Tìm kiếm theo mã/ghi chú..." style="padding: 4px 8px; font-size: 12px; width: 100%;">
+            </div>
+          </div>
+
+          <!-- Journal Data Table (Nguyên tắc #3) -->
+          <div class="table-responsive">
+            <table class="journal-data-table" id="journalDataTable">
+              <thead>
+                <tr>
+                  <th>Mã Lệnh / Cặp</th>
+                  <th>Sàn Long</th>
+                  <th>Sàn Short</th>
+                  <th>Basis Vào</th>
+                  <th>Basis Ra</th>
+                  <th>PnL ($)</th>
+                  <th>Funding ($)</th>
+                  <th>Ngày Mở</th>
+                  <th>Trạng Thái</th>
+                  <th style="text-align: right;">Hành Động</th>
+                </tr>
+              </thead>
+              <tbody id="journalTableBody">
+                <!-- Rendered dynamically by app.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Journal Performance Charts & Insights Split -->
+        <div class="overview-split-grid" style="margin-top: 16px;">
+          <div class="panel-box">
+            <h4 class="panel-title" style="font-size: 14px; margin-bottom: 10px;">📈 PnL Lũy Kế ($)</h4>
+            <div class="chart-container" style="height: 200px;">
+              <canvas id="journalPnlChart"></canvas>
+            </div>
+          </div>
+
+          <div class="panel-box">
+            <h4 class="panel-title" style="font-size: 14px; margin-bottom: 10px;">📊 Phân Bổ Theo Cặp</h4>
+            <div class="chart-container" style="height: 200px;">
+              <canvas id="journalPairChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Automated Insights Engine -->
+        <div class="panel-box" style="margin-top: 16px;">
+          <h4 class="panel-title" style="font-size: 14px; margin-bottom: 10px;">🧠 Phân Tích Pattern Cá Nhân & Insights</h4>
+          <div id="insightsContainer"></div>
+        </div>
+      </div>
+
+    <!-- VIEW 3: KIẾN THỨC / PLAYBOOK VIEW -->
+    <div id="view-knowledge" class="view-panel hidden">
+      
+      <!-- VIETNAMESE KNOWLEDGE CONTENT (VERBATIM) -->
+      <div id="knowledge-content-vi">
+        <!-- Section 1 -->
+        <section class="section-block">
+          <div class="section-header">
+            <h2 class="section-title">1. Khi nào dùng MM Bot, khi nào dùng Spread Trading (Delta-Neutral)</h2>
+          </div>
+          <div class="knowledge-card">
+            <p style="margin-bottom: 12px;"><strong>Dùng MM Bot (1 sàn, 1 tài sản)</strong> khi:</p>
+            <ul class="knowledge-list">
+              <li>Chỉ có 1 nguồn giá đáng tin, không tìm được sàn thứ 2 niêm yết cùng tài sản.</li>
+              <li>Tài sản đang đi ngang (sideways), không có xu hướng rõ ràng.</li>
+              <li>Muốn farm rebate/spread capture liên tục mà không cần quản lý 2 tài khoản cùng lúc.</li>
+              <li>Chấp nhận rủi ro giá một chiều (không trung hoá được).</li>
+            </ul>
+
+            <p style="margin-top: 20px; margin-bottom: 12px;"><strong>Dùng Spread Trading / Delta-Neutral (2 sàn cùng tài sản)</strong> khi:</p>
+            <ul class="knowledge-list">
+              <li>Tìm được tài sản niêm yết ở ít nhất 2 nơi, có API/giá tham chiếu rõ ràng.</li>
+              <li>Muốn loại bỏ rủi ro giá lên/xuống, chỉ ăn chênh lệch (basis) + funding.</li>
+              <li>Sẵn sàng quản lý 2 tài khoản, 2 lệnh đồng thời — phức tạp hơn MM Bot 1 sàn.</li>
+              <li>Có công cụ theo dõi basis real-time (không nên làm tay nếu chưa có dashboard).</li>
+            </ul>
+
+            <div class="knowledge-callout" style="margin-top: 20px;">
+              <strong>Kết hợp cả 2 (nâng cao)</strong>: chạy MM Bot trên 1 chân để tăng tần suất khớp lệnh/volume, chân còn lại hedge thủ công hoặc qua bot riêng — chỉ nên thử sau khi đã quen cả 2 cách trên riêng lẻ.
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 2 -->
+        <section class="section-block">
+          <div class="section-header">
+            <h2 class="section-title">2. Chọn Reference Price nào trong MM Bot của Tread.fi</h2>
+          </div>
+          <div class="knowledge-card">
+            <div class="pairs-table-wrapper" style="margin-bottom: 20px;">
+              <table class="playbook-table">
+                <thead>
+                  <tr>
+                    <th style="width: 22%;">Chế độ</th>
+                    <th style="width: 45%;">Dùng khi</th>
+                    <th style="width: 33%;">Rủi ro chính</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">Mid Price</strong></td>
+                    <td>Ưu tiên tối đa hoá volume/tỷ lệ khớp lệnh, chấp nhận chi phí cao hơn</td>
+                    <td>Dễ lỗ nhiều hơn để đổi lấy tốc độ khớp</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">Grid</strong></td>
+                    <td>Thị trường đi ngang rõ ràng</td>
+                    <td>Dễ "kẹt lệnh" nếu giá bất ngờ trending 1 chiều, dẫn tới Stop Loss</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">RGrid</strong></td>
+                    <td>Thị trường đang trending/biến động mạnh</td>
+                    <td>Logic ngược Grid (mua cao bán thấp) — sai regime sẽ lỗ nặng</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">DGrid</strong></td>
+                    <td>Không chắc thị trường đang sideways hay trending</td>
+                    <td>An toàn nhất cho người mới/vốn nhỏ vì tự chuyển đổi, giảm rủi ro đoán sai regime</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">Signal (RSI)</strong></td>
+                    <td>Muốn tránh đặt lệnh vào lúc chỉ báo bất lợi</td>
+                    <td>Có thể giảm tần suất khớp lệnh (ít volume hơn) để đổi lấy an toàn</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">Blend</strong></td>
+                    <td>Chưa có tài liệu công khai đầy đủ</td>
+                    <td>Nên tự test nhỏ trước khi tin tưởng</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="knowledge-callout warning">
+              <strong>Bài học thực tế đã rút ra</strong>: tài sản biến động mạnh (dầu, vàng) dùng Grid tĩnh dễ bị Stop Loss nặng hơn hẳn so với tài sản ổn định (chỉ số, cổ phiếu lớn) — luôn khớp đúng chế độ với đặc tính biến động của tài sản, không dùng 1 config cho mọi tài sản.
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 3 -->
+        <section class="section-block">
+          <div class="section-header">
+            <h2 class="section-title">3. Tips chọn cặp Delta-Neutral (DN)</h2>
+          </div>
+          <div class="knowledge-card">
+            <ol class="knowledge-list-numbered">
+              <li><strong>Thanh khoản đủ sâu cả 2 bên</strong> — kiểm tra order book, tránh tài sản mỏng dễ trượt giá khi vào/ra lệnh.</li>
+              <li><strong>Leverage phải khớp giữa 2 sàn</strong> — ví dụ nếu sàn A cho 10x, sàn B chỉ cho 5x, notional tối đa bị giới hạn theo bên thấp hơn. Luôn kiểm tra <code>maxLeverage</code> thật của cả 2 bên trước khi tính size, không giả định.</li>
+              <li><strong>Funding 2 chân cộng lại phải dương hoặc âm nhẹ</strong> — kiểm tra funding từng sàn trên nhiều khung thời gian (không chỉ tức thời), vì funding không tự trung hoà giữa 2 sàn khác nhau như giá.</li>
+              <li><strong>Basis phải đủ rộng để bù chi phí thực thi</strong> (spread + phí) — nếu phí cả 2 sàn gần 0, basis chỉ cần vượt mức trượt giá thực tế, không cần quá lớn.</li>
+              <li><strong>Tránh giờ thị trường biến động mạnh</strong> — với tài sản có nguồn gốc chứng khoán thật, tránh vào lệnh đúng lúc thị trường gốc (VD Wall Street) mở cửa, basis dễ giật mạnh bất ngờ.</li>
+              <li><strong>Kiểm tra chế độ margin</strong> — isolated margin nghĩa là 2 chân KHÔNG chia sẻ margin, lời 1 bên không tự bù lỗ bên kia. Cần theo dõi margin riêng từng chân, không nghĩ "delta-neutral" đồng nghĩa "an toàn khỏi thanh lý".</li>
+              <li><strong>2 chân phải chuẩn bị sẵn, vào gần như đồng thời</strong> — lệch thời gian giữa 2 lệnh là nguồn rủi ro thực thi lớn nhất, không phải rủi ro thị trường.</li>
+            </ol>
+          </div>
+        </section>
+
+        <!-- Section 4 -->
+        <section class="section-block">
+          <div class="section-header">
+            <h2 class="section-title">4. Chiến thuật tăng volume — mục tiêu chính</h2>
+          </div>
+          <div class="knowledge-card">
+            <ul class="knowledge-list">
+              <li><strong>Vào lệnh theo từng phần (DCA)</strong> thay vì 1 lệnh lớn — vừa giảm trượt giá, vừa tăng số lần khớp lệnh (tăng volume) một cách tự nhiên.</li>
+              <li><strong>Đóng lệnh từng phần cũng được</strong> — không bắt buộc phải đóng trọn 2 chân cùng lúc; phần đã đóng coi như chốt xong, phần chưa đóng tiếp tục sinh funding.</li>
+              <li><strong>Cân nhắc Maker vs Taker</strong> — Maker (limit) chắc chắn tiết kiệm phí hơn; có ý kiến cho rằng Taker (market) tạo nhiều điểm hơn nhưng <strong>chưa được xác minh chắc chắn</strong>, chỉ nên thử nghiệm nhỏ, không đặt cược lớn vào giả thuyết chưa kiểm chứng.</li>
+              <li><strong>Basis threshold thấp → nhiều cơ hội vào lệnh hơn (tăng volume) nhưng lời mỗi lệnh mỏng hơn</strong> — đánh đổi trực tiếp giữa tần suất và biên lời, cần tự cân bằng theo mục tiêu (farm điểm/volume thuần vs tối ưu lời).</li>
+            </ul>
+          </div>
+        </section>
+      </div>
+
+      <!-- ENGLISH KNOWLEDGE CONTENT (VERBATIM FROM USER PROMPT) -->
+      <div id="knowledge-content-en" class="hidden">
+        <!-- Section 1 (EN) -->
+        <section class="section-block">
+          <div class="section-header">
+            <h2 class="section-title">1. When to use MM Bot vs. Spread Trading (Delta-Neutral)</h2>
+          </div>
+          <div class="knowledge-card">
+            <p style="margin-bottom: 12px;"><strong>Use MM Bot (single exchange, single asset)</strong> when:</p>
+            <ul class="knowledge-list">
+              <li>Only one reliable price source exists; no second exchange lists the same asset.</li>
+              <li>The asset is trading sideways, with no clear trend.</li>
+              <li>You want to farm rebates/spread capture continuously without managing two accounts at once.</li>
+              <li>You accept one-directional price risk (cannot be hedged).</li>
+            </ul>
+
+            <p style="margin-top: 20px; margin-bottom: 12px;"><strong>Use Spread Trading / Delta-Neutral (two exchanges, same asset)</strong> when:</p>
+            <ul class="knowledge-list">
+              <li>The asset is listed on at least two venues with reliable price references.</li>
+              <li>You want to eliminate directional price risk and only capture basis + funding.</li>
+              <li>You're ready to manage two accounts and two simultaneous orders — more complex than single-exchange MM Bot.</li>
+              <li>You have a real-time basis-monitoring tool (avoid doing this manually without a dashboard).</li>
+            </ul>
+
+            <div class="knowledge-callout" style="margin-top: 20px;">
+              <strong>Combining both (advanced)</strong>: run an MM Bot on one leg to increase fill frequency/volume, hedge the other leg manually or with a separate bot — only attempt after you're comfortable with each approach individually.
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 2 (EN) -->
+        <section class="section-block">
+          <div class="section-header">
+            <h2 class="section-title">2. Choosing a Reference Price mode in Tread.fi's MM Bot</h2>
+          </div>
+          <div class="knowledge-card">
+            <div class="pairs-table-wrapper" style="margin-bottom: 20px;">
+              <table class="playbook-table">
+                <thead>
+                  <tr>
+                    <th style="width: 22%;">Mode</th>
+                    <th style="width: 45%;">Use when</th>
+                    <th style="width: 33%;">Main risk</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">Mid Price</strong></td>
+                    <td>Maximizing volume/fill rate is the priority, and higher cost is acceptable</td>
+                    <td>Higher expected losses in exchange for faster fills</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">Grid</strong></td>
+                    <td>The market is clearly ranging/sideways</td>
+                    <td>Orders can get "stuck" if price trends sharply, risking Stop Loss</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">RGrid</strong></td>
+                    <td>The market is trending/highly volatile</td>
+                    <td>Inverse logic to Grid (buy high, sell low) — wrong regime means heavy losses</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">DGrid</strong></td>
+                    <td>You're unsure whether the market is ranging or trending</td>
+                    <td>Safest default for beginners/small capital — auto-switches, reducing regime-guessing risk</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">Signal (RSI)</strong></td>
+                    <td>You want to avoid quoting during unfavorable indicator conditions</td>
+                    <td>May reduce fill frequency (less volume) in exchange for safety</td>
+                  </tr>
+                  <tr>
+                    <td><strong class="mono-num" style="color: var(--text-gold);">Blend</strong></td>
+                    <td>No full public documentation yet</td>
+                    <td>Test on a small scale before trusting it</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="knowledge-callout warning">
+              <strong>Lesson learned in practice</strong>: highly volatile assets (oil, gold) run on a static Grid are far more prone to heavy Stop Losses than stable assets (indices, large-cap stocks) — always match the mode to the asset's volatility profile; never use one config for every asset.
+            </div>
+          </div>
+        </section>
+
+        <!-- Section 3 (EN) -->
+        <section class="section-block">
+          <div class="section-header">
+            <h2 class="section-title">3. Tips for choosing a Delta-Neutral (DN) pair</h2>
+          </div>
+          <div class="knowledge-card">
+            <ol class="knowledge-list-numbered">
+              <li><strong>Sufficient liquidity on both sides</strong> — check the order book; avoid thin assets prone to slippage on entry/exit.</li>
+              <li><strong>Leverage must match between the two exchanges</strong> — e.g., if Exchange A allows 10x but Exchange B only 5x, max notional is capped by the lower side. Always check the real <code>maxLeverage</code> on both sides before sizing — never assume.</li>
+              <li><strong>Combined funding of both legs should be positive or only mildly negative</strong> — check funding across multiple timeframes (not just the instant rate), since funding does not automatically offset between two different exchanges the way price does.</li>
+              <li><strong>Basis must be wide enough to cover execution cost</strong> (spread + fees) — if fees on both exchanges are near zero, the basis only needs to exceed realistic slippage, not be very large.</li>
+              <li><strong>Avoid periods of heavy volatility</strong> — for assets derived from real equities, avoid entering right as the underlying market (e.g., Wall Street) opens, since basis can swing sharply and unexpectedly.</li>
+              <li><strong>Check the margin mode</strong> — isolated margin means the two legs do NOT share margin; profit on one side does not automatically offset a loss on the other. Monitor each leg's margin separately — "delta-neutral" does not mean "immune to liquidation."</li>
+              <li><strong>Both legs must be ready and entered nearly simultaneously</strong> — timing mismatch between the two orders is the biggest execution risk, more so than market risk.</li>
+            </ol>
+          </div>
+        </section>
+
+        <!-- Section 4 (EN) -->
+        <section class="section-block">
+          <div class="section-header">
+            <h2 class="section-title">4. Tactics to increase volume — the primary goal</h2>
+          </div>
+          <div class="knowledge-card">
+            <ul class="knowledge-list">
+              <li><strong>Enter in stages (DCA)</strong> rather than one large order — this reduces slippage while naturally increasing fill count (volume).</li>
+              <li><strong>Partial closes are fine too</strong> — you don't have to close both legs at once; the closed portion locks in that result while the remainder keeps earning funding.</li>
+              <li><strong>Maker vs. Taker</strong> — Maker (limit) orders reliably save on fees; some traders believe Taker (market) orders earn more points, but this is <strong>unverified</strong> — test small before relying on this assumption.</li>
+              <li><strong>A lower basis threshold means more entry opportunities (more volume) but thinner profit per trade</strong> — a direct trade-off between frequency and margin; balance it according to your goal (pure volume/points farming vs. optimizing profit).</li>
+            </ul>
+          </div>
+        </section>
+    </div>
+
+    <!-- VIEW 4: CÀI ĐẶT (SETTINGS VIEW PANEL) -->
+    <div id="view-settings" class="view-panel hidden">
+      <div class="panel-box">
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <h3 class="panel-title" data-i18n="modalSettingsTitle">⚙️ Cấu Hình Hệ Thống</h3>
+          <button class="btn btn-xs btn-outline open-settings-trigger" data-target="pairsManagerSection">📋 Mở Quản Lý Cặp & Drawer</button>
+        </div>
+
+        <div class="form-section" style="margin-top: 14px;">
+          <h4 data-i18n="sectionWalletTitle">💧 Địa Chỉ Ví Hyperliquid (Entropy)</h4>
+          <p class="section-desc" data-i18n="noticeWalletSaved">Ví sẽ tự động được lưu vào localStorage và tải lại mỗi lần mở trang.</p>
+          <div class="wallet-input-row">
+            <div class="input-with-btn">
+              <input type="text" id="viewHlWalletAddress" class="text-input mono-num" placeholder="Nhập địa chỉ ví Hyperliquid (0x...)" value="">
+              <button class="btn btn-secondary" id="viewBtnQueryHlMargin" data-i18n="btnQuery">Query</button>
+              <button class="btn btn-outline btn-icon-only" id="viewBtnClearWallet" title="Xoá ví đã lưu" data-i18n="btnClearWallet">🗑️ Xoá ví</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4 data-i18n="sectionLtMarginTitle">⚡ Số Dư Margin Lighter (Robinhood Chain)</h4>
+          <div class="manual-margin-inputs">
+            <div class="input-field">
+              <label for="viewLtMarginUsed" data-i18n="labelLtMarginUsed">Margin đã dùng ($):</label>
+              <input type="number" id="viewLtMarginUsed" class="text-input mono-num" placeholder="0.00" value="0">
+            </div>
+            <div class="input-field">
+              <label for="viewLtTotalMargin" data-i18n="labelLtTotalMargin">Tổng Margin / Equity ($):</label>
+              <input type="number" id="viewLtTotalMargin" class="text-input mono-num" placeholder="1000.00" value="1000">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4 data-i18n="settingsThresholdsHeader">🎯 Ngưỡng Cảnh Báo & Dải Tự Thích Ứng (Adaptive Bands)</h4>
+          <div class="form-group">
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="viewInputUseAdaptiveBands" checked style="width: 18px; height: 18px; cursor: pointer;">
+              <span style="font-weight: 600;" data-i18n="labelUseAdaptiveBands">Bật Dải Tự Thích Ứng (Adaptive Volatility Bands - 30 Ngày)</span>
+            </label>
+            <small class="help-text" data-i18n="helpUseAdaptiveBands">Tự động tính Dải Trên (Mean + 2σ) & Dải Dưới (Mean - 2σ) theo biến động 30 ngày cho từng cặp.</small>
+          </div>
+          <div class="form-group">
+            <label for="viewInputBasisThreshold" data-i18n="labelBasisThresh">Ngưỡng Basis (%) Thủ Công (Fallback / Tạm Thời):</label>
+            <input type="number" step="0.05" id="viewInputBasisThreshold" class="text-input mono-num" placeholder="0.30" value="0.30">
+          </div>
+          <div class="form-group">
+            <label for="viewInputMarginThreshold" data-i18n="labelMarginThresh">Ngưỡng Cảnh Báo Margin Usage (%):</label>
+            <input type="number" step="1" id="viewInputMarginThreshold" class="text-input mono-num" placeholder="75.0" value="75.0">
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4 data-i18n="settingsTgHeader">✈️ Bot Telegram Cảnh Báo (Tùy chọn)</h4>
+          <div class="form-group">
+            <label for="viewInputTgToken" data-i18n="labelTgToken">Telegram Bot Token:</label>
+            <input type="text" id="viewInputTgToken" class="text-input mono-num" placeholder="123456789:ABCdefGHI..." value="">
+          </div>
+          <div class="form-group">
+            <label for="viewInputTgChatId" data-i18n="labelTgChatId">Telegram Chat ID / Group ID:</label>
+            <input type="text" id="viewInputTgChatId" class="text-input mono-num" placeholder="-100123456789" value="">
+          </div>
+          <div style="margin-top: 10px;">
+            <button class="btn btn-outline btn-xs" id="viewBtnTestTgAlert" data-i18n="btnTestTgAlert">🧪 Gửi Thử Cảnh Báo Telegram</button>
+            <span id="viewTgTestResult" style="font-size: 12px; margin-left: 8px;"></span>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center;">
+          <span id="viewSaveSuccessMsg" style="font-size: 13px; font-weight: 600; color: var(--accent-safe);"></span>
+          <button class="btn btn-primary" id="btnSaveSettingsView">💾 Lưu Cấu Hình</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div class="footer-content">
+        <p>Entropy ↔ Lighter Spread Monitor v7.0 • Host tại <a href="https://godnc.com/dnperp" target="_blank" class="footer-link">godnc.com/dnperp</a></p>
+        <p class="disclaimer" data-i18n="disclaimerText">⚠️ Bản build thuần đọc dữ liệu công khai (Read-only). Không kết nối ví, không ký giao dịch.</p>
+      </div>
+    </footer>
+  </main>
+
+  <!-- Mobile Fixed Bottom Navigation Bar (<768px) -->
+  <nav class="app-bottom-nav" id="appBottomNav">
+    <button class="bottom-nav-btn active" data-view="overview" id="bottomNavOverview">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label" data-i18n="navOverview">Tổng Quan</span>
+    </button>
+
+    <button class="bottom-nav-btn" data-view="journal" id="bottomNavJournal">
+      <span class="nav-icon">📓</span>
+      <span class="nav-label" data-i18n="navJournal">Nhật Ký</span>
+    </button>
+
+    <button class="bottom-nav-btn" data-view="knowledge" id="bottomNavKnowledge">
+      <span class="nav-icon">📚</span>
+      <span class="nav-label" data-i18n="navKnowledge">Kiến Thức</span>
+    </button>
+
+    <button class="bottom-nav-btn" data-view="settings" id="bottomNavSettings">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label" data-i18n="navSettings">Cài Đặt</span>
+    </button>
+  </nav>
+</div>
+
+  <!-- CONSOLIDATED SETTINGS DRAWER / MODAL -->
+  <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal-card drawer-card">
+      <div class="modal-header">
+        <h3 class="modal-title" data-i18n="modalSettingsTitle">⚙️ Cấu Hình Hệ Thống (Settings Drawer)</h3>
+        <button class="modal-close" id="btnCloseSettings">✕</button>
+      </div>
+
+      <div class="modal-body drawer-body">
+        
+        <!-- Config Item 1: Language Switcher -->
+        <div class="form-section">
+          <h4 data-i18n="sectionLangTitle">🌐 Ngôn Ngữ / Language</h4>
+          <div class="form-group-row">
+            <div class="lang-switch-box-drawer">
+              <button class="lang-btn active" id="drawerLangBtnVI" data-lang="VI">🇻🇳 Tiếng Việt (VI)</button>
+              <button class="lang-btn" id="drawerLangBtnEN" data-lang="EN">🇬🇧 English (EN)</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Config Item 2: Hyperliquid Wallet Address -->
+        <div class="form-section" id="section-wallet">
+          <h4 data-i18n="sectionWalletTitle">💧 Địa Chỉ Ví Hyperliquid (Entropy)</h4>
+          <p class="section-desc" data-i18n="noticeWalletSaved">Ví sẽ tự động được lưu vào localStorage và tải lại mỗi lần mở trang.</p>
+          <div class="wallet-input-row">
+            <div class="input-with-btn">
+              <input type="text" id="hlWalletAddress" class="text-input mono-num" placeholder="Nhập địa chỉ ví Hyperliquid (0x...)" value="">
+              <button class="btn btn-secondary" id="btnQueryHlMargin" data-i18n="btnQuery">Query</button>
+              <button class="btn btn-outline btn-icon-only" id="btnClearWallet" title="Xoá ví đã lưu" data-i18n="btnClearWallet">🗑️ Xoá ví</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Config Item 3: Lighter Manual Margin Inputs -->
+        <div class="form-section" id="section-lt-margin">
+          <h4 data-i18n="sectionLtMarginTitle">⚡ Số Dư Margin Lighter (Robinhood Chain)</h4>
+          <div class="manual-margin-inputs">
+            <div class="input-field">
+              <label for="ltMarginUsed" data-i18n="labelLtMarginUsed">Margin đã dùng ($):</label>
+              <input type="number" id="ltMarginUsed" class="text-input mono-num" placeholder="0.00" value="0">
+            </div>
+            <div class="input-field">
+              <label for="ltTotalMargin" data-i18n="labelLtTotalMargin">Tổng Margin / Equity ($):</label>
+              <input type="number" id="ltTotalMargin" class="text-input mono-num" placeholder="1000.00" value="1000">
+            </div>
+          </div>
+        </div>
+
+        <!-- Config Item 4: Thresholds & Phase 9b Adaptive Bands Settings -->
+        <div class="form-section">
+          <h4 data-i18n="settingsThresholdsHeader">🎯 Ngưỡng Cảnh Báo & Dải Tự Thích Ứng (Adaptive Bands)</h4>
+          
+          <div class="form-group">
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="inputUseAdaptiveBands" checked style="width: 18px; height: 18px; cursor: pointer;">
+              <span style="font-weight: 600;" data-i18n="labelUseAdaptiveBands">Bật Dải Tự Thích Ứng (Adaptive Volatility Bands - 30 Ngày)</span>
+            </label>
+            <small class="help-text" data-i18n="helpUseAdaptiveBands">Tự động tính Dải Trên (Mean + 2σ) & Dải Dưới (Mean - 2σ) theo biến động 30 ngày cho từng cặp.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="inputConfirmDelay" data-i18n="labelConfirmDelay">Thời gian xác nhận trước khi báo (Phút - Denoise):</label>
+            <input type="number" min="1" max="60" id="inputConfirmDelay" class="text-input mono-num" value="10">
+            <small class="help-text" data-i18n="helpConfirmDelay">Mặc định 10 phút. Tín hiệu phải giữ trạng thái vượt dải liên tục đủ X phút mới phát cảnh báo Telegram để chống nhiễu.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="inputBasisThreshold" data-i18n="labelBasisThresh">Ngưỡng Basis (%) Thủ Công (Fallback / Tạm Thời):</label>
+            <input type="number" step="0.05" min="0.05" max="10" id="inputBasisThreshold" class="text-input mono-num" value="0.30">
+            <small class="help-text" data-i18n="helpBasisThresh">Sử dụng khi tắt Dải Tự Thích Ứng hoặc khi cặp mới chưa đủ 30 ngày dữ liệu lịch sử.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="inputMarginThreshold" data-i18n="labelMarginThresh">Ngưỡng Cảnh Báo Margin Usage (%):</label>
+            <input type="number" step="1" min="10" max="95" id="inputMarginThreshold" class="text-input mono-num" value="75">
+            <small class="help-text" data-i18n="helpMarginThresh">Mặc định 75.0%. Khi tỷ lệ margin đã dùng vượt quá mức này sẽ hiện màu đỏ nguy hiểm.</small>
+          </div>
+        </div>
+
+        <!-- Config Item 5: Manage Tracked Pairs -->
+        <div class="form-section">
+          <h4 data-i18n="modalPairsTitle">📋 Quản Lý Cặp Theo Dõi Động (Exchange Connectors)</h4>
+          <p class="section-desc" data-i18n="modalAddPairSubMulti">Chọn Sàn A & Sàn B từ danh sách Connector đã đăng ký trong hệ thống để tự động ghép cặp theo dõi.</p>
+
+          <div class="form-group-row-connector">
+            <div class="form-group">
+              <label for="inputAddExchangeA" data-i18n="labelExchangeA">Sàn A (Exchange A):</label>
+              <select id="inputAddExchangeA" class="text-input"></select>
+            </div>
+
+            <div class="form-group">
+              <label for="inputAddSymbolA" data-i18n="labelSymbolA">Ticker trên Sàn A:</label>
+              <input type="text" id="inputAddSymbolA" class="text-input mono-num" placeholder="VD: SNDK, OAI, IONQ">
+            </div>
+
+            <div class="form-group">
+              <label for="inputAddExchangeB" data-i18n="labelExchangeB">Sàn B (Exchange B):</label>
+              <select id="inputAddExchangeB" class="text-input"></select>
+            </div>
+
+            <div class="form-group">
+              <label for="inputAddSymbolB" data-i18n="labelSymbolB">Ticker trên Sàn B:</label>
+              <input type="text" id="inputAddSymbolB" class="text-input mono-num" placeholder="VD: SNDK, OPENAI, IONQ">
+            </div>
+
+            <div class="form-group full-width">
+              <label for="inputAddName" data-i18n="labelPairName">Tên Hiển Thị (Mô tả):</label>
+              <input type="text" id="inputAddName" class="text-input" placeholder="VD: SanDisk Synthetic hoặc OpenAI Pre-IPO">
+            </div>
+          </div>
+
+          <div class="form-group-row" style="margin-top: 10px;">
+            <button class="btn btn-secondary" id="btnAddPairSubmit" data-i18n="btnAddPairSubmit">🔍 Xác Minh & Thêm Cặp</button>
+            <span id="addPairStatus" class="test-result-text"></span>
+          </div>
+
+          <div class="pairs-table-wrapper" style="margin-top: 14px;">
+            <table class="pairs-table">
+              <thead>
+                <tr>
+                  <th data-i18n="colPairName">Tên Cặp</th>
+                  <th data-i18n="colExchangeA">Sàn A (Ticker)</th>
+                  <th data-i18n="colExchangeB">Sàn B (Ticker)</th>
+                  <th style="text-align: right;" data-i18n="colActions">Hành Động</th>
+                </tr>
+              </thead>
+              <tbody id="pairsTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Config Item 6: Telegram Alert Bot Settings -->
+        <div class="form-section">
+          <h4 data-i18n="settingsTgHeader">✈️ Bot Telegram Cảnh Báo (Tùy chọn)</h4>
+          <p class="section-desc" data-i18n="settingsTgDesc">Tái sử dụng Bot Telegram Hyperliquid sẵn có để nhận thông báo realtime.</p>
+          
+          <div class="form-group">
+            <label for="inputTgToken" data-i18n="labelTgToken">Telegram Bot Token:</label>
+            <input type="password" id="inputTgToken" class="text-input mono-num" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyZ">
+          </div>
+
+          <div class="form-group">
+            <label for="inputTgChatId" data-i18n="labelTgChatId">Telegram Chat ID / Group ID:</label>
+            <input type="text" id="inputTgChatId" class="text-input mono-num" placeholder="-1001234567890 hoặc ID cá nhân">
+          </div>
+
+          <div class="form-group-row">
+            <button class="btn btn-outline" id="btnTestTgAlert" data-i18n="btnTestTgAlert">🧪 Gửi Thử Cảnh Báo Telegram</button>
+            <span id="tgTestResult" class="test-result-text"></span>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer drawer-footer">
+        <button class="btn btn-outline" id="btnCancelSettings" data-i18n="btnCancel">Hủy</button>
+        <button class="btn btn-primary" id="btnSaveSettings" data-i18n="btnSaveSettings">Lưu Cấu Hình</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 10: ADD / EDIT TRADE JOURNAL MODAL -->
+  <div class="modal-overlay hidden" id="tradeModal">
+    <div class="modal-card drawer-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="tradeModalTitle">📝 Nhập Lệnh Mới Vào Nhật Ký</h3>
+        <button class="modal-close" id="btnCloseTradeModal">✕</button>
+      </div>
+
+      <div class="modal-body drawer-body">
+        <input type="hidden" id="tradeEditId" value="">
+
+        <div class="form-section">
+          <h4>1. Thông Tin Cơ Bản Lệnh</h4>
+          <div class="manual-margin-inputs">
+            <div class="input-field">
+              <label for="tradeDateOpen">Ngày/Giờ Mở Lệnh (*):</label>
+              <input type="datetime-local" id="tradeDateOpen" class="text-input">
+            </div>
+            <div class="input-field">
+              <label for="tradePairId">Cặp Tài Sản (*):</label>
+              <select id="tradePairId" class="text-input"></select>
+            </div>
+          </div>
+
+          <div class="manual-margin-inputs">
+            <div class="input-field">
+              <label for="tradeStatus">Trạng Thái (*):</label>
+              <select id="tradeStatus" class="text-input">
+                <option value="OPEN">🟢 Đang Mở (OPEN)</option>
+                <option value="CLOSED">🔵 Đã Đóng (CLOSED)</option>
+              </select>
+            </div>
+            <div class="input-field">
+              <label for="tradeCapital">Vốn Phân Bổ / Equity ($):</label>
+              <input type="number" id="tradeCapital" class="text-input mono-num" placeholder="VD: 1000">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4>2. Chân Long (Long Leg)</h4>
+          <div class="manual-margin-inputs">
+            <div class="input-field">
+              <label for="tradePriceLong">Giá Vào Long ($):</label>
+              <input type="number" step="0.01" id="tradePriceLong" class="text-input mono-num" placeholder="1500.00">
+            </div>
+            <div class="input-field">
+              <label for="tradeNotionalLong">Notional Size Long ($):</label>
+              <input type="number" id="tradeNotionalLong" class="text-input mono-num" placeholder="1000">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4>3. Chân Short (Short Leg)</h4>
+          <div class="manual-margin-inputs">
+            <div class="input-field">
+              <label for="tradePriceShort">Giá Vào Short ($):</label>
+              <input type="number" step="0.01" id="tradePriceShort" class="text-input mono-num" placeholder="1510.00">
+            </div>
+            <div class="input-field">
+              <label for="tradeNotionalShort">Notional Size Short ($):</label>
+              <input type="number" id="tradeNotionalShort" class="text-input mono-num" placeholder="1000">
+            </div>
+          </div>
+          <div class="form-group" style="margin-top: 8px;">
+            <label for="tradeBasisEntry">Basis % Lúc Vào (Tự động hoặc Nhập tay):</label>
+            <input type="number" step="0.01" id="tradeBasisEntry" class="text-input mono-num" placeholder="0.67%">
+          </div>
+        </div>
+
+        <div class="form-section" id="tradeCloseSection">
+          <h4>4. Thông Tin Đóng Lệnh (Nếu Đã Đóng)</h4>
+          <div class="manual-margin-inputs">
+            <div class="input-field">
+              <label for="tradeDateClose">Ngày/Giờ Đóng Lệnh:</label>
+              <input type="datetime-local" id="tradeDateClose" class="text-input">
+            </div>
+            <div class="input-field">
+              <label for="tradeBasisExit">Basis % Lúc Đóng:</label>
+              <input type="number" step="0.01" id="tradeBasisExit" class="text-input mono-num" placeholder="0.05%">
+            </div>
+          </div>
+          <div class="manual-margin-inputs" style="margin-top: 8px;">
+            <div class="input-field">
+              <label for="tradePriceLongExit">Giá Thoát Long ($):</label>
+              <input type="number" step="0.01" id="tradePriceLongExit" class="text-input mono-num" placeholder="1520.00">
+            </div>
+            <div class="input-field">
+              <label for="tradePriceShortExit">Giá Thoát Short ($):</label>
+              <input type="number" step="0.01" id="tradePriceShortExit" class="text-input mono-num" placeholder="1521.00">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <h4>5. Funding Rate & Ghi Chú</h4>
+          <div class="form-group">
+            <label for="tradeFundingAccrued">Funding Tích Luỹ Nhận/Trả ($):</label>
+            <input type="number" step="0.01" id="tradeFundingAccrued" class="text-input mono-num" placeholder="VD: +15.50 hoặc -5.20" value="0">
+            <small class="help-text">Dương (+) là nhận funding, âm (-) là trả phí funding.</small>
+          </div>
+          <div class="form-group">
+            <label for="tradeNotes">Ghi Chú / Lý Do Mở Lệnh:</label>
+            <textarea id="tradeNotes" class="text-input" rows="3" placeholder="VD: Mở lệnh khi Basis SNDK vượt Dải trên +0.50%, funding 2 sàn thuận lợi..."></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer drawer-footer">
+        <button class="btn btn-outline" id="btnCancelTradeModal">Hủy</button>
+        <button class="btn btn-primary" id="btnSaveTradeSubmit">💾 Lưu Lệnh Vào Nhật Ký</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loaded Connector Scripts -->
+  <script src="connectors/hyperliquid.js"></script>
+  <script src="connectors/lighter.js"></script>
+  <script src="connectors/extended.js"></script>
+  
+  <!-- Main Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>

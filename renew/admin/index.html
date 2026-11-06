@@ -1,0 +1,2256 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard — Fam Issue Tracker Go DNC</title>
+    <meta name="description" content="Trang Quản Trị Hệ Thống Báo Lỗi Fam Subscription - Go DNC.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            color: #0f172a;
+        }
+        [x-cloak] { display: none !important; }
+        .card-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+        }
+        .pulse-red-light {
+            animation: pulseRedLight 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulseRedLight {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.8); box-shadow: 0 0 15px rgba(239, 68, 68, 0.2); }
+            50% { border-color: rgba(239, 68, 68, 0.4); box-shadow: 0 0 5px rgba(239, 68, 68, 0.05); }
+        }
+    </style>
+</head>
+<body x-data="adminPageApp()" x-init="init()" class="antialiased min-h-screen flex flex-col justify-between relative">
+
+    <!-- Top Accent Line -->
+    <div class="h-1.5 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600"></div>
+
+    <!-- Toast Notification -->
+    <div x-show="toast.show" x-transition x-cloak
+         class="fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold backdrop-blur-md max-w-md"
+         :class="{
+             'bg-emerald-900 text-white border-emerald-700': toast.type === 'success',
+             'bg-rose-900 text-white border-rose-700': toast.type === 'error',
+             'bg-amber-900 text-white border-amber-700': toast.type === 'warning',
+             'bg-blue-900 text-white border-blue-700': toast.type === 'info'
+         }">
+        <i :data-lucide="toast.icon || 'info'" class="w-4 h-4 flex-shrink-0 text-white"></i>
+        <span x-text="toast.message"></span>
+    </div>
+
+    <!-- Header -->
+    <header class="bg-white/80 backdrop-blur-md border-b border-gray-200 py-3.5 px-4 shadow-sm z-10 sticky top-0">
+        <div class="max-w-7xl mx-auto w-full flex items-center justify-between">
+            <a href="https://godnc.com/gi/" class="flex items-center gap-3 group">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform">
+                    <span class="font-black text-white text-base tracking-wider">DNC</span>
+                </div>
+                <div>
+                    <div class="font-black text-gray-900 text-base tracking-tight flex items-center gap-2">
+                        Fam Issue Tracker
+                        <span class="text-[10px] font-extrabold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">Admin Portal</span>
+                    </div>
+                </div>
+            </a>
+
+            <div class="flex items-center gap-2">
+                <template x-if="unlocked">
+                    <div class="flex items-center gap-2">
+                        <span x-show="role === 'admin'" class="px-2.5 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1">
+                            <i data-lucide="crown" class="w-3.5 h-3.5 text-amber-600"></i>
+                            <span>👑 Quản Lý (Admin Full Zalo)</span>
+                        </span>
+                        <span x-show="role === 'staff'" class="px-2.5 py-1 bg-blue-100 text-blue-900 border border-blue-300 rounded-xl text-xs font-bold flex items-center gap-1">
+                            <i data-lucide="user" class="w-3.5 h-3.5 text-blue-600"></i>
+                            <span>👤 Nhân Viên (Giao diện chuẩn)</span>
+                        </span>
+                        <button @click="logout()" class="px-2.5 py-1 bg-gray-100 hover:bg-rose-100 hover:text-rose-700 text-gray-600 border border-gray-200 rounded-xl text-xs font-bold transition-all cursor-pointer">
+                            🔒 Thoát
+                        </button>
+                    </div>
+                </template>
+
+                <a href="../../ctv/renew/" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm">
+                    <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                    <span class="hidden sm:inline">Trang CTV Fam</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow px-4 py-6 md:py-8 z-10">
+        <div class="w-full max-w-6xl mx-auto space-y-5">
+
+            <!-- LOCK SCREEN IF NOT UNLOCKED -->
+            <div x-show="!unlocked" class="bg-white border border-gray-200 rounded-3xl card-shadow p-8 max-w-md mx-auto text-center my-12 space-y-4">
+                <div class="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 border border-blue-100 flex items-center justify-center mx-auto mb-2">
+                    <i data-lucide="shield-check" class="w-6 h-6"></i>
+                </div>
+                <h2 class="text-xl font-black text-gray-900">Đăng Nhập Làm Việc</h2>
+                <p class="text-xs text-gray-500">Đăng nhập tài khoản Quản lý (Admin) hoặc Nhân viên để truy cập hệ thống.</p>
+
+                <form @submit.prevent="unlock()" class="space-y-3 pt-2 text-left">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Tài khoản (Username)</label>
+                        <input type="text" x-model="username" placeholder="Nhập username (dnc / goshop)..." required
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 font-bold focus:bg-white focus:border-blue-600 focus:outline-none text-xs transition-all">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Mật khẩu (Password)</label>
+                        <input type="password" x-model="password" placeholder="Nhập mật khẩu..." required
+                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2.5 text-gray-900 font-bold focus:bg-white focus:border-blue-600 focus:outline-none text-xs transition-all">
+                    </div>
+                    <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold py-3 rounded-xl shadow-lg shadow-blue-600/30 transition-all text-xs cursor-pointer">
+                        🔓 Đăng Nhập Làm Việc
+                    </button>
+                </form>
+
+                <div class="pt-2 text-[11px] text-gray-400 border-t border-gray-100 space-y-1 text-center">
+                    <p>👑 <strong>Quản lý (dnc)</strong>: Thấy đầy đủ SĐT Zalo & Nút Chat Zalo báo khách.</p>
+                    <p>👤 <strong>Nhân viên (goshop)</strong>: Làm việc ticket chuẩn (Ẩn SĐT Zalo khách).</p>
+                </div>
+            </div>
+
+            <!-- MAIN DASHBOARD CONTENT -->
+            <div x-show="unlocked" x-transition x-cloak class="space-y-5">
+
+                <!-- TAB SWITCHER HEADER BAR -->
+                <div class="flex items-center gap-2 border-b border-gray-200 pb-3 mb-2 overflow-x-auto">
+                    <a href="/renew/admin/" @click.prevent="setAdminTab('all')"
+                       :class="activeAdminTab === 'all' ? 'bg-blue-600 text-white font-black shadow-md shadow-blue-500/20' : 'bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold'"
+                       class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+                        <span>⚡ Bảng Điều Khiển</span>
+                    </a>
+
+                    <a href="/renew/admin/#tickets" @click.prevent="setAdminTab('tickets')"
+                       :class="activeAdminTab === 'tickets' ? 'bg-blue-600 text-white font-black shadow-md shadow-blue-500/20' : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold'"
+                       class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="wrench" class="w-4 h-4"></i>
+                        <span>🛠️ Tất Cả Ticket & Tra Cứu</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] bg-white/20 font-bold" x-text="tickets.length"></span>
+                    </a>
+
+                    <a href="/renew/admin/mailphu/" @click.prevent="setAdminTab('mailphu')"
+                       :class="activeAdminTab === 'mailphu' ? 'bg-purple-700 text-white font-black shadow-md shadow-purple-500/20' : 'bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold'"
+                       class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="mail-plus" class="w-4 h-4"></i>
+                        <span>📋 Đổi Mail Phụ</span>
+                        <span x-show="mailPhuRequests.filter(r => r.status === 'Mới').length > 0"
+                              class="px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-bold"
+                              x-text="mailPhuRequests.filter(r => r.status === 'Mới').length"></span>
+                    </a>
+
+                    <a href="/renew/admin/#phanloai" @click.prevent="setAdminTab('phanloai')"
+                       :class="activeAdminTab === 'phanloai' ? 'bg-emerald-600 text-white font-black shadow-md shadow-emerald-500/20' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-bold'"
+                       class="px-4 py-2 rounded-2xl text-xs transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        <i data-lucide="tag" class="w-4 h-4 text-emerald-300"></i>
+                        <span>🏷️ Phân Loại Nhanh</span>
+                        <span x-show="getUnclassifiedTicketsCount() > 0"
+                              class="px-2 py-0.5 rounded-full text-[10px] bg-amber-400 text-gray-950 font-black"
+                              x-text="getUnclassifiedTicketsCount()"></span>
+                    </a>
+                </div>
+
+                <!-- Cache Stale Warning Banner -->
+                <div x-show="cacheInfo.cache_stale" x-transition class="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-amber-900 text-xs shadow-sm">
+                    <div class="flex items-center gap-3">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 flex-shrink-0 text-amber-600"></i>
+                        <div>
+                            <span class="font-bold text-amber-900">⚠️ Cảnh báo Trigger Đồng Bộ:</span>
+                            <span> Cache email chưa đồng bộ trong <strong x-text="cacheInfo.stale_hours"></strong> giờ (Lần cuối: <span x-text="formatDate(cacheInfo.last_synced_at)"></span>).</span>
+                        </div>
+                    </div>
+                    <button @click="syncCacheNow()" :disabled="loading.sync" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all whitespace-nowrap self-end sm:self-auto flex items-center gap-1.5 shadow-sm">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.sync}"></i>
+                        <span>Đồng Bộ Ngay</span>
+                    </button>
+                </div>
+
+                <!-- TAB 1: TẤT CẢ TICKETS & BÁO LỖI CHUNG -->
+                <div x-show="activeAdminTab === 'all'" x-transition x-cloak class="space-y-5">
+
+                <!-- Admin Controls Bar Header -->
+                <div class="bg-white border border-gray-200 rounded-2xl card-shadow p-5 space-y-4">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+                        <div>
+                            <h2 class="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <i data-lucide="layout-dashboard" class="w-5 h-5 text-blue-600"></i>
+                                Quản Lý Fix Lỗi Nhóm Fam (RN)
+                            </h2>
+                            <p class="text-xs text-gray-500 mt-0.5">Xử lý nhanh ticket 1 bấm cho Admin đối chiếu với sheet Kho TK</p>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-2.5">
+                            <label class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer select-none border-2 shadow-sm"
+                                   :class="sendEmailNotice ? 'bg-emerald-500 text-white border-emerald-400 shadow-emerald-500/20' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'"
+                                   title="Tích chọn để BẬT gửi mail cho khách khi bấm xử lý ticket (Mặc định là KHÔNG gửi)">
+                                <input type="checkbox" x-model="sendEmailNotice" class="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer">
+                                <span class="flex items-center gap-1.5">
+                                    <i data-lucide="mail" class="w-4 h-4"></i>
+                                    <span x-text="sendEmailNotice ? '✉️ BẬT gửi mail cho khách' : '🔕 KHÔNG gửi mail cho khách'"></span>
+                                </span>
+                            </label>
+
+                            <div class="text-[11px] text-gray-600 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200 flex items-center gap-1.5 font-medium">
+                                <i data-lucide="database" class="w-3.5 h-3.5 text-blue-600"></i>
+                                <span>Cache: <strong class="text-gray-900" x-text="cacheInfo.count || 0"></strong> email</span>
+                                <span class="text-gray-300">•</span>
+                                <span class="text-gray-500" x-text="formatDate(cacheInfo.last_synced_at)"></span>
+                            </div>
+
+                            <button @click="loadTickets()" :disabled="loading.admin" class="px-3.5 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.admin}"></i>
+                                <span>Tải Lại</span>
+                            </button>
+
+                            <button @click="syncCacheNow()" :disabled="loading.sync" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 cursor-pointer">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="{'animate-spin': loading.sync}"></i>
+                                <span>Đồng Bộ Kho Acc</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Summary Stats Cards (5 Column Layout) -->
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                        <div class="bg-gray-50 p-3 rounded-xl border border-gray-200">
+                            <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tổng Nhóm Lỗi</span>
+                            <p class="text-xl font-black text-gray-900 mt-0.5" x-text="stats.total">0</p>
+                        </div>
+                        <div class="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                            <span class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">Đang Chờ Fix</span>
+                            <p class="text-xl font-black text-amber-800 mt-0.5" x-text="stats.open">0</p>
+                        </div>
+                        <div class="bg-rose-50 p-3 rounded-xl border border-rose-200">
+                            <span class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Bị Báo Lại</span>
+                            <p class="text-xl font-black text-rose-800 mt-0.5" x-text="stats.recurring">0</p>
+                        </div>
+                        <div class="bg-red-50 p-3 rounded-xl border border-red-200">
+                            <span class="text-[10px] font-bold text-red-700 uppercase tracking-wider flex items-center gap-1">
+                                <span>⏰ Quá Hạn (>2h)</span>
+                            </span>
+                            <p class="text-xl font-black text-red-800 mt-0.5" x-text="stats.overdue">0</p>
+                        </div>
+                        <div class="bg-green-50 p-3 rounded-xl border border-green-200">
+                            <span class="text-[10px] font-bold text-green-700 uppercase tracking-wider">Đã Fix Xong</span>
+                            <p class="text-xl font-black text-green-800 mt-0.5" x-text="stats.resolved">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                    <!-- PROACTIVE QUICK FIX BAR (KHUNG ADMIN CHỦ ĐỘNG FIX NHANH HÀNG LOẠT) -->
+                    <div class="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-900 border border-emerald-500/40 rounded-2xl p-4 md:p-5 text-white card-shadow space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2.5">
+                            <div class="flex items-center gap-2">
+                                <div class="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300">
+                                    <i data-lucide="zap" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-xs font-black uppercase tracking-wider text-emerald-200">⚡ ADMIN CHỦ ĐỘNG FIX NHANH HÀNG LOẠT (PASTE MÃ RN HOẶC EMAIL)</h3>
+                                    <p class="text-[11px] text-gray-300">Dán email hoặc mã RN vừa fix xong vào đây ➔ Tự động ghi nhận ĐÃ FIX cho toàn hệ thống & đẩy sang CTV</p>
+                                </div>
+                            </div>
+                            <span class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-0.5 rounded-full font-bold">
+                                Tự động đẩy sang Khu 2 CTV
+                            </span>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <div class="relative flex-grow">
+                                <textarea x-model="quickFixText" rows="2"
+                                          placeholder="Dán mã RN hoặc email vừa fix xong vào đây (mỗi dòng 1 mã RN/email hoặc dán nguyên đoạn text)...&#10;Ví dụ: RN78, b01054241931@gmail.com, hoangdinhtuan396@gmail.com"
+                                          class="w-full bg-white/10 border border-white/20 rounded-xl p-3 text-xs text-white font-mono placeholder-gray-400 focus:bg-black/40 focus:border-emerald-400 focus:outline-none transition-all"></textarea>
+                            </div>
+
+                            <div class="flex flex-col gap-2 self-stretch sm:self-auto">
+                                <label class="flex items-center justify-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer select-none border"
+                                       :class="sendEmailNotice ? 'bg-emerald-500 text-white border-emerald-400' : 'bg-white/10 text-gray-300 border-white/20 hover:bg-white/20'">
+                                    <input type="checkbox" x-model="sendEmailNotice" class="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-400 cursor-pointer">
+                                    <span x-text="sendEmailNotice ? '✉️ Đã bật gửi mail' : '🔕 Không gửi mail'"></span>
+                                </label>
+
+                                <button @click="submitProactiveQuickFix()" :disabled="loading.quickFix || !quickFixText.trim()"
+                                        class="px-6 py-2.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer whitespace-nowrap">
+                                    <i data-lucide="check-circle-2" class="w-4 h-4 text-gray-950" :class="loading.quickFix ? 'animate-spin' : ''"></i>
+                                    <span x-text="loading.quickFix ? 'Đang ghi nhận...' : '🟢 GHI NHẬN ĐÃ FIX HOÀN TẤT'"></span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KHUNG TỔNG HỢP KHÁCH ĐĂNG KÝ NHẬN BÁO ZALO (CHỈ HIỂN THỊ VỚI ADMIN) -->
+                    <div x-show="role === 'admin' && zaloPendingList.length > 0" class="bg-gradient-to-r from-emerald-900 via-teal-900 to-emerald-950 border border-emerald-500/50 rounded-2xl p-4 text-white card-shadow space-y-3">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-2">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="phone-call" class="w-4 h-4 text-emerald-300"></i>
+                                <h3 class="text-xs font-black uppercase tracking-wider text-emerald-200 flex items-center gap-1.5">
+                                    <span>📱 BÁO THÔNG BÁO ZALO CHO KHÁCH</span>
+                                    <span class="bg-emerald-500/30 text-emerald-200 px-2 py-0.2 rounded-full text-[10px]" x-text="'(' + zaloPendingList.length + ' lượt)'"></span>
+                                </h3>
+                            </div>
+
+                            <!-- BỘ LỌC TRẠNG THÁI BÁO ZALO -->
+                            <div class="flex items-center gap-1 text-xs">
+                                <button @click="zaloFilter = 'pending'"
+                                        :class="zaloFilter === 'pending' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
+                                        class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
+                                    ⏳ Chưa Báo (<span x-text="zaloPendingList.filter(i => !isZaloSent(i.customer_email, i.zalo_phone)).length"></span>)
+                                </button>
+                                <button @click="zaloFilter = 'sent'"
+                                        :class="zaloFilter === 'sent' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
+                                        class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
+                                    ✅ Đã Báo (<span x-text="zaloPendingList.filter(i => isZaloSent(i.customer_email, i.zalo_phone)).length"></span>)
+                                </button>
+                                <button @click="zaloFilter = 'all'"
+                                        :class="zaloFilter === 'all' ? 'bg-emerald-400 text-gray-950 font-black shadow-sm' : 'bg-white/10 text-emerald-200 font-bold hover:bg-white/20'"
+                                        class="px-2.5 py-1 rounded-lg transition-all text-[11px]">
+                                    Tất Cả (<span x-text="zaloPendingList.length"></span>)
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap gap-2">
+                            <template x-for="item in filteredZaloList" :key="item.customer_email + item.zalo_phone">
+                                <div class="p-2.5 rounded-xl border flex items-center justify-between gap-3 text-xs flex-grow sm:flex-grow-0 transition-all"
+                                     :class="isZaloSent(item.customer_email, item.zalo_phone) ? 'bg-white/5 border-white/10 opacity-70' : 'bg-white/10 border-white/20'">
+                                    <div>
+                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                            <span class="font-mono font-black text-amber-300 text-sm" x-text="item.stt_group"></span>
+                                            <template x-if="getDatagocCtv(item.customer_email)">
+                                                <span class="px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-blue-500/30 text-blue-200 border border-blue-400/40 tracking-tight"
+                                                      x-text="'CTV: ' + getDatagocCtv(item.customer_email)"></span>
+                                            </template>
+                                            <span class="font-mono text-white text-xs font-bold" x-text="item.customer_email"></span>
+                                            <template x-if="isZaloSent(item.customer_email, item.zalo_phone)">
+                                                <span class="text-[9px] bg-green-500/20 text-green-300 border border-green-500/40 px-1.5 py-0.2 rounded font-bold">✓ Đã Báo</span>
+                                            </template>
+                                        </div>
+                                        <div class="text-[10px] text-emerald-300 font-bold flex items-center gap-1 pt-0.5">
+                                            <i data-lucide="phone" class="w-3 h-3"></i>
+                                            <span>Zalo: <strong x-text="item.zalo_phone" class="underline font-mono"></strong></span>
+                                            <span class="text-gray-300 font-normal ml-1" x-text="formatDate(item.reported_at)"></span>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex items-center gap-1.5">
+                                        <button @click="openZaloChat(item.ticket, item.customer_email, item.zalo_phone)"
+                                                class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-lg shadow-sm transition-all flex items-center gap-1 whitespace-nowrap cursor-pointer">
+                                            <i data-lucide="message-square" class="w-3 h-3 text-gray-950"></i>
+                                            <span>Chat Zalo</span>
+                                        </button>
+
+                                        <button @click="toggleZaloSent(item.customer_email, item.ticket ? item.ticket.ticket_id : null, item.zalo_phone)"
+                                                :class="isZaloSent(item.customer_email, item.zalo_phone) ? 'bg-amber-500/30 text-amber-200 border-amber-400/40' : 'bg-white/10 text-gray-300 hover:bg-white/20'"
+                                                class="px-2 py-1.5 border rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                                                :title="isZaloSent(item.customer_email, item.zalo_phone) ? 'Bấm để hủy đánh dấu' : 'Bấm để đánh dấu đã báo Zalo'">
+                                            <span x-text="isZaloSent(item.customer_email, item.zalo_phone) ? '↩ Hủy' : '✓ Đã Báo'"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- ⚡ BẢNG LIỆT KÊ TICKET FAM CẦN FIX -->
+                    <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 text-white rounded-3xl p-4 sm:p-5 card-shadow space-y-5 border border-indigo-500/30">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                            <div class="flex items-center gap-2.5">
+                                <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-600 flex items-center justify-center text-gray-950 font-black shadow-md">
+                                    <i data-lucide="zap" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-xs sm:text-sm font-black tracking-tight text-white flex items-center gap-2">
+                                        ⚡ BẢNG LIỆT KÊ TICKET FAM CẦN FIX
+                                    </h3>
+                                    <p class="text-[11px] text-gray-300 font-medium">
+                                        Danh sách các ticket Fam đang chờ xử lý — Xử lý dứt điểm 1-click
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Sub-stats -->
+                            <div class="flex items-center gap-2 self-start sm:self-auto">
+                                <span class="px-3 py-1 bg-amber-500/20 border border-amber-400/40 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                                    ⏳ Đang chờ fix: <strong class="text-amber-200 font-mono text-sm" x-text="openTickets.length"></strong>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- LIST OPEN TICKETS -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                            <template x-if="openTickets.length === 0">
+                                <div class="col-span-full p-8 text-center text-xs text-amber-200/70 italic bg-white/5 rounded-2xl border border-white/10">
+                                    🎉 Tuyệt vời! Không có ticket Fam nào cần xử lý.
+                                </div>
+                            </template>
+
+                            <template x-for="t in openTickets" :key="t.ticket_id">
+                                <div class="bg-white/10 hover:bg-white/15 border border-slate-700/60 hover:border-slate-500/60 rounded-2xl p-4 space-y-3.5 transition-all flex flex-col justify-between shadow-md">
+                                    <div class="space-y-2.5">
+                                        <div class="flex items-center justify-between gap-2 border-b border-white/10 pb-2">
+                                            <div class="flex items-center gap-2 flex-wrap">
+                                                <span class="font-mono font-black text-amber-300 text-base" x-text="t.stt_group"></span>
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
+                                                      :class="String(t.stt_group).toUpperCase().startsWith('PL') ? 'bg-purple-500/30 text-purple-300 border border-purple-400/40' : 'bg-blue-500/30 text-blue-300 border border-blue-400/40'"
+                                                      x-text="String(t.stt_group).toUpperCase().startsWith('PL') ? 'PL' : 'RN'"></span>
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-black"
+                                                      :class="t.is_recurring ? 'bg-rose-500/30 text-rose-300 border border-rose-400/40' : (isOverdue(t) ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40' : 'bg-white/10 text-gray-300')"
+                                                      x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count) : (getTicketAgeText(t) || 'Mới')"></span>
+                                            </div>
+
+                                            <template x-if="getTicketCategoryInfo(t)">
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-bold"
+                                                      :class="getTicketCategoryInfo(t).class"
+                                                      x-text="getTicketCategoryInfo(t).label"></span>
+                                            </template>
+                                        </div>
+
+                                        <div class="text-xs space-y-1.5">
+                                            <div class="flex items-center justify-between text-[11px] text-gray-300">
+                                                <span>👑 Chủ Fam: <strong class="font-mono text-amber-200 select-all" x-text="t.owner_email || 'Chưa rõ'"></strong></span>
+                                                <button @click="copyText(t.owner_email)" x-show="t.owner_email" class="text-amber-400 hover:text-white text-[10px] underline cursor-pointer">Copy</button>
+                                            </div>
+                                            <div class="text-[11px] text-indigo-200 font-medium">
+                                                👤 Khách báo: <span class="font-mono font-bold text-white" x-text="t.reported_emails && t.reported_emails.length ? t.reported_emails.join(', ') : 'Chưa có email'"></span>
+                                            </div>
+                                            <template x-if="t.message || t.note || t.reason">
+                                                <div class="text-[11px] text-gray-400 italic bg-black/20 p-2 rounded-lg border border-white/5 line-clamp-2" x-text="t.message || t.note || t.reason"></div>
+                                            </template>
+                                        </div>
+                                    </div>
+
+                                    <!-- ACTION BUTTON: FIX XONG -->
+                                    <div class="pt-2 border-t border-white/10">
+                                        <button @click="resolveTicketWithType(t, 'Fix thường')" :disabled="t.saving"
+                                                class="w-full py-2.5 px-3 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-gray-950 font-black text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50">
+                                            <i data-lucide="check-circle-2" class="w-4 h-4 text-gray-950" :class="t.saving ? 'animate-spin' : ''"></i>
+                                            <span x-text="t.saving ? 'Đang lưu...' : '✅ Ghi Nhận Đã Fix'"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                </div> <!-- END TAB ALL (MAIN DASHBOARD) -->
+
+                <!-- TAB TICKETS: 🛠️ TẤT CẢ TICKET & TRA CỨU -->
+                <div x-show="activeAdminTab === 'tickets'" x-transition x-cloak class="space-y-5">
+                    <!-- STICKY SEARCH & CHIP FILTER BAR (HIGH-CLARITY SAAS DESIGN) -->
+                    <div class="sticky top-16 z-40 bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl p-3.5 card-shadow space-y-3">
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                <i data-lucide="search" class="w-4 h-4"></i>
+                            </div>
+                            <input type="text" x-model="searchQuery"
+                                   placeholder="🔍 Tìm nhanh theo mã RN (vd: RN34), email khách hoặc email chủ Fam..."
+                                   class="w-full bg-slate-50 border border-slate-200/90 rounded-xl pl-10 pr-9 py-2.5 text-slate-900 text-xs font-semibold focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all placeholder-slate-400">
+                            <button x-show="searchQuery" @click="searchQuery = ''" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700">
+                                <i data-lucide="x" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+
+                        <!-- BỘ LỌC CHIP -->
+                        <div class="flex items-center gap-2 overflow-x-auto pb-0.5 text-xs flex-wrap sm:flex-nowrap justify-between">
+                            <div class="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                                <!-- CHIP LỌC TRẠNG THÁI -->
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <span class="text-slate-500 font-bold mr-0.5 text-[11px]">Trạng thái:</span>
+                                    <template x-for="st in ['Tất cả', 'Đang mở', 'Tái phát', 'Quá hạn', 'Đã xử lý']" :key="st">
+                                        <button @click="filterStatus = st"
+                                                :class="filterStatus === st ? 'bg-blue-600 text-white font-black shadow-xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold'"
+                                                class="px-3 py-1 rounded-xl transition-all whitespace-nowrap flex items-center gap-1 text-xs cursor-pointer">
+                                            <span x-text="st"></span>
+                                            <span x-show="st === 'Quá hạn' && stats.overdue > 0" class="px-1.5 py-0.2 bg-red-500 text-white text-[10px] rounded-full font-extrabold" x-text="stats.overdue"></span>
+                                        </button>
+                                    </template>
+                                </div>
+
+                                <!-- CHIP LỌC THEO LOẠI SỰ CỐ -->
+                                <div class="flex items-center gap-1 border-l border-slate-200 pl-2.5 ml-1 shrink-0">
+                                    <span class="text-slate-500 font-bold text-[11px] mr-0.5">Loại:</span>
+                                    <button @click="filterCategory = 'Tất cả'"
+                                            :class="filterCategory === 'Tất cả' ? 'bg-slate-800 text-white font-black shadow-2xs' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold'"
+                                            class="px-2.5 py-1 rounded-xl transition-all whitespace-nowrap text-xs cursor-pointer">
+                                        Tất cả
+                                    </button>
+                                    <button @click="filterCategory = 'A'"
+                                            :class="filterCategory === 'A' ? 'bg-amber-500 text-white font-black shadow-2xs' : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100 font-bold'"
+                                            class="px-2.5 py-1 rounded-xl transition-all whitespace-nowrap flex items-center gap-1 text-xs cursor-pointer">
+                                        <span>🟡 Mất Premium</span>
+                                    </button>
+                                    <button @click="filterCategory = 'B'"
+                                            :class="filterCategory === 'B' ? 'bg-rose-600 text-white font-black shadow-2xs' : 'bg-rose-50 text-rose-900 border border-rose-200 hover:bg-rose-100 font-bold'"
+                                            class="px-2.5 py-1 rounded-xl transition-all whitespace-nowrap flex items-center gap-1 text-xs cursor-pointer">
+                                        <span>🔴 Nhóm lỗi</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="text-[11px] text-slate-500 font-medium shrink-0 ml-auto pt-1 sm:pt-0">
+                                Khớp <strong class="text-blue-600 font-black text-xs" x-text="filteredTickets.length"></strong> ticket
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- INSTANT FAM LOOKUP CARD (TRIỆU HỒI TỰ ĐỘNG KHI GÕ SEARCH EMAIL HOẶC MÃ RN) -->
+                    <template x-if="searchQuery.trim() && famLookupResult">
+                        <div class="bg-gradient-to-r from-blue-950 via-indigo-950 to-slate-900 text-white rounded-2xl p-5 card-shadow space-y-4 border border-blue-500/50">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/15 pb-3">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="px-3.5 py-1 bg-blue-600 text-white font-black font-mono text-lg rounded-xl shadow-md" x-text="famLookupResult.stt_group"></span>
+                                    <div>
+                                        <h3 class="text-xs text-blue-200 font-extrabold uppercase tracking-wider">✨ TRIỆU HỒI THÔNG TIN FAM HOÀN CHỈNH (KHO TK)</h3>
+                                        <p class="text-[11px] text-gray-300">Tự động kết nối email vừa tra cứu ra Email Chủ Fam và toàn bộ thành viên trong nhóm</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <template x-if="role === 'admin' && famLookupResult.ticket && getTicketZaloPhone(famLookupResult.ticket)">
+                                        <button @click="openZaloChat(famLookupResult.ticket, getTicketZaloEmail(famLookupResult.ticket), getTicketZaloPhone(famLookupResult.ticket))"
+                                                class="px-3.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-gray-950 rounded-full text-xs font-black transition-all flex items-center gap-1.5 shadow-md cursor-pointer border border-emerald-300">
+                                            <i data-lucide="message-square" class="w-3.5 h-3.5 text-gray-950"></i>
+                                            <span>💬 Chat Zalo Báo Khách (<span x-text="getTicketZaloPhone(famLookupResult.ticket)"></span>)</span>
+                                        </button>
+                                    </template>
+
+                                    <template x-if="famLookupResult.ticket">
+                                        <span class="px-3 py-1 rounded-full text-xs font-extrabold border shadow-sm flex items-center gap-1.5"
+                                              :class="famLookupResult.ticket.status === 'Đã xử lý' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'">
+                                            <span class="w-2 h-2 rounded-full" :class="famLookupResult.ticket.status === 'Đã xử lý' ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'"></span>
+                                            <span x-text="famLookupResult.ticket.status"></span>
+                                        </span>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- Thẻ Chủ Fam trong Instant Lookup -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div class="bg-white/10 p-3.5 rounded-xl border border-white/10 space-y-2">
+                                    <div class="text-[11px] text-blue-300 font-black uppercase tracking-wider flex items-center justify-between">
+                                        <span>👑 THÔNG TIN CHỦ FAM</span>
+                                        <button @click="copyText(famLookupResult.owner_email)" class="text-amber-400 hover:text-white text-[10px] underline cursor-pointer">Copy Email</button>
+                                    </div>
+                                    <div class="font-mono text-sm font-bold text-white select-all" x-text="famLookupResult.owner_email || 'Chưa rõ'"></div>
+                                    <div class="text-[11px] text-gray-300 font-medium">
+                                        Trạng thái hoạt động: <strong class="text-emerald-300 font-bold" x-text="famLookupResult.ticket ? (famLookupResult.ticket.activity_status || 'Chưa phân loại') : 'Chưa phân loại'"></strong>
+                                    </div>
+                                </div>
+
+                                <div class="bg-white/10 p-3.5 rounded-xl border border-white/10 space-y-2">
+                                    <div class="text-[11px] text-amber-300 font-black uppercase tracking-wider">
+                                        👥 THÀNH VIÊN TRONG NHÓM (<span x-text="(famLookupResult.members || []).length"></span>)
+                                    </div>
+                                    <div class="max-h-24 overflow-y-auto space-y-1 text-xs pr-1 custom-scrollbar">
+                                        <template x-for="(mem, idx) in famLookupResult.members" :key="idx">
+                                            <div class="flex items-center justify-between text-[11px] py-0.5 border-b border-white/5 last:border-0">
+                                                <span class="font-mono text-gray-200 select-all" x-text="mem"></span>
+                                                <button @click="copyText(mem)" class="text-gray-400 hover:text-white text-[10px] cursor-pointer">Copy</button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- DANH SÁCH THẺ TICKET SAAS HIGH-CLARITY GRID LAYOUT -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5">
+                        <template x-for="t in filteredTickets" :key="t.ticket_id">
+                            <div class="bg-white border rounded-2xl p-4 space-y-3 transition-all hover:shadow-md flex flex-col justify-between relative shadow-xs"
+                                 :class="{
+                                     'border-rose-300 ring-1 ring-rose-200 bg-rose-50/10': t.is_recurring,
+                                     'border-red-300 bg-red-50/10': !t.is_recurring && isOverdue(t),
+                                     'border-slate-200 hover:border-slate-300 bg-white': !t.is_recurring && !isOverdue(t) && t.status !== 'Đã xử lý',
+                                     'border-emerald-200 bg-slate-50/60 opacity-80': t.status === 'Đã xử lý'
+                                 }">
+                                
+                                <div class="space-y-2.5">
+                                    <!-- ROW 1: HEADER (Group STT & Badges + Status Select Dropdown) -->
+                                    <div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span class="font-mono font-black text-slate-900 text-base" x-text="t.stt_group"></span>
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
+                                                  :class="String(t.stt_group).toUpperCase().startsWith('PL') ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-blue-100 text-blue-700 border border-blue-200'"
+                                                  x-text="String(t.stt_group).toUpperCase().startsWith('PL') ? 'PL' : 'RN'"></span>
+
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold flex items-center gap-1"
+                                                  :class="{
+                                                      'bg-rose-100 text-rose-800 border border-rose-200': t.is_recurring,
+                                                      'bg-red-100 text-red-800 border border-red-200': !t.is_recurring && isOverdue(t),
+                                                      'bg-amber-100 text-amber-800 border border-amber-200': !t.is_recurring && !isOverdue(t) && t.status !== 'Đã xử lý',
+                                                      'bg-emerald-100 text-emerald-800 border border-emerald-200': t.status === 'Đã xử lý'
+                                                  }">
+                                                <span class="w-1.5 h-1.5 rounded-full"
+                                                      :class="t.status === 'Đã xử lý' ? 'bg-emerald-500' : (t.is_recurring ? 'bg-rose-600 animate-ping' : 'bg-amber-500 animate-pulse')"></span>
+                                                <span x-text="t.is_recurring ? ('⚡ Tái phát x' + t.recur_count) : (getTicketAgeText(t) || t.status)"></span>
+                                            </span>
+                                        </div>
+
+                                        <!-- Fast Status Select Dropdown -->
+                                        <select x-model="t.editStatus" @change="quickUpdateStatus(t, $event.target.value)"
+                                                :disabled="t.saving"
+                                                class="bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
+                                            <option value="Đang chờ fix">⏳ Đang chờ fix</option>
+                                            <option value="Đã xử lý">✅ Đã xử lý</option>
+                                            <option value="Cần kiểm tra">⚠️ Cần kiểm tra</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- ROW 2: OWNER EMAIL & TIME -->
+                                    <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100 space-y-1 text-xs">
+                                        <div class="flex items-center justify-between gap-1">
+                                            <span class="text-slate-500 font-bold text-[11px] flex items-center gap-1">
+                                                <i data-lucide="crown" class="w-3.5 h-3.5 text-amber-500"></i> Chủ Fam:
+                                            </span>
+                                            <div class="flex items-center gap-1 overflow-hidden">
+                                                <strong class="font-mono text-slate-900 font-bold select-all truncate text-[11px]" x-text="t.owner_email || 'Chưa rõ'"></strong>
+                                                <button @click="copyText(t.owner_email)" x-show="t.owner_email" class="text-blue-600 hover:text-blue-800 text-[10px] font-bold underline cursor-pointer">Copy</button>
+                                            </div>
+                                        </div>
+
+                                        <!-- ZALO OR REPORTED TIME -->
+                                        <template x-if="role === 'admin' && getTicketZaloPhone(t)">
+                                            <div class="flex items-center justify-between text-[11px] pt-1 border-t border-slate-200/60 text-emerald-800 font-bold">
+                                                <span class="flex items-center gap-1"><i data-lucide="phone" class="w-3 h-3 text-emerald-600"></i> Zalo: <strong class="font-mono" x-text="getTicketZaloPhone(t)"></strong></span>
+                                                <button @click="openZaloChat(t, getTicketZaloEmail(t), getTicketZaloPhone(t))" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-extrabold cursor-pointer">💬 Chat Zalo</button>
+                                            </div>
+                                        </template>
+                                        <template x-if="!(role === 'admin' && getTicketZaloPhone(t))">
+                                            <div class="text-[10px] text-slate-400 italic text-right">Báo lúc: <span class="font-semibold text-slate-600" x-text="formatDate(t.created_at || t.timestamp)"></span></div>
+                                        </template>
+                                    </div>
+
+                                    <!-- ROW 3: REPORTED EMAILS WITH CLICK-TO-INSERT TAGS -->
+                                    <div class="text-xs space-y-1">
+                                        <span class="text-slate-500 font-bold text-[11px] flex items-center gap-1">
+                                            <i data-lucide="mail" class="w-3.5 h-3.5 text-indigo-500"></i>
+                                            <span>Khách báo lỗi (<span x-text="(t.reported_emails || []).length"></span>):</span>
+                                        </span>
+
+                                        <div class="flex flex-wrap gap-1">
+                                            <template x-for="(em, idx) in t.reported_emails" :key="idx">
+                                                <span @click="insertEmailToNote(t, em)"
+                                                      title="Bấm để chèn nhanh email này vào ô ghi chú"
+                                                      class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200/80 rounded-md font-mono text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1 select-all">
+                                                    <span x-text="em"></span>
+                                                    <i data-lucide="corner-down-left" class="w-3 h-3 text-indigo-400"></i>
+                                                </span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- ROW 4: NOTE FIELD & ACTION BUTTON -->
+                                <div class="space-y-2 pt-2 border-t border-slate-100 mt-2">
+                                    <div class="relative flex items-center">
+                                        <input type="text" x-model="t.editNote"
+                                               placeholder="📝 Ghi chú email đã xử lý..."
+                                               class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-2.5 pr-12 py-1.5 text-xs text-slate-900 font-mono placeholder-slate-400 focus:bg-white focus:border-blue-500 focus:outline-none">
+                                        <button x-show="t.editNote" @click="t.editNote = ''" class="absolute right-2 text-slate-400 hover:text-slate-700 text-[10px] bg-slate-200 px-1 py-0.5 rounded cursor-pointer">
+                                            Xóa
+                                        </button>
+                                    </div>
+
+                                    <button @click="quickUpdateStatus(t, 'Đã xử lý')" :disabled="t.saving || t.status === 'Đã xử lý'"
+                                            class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40">
+                                        <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-white" :class="t.saving ? 'animate-spin' : ''"></i>
+                                        <span x-text="t.status === 'Đã xử lý' ? '✅ Đã Xử Lý Xong' : (t.saving ? 'Đang lưu...' : '✅ Đánh Dấu Đã Xử Lý')"></span>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+
+                        <div x-show="filteredTickets.length === 0" class="col-span-full p-12 text-center text-slate-400 bg-white rounded-2xl border border-slate-200 card-shadow space-y-2">
+                            <i data-lucide="inbox" class="w-10 h-10 mx-auto opacity-40 text-blue-600"></i>
+                            <p class="text-sm font-bold text-slate-800">Không tìm thấy ticket nào khớp với từ khóa / bộ lọc.</p>
+                            <p class="text-xs text-slate-500" x-show="searchQuery">Thử gõ lại mã RN (vd: RN34) hoặc xóa ô tìm kiếm.</p>
+                        </div>
+                    </div>
+                </div> <!-- END TAB TICKETS -->
+
+
+
+
+
+                <!-- TAB 3: QUẢN LÝ YÊU CẦU ĐỔI MAIL PHỤ (MAIL_PHU_REQUESTS) -->
+                <div x-show="activeAdminTab === 'mailphu'" x-transition x-cloak
+                     class="bg-white border border-gray-200 rounded-3xl p-4 sm:p-5 card-shadow space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                                <i data-lucide="mail-plus" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xs sm:text-sm font-black tracking-tight text-gray-900 flex items-center gap-2">
+                                    📋 YÊU CẦU ĐỔI SANG MAIL PHỤ (MAIL_PHU_REQUESTS)
+                                </h3>
+                                <p class="text-[11px] text-gray-500 font-medium">
+                                    Danh sách email phụ do khách gửi yêu cầu mượn slot riêng — Admin/CTV thực hiện mời vào nhóm thủ công
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Chip lọc status Mail Phụ -->
+                        <div class="flex items-center gap-1.5 overflow-x-auto text-xs self-start sm:self-auto">
+                            <template x-for="st in ['Tất cả', 'Mới', 'Đã mời', 'Hoàn tất']" :key="st">
+                                <button @click="mailPhuFilterStatus = st"
+                                        :class="mailPhuFilterStatus === st ? 'bg-purple-600 text-white font-extrabold shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 font-bold'"
+                                        class="px-3 py-1 rounded-xl transition-all whitespace-nowrap text-xs cursor-pointer">
+                                    <span x-text="st"></span>
+                                    <span x-show="st === 'Mới' && mailPhuRequests.filter(r => r.status === 'Mới').length > 0"
+                                          class="ml-1 px-1.5 py-0.2 bg-amber-500 text-white text-[10px] rounded-full font-extrabold"
+                                          x-text="mailPhuRequests.filter(r => r.status === 'Mới').length"></span>
+                                </button>
+                            </template>
+                            
+                            <button @click="fetchMailPhuRequests()" class="p-1 text-gray-400 hover:text-purple-600 cursor-pointer" title="Tải lại danh sách yêu cầu mail phụ">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5" :class="loadingMailPhuAdmin ? 'animate-spin' : ''"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- DANH SÁCH YÊU CẦU MAIL PHỤ -->
+                    <div class="space-y-3">
+                        <template x-if="filteredMailPhuRequests.length === 0">
+                            <div class="p-8 text-center text-xs text-gray-400 italic bg-gray-50 rounded-2xl border border-gray-100">
+                                🍃 Chưa có yêu cầu đổi mail phụ nào phù hợp với bộ lọc.
+                            </div>
+                        </template>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <template x-for="req in filteredMailPhuRequests" :key="req.request_id">
+                                <div class="bg-gray-50/80 hover:bg-white border rounded-2xl p-3.5 space-y-2.5 transition-all card-shadow relative overflow-hidden"
+                                     :class="req.status === 'Mới' ? 'border-amber-300 ring-1 ring-amber-400/30' : (req.status === 'Đã mời' ? 'border-purple-300' : 'border-gray-200 opacity-75')">
+                                    
+                                    <div class="flex items-center justify-between gap-2 border-b border-gray-200/60 pb-2">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span class="font-mono font-black text-purple-700 text-base" x-text="req.stt_group || 'KHO_TK'"></span>
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase"
+                                                  :class="{
+                                                      'bg-amber-100 text-amber-800 border border-amber-300': req.status === 'Mới',
+                                                      'bg-purple-100 text-purple-800 border border-purple-300': req.status === 'Đã mời',
+                                                      'bg-emerald-100 text-emerald-800 border border-emerald-300': req.status === 'Hoàn tất'
+                                                  }"
+                                                  x-text="req.status"></span>
+
+                                            <template x-if="req.ctv">
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-black bg-indigo-100 text-indigo-800 border border-indigo-200 shadow-2xs">
+                                                    👤 CTV: <span x-text="req.ctv"></span>
+                                                </span>
+                                            </template>
+                                            <template x-if="!req.ctv">
+                                                <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500 border border-gray-200">
+                                                    Khách tự báo
+                                                </span>
+                                            </template>
+                                        </div>
+
+                                        <span class="text-[10px] text-gray-400 font-medium" x-text="formatRelativeTime(req.requested_at)"></span>
+                                    </div>
+
+                                    <!-- THÔNG TIN CHÍNH: PRIMARY EMAIL & MAIL PHỤ NEEDED -->
+                                    <div class="space-y-1.5 text-xs">
+                                        <!-- Primary Email -->
+                                        <div class="flex items-center justify-between text-gray-600">
+                                            <span>Email hiện tại (lỗi):</span>
+                                            <div class="flex items-center gap-1.5">
+                                                <strong class="font-mono text-gray-900 font-bold select-all" x-text="req.primary_email"></strong>
+                                                <button @click="copyText(req.primary_email)" class="text-purple-600 hover:text-purple-800 text-[10px] font-bold underline cursor-pointer">Copy</button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Mail Phụ Cần Add (Highlight Nổi Bật) -->
+                                        <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2 flex items-center justify-between text-emerald-950 font-bold">
+                                            <div class="flex items-center gap-1.5">
+                                                <i data-lucide="mail" class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0"></i>
+                                                <span>Mail phụ cần add:</span>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-mono text-emerald-800 text-xs font-black select-all" x-text="req.mail_phu"></span>
+                                                <button @click="copyText(req.mail_phu)" class="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-black cursor-pointer shadow-2xs">Copy</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="flex items-center justify-between text-[11px] text-gray-600 pt-0.5">
+                                            <span>📅 Hạn gia hạn (HSD):</span>
+                                            <strong class="font-mono font-bold" :class="req.ngay_het_han ? 'text-purple-900 bg-purple-100 px-2 py-0.5 rounded border border-purple-200' : 'text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 italic'" x-text="formatDateOnly(req.ngay_het_han) || 'Chưa cập nhật HSD (Bấm Sync Kho TK)'"></strong>
+                                        </div>
+                                    </div>
+
+                                    <!-- NÚT HÀNH ĐỘNG CỦA ADMIN -->
+                                    <div class="flex items-center justify-between gap-2 pt-1 border-t border-gray-200/60">
+                                        <button @click="deleteMailPhuRequest(req.request_id)"
+                                                class="px-2.5 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                                                title="Xóa yêu cầu gửi sai / dư thừa">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5 text-red-500"></i>
+                                            <span>Xóa</span>
+                                        </button>
+
+                                        <div class="flex items-center gap-2">
+                                            <template x-if="req.status === 'Mới'">
+                                                <button @click="updateMailPhuStatus(req.request_id, 'Đã mời')"
+                                                        class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1 cursor-pointer">
+                                                    <i data-lucide="check-circle" class="w-3.5 h-3.5"></i>
+                                                    <span>✅ Đánh dấu Đã mời</span>
+                                                </button>
+                                            </template>
+
+                                            <template x-if="req.status === 'Đã mời'">
+                                                <button @click="updateMailPhuStatus(req.request_id, 'Hoàn tất')"
+                                                        class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-sm transition-all flex items-center gap-1 cursor-pointer">
+                                                    <i data-lucide="check-check" class="w-3.5 h-3.5"></i>
+                                                    <span>☑ Đánh dấu Hoàn tất</span>
+                                                </button>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 4: PHÂN LOẠI NHANH ACTIVITY STATUS -->
+                <div x-show="activeAdminTab === 'phanloai'" x-transition x-cloak class="space-y-5">
+                    <!-- HEADER & STATS COUNTER BAR -->
+                    <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 border border-emerald-500/30 rounded-3xl p-5 text-white card-shadow space-y-4">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                            <div>
+                                <h2 class="text-base sm:text-lg font-black text-white flex items-center gap-2">
+                                    <i data-lucide="tag" class="w-5 h-5 text-emerald-400"></i>
+                                    <span>Workspace Phân Loại Nhanh Nhóm Fam</span>
+                                </h2>
+                                <p class="text-xs text-emerald-200 mt-1">Gắn nhãn sớm "Đang hoạt động / Không hoạt động" để khách tự tra cứu thấy ngay hướng dẫn chuẩn mà không cần chờ Fix xong.</p>
+                            </div>
+
+                            <button @click="fetchTickets()" class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer">
+                                <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': loading.tickets}"></i>
+                                <span>Tải Lại Danh Sách</span>
+                            </button>
+                        </div>
+
+                        <!-- KHUNG GẮN NHÃN TỰ DO & DÁN HÀNG LOẠT THEO MÃ FAM (HỖ TRỢ DÁN NHIỀU MÃ, CẢ TRÙNG VẪN GÁN ĐƯỢC) -->
+                        <div class="bg-white/10 border border-emerald-400/40 rounded-2xl p-4 space-y-3">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <span class="text-xs font-black text-emerald-300 flex items-center gap-1.5">
+                                    <i data-lucide="zap" class="w-4 h-4 text-amber-300"></i>
+                                    <span>Gắn nhãn chủ động (Hỗ trợ DÁN HÀNG LOẠT nhiều Mã Fam, xuống dòng hoặc cách nhau bởi dấu phẩy):</span>
+                                </span>
+                            </div>
+                            
+                            <div class="flex flex-col sm:flex-row gap-2.5 items-start">
+                                <textarea x-model="quickTagGroupInput" rows="2"
+                                          placeholder="Dán hàng loạt Mã Fam ở đây (vd: PL387, PL388, PL389 hoặc copy cột Excel dán vào)..."
+                                          class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white font-mono font-bold text-xs focus:border-emerald-400 focus:outline-none flex-grow placeholder-slate-400 resize-y min-h-[50px]"></textarea>
+                                
+                                <div class="flex flex-col sm:flex-row gap-2 w-full sm:w-auto shrink-0">
+                                    <button @click="tagGroupDirectly('Đang hoạt động')"
+                                            class="w-full sm:w-auto px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95 cursor-pointer whitespace-nowrap border border-emerald-400/40">
+                                        <i data-lucide="check-circle-2" class="w-4.5 h-4.5"></i>
+                                        <span>🟢 Gán Đang hoạt động</span>
+                                    </button>
+                                    <button @click="tagGroupDirectly('Không hoạt động')"
+                                            class="w-full sm:w-auto px-5 py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-rose-600/30 active:scale-95 cursor-pointer whitespace-nowrap border border-rose-400/40">
+                                        <i data-lucide="x-circle" class="w-4.5 h-4.5"></i>
+                                        <span>🔴 Gán Không hoạt động</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3 STAT BOXES (COUNTERS) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            <!-- Box 1: Chưa Phân Loại -->
+                            <div @click="phanLoaiFilter = 'unclassified'"
+                                 class="bg-white/10 hover:bg-white/15 border rounded-2xl p-3.5 space-y-1 cursor-pointer transition-all"
+                                 :class="phanLoaiFilter === 'unclassified' ? 'border-amber-400 ring-2 ring-amber-400/40 bg-amber-500/20' : 'border-white/10'">
+                                <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-300 flex items-center gap-1">
+                                    <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                    <span>Chưa phân loại (Cần làm ngay)</span>
+                                </span>
+                                <div class="text-2xl font-black font-mono text-amber-400" x-text="getPhanLoaiTickets('unclassified').length"></div>
+                            </div>
+
+                            <!-- Box 2: Đang hoạt động -->
+                            <div @click="phanLoaiFilter = 'active'"
+                                 class="bg-white/10 hover:bg-white/15 border rounded-2xl p-3.5 space-y-1 cursor-pointer transition-all"
+                                 :class="phanLoaiFilter === 'active' ? 'border-emerald-400 ring-2 ring-emerald-400/40 bg-emerald-500/20' : 'border-white/10'">
+                                <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 flex items-center gap-1">
+                                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                                    <span>🟢 Đã phân loại — Đang hoạt động</span>
+                                </span>
+                                <div class="text-2xl font-black font-mono text-emerald-400" x-text="getPhanLoaiTickets('active').length"></div>
+                            </div>
+
+                            <!-- Box 3: Không hoạt động -->
+                            <div @click="phanLoaiFilter = 'inactive'"
+                                 class="bg-white/10 hover:bg-white/15 border rounded-2xl p-3.5 space-y-1 cursor-pointer transition-all"
+                                 :class="phanLoaiFilter === 'inactive' ? 'border-rose-400 ring-2 ring-rose-400/40 bg-rose-500/20' : 'border-white/10'">
+                                <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose-300 flex items-center gap-1">
+                                    <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+                                    <span>🔴 Đã phân loại — Không hoạt động</span>
+                                </span>
+                                <div class="text-2xl font-black font-mono text-rose-400" x-text="getPhanLoaiTickets('inactive').length"></div>
+                            </div>
+                        </div>
+
+                        <!-- FILTER TOGGLE & SEARCH BAR -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/10 text-xs font-bold">
+                            <div class="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+                                <span class="text-slate-400 shrink-0">Hiển thị:</span>
+                                <button @click="phanLoaiFilter = 'unclassified'"
+                                        :class="phanLoaiFilter === 'unclassified' ? 'bg-amber-500 text-gray-950 font-black shadow-md' : 'bg-white/10 text-white hover:bg-white/20'"
+                                        class="px-3 py-1.5 rounded-xl transition-all whitespace-nowrap">
+                                    Chưa phân loại (<span x-text="getPhanLoaiTickets('unclassified').length"></span>)
+                                </button>
+                                <button @click="phanLoaiFilter = 'active'"
+                                        :class="phanLoaiFilter === 'active' ? 'bg-emerald-500 text-white font-black shadow-md' : 'bg-white/10 text-white hover:bg-white/20'"
+                                        class="px-3 py-1.5 rounded-xl transition-all whitespace-nowrap">
+                                    🟢 Đang hoạt động (<span x-text="getPhanLoaiTickets('active').length"></span>)
+                                </button>
+                                <button @click="phanLoaiFilter = 'inactive'"
+                                        :class="phanLoaiFilter === 'inactive' ? 'bg-rose-500 text-white font-black shadow-md' : 'bg-white/10 text-white hover:bg-white/20'"
+                                        class="px-3 py-1.5 rounded-xl transition-all whitespace-nowrap">
+                                    🔴 Không hoạt động (<span x-text="getPhanLoaiTickets('inactive').length"></span>)
+                                </button>
+                                <button @click="phanLoaiFilter = 'all'"
+                                        :class="phanLoaiFilter === 'all' ? 'bg-blue-600 text-white font-black shadow-md' : 'bg-white/10 text-white hover:bg-white/20'"
+                                        class="px-3 py-1.5 rounded-xl transition-all whitespace-nowrap">
+                                    Tất cả ticket mở (<span x-text="getPhanLoaiTickets('all').length"></span>)
+                                </button>
+                            </div>
+
+                            <!-- SEARCH INPUT INSIDE WORKSPACE -->
+                            <div class="relative w-full sm:w-64">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                    <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                                </div>
+                                <input type="text" x-model="phanLoaiSearchQuery" placeholder="Tìm theo RN/PL hoặc email..."
+                                       class="w-full bg-white/10 border border-white/20 rounded-xl pl-8 pr-7 py-1.5 text-white text-xs font-semibold focus:bg-white/20 focus:outline-none transition-all placeholder-slate-400">
+                                <button x-show="phanLoaiSearchQuery" @click="phanLoaiSearchQuery = ''" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-white">
+                                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TICKET CARDS FOR FAST CLASSIFICATION -->
+                    <div class="space-y-3">
+                        <template x-if="getPhanLoaiTickets(phanLoaiFilter).length === 0">
+                            <div class="bg-white rounded-3xl border border-gray-200 p-8 text-center text-gray-400 space-y-2 card-shadow">
+                                <i data-lucide="check-check" class="w-10 h-10 text-emerald-500 mx-auto"></i>
+                                <p class="text-sm font-bold text-gray-700">Tuyệt vời! Không có vé báo lỗi nào trong danh sách hiển thị này.</p>
+                            </div>
+                        </template>
+
+                        <template x-for="t in getPhanLoaiTickets(phanLoaiFilter)" :key="t.ticket_id">
+                            <div class="bg-white rounded-3xl border border-gray-200 p-5 card-shadow space-y-4 transition-all hover:border-emerald-300">
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
+                                    <div class="flex items-center gap-3">
+                                        <span class="px-3 py-1 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-700 font-mono font-black text-sm" x-text="t.stt_group"></span>
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-xs font-bold text-gray-500">Chủ Fam:</span>
+                                                <strong class="font-mono text-xs text-gray-900 select-all" x-text="t.owner_email || 'Chưa có thông tin'"></strong>
+                                            </div>
+                                            <p class="text-[11px] text-gray-400">Tạo lúc: <span x-text="formatDate(t.created_at)"></span></p>
+                                        </div>
+                                    </div>
+
+                                    <!-- CURRENT TAG BADGE & QUICK RESET -->
+                                    <div class="flex items-center gap-2">
+                                        <span x-show="!t.activity_status" class="px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800 border border-amber-300">
+                                            ⚠️ Chưa phân loại
+                                        </span>
+                                        <span x-show="t.activity_status === 'Đang hoạt động'" class="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                            🟢 Đang hoạt động
+                                        </span>
+                                        <span x-show="t.activity_status === 'Không hoạt động'" class="px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
+                                            🔴 Không hoạt động
+                                        </span>
+
+                                        <button x-show="t.activity_status" @click="tagTicketActivity(t.ticket_id, '')"
+                                                title="Hủy nhãn (Reset về Chưa phân loại)"
+                                                class="p-1 text-gray-400 hover:text-rose-600 transition-colors">
+                                            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- CUSTOMER EMAILS REPORTED & LINK TO CUSTOMER GUIDANCE PAGE -->
+                                <div class="bg-gray-50 rounded-2xl p-3.5 border border-gray-100 space-y-2 text-xs">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-[11px] font-extrabold uppercase text-gray-500 tracking-wider flex items-center gap-1">
+                                            <i data-lucide="users" class="w-3.5 h-3.5 text-blue-600"></i>
+                                            <span>Danh sách khách báo lỗi (<span x-text="(t.reported_emails || []).length"></span> email):</span>
+                                        </span>
+                                    </div>
+                                    
+                                    <div class="flex flex-wrap gap-2 pt-0.5">
+                                        <template x-for="em in (t.reported_emails || [])" :key="em">
+                                            <div class="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-gray-200 shadow-2xs">
+                                                <span class="font-mono text-xs font-bold text-gray-800" x-text="em"></span>
+                                                <a :href="'/members/checkstatuspl?email=' + encodeURIComponent(em)" target="_blank"
+                                                   title="Xem trang hướng dẫn của khách hàng này"
+                                                   class="text-indigo-600 hover:text-indigo-800 p-0.5 rounded hover:bg-indigo-50">
+                                                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                                                </a>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- 2 LARGE PROMINENT BUTTONS FOR FAST TAGGING -->
+                                <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                                    <button @click="tagTicketActivity(t.ticket_id, 'Đang hoạt động')"
+                                            :disabled="loading.activityTicketId === t.ticket_id"
+                                            :class="t.activity_status === 'Đang hoạt động' ? 'bg-emerald-600 text-white font-black' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold border border-emerald-200'"
+                                            class="py-2.5 px-3 rounded-xl transition-all text-center cursor-pointer text-xs flex items-center justify-center gap-1">
+                                        🟢 Hoạt động
+                                    </button>
+                                    <button @click="tagTicketActivity(t.ticket_id, 'Không hoạt động')"
+                                            :disabled="loading.activityTicketId === t.ticket_id"
+                                            :class="t.activity_status === 'Không hoạt động' ? 'bg-rose-600 text-white font-black' : 'bg-rose-50 text-rose-800 hover:bg-rose-100 font-bold border border-rose-200'"
+                                            class="py-2.5 px-3 rounded-xl transition-all text-center cursor-pointer text-xs flex items-center justify-center gap-1">
+                                        🔴 Tắt
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div> <!-- END TAB 4 (PHÂN LOẠI NHANH) -->
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-6 px-4 text-center border-t border-gray-200 text-xs text-gray-400 bg-white">
+        <p>© 2026 Go DNC — Fam Issue Tracker System (RN Groups). All rights reserved.</p>
+    </footer>
+
+    <script>
+        function adminPageApp() {
+            return {
+                webAppUrl: localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec',
+                unlocked: false,
+                username: '',
+                password: '',
+                role: localStorage.getItem('fam_admin_role') || 'staff',
+                tickets: [],
+                searchQuery: '',
+                quickFixText: '',
+                filterStatus: 'Tất cả',
+                filterCategory: 'Tất cả',
+                zaloFilter: 'pending',
+                zaloSentMap: JSON.parse(localStorage.getItem('fam_zalo_sent_map') || '{}'),
+                stats: { total: 0, open: 0, recurring: 0, overdue: 0, resolved: 0 },
+                cacheInfo: { cache_stale: false, stale_hours: 0, last_synced_at: null, count: 0 },
+                loading: { admin: false, sync: false, quickFix: false },
+                sendEmailNotice: localStorage.getItem('fam_send_email_notice') === 'true', // Lưu vĩnh viễn trạng thái chọn vào localStorage
+
+                // STATE CHO TAB VÀ ROUTING
+                activeAdminTab: 'all', // 'all', 'plus', 'mailphu'
+                warrantyAssignedEmails: [],
+                plusSearchQuery: '',
+                plusFilterStatus: 'Tất cả',
+                loadingAutoClassify: false,
+
+                // STATE CHO QUẢN LÝ YÊU CẦU MAIL PHỤ
+                mailPhuRequests: [],
+                mailPhuFilterStatus: 'Mới',
+                loadingMailPhuAdmin: false,
+
+                toast: { show: false, message: '', type: 'info', icon: 'info' },
+
+                async autoClassifyPlusTickets() {
+                    if (this.loadingAutoClassify) return;
+                    this.loadingAutoClassify = true;
+                    try {
+                        const res = await this.callApi('autoClassifyPlusTickets', {});
+                        if (res && res.success) {
+                            this.showToast(res.message || '🎉 Đã hoàn tất tự động phân loại ticket PL!', 'success', 'sparkles');
+                            await this.loadTickets(true);
+                        } else {
+                            this.showToast('❌ Lỗi tự động phân loại: ' + (res.message || 'Hệ thống bận'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    } finally {
+                        this.loadingAutoClassify = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                // STATE CHO PHÂN LOẠI NHANH
+                phanLoaiFilter: 'unclassified',
+                phanLoaiSearchQuery: '',
+                quickTagGroupInput: '',
+
+                async tagGroupDirectly(activityStatus) {
+                    const input = (this.quickTagGroupInput || '').trim();
+                    if (!input) return;
+                    if (!this.loading) this.loading = {};
+                    this.loading.quickTag = true;
+                    try {
+                        const res = await this.callApi('updateActivityStatus', { ticket_id: input, activity_status: activityStatus });
+                        if (res && res.success) {
+                            this.showToast(res.message || `🎉 Đã gắn nhãn "${activityStatus}" cho nhóm ${input}!`, 'success', 'tag');
+                            this.quickTagGroupInput = '';
+                            await this.loadTickets(true);
+                        } else {
+                            alert('Lỗi: ' + (res ? res.message : 'Không thể cập nhật'));
+                        }
+                    } catch (err) {
+                        alert('Lỗi: ' + err.message);
+                    } finally {
+                        this.loading.quickTag = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                getUnclassifiedTicketsCount() {
+                    return (this.tickets || []).filter(t => t.status !== 'Đã xử lý' && !t.activity_status).length;
+                },
+
+                getPhanLoaiTickets(filterType) {
+                    let openTickets = (this.tickets || []).filter(t => t.status !== 'Đã xử lý');
+
+                    if (this.phanLoaiSearchQuery && this.phanLoaiSearchQuery.trim()) {
+                        const q = this.phanLoaiSearchQuery.trim().toLowerCase();
+                        openTickets = openTickets.filter(t => {
+                            const stt = String(t.stt_group || '').toLowerCase();
+                            const owner = String(t.owner_email || '').toLowerCase();
+                            const emails = (t.reported_emails || []).join(' ').toLowerCase();
+                            return stt.includes(q) || owner.includes(q) || emails.includes(q);
+                        });
+                    }
+
+                    if (filterType === 'unclassified') {
+                        return openTickets.filter(t => !t.activity_status);
+                    } else if (filterType === 'active') {
+                        return openTickets.filter(t => t.activity_status === 'Đang hoạt động');
+                    } else if (filterType === 'inactive') {
+                        return openTickets.filter(t => t.activity_status === 'Không hoạt động');
+                    }
+                    return openTickets;
+                },
+
+                async tagTicketActivity(ticketId, activityStatus) {
+                    if (!ticketId) return;
+                    if (!this.loading) this.loading = {};
+                    this.loading.activityTicketId = ticketId;
+                    try {
+                        const res = await this.callApi('updateActivityStatus', { ticket_id: ticketId, activity_status: activityStatus });
+                        if (res && res.success) {
+                            const ticket = (this.tickets || []).find(t => t.ticket_id === ticketId);
+                            if (ticket) {
+                                ticket.activity_status = activityStatus;
+                            }
+                            this.tickets = [...this.tickets];
+                            this.showToast(`🎉 Đã gắn nhãn "${activityStatus}" cho ${ticketId}`, 'success', 'tag');
+                        } else {
+                            alert('Lỗi cập nhật: ' + (res ? res.message : 'Kết nối thất bại'));
+                        }
+                    } catch (err) {
+                        alert('Lỗi cập nhật: ' + err.message);
+                    } finally {
+                        this.loading.activityTicketId = null;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                setAdminTab(tabName) {
+                    this.activeAdminTab = tabName;
+                    if (window.history && window.history.replaceState) {
+                        const newUrl = tabName === 'tickets' ? '#tickets' : (tabName === 'mailphu' ? '#mailphu' : (tabName === 'phanloai' ? '#phanloai' : '#all'));
+                        window.history.replaceState(null, '', newUrl);
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                checkRoutingFromUrl() {
+                    const hash = (window.location.hash || '').toLowerCase();
+                    const path = (window.location.pathname || '').toLowerCase();
+                    const searchTab = new URLSearchParams(window.location.search).get('tab');
+
+                    if (hash === '#phanloai' || path.includes('/phanloai') || searchTab === 'phanloai') {
+                        this.activeAdminTab = 'phanloai';
+                    } else if (hash === '#tickets' || searchTab === 'tickets') {
+                        this.activeAdminTab = 'tickets';
+                    } else if (hash === '#mailphu' || path.includes('/mailphu') || searchTab === 'mailphu') {
+                        this.activeAdminTab = 'mailphu';
+                    } else {
+                        this.activeAdminTab = 'all';
+                    }
+                },
+
+                get plusTickets() {
+                    return (this.tickets || []).filter(t => t.stt_group && /^PL\d+$/i.test(String(t.stt_group).trim()));
+                },
+
+                get plusStats() {
+                    const list = this.plusTickets;
+                    return {
+                        total: list.length,
+                        open: list.filter(t => t.status !== 'Đã xử lý').length,
+                        fixThuong: list.filter(t => t.resolution_type === 'Fix thường').length,
+                        khachHuy: list.filter(t => t.resolution_type === 'Khách hủy').length,
+                        doiMailPhu: list.filter(t => t.resolution_type === 'Đổi mail phụ').length,
+                        dungBaoHanh: list.filter(t => t.resolution_type === 'Dùng TK bảo hành').length
+                    };
+                },
+
+                get filteredPlusTickets() {
+                    let list = [...this.plusTickets];
+
+                    if (this.plusSearchQuery && this.plusSearchQuery.trim()) {
+                        const q = this.plusSearchQuery.trim().toLowerCase();
+                        list = list.filter(t => {
+                            const sttMatch = t.stt_group && t.stt_group.toLowerCase().includes(q);
+                            const ticketIdMatch = t.ticket_id && t.ticket_id.toLowerCase().includes(q);
+                            const ownerMatch = t.owner_email && t.owner_email.toLowerCase().includes(q);
+                            const emailMatch = t.reported_emails && t.reported_emails.some(em => em.toLowerCase().includes(q));
+                            return sttMatch || ticketIdMatch || ownerMatch || emailMatch;
+                        });
+                    }
+
+                    if (this.plusFilterStatus === 'Chưa xử lý') {
+                        list = list.filter(t => t.status !== 'Đã xử lý');
+                    } else if (this.plusFilterStatus === 'Fix thường') {
+                        list = list.filter(t => t.resolution_type === 'Fix thường');
+                    } else if (this.plusFilterStatus === 'Khách hủy') {
+                        list = list.filter(t => t.resolution_type === 'Khách hủy');
+                    } else if (this.plusFilterStatus === 'Đổi mail phụ') {
+                        list = list.filter(t => t.resolution_type === 'Đổi mail phụ');
+                    } else if (this.plusFilterStatus === 'Dùng TK bảo hành') {
+                        list = list.filter(t => t.resolution_type === 'Dùng TK bảo hành');
+                    }
+
+                    return list.sort((a, b) => {
+                        const aOpen = a.status !== 'Đã xử lý';
+                        const bOpen = b.status !== 'Đã xử lý';
+                        if (aOpen && !bOpen) return -1;
+                        if (!aOpen && bOpen) return 1;
+                        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+                    });
+                },
+
+                getMailPhuMatchInfo(ticket) {
+                    if (!ticket || !this.mailPhuRequests || this.mailPhuRequests.length === 0) return null;
+                    const ticketEmails = new Set();
+                    if (ticket.owner_email) ticketEmails.add(ticket.owner_email.toLowerCase().trim());
+                    if (ticket.reported_emails) {
+                        ticket.reported_emails.forEach(e => ticketEmails.add(e.toLowerCase().trim()));
+                    }
+
+                    for (let r = 0; r < this.mailPhuRequests.length; r++) {
+                        const req = this.mailPhuRequests[r];
+                        const pEm = String(req.primary_email || '').trim().toLowerCase();
+                        const mPhu = String(req.mail_phu || '').trim().toLowerCase();
+
+                        if (ticketEmails.has(pEm) || ticketEmails.has(mPhu)) {
+                            return {
+                                status: req.status || 'Mới',
+                                mail_phu: req.mail_phu,
+                                primary_email: req.primary_email
+                            };
+                        }
+                    }
+                    return null;
+                },
+
+                isWarrantyAssigned(ticket) {
+                    if (!ticket || !this.warrantyAssignedEmails || this.warrantyAssignedEmails.length === 0) return false;
+                    const ticketEmails = [];
+                    if (ticket.owner_email) ticketEmails.push(ticket.owner_email.toLowerCase().trim());
+                    if (ticket.reported_emails) {
+                        ticket.reported_emails.forEach(e => ticketEmails.push(e.toLowerCase().trim()));
+                    }
+                    return ticketEmails.some(em => this.warrantyAssignedEmails.indexOf(em) !== -1);
+                },
+
+                async resolveTicketWithType(ticket, resolutionType) {
+                    if (!ticket || !ticket.ticket_id) return;
+                    ticket.saving = true;
+
+                    const resolvedBy = this.role === 'admin' ? 'Admin' : 'Nhân Viên';
+                    try {
+                        const res = await this.callApi('resolveTicketWithType', {
+                            ticket_id: ticket.ticket_id,
+                            resolutionType: resolutionType,
+                            resolvedBy: resolvedBy,
+                            note: `Đã xử lý theo hướng: ${resolutionType}`,
+                            send_email: this.sendEmailNotice
+                        });
+
+                        if (res && res.success) {
+                            ticket.status = 'Đã xử lý';
+                            ticket.editStatus = 'Đã xử lý';
+                            ticket.resolution_type = resolutionType;
+                            this.showToast(`🎉 Đã lưu kết quả "${resolutionType}" cho nhóm ${ticket.stt_group}!`, 'success', 'check-circle-2');
+                        } else {
+                            this.showToast('❌ Không thể lưu: ' + (res.message || 'Lỗi hệ thống'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    } finally {
+                        ticket.saving = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async fetchMailPhuRequests() {
+                    this.loadingMailPhuAdmin = true;
+                    try {
+                        const res = await this.callApi('getMailPhuRequests', { statusFilter: 'Tất cả' });
+                        if (res && res.success) {
+                            this.mailPhuRequests = res.requests || [];
+                        }
+                    } catch (err) {
+                        console.error('Lỗi tải danh sách mail phụ:', err);
+                    } finally {
+                        this.loadingMailPhuAdmin = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                get filteredMailPhuRequests() {
+                    let list = [...(this.mailPhuRequests || [])];
+                    if (this.mailPhuFilterStatus && this.mailPhuFilterStatus !== 'Tất cả') {
+                        list = list.filter(r => r.status === this.mailPhuFilterStatus);
+                    }
+                    return list;
+                },
+
+                formatDateOnly(rawStr) {
+                    if (!rawStr) return '';
+                    const str = String(rawStr).trim();
+                    if (!str) return '';
+
+                    if (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(str)) {
+                        return str;
+                    }
+
+                    try {
+                        const d = new Date(str);
+                        if (isNaN(d.getTime())) return str;
+                        const day = String(d.getDate()).padStart(2, '0');
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const year = d.getFullYear();
+                        return `${day}/${month}/${year}`;
+                    } catch (e) {
+                        return str;
+                    }
+                },
+
+                async updateMailPhuStatus(requestId, newStatus) {
+                    if (!requestId || !newStatus) return;
+                    try {
+                        const res = await this.callApi('updateMailPhuStatus', {
+                            requestId: requestId,
+                            newStatus: newStatus
+                        });
+                        if (res && res.success) {
+                            this.showToast('🎉 Đã chuyển trạng thái sang "' + newStatus + '"!', 'success', 'check-circle-2');
+                            await this.fetchMailPhuRequests();
+                        } else {
+                            this.showToast('❌ Lỗi: ' + (res.message || 'Không thể cập nhật'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    }
+                },
+
+                async deleteMailPhuRequest(requestId) {
+                    if (!requestId) return;
+                    if (!confirm('⚠️ Bạn có chắc chắn muốn XÓA yêu cầu đổi mail phụ này?')) return;
+                    try {
+                        const res = await this.callApi('deleteMailPhuRequest', { requestId: requestId });
+                        if (res && res.success) {
+                            this.showToast('🗑️ Đã xóa yêu cầu đổi mail phụ thành công!', 'success', 'trash-2');
+                            await this.fetchMailPhuRequests();
+                        } else {
+                            this.showToast('❌ Lỗi: ' + (res.message || 'Không thể xóa'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    }
+                },
+
+                get zaloPendingList() {
+                    if (!this.tickets || this.tickets.length === 0) return [];
+                    const list = [];
+                    for (let i = 0; i < this.tickets.length; i++) {
+                        const t = this.tickets[i];
+                        if (!t.reports) continue;
+                        for (let j = 0; j < t.reports.length; j++) {
+                            const rep = t.reports[j];
+                            const phone = this.getZaloPhone(rep.message);
+                            if (phone) {
+                                list.push({
+                                    ticket: t,
+                                    stt_group: t.stt_group,
+                                    customer_email: rep.customer_email,
+                                    zalo_phone: phone,
+                                    reported_at: rep.reported_at,
+                                    status: t.status
+                                });
+                            }
+                        }
+                    }
+                    return list;
+                },
+
+                get filteredZaloList() {
+                    const list = this.zaloPendingList;
+                    if (this.zaloFilter === 'pending') {
+                        return list.filter(i => !this.isZaloSent(i.customer_email, i.zalo_phone));
+                    }
+                    if (this.zaloFilter === 'sent') {
+                        return list.filter(i => this.isZaloSent(i.customer_email, i.zalo_phone));
+                    }
+                    return list;
+                },
+
+                isZaloSent(email, phone) {
+                    if (!email) return false;
+                    const em = email.toLowerCase().trim();
+                    if (this.zaloSentMap[em]) return true;
+                    if (phone) {
+                        const key = em + '_' + phone.trim();
+                        if (this.zaloSentMap[key]) return true;
+                    }
+                    return false;
+                },
+
+                async toggleZaloSent(email, reportId = null, zaloPhone = '') {
+                    if (!email) return;
+                    const cleanEmail = email.toLowerCase().trim();
+                    const key = cleanEmail;
+                    const phoneKey = zaloPhone ? cleanEmail + '_' + zaloPhone.trim() : '';
+                    
+                    const isCurrentlySent = !!(this.zaloSentMap[key] || (phoneKey && this.zaloSentMap[phoneKey]));
+                    const nextState = !isCurrentlySent;
+
+                    if (nextState) {
+                        const nowIso = new Date().toISOString();
+                        this.zaloSentMap[key] = nowIso;
+                        if (phoneKey) this.zaloSentMap[phoneKey] = nowIso;
+                        this.showToast('✅ Đã đánh dấu Zalo cho ' + email, 'success', 'check-circle-2');
+                    } else {
+                        delete this.zaloSentMap[key];
+                        if (phoneKey) delete this.zaloSentMap[phoneKey];
+                        this.showToast('Đã hủy đánh dấu Zalo', 'info', 'rotate-ccw');
+                    }
+                    localStorage.setItem('fam_zalo_sent_map', JSON.stringify(this.zaloSentMap));
+
+                    // Đồng bộ trạng thái Zalo tập trung lên Google Spreadsheet backend cho mọi thiết bị
+                    try {
+                        await this.callApi('toggleZaloSent', {
+                            customerEmail: cleanEmail,
+                            reportId: reportId,
+                            isSent: nextState
+                        });
+                    } catch (err) {
+                        console.error('Lỗi sync Zalo status lên server:', err);
+                    }
+                },
+
+                dataGocCtvMap: {},
+
+                async fetchDatagocCtvMap() {
+                    try {
+                        const sheetId = '1sdL8wF3pLDZ6V_mUqG2aVmI5f60foDzD0ZA0CmC6m3c';
+                        const map = {};
+                        
+                        const [datagocRes, appDataRes] = await Promise.all([
+                            fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=DATAGoc&t=${Date.now()}`).then(r => r.text()).catch(() => ''),
+                            fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=APP_DATA&t=${Date.now()}`).then(r => r.text()).catch(() => '')
+                        ]);
+
+                        const processCsv = (csvText) => {
+                            if (!csvText) return;
+                            const rows = this.parseCsvRows(csvText);
+                            for (let i = 1; i < rows.length; i++) {
+                                const r = rows[i];
+                                if (r && r.length >= 8) {
+                                    const primaryEmail = String(r[2] || '').trim().toLowerCase();
+                                    const mailPhu = String(r[6] || '').trim().toLowerCase();
+                                    const ctv = String(r[7] || '').trim();
+                                    if (ctv && ctv.toUpperCase() !== 'CTV' && ctv !== '#REF!') {
+                                        if (primaryEmail && !map[primaryEmail]) map[primaryEmail] = ctv;
+                                        if (mailPhu && !map[mailPhu]) map[mailPhu] = ctv;
+                                    }
+                                }
+                            }
+                        };
+
+                        processCsv(datagocRes);
+                        processCsv(appDataRes);
+
+                        this.dataGocCtvMap = map;
+                    } catch (err) {
+                        console.error('Lỗi tải dữ liệu DATAGoc CTV map:', err);
+                    }
+                },
+
+                parseCsvRows(csvText) {
+                    if (!csvText) return [];
+                    const rows = [];
+                    let currentRow = [];
+                    let currentCell = '';
+                    let inQuotes = false;
+                    
+                    for (let i = 0; i < csvText.length; i++) {
+                        const c = csvText[i];
+                        const nextC = csvText[i + 1];
+                        
+                        if (c === '"') {
+                            if (inQuotes && nextC === '"') {
+                                currentCell += '"';
+                                i++;
+                            } else {
+                                inQuotes = !inQuotes;
+                            }
+                        } else if (c === ',' && !inQuotes) {
+                            currentRow.push(currentCell.trim());
+                            currentCell = '';
+                        } else if ((c === '\r' || c === '\n') && !inQuotes) {
+                            if (c === '\r' && nextC === '\n') i++;
+                            currentRow.push(currentCell.trim());
+                            if (currentRow.length > 0 && currentRow.some(cell => cell)) {
+                                rows.push(currentRow);
+                            }
+                            currentRow = [];
+                            currentCell = '';
+                        } else {
+                            currentCell += c;
+                        }
+                    }
+                    if (currentCell || currentRow.length > 0) {
+                        currentRow.push(currentCell.trim());
+                        if (currentRow.length > 0 && currentRow.some(cell => cell)) {
+                            rows.push(currentRow);
+                        }
+                    }
+                    return rows;
+                },
+
+                getDatagocCtv(email) {
+                    if (!email) return '';
+                    const cleanEmail = String(email).trim().toLowerCase();
+                    if (!cleanEmail || !this.dataGocCtvMap) return '';
+                    return this.dataGocCtvMap[cleanEmail] || '';
+                },
+
+                init() {
+                    this.checkRoutingFromUrl();
+                    window.addEventListener('hashchange', () => this.checkRoutingFromUrl());
+
+                    const savedAuth = localStorage.getItem('fam_admin_unlocked');
+                    if (savedAuth === 'true') {
+                        this.unlocked = true;
+                        this.role = localStorage.getItem('fam_admin_role') || 'staff';
+                        this.loadTickets();
+                        this.fetchMailPhuRequests();
+                        this.fetchDatagocCtvMap();
+                    }
+
+                    // Tự động polling làm mới danh sách ticket & mail phụ mỗi 60 giây
+                    setInterval(() => {
+                        if (this.unlocked && !this.loading.admin) {
+                            this.loadTickets(true);
+                            this.fetchMailPhuRequests();
+                        }
+                    }, 60000);
+
+                    this.$watch('sendEmailNotice', val => localStorage.setItem('fam_send_email_notice', val));
+
+                    setTimeout(() => lucide.createIcons(), 50);
+                },
+
+                showToast(msg, type = 'info', icon = 'info') {
+                    this.toast = { show: true, message: msg, type, icon };
+                    setTimeout(() => { this.toast.show = false; }, 4000);
+                },
+
+                unlock() {
+                    const u = String(this.username || '').trim();
+                    const p = String(this.password || '').trim();
+
+                    if (u === 'dnc' && p === 'dnc1m@') {
+                        this.role = 'admin';
+                        this.unlocked = true;
+                        localStorage.setItem('fam_admin_unlocked', 'true');
+                        localStorage.setItem('fam_admin_role', 'admin');
+                        this.loadTickets();
+                        this.fetchMailPhuRequests();
+                        this.fetchDatagocCtvMap();
+                        this.showToast('👑 Quản Lý đăng nhập thành công (Xem Zalo full)', 'success', 'crown');
+                    } else if (u === 'goshop' && p === 'goshop') {
+                        this.role = 'staff';
+                        this.unlocked = true;
+                        localStorage.setItem('fam_admin_unlocked', 'true');
+                        localStorage.setItem('fam_admin_role', 'staff');
+                        this.loadTickets();
+                        this.fetchMailPhuRequests();
+                        this.fetchDatagocCtvMap();
+                        this.showToast('👤 Nhân Viên đăng nhập thành công', 'info', 'user');
+                    } else {
+                        alert('❌ Sai Tên đăng nhập hoặc Mật khẩu! Vui lòng thử lại.');
+                    }
+                },
+
+                logout() {
+                    this.unlocked = false;
+                    this.username = '';
+                    this.password = '';
+                    this.role = 'staff';
+                    localStorage.removeItem('fam_admin_unlocked');
+                    localStorage.removeItem('fam_admin_role');
+                },
+
+                async submitProactiveQuickFix() {
+                    if (!this.quickFixText || !this.quickFixText.trim()) return;
+
+                    this.loading.quickFix = true;
+                    try {
+                        const payload = {
+                            rawText: this.quickFixText.trim(),
+                            resolvedBy: 'Admin'
+                        };
+                        const res = await this.callApi('proactiveQuickFix', payload);
+
+                        if (res.success) {
+                            this.showToast(res.message || `🎉 Đã ghi nhận ĐÃ FIX cho ${res.count} nhóm Fam!`, 'success', 'check-circle-2');
+                            this.quickFixText = '';
+                            await this.loadTickets(true);
+                        } else {
+                            this.showToast(res.message || 'Lỗi khi ghi nhận fix hàng loạt.', 'error', 'alert-triangle');
+                        }
+                    } catch (err) {
+                        this.showToast('Lỗi kết nối máy chủ: ' + err.message, 'error', 'alert-triangle');
+                    } finally {
+                        this.loading.quickFix = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                formatDate(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
+                               d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
+                    } catch (e) { return isoStr; }
+                },
+
+                formatRelativeTime(isoStr) {
+                    if (!isoStr) return '---';
+                    try {
+                        const d = new Date(isoStr);
+                        if (isNaN(d.getTime())) return isoStr;
+                        const now = Date.now();
+                        const diffMs = now - d.getTime();
+                        if (diffMs < 0) return 'Vừa xong';
+                        const diffMins = Math.floor(diffMs / 60000);
+                        if (diffMins < 1) return 'Vừa xong';
+                        if (diffMins < 60) return `${diffMins} phút trước`;
+                        const diffHours = Math.floor(diffMins / 60);
+                        if (diffHours < 24) return `${diffHours} giờ trước`;
+                        const diffDays = Math.floor(diffHours / 24);
+                        return `${diffDays} ngày trước`;
+                    } catch (e) { return isoStr; }
+                },
+
+                calcDuration(startIso, endIso) {
+                    if (!startIso || !endIso) return '';
+                    try {
+                        const s = new Date(startIso).getTime();
+                        const e = new Date(endIso).getTime();
+                        if (isNaN(s) || isNaN(e) || e <= s) return '';
+                        const diffMins = Math.round((e - s) / 60000);
+                        if (diffMins < 60) return ` (sau ${diffMins} phút)`;
+                        const hrs = Math.floor(diffMins / 60);
+                        const mins = diffMins % 60;
+                        return ` (sau ${hrs}h ${mins}m)`;
+                    } catch (err) { return ''; }
+                },
+
+                getZaloPhone(msg) {
+                    if (!msg) return null;
+                    const str = String(msg);
+                    const match = str.match(/\[Zalo:\s*([0-9\s\+\.-]+)\]/i);
+                    if (match) return match[1].replace(/\D+/g, '');
+
+                    const phoneMatch = str.match(/\b(0[3|5|7|8|9]\d{8})\b/);
+                    if (phoneMatch) return phoneMatch[1];
+
+                    return null;
+                },
+
+                getTicketZaloPhone(t) {
+                    if (!t || !t.reports) return null;
+                    for (let i = 0; i < t.reports.length; i++) {
+                        const phone = this.getZaloPhone(t.reports[i].message);
+                        if (phone) return phone;
+                    }
+                    return null;
+                },
+
+                getTicketZaloEmail(t) {
+                    if (!t || !t.reports) return '';
+                    for (let i = 0; i < t.reports.length; i++) {
+                        const phone = this.getZaloPhone(t.reports[i].message);
+                        if (phone) return t.reports[i].customer_email;
+                    }
+                    return t.reported_emails ? t.reported_emails[0] : '';
+                },
+
+                async openZaloChat(ticket, customerEmail, zaloPhone) {
+                    if (!zaloPhone) return;
+                    
+                    const stt = ticket ? ticket.stt_group : '';
+                    const owner = ticket ? ticket.owner_email : '';
+                    
+                    const msgTemplate = `✅ SHOP GO DNC BÁO KẾT QUẢ XỬ LÝ KHÁCH HÀNG
+-----------------------------------
+📌 Nhóm Fam: ${stt || 'RN'}
+📧 Email của bạn: ${customerEmail || ''}
+👑 Email Chủ Fam: ${owner || 'Đã cập nhật'}
+🎉 Tình trạng: Đã xử lý xong hoàn tất!
+
+👉 Bạn vui lòng kiểm tra lại ứng dụng/tài khoản nhé. Cảm ơn bạn đã ủng hộ Go DNC! ❤️`;
+
+                    // Synchronously copy to clipboard so Ctrl+V is guaranteed 100%
+                    this.fallbackCopyText(msgTemplate);
+                    
+                    // Tự động đánh dấu đã báo Zalo & Đồng bộ tập trung lên Server
+                    await this.toggleZaloSent(customerEmail, ticket ? ticket.ticket_id : null, zaloPhone);
+
+                    const cleanPhone = String(zaloPhone).replace(/\D+/g, '');
+                    window.open(`https://zalo.me/${cleanPhone}`, '_blank');
+                    
+                    this.showToast(`📋 Đã tự động copy tin nhắn báo fix! Trong Zalo vừa mở ➔ Bấm Ctrl+V & Enter để gửi ngay!`, 'success', 'check-circle-2');
+                },
+
+                isOverdue(ticket) {
+                    if (!ticket || ticket.status === 'Đã xử lý') return false;
+                    if (!ticket.created_at) return false;
+                    try {
+                        const createdMs = new Date(ticket.created_at).getTime();
+                        if (isNaN(createdMs)) return false;
+                        const diffMs = Date.now() - createdMs;
+                        return diffMs > 2 * 60 * 60 * 1000;
+                    } catch (e) { return false; }
+                },
+
+                getStatusBadgeClass(status) {
+                    switch (status) {
+                        case 'Mới': return 'bg-amber-100 text-amber-800 border-amber-300';
+                        case 'Đang xử lý': return 'bg-blue-100 text-blue-800 border-blue-300';
+                        case 'Đã xử lý': return 'bg-green-100 text-green-800 border-green-300';
+                        default: return 'bg-gray-100 text-gray-700 border-gray-300';
+                    }
+                },
+
+                getStatusDotClass(status) {
+                    switch (status) {
+                        case 'Mới': return 'bg-amber-500';
+                        case 'Đang xử lý': return 'bg-blue-600 animate-pulse';
+                        case 'Đã xử lý': return 'bg-green-600';
+                        default: return 'bg-gray-400';
+                    }
+                },
+
+                copyText(text) {
+                    if (!text || text === '--') return;
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => {
+                            this.showToast('Đã sao chép email: ' + text, 'success', 'check-circle-2');
+                        }).catch(() => {
+                            this.fallbackCopyText(text);
+                        });
+                    } else {
+                        this.fallbackCopyText(text);
+                    }
+                },
+
+                insertEmailToNote(ticket, email) {
+                    if (!email) return;
+                    if (!ticket.editNote || !ticket.editNote.trim()) {
+                        ticket.editNote = 'Fix: ' + email;
+                    } else if (!ticket.editNote.includes(email)) {
+                        ticket.editNote += ', ' + email;
+                    }
+                    this.copyText(email);
+                },
+
+                fallbackCopyText(text) {
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    textarea.style.position = 'fixed';
+                    textarea.style.opacity = '0';
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    try {
+                        document.execCommand('copy');
+                        this.showToast('Đã sao chép email: ' + text, 'success', 'check-circle-2');
+                    } catch (e) {}
+                    document.body.removeChild(textarea);
+                },
+
+                get openTickets() {
+                    return (this.tickets || []).filter(t => t.status !== 'Đã xử lý');
+                },
+
+                get unclassifiedTickets() {
+                    return (this.tickets || []).filter(t => t.status !== 'Đã xử lý' && (!t.activity_status || (t.activity_status !== 'Đang hoạt động' && t.activity_status !== 'Không hoạt động')));
+                },
+
+                get activeTickets() {
+                    return (this.tickets || []).filter(t => t.status !== 'Đã xử lý' && t.activity_status === 'Đang hoạt động');
+                },
+
+                get inactiveTickets() {
+                    return (this.tickets || []).filter(t => t.status !== 'Đã xử lý' && t.activity_status === 'Không hoạt động');
+                },
+
+                get pendingRNTickets() {
+                    return (this.tickets || []).filter(t => t.status !== 'Đã xử lý' && t.stt_group && String(t.stt_group).toUpperCase().startsWith('RN'));
+                },
+
+                get pendingPLTickets() {
+                    return (this.tickets || []).filter(t => t.status !== 'Đã xử lý' && t.stt_group && String(t.stt_group).toUpperCase().startsWith('PL'));
+                },
+
+                async quickFixTicket(t) {
+                    if (!t || !t.ticket_id) return;
+                    if (!confirm('Xác nhận đánh dấu "Đã xử lý" cho nhóm ' + t.stt_group + '?')) return;
+
+                    const resolvedBy = this.role === 'admin' ? 'Admin' : 'Nhân Viên';
+                    try {
+                        const res = await this.callApi('updateTicketStatus', {
+                            ticket_id: t.ticket_id,
+                            newStatus: 'Đã xử lý',
+                            resolvedBy: resolvedBy,
+                            note: 'Đã fix xong qua bảng liệt kê nhanh',
+                            send_email: this.sendEmailNotice
+                        });
+
+                        if (res.success) {
+                            this.showToast('🎉 Đã ghi nhận ĐÃ FIX XONG cho nhóm ' + t.stt_group + '!', 'success');
+                            await this.loadTickets(true);
+                        } else {
+                            this.showToast('❌ Không thể cập nhật: ' + (res.message || 'Lỗi chưa xác định'), 'error');
+                        }
+                    } catch (err) {
+                        this.showToast('❌ Lỗi kết nối: ' + err.message, 'error');
+                    }
+                },
+
+                getTicketCategoryInfo(t) {
+                    if (!t) return null;
+
+                    // Ưu tiên 1: field report_type từ tab Báo Lỗi mới
+                    const reportType = String(t.report_type || '').toLowerCase();
+                    if (reportType === 'nhom_khong_hoat_dong') {
+                        return { type: 'B', label: '🔴 Nhóm không hoạt động', class: 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold' };
+                    }
+                    if (reportType === 'mat_premium_nhom_hoat_dong') {
+                        return { type: 'A', label: '🟡 Mất Premium', class: 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold' };
+                    }
+
+                    // Ưu tiên 2: text matching từ message (check B trước để tránh false positive)
+                    let text = String(t.message || t.note || t.reason || t.issue_type || '').toLowerCase();
+                    if (t.reports && Array.isArray(t.reports)) {
+                        t.reports.forEach(r => {
+                            if (r.message) text += ' ' + String(r.message).toLowerCase();
+                            if (r.report_type) text += ' ' + String(r.report_type).toLowerCase();
+                        });
+                    }
+
+                    // Check B TRƯỚC (nhóm không hoạt động) — tránh false positive khi message có cả 2 từ
+                    if (
+                        text.includes('[nhóm không hoạt động') ||
+                        text.includes('nhom_khong_hoat_dong') ||
+                        (text.includes('nhóm không hoạt động') && !text.includes('[mất premium - nhóm vẫn'))
+                    ) {
+                        return { type: 'B', label: '🔴 Nhóm không hoạt động', class: 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold' };
+                    }
+
+                    // Check A (mất premium, nhóm vẫn hoạt động)
+                    if (
+                        text.includes('[mất premium') ||
+                        text.includes('mat_premium_nhom_hoat_dong') ||
+                        (text.includes('mất premium') || text.includes('mat premium'))
+                    ) {
+                        return { type: 'A', label: '🟡 Mất Premium', class: 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold' };
+                    }
+
+                    // Fallback cũ
+                    if (text.includes('nhóm lỗi') || text.includes('nhom loi')) {
+                        return { type: 'B', label: '🔴 Nhóm lỗi', class: 'bg-rose-100 text-rose-900 border-rose-300 font-extrabold' };
+                    }
+
+                    return null;
+                },
+
+                getTicketAgeText(t) {
+                    if (!t) return '';
+                    const dateStr = t.created_at || t.timestamp || t.date;
+                    if (!dateStr) return '';
+                    
+                    try {
+                        const createdDate = new Date(dateStr);
+                        if (isNaN(createdDate.getTime())) return '';
+                        const now = new Date();
+                        const diffMs = now - createdDate;
+                        if (diffMs <= 0) return 'Vừa báo';
+                        
+                        const diffMins = Math.floor(diffMs / (1000 * 60));
+                        const diffHours = Math.floor(diffMins / 60);
+                        const remMins = diffMins % 60;
+                        const diffDays = Math.floor(diffHours / 24);
+
+                        if (diffDays > 0) {
+                            const remHours = diffHours % 24;
+                            return `Báo ${diffDays}d ${remHours}h trước`;
+                        }
+                        if (diffHours > 0) {
+                            return `Báo ${diffHours}h ${remMins}p trước`;
+                        }
+                        return `Báo ${diffMins}p trước`;
+                    } catch(e) {
+                        return '';
+                    }
+                },
+
+                get filteredTickets() {
+                    let list = [...(this.tickets || [])];
+
+                    if (this.searchQuery && this.searchQuery.trim()) {
+                        const q = this.searchQuery.trim().toLowerCase();
+                        list = list.filter(t => {
+                            const sttMatch = t.stt_group && t.stt_group.toLowerCase().includes(q);
+                            const ticketIdMatch = t.ticket_id && t.ticket_id.toLowerCase().includes(q);
+                            const ownerMatch = t.owner_email && t.owner_email.toLowerCase().includes(q);
+                            const emailMatch = t.reported_emails && t.reported_emails.some(em => em.toLowerCase().includes(q));
+                            const ctvMatch = t.reports && t.reports.some(r => r.submitted_by && r.submitted_by.toLowerCase().includes(q));
+                            return sttMatch || ticketIdMatch || ownerMatch || emailMatch || ctvMatch;
+                        });
+                    }
+
+                    if (this.filterStatus === 'Đang mở') {
+                        list = list.filter(t => t.status !== 'Đã xử lý');
+                    } else if (this.filterStatus === 'Tái phát') {
+                        list = list.filter(t => t.is_recurring);
+                    } else if (this.filterStatus === 'Quá hạn') {
+                        list = list.filter(t => this.isOverdue(t));
+                    } else if (this.filterStatus === 'Đã xử lý') {
+                        list = list.filter(t => t.status === 'Đã xử lý');
+                    }
+
+                    if (this.filterCategory === 'A') {
+                        list = list.filter(t => {
+                            const cat = this.getTicketCategoryInfo(t);
+                            return cat && cat.type === 'A';
+                        });
+                    } else if (this.filterCategory === 'B') {
+                        list = list.filter(t => {
+                            const cat = this.getTicketCategoryInfo(t);
+                            return cat && cat.type === 'B';
+                        });
+                    }
+
+                    return list.sort((a, b) => {
+                        const aOverdue = this.isOverdue(a);
+                        const bOverdue = this.isOverdue(b);
+                        if (aOverdue && !bOverdue) return -1;
+                        if (!aOverdue && bOverdue) return 1;
+
+                        const aOpen = a.status !== 'Đã xử lý';
+                        const bOpen = b.status !== 'Đã xử lý';
+                        if (aOpen && !bOpen) return -1;
+                        if (!aOpen && bOpen) return 1;
+
+                        if (a.is_recurring && !b.is_recurring) return -1;
+                        if (!a.is_recurring && b.is_recurring) return 1;
+
+                        return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+                    });
+                },
+
+                cacheEntries: [],
+                sttMembersMap: {},
+
+                get famLookupResult() {
+                    const q = (this.searchQuery || '').trim().toLowerCase();
+                    if (!q) return null;
+
+                    let matchedEntry = (this.cacheEntries || []).find(e => e.email.toLowerCase() === q || e.email.toLowerCase().includes(q));
+                    
+                    let targetSttGroup = '';
+                    let targetOwnerEmail = '';
+
+                    if (matchedEntry) {
+                        targetSttGroup = matchedEntry.stt_group;
+                        targetOwnerEmail = matchedEntry.owner_email;
+                    } else {
+                        const cleanStt = q.toUpperCase();
+                        if (this.sttMembersMap && this.sttMembersMap[cleanStt]) {
+                            targetSttGroup = cleanStt;
+                        } else {
+                            const tMatch = (this.tickets || []).find(t => 
+                                (t.stt_group && t.stt_group.toLowerCase() === q) || 
+                                (t.owner_email && t.owner_email.toLowerCase().includes(q))
+                            );
+                            if (tMatch) {
+                                targetSttGroup = tMatch.stt_group;
+                                targetOwnerEmail = tMatch.owner_email;
+                            }
+                        }
+                    }
+
+                    if (!targetSttGroup) return null;
+
+                    let members = (this.sttMembersMap && this.sttMembersMap[targetSttGroup]) ? [...this.sttMembersMap[targetSttGroup]] : [];
+
+                    const ticketForGroup = (this.tickets || []).find(t => t.stt_group === targetSttGroup && t.status !== 'Đã xử lý') ||
+                                           (this.tickets || []).find(t => t.stt_group === targetSttGroup);
+
+                    if (!targetOwnerEmail && ticketForGroup) {
+                        targetOwnerEmail = ticketForGroup.owner_email;
+                    }
+
+                    if (ticketForGroup && ticketForGroup.reported_emails) {
+                        ticketForGroup.reported_emails.forEach(em => {
+                            if (!members.some(m => m.email.toLowerCase() === em.toLowerCase())) {
+                                members.push({ email: em, ctv: '' });
+                            }
+                        });
+                    }
+
+                    return {
+                        stt_group: targetSttGroup,
+                        owner_email: targetOwnerEmail || 'Chưa rõ tài khoản gốc',
+                        members: members,
+                        ticket: ticketForGroup || null
+                    };
+                },
+
+                async quickFixFamGroup(famLookup) {
+                    if (!famLookup || !famLookup.stt_group) return;
+                    const stt = famLookup.stt_group;
+
+                    try {
+                        this.showToast(`Đang đánh dấu đã fix nhóm ${stt}...`, 'info', 'loader');
+                        
+                        let ticketId = famLookup.ticket ? famLookup.ticket.ticket_id : null;
+                        
+                        if (!ticketId) {
+                            const subRes = await this.callApi('submitBulkReport', {
+                                emailListStr: famLookup.owner_email && famLookup.owner_email.includes('@') ? famLookup.owner_email : stt,
+                                ctvName: 'Admin Proactive Fix'
+                            });
+                            if (subRes.success && subRes.ticket_ids && subRes.ticket_ids.length > 0) {
+                                ticketId = subRes.ticket_ids[0];
+                            }
+                        }
+
+                        if (ticketId) {
+                            await this.callApi('updateTicketStatus', {
+                                ticket_id: ticketId,
+                                newStatus: 'Đã xử lý',
+                                resolvedBy: 'Admin',
+                                note: 'Fixed proactively by Admin'
+                            });
+                        }
+
+                        this.showToast(`✅ Đã đánh dấu fix xong nhóm ${stt}! Các CTV liên quan sẽ thấy ngay lập tức.`, 'success', 'check-circle-2');
+                        await this.loadTickets(true);
+                    } catch (err) {
+                        this.showToast('Lỗi khi đánh dấu fix: ' + (err.message || err), 'error', 'alert-triangle');
+                    }
+                },
+
+                async loadTickets(isSilent = false) {
+                    if (!isSilent) this.loading.admin = true;
+
+                    try {
+                        const res = await this.callApi('listTickets', {});
+
+                        if (res.success) {
+                            this.cacheEntries = res.cache_entries || [];
+                            this.sttMembersMap = res.stt_members_map || {};
+                            this.warrantyAssignedEmails = res.warranty_assigned_emails || [];
+                            this.tickets = (res.tickets || []).map(t => ({
+                                ...t,
+                                editStatus: t.status,
+                                editResolvedBy: t.resolved_by || 'Admin',
+                                editNote: t.note || '',
+                                saving: false,
+                                expanded: false
+                            }));
+
+                            // Nạp đồng bộ Trạng thái Báo Zalo từ Server (Google Sheets) sang Client
+                            (this.tickets || []).forEach(t => {
+                                if (t.reports) {
+                                    t.reports.forEach(r => {
+                                        if (r.is_zalo_sent || r.zalo_sent_at) {
+                                            if (r.customer_email) {
+                                                const cleanEm = r.customer_email.toLowerCase().trim();
+                                                const nowVal = r.zalo_sent_at || new Date().toISOString();
+                                                this.zaloSentMap[cleanEm] = nowVal;
+                                                const phone = this.getZaloPhone(r.message);
+                                                if (phone) {
+                                                    this.zaloSentMap[cleanEm + '_' + phone] = nowVal;
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                            localStorage.setItem('fam_zalo_sent_map', JSON.stringify(this.zaloSentMap));
+
+                            this.calculateStats();
+
+                            if (res.cache_info) {
+                                this.cacheInfo = res.cache_info;
+                            }
+                        } else {
+                            if (!isSilent) this.showToast(res.message || 'Lỗi tải danh sách ticket', 'error');
+                        }
+                    } catch (err) {
+                        if (!isSilent) this.showToast(err.message || 'Không thể kết nối máy chủ', 'error');
+                    } finally {
+                        if (!isSilent) this.loading.admin = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                calculateStats() {
+                    const total = this.tickets.length;
+                    const open = this.tickets.filter(t => t.status !== 'Đã xử lý').length;
+                    const recurring = this.tickets.filter(t => t.is_recurring).length;
+                    const overdue = this.tickets.filter(t => this.isOverdue(t)).length;
+                    const resolved = this.tickets.filter(t => t.status === 'Đã xử lý').length;
+
+                    this.stats = { total, open, recurring, overdue, resolved };
+                },
+
+                async quickUpdateStatus(ticket, newStatus) {
+                    ticket.saving = true;
+                    const oldStatus = ticket.status;
+                    ticket.status = newStatus;
+                    ticket.editStatus = newStatus;
+
+                    try {
+                        const payload = {
+                            ticket_id: ticket.ticket_id,
+                            ticketId: ticket.ticket_id,
+                            newStatus: newStatus,
+                            status: newStatus,
+                            resolvedBy: ticket.editResolvedBy || 'Admin',
+                            resolved_by: ticket.editResolvedBy || 'Admin',
+                            note: ticket.editNote || '',
+                            send_email: this.sendEmailNotice
+                        };
+
+                        const res = await this.callApi('updateTicketStatus', payload);
+
+                        if (res.success) {
+                            this.showToast(res.message || `Đã cập nhật trạng thái sang "${newStatus}"`, 'success', 'check-circle-2');
+                            if (newStatus === 'Đã xử lý') {
+                                ticket.resolved_at = new Date().toISOString();
+                            }
+                            this.loadTickets(true);
+                        } else {
+                            ticket.status = oldStatus;
+                            this.showToast(res.message || 'Lỗi cập nhật ticket', 'error', 'alert-triangle');
+                        }
+                    } catch (err) {
+                        ticket.status = oldStatus;
+                        this.showToast(err.message || 'Không thể kết nối máy chủ', 'error', 'alert-triangle');
+                    } finally {
+                        ticket.saving = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async syncCacheNow() {
+                    this.loading.sync = true;
+                    try {
+                        const res = await this.callApi('syncEmailLookupCache', {}, 60000);
+
+                        if (res.success) {
+                            this.showToast(res.message || 'Đồng bộ cache Kho TK thành công!', 'success', 'check-circle-2');
+                            if (res.cache_info) {
+                                this.cacheInfo = res.cache_info;
+                            } else {
+                                this.cacheInfo.cache_stale = false;
+                                this.cacheInfo.stale_hours = 0;
+                                this.cacheInfo.last_synced_at = new Date().toISOString();
+                                if (res.count) this.cacheInfo.count = res.count;
+                            }
+                            this.loadTickets(true);
+                        } else {
+                            this.showToast(res.message || 'Không thể đồng bộ cache', 'error');
+                        }
+                    } catch (err) {
+                        this.showToast(err.message || 'Lỗi kết nối khi đồng bộ', 'error');
+                    } finally {
+                        this.loading.sync = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                async callApi(action, payload, timeoutMs = 25000) {
+                    const url = new URL(this.webAppUrl);
+                    url.searchParams.append('action', action);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'POST',
+                            mode: 'cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload),
+                            signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        return await response.json();
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        if (err.name === 'AbortError' || (err.message && err.message.toLowerCase().includes('aborted'))) {
+                            throw new Error('Thao tác xử lý dữ liệu kéo dài. Server vẫn đang thực hiện ở phía sau, vui lòng chờ ít giây rồi tải lại.');
+                        }
+                        throw err;
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>

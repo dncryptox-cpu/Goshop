@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tra Cứu Gói YouTube Premium — CTV Portal Go DNC</title>
+    <meta name="description" content="Tra cứu thông tin gói YouTube Premium, nhóm Fam, ngày renew và HSD cho khách hàng theo CTV.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        [x-cloak] { display: none !important; }
+        .card-shadow { box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.04), 0 8px 10px -6px rgba(0, 0, 0, 0.01); }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+    </style>
+</head>
+<body x-data="ctvFamApp()" x-init="initApp()" class="antialiased min-h-screen flex flex-col justify-between">
+
+    <!-- LOGIN SCREEN IF NOT LOGGED IN -->
+    <div x-show="!isLoggedIn" x-cloak class="min-h-screen flex flex-col items-center justify-center p-4">
+        <div class="bg-white rounded-3xl card-shadow p-6 sm:p-8 w-full max-w-sm border border-slate-200 space-y-6">
+            <div class="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-600/30 mx-auto">
+                <i data-lucide="shield-check" class="w-7 h-7"></i>
+            </div>
+            <div class="text-center space-y-1">
+                <h2 class="text-xl font-black text-slate-900">CTV Đăng Nhập</h2>
+                <p class="text-xs text-slate-500">Tra Cứu Gói YouTube Premium</p>
+            </div>
+
+            <form @submit.prevent="login()" class="space-y-4">
+                <div x-show="loginError" x-cloak class="bg-red-50 text-red-600 px-3.5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border border-red-200">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                    <span x-text="loginError"></span>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Tên Đăng Nhập</label>
+                    <input type="text" x-model="loginForm.username" required placeholder="Nhập tên đăng nhập CTV..."
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs font-bold focus:outline-none focus:border-indigo-600 focus:bg-white transition-all text-slate-900">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">Mật Khẩu</label>
+                    <input type="password" x-model="loginForm.password" required placeholder="Nhập mật khẩu..."
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3.5 text-xs font-bold focus:outline-none focus:border-indigo-600 focus:bg-white transition-all text-slate-900">
+                </div>
+                <button type="submit"
+                    class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 cursor-pointer">
+                    <span>Đăng Nhập CTV</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP SCREEN (WHEN LOGGED IN) -->
+    <div x-show="isLoggedIn" x-cloak class="flex-grow flex flex-col justify-between">
+        
+        <!-- SLEEK MOBILE-OPTIMIZED TOP HEADER BAR -->
+        <header class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-50 shadow-md">
+            <div class="max-w-6xl mx-auto px-3 sm:px-4 py-2 space-y-2">
+                <!-- TOP BRAND & USER ROW -->
+                <div class="flex items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-indigo-600/30 flex-shrink-0">
+                            <i data-lucide="search" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <h1 class="font-black text-xs sm:text-sm tracking-tight text-white flex items-center gap-1.5 truncate">
+                                <span>CTV Portal</span>
+                                <span class="text-[10px] bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 px-2 py-0.5 rounded-full font-bold">Tra Cứu Gói</span>
+                            </h1>
+                            <p class="text-[10px] text-slate-400 truncate">CTV: <strong class="text-amber-300 font-bold" x-text="currentUser?.name"></strong></p>
+                        </div>
+                    </div>
+
+                    <button @click="logout()" class="p-1.5 text-slate-400 hover:text-red-400 rounded-lg transition-colors flex-shrink-0" title="Đăng xuất">
+                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- SCROLLABLE MOBILE ROUTE SEGMENT TABS -->
+                <div class="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 -mx-1 px-1 text-xs font-bold">
+                    <a href="/ctv/renew/" class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-black shadow-sm flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                        <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                        <span>Tra Cứu Gói</span>
+                    </a>
+                    <a href="/ctv/renew/baoloi/" class="px-3 py-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-700 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                        <i data-lucide="layers" class="w-3.5 h-3.5 text-blue-400"></i>
+                        <span>Báo Lỗi Fam</span>
+                    </a>
+                    <a href="/ctv/renew/captam/" class="px-3 py-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-700 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                        <i data-lucide="shield-check" class="w-3.5 h-3.5 text-indigo-400"></i>
+                        <span>Cấp TK Tạm</span>
+                    </a>
+                    <a href="/ctv/renew/mailphu/" class="px-3 py-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-700 transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0">
+                        <i data-lucide="mail-plus" class="w-3.5 h-3.5 text-purple-400"></i>
+                        <span>Đổi Mail Phụ</span>
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-6xl mx-auto w-full p-3 sm:p-6 space-y-5 flex-grow">
+
+            <!-- HERO SEARCH BAR -->
+            <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-4 sm:p-6 text-white shadow-xl border border-indigo-500/30 space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label class="block text-xs font-black uppercase tracking-wider text-indigo-200 flex items-center gap-2">
+                        <i data-lucide="search" class="w-4 h-4 text-indigo-400"></i>
+                        <span>Tra Cứu Thông Tin Gói Dịch Vụ YouTube Premium</span>
+                    </label>
+                    <span class="text-[11px] text-slate-400 font-medium">Lọc dữ liệu theo CTV: <strong class="text-amber-300 font-bold" x-text="currentUser?.name"></strong></span>
+                </div>
+
+                <div class="relative">
+                    <input type="email" x-model="searchEmail" @input.debounce.300ms="doLookupEmail()" @keydown.enter="doLookupEmail()"
+                           placeholder="Chỉ cần gõ mail khách vào đây (vd: chienpham281992@gmail.com)..."
+                           class="w-full bg-white text-slate-900 rounded-2xl pl-11 pr-28 py-3 text-xs font-black focus:outline-none focus:ring-4 focus:ring-indigo-500/30 transition-all placeholder-slate-400 shadow-inner">
+                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <i data-lucide="search" class="w-4 h-4 text-indigo-600"></i>
+                    </div>
+                    <button @click="doLookupEmail()" :disabled="isSearching || !searchEmail.trim()"
+                            class="absolute right-1.5 top-1.5 bottom-1.5 px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-all shadow-md active:scale-95 disabled:opacity-40 cursor-pointer">
+                        <i data-lucide="scan" class="w-3.5 h-3.5" :class="{'animate-spin': isSearching}"></i>
+                        <span>Tra Cứu</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- ENHANCED DARK NAVY CARD ("Gói Dịch Vụ YouTube Premium") -->
+            <template x-if="lookupResult">
+                <div class="bg-gradient-to-br from-[#121838] via-[#0f172a] to-[#1e1b4b] border border-indigo-500/40 rounded-3xl p-4 sm:p-6 text-white card-shadow space-y-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-2xl bg-indigo-600/30 border border-indigo-400/40 flex items-center justify-center text-indigo-300 flex-shrink-0">
+                                <i data-lucide="shield-check" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h2 class="text-sm sm:text-base font-black text-white">Gói Dịch Vụ YouTube Premium</h2>
+                                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border"
+                                          :class="lookupResult.status === 'Đang xử lý' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : (lookupResult.status === 'Mới' ? 'bg-red-500/20 text-red-300 border-red-500/40' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40')">
+                                        <span x-text="lookupResult.has_ticket ? ('Báo lỗi: ' + lookupResult.status) : 'Đang hoạt động'"></span>
+                                    </span>
+                                </div>
+                                <p class="text-xs text-indigo-200 mt-0.5">Email tra cứu: <strong class="font-mono text-amber-300 select-all" x-text="lookupResult.email"></strong></p>
+                            </div>
+                        </div>
+
+                        <!-- Nút Báo Lỗi Khẩn Cấp (!) -->
+                        <button @click="quickReportIssue(lookupResult.email)" :disabled="isSubmittingQuickReport"
+                                class="px-3.5 py-2 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30 active:scale-95 transition-all w-full sm:w-auto cursor-pointer border border-red-400/40">
+                            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                            <span>! Báo Lỗi Nhanh</span>
+                        </button>
+                    </div>
+
+                    <!-- THÔNG BÁO HƯỚNG DẪN SỚM (ĐANG HOẠT ĐỘNG / KHÔNG HOẠT ĐỘNG) -->
+                    <template x-if="lookupResult.has_ticket && lookupResult.status !== 'Đã xử lý' && lookupResult.activity_status === 'Đang hoạt động'">
+                        <div class="p-3.5 sm:p-4 bg-emerald-950/80 border border-emerald-500/50 rounded-2xl text-white space-y-3">
+                            <div class="flex items-center gap-2 text-xs font-black text-emerald-300 border-b border-emerald-500/30 pb-2">
+                                <span class="text-sm">🟢</span>
+                                <span>NHÓM VẪN ĐANG HOẠT ĐỘNG BÌNH THƯỜNG</span>
+                            </div>
+                            <p class="text-xs text-emerald-100 font-medium leading-relaxed">
+                                🟢 Nhóm của bạn vẫn đang hoạt động bình thường. <strong class="text-amber-300 underline font-black">Không tự ý rời nhóm</strong> — theo chính sách Google, rời nhóm khi đang hoạt động có thể khiến bạn bị giới hạn 12 tháng không đổi được nhóm gia đình khác. Trong lúc chờ xử lý dứt điểm, bạn có thể chọn 1 trong 2 cách bên dưới:
+                            </p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                                <a href="/ctv/renew/captam/"
+                                   class="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95 text-center">
+                                    <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                                    <span>🛡️ Mượn tài khoản bảo hành tạm</span>
+                                </a>
+                                <a href="/ctv/renew/mailphu/"
+                                   class="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-md active:scale-95 text-center">
+                                    <i data-lucide="mail-plus" class="w-3.5 h-3.5"></i>
+                                    <span>✉️ Đổi sang email phụ của tôi</span>
+                                </a>
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="lookupResult.has_ticket && lookupResult.status !== 'Đã xử lý' && lookupResult.activity_status === 'Không hoạt động'">
+                        <div class="p-3.5 sm:p-4 bg-rose-950/80 border border-rose-500/50 rounded-2xl text-white space-y-2">
+                            <div class="flex items-center gap-2 text-xs font-black text-rose-300 border-b border-rose-500/30 pb-2">
+                                <span class="text-sm">🔴</span>
+                                <span>NHÓM HIỆN KHÔNG HOẠT ĐỘNG</span>
+                            </div>
+                            <p class="text-xs text-rose-100 font-medium leading-relaxed">
+                                🔴 Nhóm của bạn hiện không hoạt động. Yêu cầu của bạn đã được ghi nhận, đội ngũ đang xử lý để mời bạn vào nhóm mới. Bạn sẽ thấy hướng dẫn tham gia nhóm mới ngay khi xử lý xong.
+                            </p>
+                        </div>
+                    </template>
+
+                    <!-- 3 STAT BOXES -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                        <div class="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-1">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                                <i data-lucide="users" class="w-3.5 h-3.5"></i>
+                                <span>FAM / NHÓM HIỆN TẠI</span>
+                            </span>
+                            <div class="text-lg sm:text-xl font-black font-mono text-amber-400" x-text="lookupResult.stt_group || '---'"></div>
+                        </div>
+
+                        <div class="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-1">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                                <i data-lucide="calendar" class="w-3.5 h-3.5"></i>
+                                <span>NGÀY RENEW (CỘT I KHO TK)</span>
+                            </span>
+                            <div class="text-xs sm:text-sm font-extrabold font-mono text-emerald-300" x-text="lookupResult.ngay_renew || 'Đang cập nhật từ Kho TK'"></div>
+                        </div>
+
+                        <div class="bg-white/5 border border-white/10 rounded-2xl p-3.5 space-y-1">
+                            <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1">
+                                <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                                <span>HẠN SỬ DỤNG (HSD)</span>
+                            </span>
+                            <div class="text-xs sm:text-sm font-extrabold font-mono text-emerald-300" x-text="lookupResult.ngay_het_han || lookupResult.ngay_renew || 'Đang cập nhật từ Kho TK'"></div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs text-indigo-200 border-t border-white/10 pt-3">
+                        <span>CTV Quản Lý: <strong class="text-amber-300 font-bold" x-text="lookupResult.ctv || 'Chưa gán CTV'"></strong></span>
+                        <span>Email Chủ Gia Đình: <strong class="font-mono text-white font-bold select-all" x-text="lookupResult.owner_email || 'Chưa rõ'"></strong></span>
+                    </div>
+                </div>
+            </template>
+
+            <!-- LỖI TÌM KIẾM (NẾU CÓ) -->
+            <template x-if="lookupError">
+                <div class="p-4 bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl text-xs font-bold flex items-center gap-2">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-rose-600 flex-shrink-0"></i>
+                    <span x-text="lookupError"></span>
+                </div>
+            </template>
+
+            <!-- DANH SÁCH KHÁCH HÀNG PHÂN LOẠI THEO CTV -->
+            <div class="bg-white rounded-2xl border border-slate-200/80 p-4 sm:p-6 card-shadow space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                    <div>
+                        <h2 class="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                            <i data-lucide="users" class="w-4 h-4 text-indigo-600"></i>
+                            <span>Danh Sách Đơn / Khách Hàng Thuộc CTV (<span x-text="currentUser?.name"></span>)</span>
+                        </h2>
+                        <p class="text-xs text-slate-500 mt-0.5">Bấm vào bất kỳ email nào để xem thông tin Gói Dịch Vụ YouTube Premium nhanh.</p>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <input type="text" x-model="ctvListSearch" placeholder="Lọc nhanh email..."
+                               class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold focus:outline-none focus:bg-white text-slate-900 w-full sm:w-auto">
+                        <button @click="fetchCtvData()" class="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all flex-shrink-0" title="Tải lại">
+                            <i data-lucide="refresh-cw" class="w-4 h-4" :class="{'animate-spin': isLoadingCtvData}"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- MOBILE CARDS LIST VIEW (OPTIMIZED FOR PHONES) -->
+                <div class="block sm:hidden space-y-2">
+                    <template x-if="getFilteredCtvReports().length === 0">
+                        <div class="p-6 text-center text-slate-400 bg-slate-50 rounded-xl text-xs">
+                            Không có dữ liệu hoặc không tìm thấy khách hàng nào.
+                        </div>
+                    </template>
+
+                    <template x-for="r in getFilteredCtvReports()" :key="r.report_id || r.customer_email">
+                        <div @click="selectEmailFromTable(r.customer_email)"
+                             class="bg-slate-50 hover:bg-indigo-50/50 border border-slate-200/80 rounded-xl p-3 space-y-2 transition-all cursor-pointer active:scale-[0.99]">
+                            <div class="flex items-center justify-between gap-2">
+                                <span class="font-mono font-bold text-slate-900 text-xs truncate" x-text="r.customer_email"></span>
+                                <span class="px-2 py-0.5 rounded-full font-bold text-[10px] border flex-shrink-0"
+                                      :class="r.status === 'Đã xử lý' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : (r.status === 'Đang xử lý' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-amber-100 text-amber-700 border-amber-200')"
+                                      x-text="r.status || 'Chưa lỗi'"></span>
+                            </div>
+
+                            <div class="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/60 pt-2">
+                                <span class="flex items-center gap-1 font-mono font-bold text-indigo-600">
+                                    <i data-lucide="layers" class="w-3 h-3"></i>
+                                    <span x-text="r.stt_group || '---'"></span>
+                                </span>
+                                <span class="text-indigo-600 font-extrabold flex items-center gap-1">
+                                    <span>🔍 Tra Cứu Gói</span>
+                                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- DESKTOP TABLE VIEW (OPTIMIZED FOR COMPUTERS) -->
+                <div class="hidden sm:block overflow-x-auto rounded-xl border border-slate-200 custom-scrollbar">
+                    <table class="w-full text-left text-xs min-w-[500px]">
+                        <thead class="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-3">Email Khách Hàng</th>
+                                <th class="px-4 py-3">Nhóm (STT)</th>
+                                <th class="px-4 py-3">Trạng Thái Ticket</th>
+                                <th class="px-4 py-3 text-right">Thao Tác</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            <template x-if="getFilteredCtvReports().length === 0">
+                                <tr>
+                                    <td colspan="4" class="px-4 py-6 text-center text-slate-400">
+                                        Không có dữ liệu hoặc không tìm thấy khách hàng nào.
+                                    </td>
+                                </tr>
+                            </template>
+
+                            <template x-for="r in getFilteredCtvReports()" :key="r.report_id || r.customer_email">
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="px-4 py-3 font-bold font-mono text-slate-900 cursor-pointer hover:text-indigo-600"
+                                        @click="selectEmailFromTable(r.customer_email)" x-text="r.customer_email"></td>
+                                    <td class="px-4 py-3 font-mono font-bold text-indigo-600" x-text="r.stt_group || '---'"></td>
+                                    <td class="px-4 py-3 whitespace-nowrap">
+                                        <span class="px-2.5 py-0.5 rounded-full font-bold text-[10px] border"
+                                              :class="r.status === 'Đã xử lý' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : (r.status === 'Đang xử lý' ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-amber-100 text-amber-700 border-amber-200')"
+                                              x-text="r.status || 'Chưa lỗi'"></span>
+                                    </td>
+                                    <td class="px-4 py-3 text-right">
+                                        <button @click="selectEmailFromTable(r.customer_email)"
+                                                class="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[11px] font-extrabold transition-all cursor-pointer">
+                                            🔍 Xem Gói Premium
+                                        </button>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400">
+            <p>© 2026 Go DNC — CTV Portal (Tra Cứu Gói YouTube Premium). All rights reserved.</p>
+        </footer>
+    </div>
+
+    <!-- Toast Component -->
+    <div x-show="toast.show" x-cloak
+         class="fixed bottom-5 right-5 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 text-xs font-bold flex items-center gap-2">
+        <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+        <span x-text="toast.message"></span>
+    </div>
+
+    <script>
+        function ctvFamApp() {
+            return {
+                ctvAccounts: {
+                    'tuan': { username: 'tuan', password: '123', name: 'Tuan', role: 'ctv' },
+                    'vuong': { username: 'vuong', password: '123', name: 'Vương', role: 'ctv' },
+                    'dnc': { username: 'dnc', password: 'dnc1m@', name: 'Dnc', role: 'admin' },
+                    'loc': { username: 'loc', password: '123', name: 'Lộc', role: 'ctv' },
+                    'admin': { username: 'admin', password: 'dnc1m@', name: 'all', role: 'admin' }
+                },
+                isLoggedIn: false,
+                loginForm: { username: '', password: '' },
+                loginError: '',
+                currentUser: null,
+                toast: { show: false, message: '' },
+
+                searchEmail: '',
+                isSearching: false,
+                lookupResult: null,
+                lookupError: '',
+                isSubmittingQuickReport: false,
+
+                ctvReportsList: [],
+                ctvListSearch: '',
+                isLoadingCtvData: false,
+
+                showToast(msg) {
+                    this.toast = { show: true, message: msg };
+                    setTimeout(() => { this.toast.show = false; }, 2500);
+                },
+
+                async initApp() {
+                    const savedUser = localStorage.getItem('goshop_ctv_user');
+                    if (savedUser) {
+                        this.currentUser = JSON.parse(savedUser);
+                        this.isLoggedIn = true;
+                        this.fetchCtvData();
+                    }
+                    this.$nextTick(() => lucide.createIcons());
+                },
+
+                login() {
+                    const uname = this.loginForm.username.trim().toLowerCase();
+                    const acc = this.ctvAccounts[uname];
+                    if (acc && acc.password === this.loginForm.password) {
+                        this.isLoggedIn = true;
+                        this.currentUser = acc;
+                        this.loginError = '';
+                        localStorage.setItem('goshop_ctv_user', JSON.stringify(acc));
+                        this.fetchCtvData();
+                        this.$nextTick(() => lucide.createIcons());
+                    } else {
+                        this.loginError = 'Sai tên đăng nhập hoặc mật khẩu CTV';
+                    }
+                },
+
+                logout() {
+                    this.isLoggedIn = false;
+                    this.currentUser = null;
+                    localStorage.removeItem('goshop_ctv_user');
+                },
+
+                async callFamApi(action, payload, timeoutMs = 60000) {
+                    const webAppUrl = localStorage.getItem('FAM_TRACKER_WEBAPP_URL') || 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec';
+                    const url = new URL(webAppUrl);
+                    url.searchParams.append('action', action);
+
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+                    try {
+                        const response = await fetch(url.toString(), {
+                            method: 'POST', mode: 'cors',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify(payload), signal: controller.signal
+                        });
+                        clearTimeout(timeoutId);
+                        const text = await response.text();
+                        return JSON.parse(text);
+                    } catch (err) {
+                        clearTimeout(timeoutId);
+                        if (err.name === 'AbortError' || String(err).includes('aborted')) {
+                            throw new Error('Yêu cầu đang được xử lý, có thể mất chút thời gian. Vui lòng ĐỢI THÊM thay vì bấm gửi lại — bấm lại có thể tạo trùng báo cáo.');
+                        }
+                        throw err;
+                    }
+                },
+
+                async doLookupEmail() {
+                    const email = String(this.searchEmail || '').trim().toLowerCase();
+                    if (!email || !email.includes('@')) {
+                        this.lookupResult = null;
+                        this.lookupError = 'Vui lòng nhập Email hợp lệ để tra cứu.';
+                        return;
+                    }
+
+                    this.isSearching = true;
+                    this.lookupError = '';
+                    this.lookupResult = null;
+
+                    try {
+                        const res = await this.callFamApi('checkStatus', { email: email });
+                        if (res && res.success) {
+                            res.email = res.email || email;
+                            res.ctv = res.ctv || (this.currentUser ? this.currentUser.name : '---');
+                            res.owner_email = res.owner_email || 'Chưa rõ';
+                            res.ngay_renew = res.ngay_renew || 'Đang cập nhật từ Kho TK';
+                            this.lookupResult = res;
+                        } else {
+                            this.lookupError = res ? (res.message || 'Không tìm thấy dữ liệu cho email này.') : 'Lỗi kết nối server.';
+                        }
+                    } catch (err) {
+                        this.lookupError = 'Lỗi tra cứu: ' + err.message;
+                    } finally {
+                        this.isSearching = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                selectEmailFromTable(email) {
+                    if (!email) return;
+                    this.searchEmail = email;
+                    this.doLookupEmail();
+                },
+
+                async fetchCtvData() {
+                    if (!this.currentUser) return;
+                    this.isLoadingCtvData = true;
+                    const ctvName = (this.currentUser.role === 'admin' && this.currentUser.name === 'all') ? '' : this.currentUser.name;
+
+                    try {
+                        const data = await this.callFamApi('listCtvReports', { ctvName: ctvName });
+                        if (data && data.success) {
+                            this.ctvReportsList = data.reports || [];
+                        }
+                    } catch (err) {
+                        console.error('Lỗi tải dữ liệu CTV:', err);
+                    } finally {
+                        this.isLoadingCtvData = false;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                getFilteredCtvReports() {
+                    let list = [...(this.ctvReportsList || [])];
+                    if (this.ctvListSearch && this.ctvListSearch.trim()) {
+                        const q = this.ctvListSearch.trim().toLowerCase();
+                        list = list.filter(r => (r.customer_email && r.customer_email.toLowerCase().includes(q)) || (r.stt_group && r.stt_group.toLowerCase().includes(q)));
+                    }
+                    return list;
+                },
+
+                async quickReportIssue(email) {
+                    if (!email || !confirm(`Gửi báo lỗi khẩn cấp cho email ${email}?`)) return;
+
+                    this.isSubmittingQuickReport = true;
+                    const ctvName = (this.currentUser && this.currentUser.name) ? this.currentUser.name : 'CTV';
+
+                    try {
+                        const res = await this.callFamApi('submitReport', {
+                            email: email,
+                            message: 'Báo lỗi khẩn cấp từ thẻ Tra Cứu Gói YouTube Premium',
+                            submitted_by: ctvName
+                        });
+
+                        if (res && res.success) {
+                            this.showToast('🚨 Đã gửi báo lỗi thành công!');
+                            this.doLookupEmail();
+                            this.fetchCtvData();
+                        } else {
+                            this.showToast('❌ Lỗi: ' + (res.message || 'Không thể gửi báo lỗi'));
+                        }
+                    } catch (err) {
+                        this.showToast('Lỗi: ' + err.message);
+                    } finally {
+                        this.isSubmittingQuickReport = false;
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
