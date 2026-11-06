@@ -309,7 +309,7 @@ async function listOpen() {
   return { late, dueToday, fresh, later, text: (sec("🔴 Quá hạn", late) + sec("📌 Hôm nay", dueToday) + sec("📥 Mới vào / đang làm", fresh)).trim() };
 }
 async function help() {
-  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/viec — xem việc cần xử lý\n/xong 12 — đánh dấu mục #12 xong\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
+  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/xong 12 — đánh dấu mục #12 xong\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
 }
 async function setStatus(id: number, patch: any) {
   if (patch.status) patch.done_at = patch.status === "done" ? new Date().toISOString() : null;
@@ -319,6 +319,175 @@ async function setStatus(id: number, patch: any) {
   return data;
 }
 
+/* ---------- Hôm nay: việc shop sáng nay (giống trang godnc.com/homnay) ----------
+   Đọc lại đúng các nguồn trang dùng: Thay Fam/GG1 (cần secret TF_PASS = mật khẩu Thay Fam),
+   Netflix + ChatGPT (admin), CapCut (sheet Tài chính, gviz). Thiếu TF_PASS thì bỏ phần YTB/GG1. */
+const HOMNAY = "https://godnc.com/homnay/";
+const TF_API = "https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec";
+const MOD_API = "https://script.google.com/macros/s/AKfycbySu9evgLmqMVKSc-Z1cKUIzcfqJH9_pEFDdzOERQ1yP8uLy1hvLqJgNRkOlwDJEOba/exec";
+const FIN_SHEET = "1-EgeNWztGQsY2rmLYp00yKDjgHR5WYoqzzhAkSnvJjc";
+const PN: Record<string, string> = { ytb: "YTB", nf: "Netflix", gpt: "GPT", gg1: "GG1", cc: "CapCut" };
+
+type Cus = { prod: string; key: string; who: string; ctv: string; hsd: string; days: number; done?: boolean };
+const pad2 = (n: number) => String(n).padStart(2, "0");
+function pDate(s: unknown): number | null { // → mốc UTC 00:00 của ngày đó
+  const t = String(s ?? "").trim(); if (!t) return null;
+  let p = t.split("/"); if (p.length === 3) { let y = +p[2]; if (y < 100) y += 2000; const v = Date.UTC(y, +p[1] - 1, +p[0]); return isNaN(v) ? null : v; }
+  p = t.split("-"); if (p.length === 3 && p[0].length === 4) return Date.UTC(+p[0], +p[1] - 1, +p[2].slice(0, 2));
+  const d = new Date(t); if (isNaN(+d)) return null;
+  const v = new Date(+d + TZ_MS); return Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate());
+}
+const dmyU = (v: number) => { const d = new Date(v); return `${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`; };
+const daysU = (v: number) => Math.round((v - Date.parse(today() + "T00:00:00Z")) / 864e5);
+function addMonthsU(v: number, m: number) { const d = new Date(v), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + (+m || 0)); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return +d; }
+function normCtv(c: unknown) {
+  const s = String(c ?? "").trim(), k = s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d");
+  if (!k || k === "admin" || k === "dnc" || k === "(trong)") return "Dnc";
+  if (k.startsWith("tuan")) return "Tuấn"; if (k.startsWith("vuong")) return "Vương"; if (k === "loc") return "Lộc";
+  return s;
+}
+function csvRows(text: string) {
+  const rows: string[][] = []; let row: string[] = [], cur = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true; else if (c === ",") { row.push(cur); cur = ""; }
+    else if (c === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; } else if (c !== "\r") cur += c;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+async function getJ(url: string, init?: RequestInit, ms = 50000) {
+  const r = await fetch(url, { ...(init || {}), redirect: "follow", signal: AbortSignal.timeout(ms) });
+  return await r.json();
+}
+async function tf(body: Record<string, unknown>) {
+  const pass = Deno.env.get("TF_PASS"); if (!pass) throw new Error("chưa đặt secret TF_PASS");
+  const d = await getJ(TF_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, pass }) }, 60000);
+  if (!d.ok) throw new Error(d.error || "Thay Fam lỗi"); return d;
+}
+function modRows(list: any[], prod: string): Cus[] {
+  const m: Record<string, Cus> = {};
+  (list || []).forEach((it) => {
+    const a = pDate(it.activationDate), h = pDate(it.expiryDate) ?? (a != null ? addMonthsU(a, it.duration) : null);
+    if (h == null) return;
+    const who = String(it.userName || it.email || it.userCode || "").trim();
+    const key = prod + ":" + String(it.userCode || it.email || who || it.id).toLowerCase();
+    const r = { prod, key, who: who + (it.userCode && it.userName ? ` (${it.userCode})` : ""), ctv: normCtv(it.ctv), hsd: dmyU(h), days: daysU(h) };
+    if (!m[key] || r.days > m[key].days) m[key] = r;
+  });
+  return Object.values(m);
+}
+async function capcutRows(): Promise<Cus[]> {
+  const q = encodeURIComponent("select * where lower(E) contains 'capcut'"), best: Record<string, Cus & { nr?: boolean }> = {};
+  for (const t of ["DATA(GCC)", "DATA(YTB)"]) {
+    const txt = await fetch(`https://docs.google.com/spreadsheets/d/${FIN_SHEET}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(t)}&tq=${q}`, { signal: AbortSignal.timeout(30000) }).then((r) => r.text());
+    csvRows(txt).forEach((r, i) => {
+      if (!r || r.length < 14 || (i === 0 && /date/i.test(r[0]))) return;
+      const h = pDate(r[13]); if (h == null || new Date(h).getUTCFullYear() < 2020) return;
+      const em = (r[3] + " " + r[1]).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+      const key = "cc:" + (em ? em[0].toLowerCase() : (r[1] + "|" + r[3]).toLowerCase().trim());
+      const row = { prod: "cc", key, who: em ? em[0] : String(r[1] || r[3]).trim(), ctv: normCtv(r[7]), hsd: dmyU(h), days: daysU(h), nr: /ko gh|không gh/i.test(r.join(" ")) };
+      if (!best[key] || row.days > best[key].days) best[key] = row;
+    });
+  }
+  return Object.values(best).filter((x) => !x.nr);
+}
+
+async function shopBrief() {
+  const err: string[] = [];
+  const safe = async <T,>(name: string, f: () => Promise<T>): Promise<T | null> => { try { return await f(); } catch (e) { err.push(`${name}: ${(e as Error).message}`); return null; } };
+  // Thay Fam đọc cùng 1 sheet → gọi lần lượt; nguồn khác song song
+  const tfPart = (async () => {
+    const dash = await safe("YTB", () => tf({ action: "dashboard", ahead: 2 }));
+    const wk = dash ? await safe("YTB tuần", () => tf({ action: "week" })) : null;
+    const gg = dash ? await safe("GG1", () => tf({ action: "gg_list" })) : null;
+    return { dash, wk, gg };
+  })();
+  const [tfd, nf, gpt, cc] = await Promise.all([
+    tfPart,
+    safe("Netflix", async () => { const j = await getJ(`${MOD_API}?module=netflix`); if (!j?.success) throw new Error(j?.error || "không đọc được"); return modRows(j.data, "nf"); }),
+    safe("GPT", async () => { const j = await getJ(`${MOD_API}?action=list`); if (!j?.success) throw new Error(j?.error || "không đọc được"); return modRows(j.data, "gpt"); }),
+    safe("CapCut", capcutRows),
+  ]);
+  const { dash, wk, gg } = tfd;
+  const gap: string[] = [], nay: string[] = [], tuan: string[] = [], blocks: string[] = [];
+  const list = (a: string[], n = 8) => a.slice(0, n).join(", ") + (a.length > n ? ` +${a.length - n}` : "");
+
+  // YTB
+  const ytb: Cus[] = ((wk?.customers || dash?.renewals || []) as any[]).filter((c) => !c.kicked).map((c) => {
+    const h = pDate(c.hsd); return { prod: "ytb", key: "ytb:" + c.email, who: c.email, ctv: normCtv(c.ctv), hsd: c.hsd, days: c.daysLeft ?? (h != null ? daysU(h) : 99), done: !!c.reminded };
+  });
+  if (dash) {
+    const rep = dash.reported || [], due = dash.due || [];
+    if (rep.length) gap.push(`YTB: xử lý ${rep.length} fam báo lỗi <i>(${esc(list(rep.map((f: any) => f.rn)))})</i>`);
+    const late = due.filter((f: any) => (f.days ?? 0) <= 0);
+    if (late.length) gap.push(`YTB: thay ${late.length} fam đến hạn/quá hạn <i>(${esc(list(late.map((f: any) => f.rn + (f.days < 0 ? ` −${-f.days}n` : ""))))})</i>`);
+    const next = due.filter((f: any) => f.days > 0);
+    if (next.length) tuan.push(`YTB: ${next.length} fam đến hạn 1–2 ngày tới`);
+    if (wk) {
+      const need = Math.max(0, (wk.due || []).length - (wk.frReady || 0));
+      if (need) nay.push(`YTB: chuẩn bị thêm ${need} FR (có ${wk.frReady || 0}, cần ${(wk.due || []).length} trong 7 ngày)`);
+      const bl = (wk.blocked || []).filter((b: any) => b.due);
+      if (bl.length) nay.push(`YTB: mời lại ${bl.length} fam hết bị chặn mời <i>(${esc(list(bl.map((b: any) => b.rn)))})</i>`);
+      if ((wk.waiting || []).length) nay.push(`YTB: xếp fam cho ${wk.waiting.length} khách đang chờ`);
+    } else if (dash.blocksDue) nay.push(`YTB: mời lại ${dash.blocksDue} fam hết bị chặn mời`);
+    const kick = ytb.filter((c) => c.days < -3 && c.days >= -7);
+    if (kick.length) tuan.push(`YTB: ${kick.length} khách quá hạn >3 ngày — hỏi lần cuối rồi kick`);
+  }
+  // GG1
+  const ggRows: Cus[] = [];
+  if (gg) {
+    let wait = 0;
+    (gg.fams || []).filter((f: any) => f.status !== "Đã xoá").forEach((f: any) => (f.customers || []).forEach((c: any) => {
+      if (c.status === "Đã xoá") return; if (["Đã mời", "Chờ mời"].includes(c.status)) { wait++; return; }
+      const h = pDate(c.hsd); if (h != null) ggRows.push({ prod: "gg1", key: "gg1:" + c.email, who: c.email, ctv: normCtv(c.ctv), hsd: dmyU(h), days: daysU(h) });
+    }));
+    if (wait) nay.push(`GG1: kiểm tra ${wait} khách đã vào nhóm chưa`);
+  }
+  // Nhắc gia hạn: quá hạn ≤7n → còn ≤3n, gom theo người phụ trách
+  const all = [...ytb, ...(nf || []), ...(gpt || []), ...ggRows, ...(cc || [])];
+  const am = all.filter((c) => c.days >= -7 && c.days <= 3 && !c.done).sort((a, b) => a.days - b.days);
+  const by: Record<string, Cus[]> = {}; am.forEach((c) => (by[c.ctv] ||= []).push(c));
+  const cnt = (a: Cus[]) => Object.entries(a.reduce((m: Record<string, number>, c) => (m[PN[c.prod]] = (m[PN[c.prod]] || 0) + 1, m), {})).map(([k, v]) => `${k} ${v}`).join(", ");
+  const line = (c: Cus) => `• ${PN[c.prod]} · ${c.who} · HSD ${c.hsd}${c.days < 0 ? ` (hết ${-c.days}n)` : c.days === 0 ? " (hôm nay)" : ""}`;
+  if (by.Dnc) {
+    nay.push(`Tự nhắn ${by.Dnc.length} khách của bạn gia hạn <i>(${cnt(by.Dnc)})</i>`);
+    blocks.push(`<b>Khách của bạn</b>\n<pre>${esc(by.Dnc.slice(0, 25).map(line).join("\n"))}${by.Dnc.length > 25 ? `\n… +${by.Dnc.length - 25}` : ""}</pre>`);
+  }
+  Object.entries(by).filter(([k]) => k !== "Dnc").sort((a, b) => b[1].length - a[1].length).forEach(([ctv, a]) => {
+    nay.push(`Gửi ${esc(ctv)} ${a.length} khách cần nhắc <i>(${cnt(a)})</i>`);
+    blocks.push(`<b>Gửi ${esc(ctv)}</b> — chạm để copy, dán vào nhóm Zalo\n<pre>${esc(`Khách sắp/đã hết hạn — nhờ ${ctv} nhắc gia hạn giúp mình:\n` + a.slice(0, 30).map(line).join("\n"))}</pre>`);
+  });
+  // Netflix / GPT quá hạn còn trong danh sách
+  for (const [p, rows, how] of [["nf", nf, "xoá hồ sơ/đổi mã"], ["gpt", gpt, "thu hồi thiết bị"]] as const) {
+    const ex = (rows || []).filter((c) => c.days < -3 && c.days >= -30);
+    if (ex.length) tuan.push(`${PN[p]}: ${ex.length} khách quá hạn >3 ngày — ${how} nếu không gia hạn`);
+  }
+  return { gap, nay, tuan, blocks, err };
+}
+
+function briefText(B: Awaited<ReturnType<typeof shopBrief>>, deskText = "") {
+  const d = new Date(Date.now() + TZ_MS);
+  const sec = (h: string, a: string[]) => a.length ? `\n\n<b>${h}</b>\n${a.map((x) => "• " + x).join("\n")}` : "";
+  const n = B.gap.length + B.nay.length;
+  let t = `☀️ <b>Sáng nay ${WD[d.getUTCDay()]} ${pad2(d.getUTCDate())}/${pad2(d.getUTCMonth() + 1)}</b> · ${n ? n + " việc" : "không có việc gấp"}`
+    + sec("🔴 Gấp", B.gap) + sec("📌 Sáng nay", B.nay) + sec("🗓 Tuần này", B.tuan)
+    + (deskText ? `\n\n<b>📥 Desk</b>\n${deskText}` : "")
+    + (B.err.length ? `\n\n<i>⚠ Không đọc được: ${esc(B.err.join("; "))}</i>` : "");
+  return t;
+}
+const BRIEF_KB = { inline_keyboard: [[{ text: "Mở Hôm nay", url: HOMNAY }, { text: "Mở Desk", url: DESK }]] };
+async function sendBrief(deskText = "") {
+  const B = await shopBrief();
+  let t = briefText(B, deskText);
+  if (t.length > 4000) t = t.slice(0, 3990) + "…";
+  await say(t, { reply_markup: BRIEF_KB });
+  // danh sách khách gửi riêng từng tin (chạm khối chữ để copy)
+  for (const b of B.blocks) await say(b.length > 4000 ? b.slice(0, 3980) + "…</pre>" : b);
+  return B;
+}
+
 /* ---------- nhắc buổi sáng (pg_cron gọi ?digest=1, mỗi ngày tối đa 1 lần) ---------- */
 async function digest() {
   const uid = await owner();
@@ -326,8 +495,9 @@ async function digest() {
   if (s?.data?.last === today()) return { skipped: "đã gửi hôm nay" };
   const L = await listOpen();
   await db.from("desk_docs").upsert({ user_id: uid, kind: "settings", key: "inbox_digest", data: { last: today() }, updated_at: new Date().toISOString() }, { onConflict: "user_id,kind,key" });
-  if (!L.late.length && !L.dueToday.length && !L.fresh.length) return { skipped: "không có gì" };
-  await say(`☀️ <b>Desk sáng nay</b>${L.later ? ` · ${L.later} mục hẹn sau/đang chờ` : ""}\n${L.text}`, { reply_markup: { inline_keyboard: [[{ text: "Mở Desk", url: DESK }]] } });
+  // Gộp: việc shop (Hôm nay) + Desk vào 1 tin buổi sáng
+  const deskText = (L.late.length || L.dueToday.length || L.fresh.length) ? `${L.later ? `<i>${L.later} mục hẹn sau/đang chờ</i>\n` : ""}${L.text}` : "";
+  await sendBrief(deskText);
   return { sent: true };
 }
 
@@ -367,6 +537,12 @@ async function handle(u: any) {
     const L = await listOpen();
     return say(L.text || "Inbox trống. Không có gì cần xử lý 👌", { reply_markup: { inline_keyboard: [[{ text: "Mở Desk", url: DESK }]] } });
   }
+  if (/^\/(homnay|hômnay|sangnay|sáng)\b/i.test(text)) {
+    await say("⏳ Đang gom việc sáng nay…");
+    const L = await listOpen();
+    await sendBrief(L.text);
+    return;
+  }
   const dm = text.match(/^\/(xong|done)\s+#?(\d+)/i);
   if (dm) {
     const it = await setStatus(Number(dm[2]), { status: "done" });
@@ -387,7 +563,7 @@ Deno.serve(async (req) => {
       if (info.result?.url && info.result.url !== self && url.searchParams.get("force") !== "1")
         return ok({ ok: false, error: "Bot đang gắn webhook khác, không gỡ", current: info.result.url });
       const set = await tg("setWebhook", { url: self, secret_token: SECRET, allowed_updates: ["message", "edited_message", "callback_query"], max_connections: 1 });
-      await tg("setMyCommands", { commands: [{ command: "viec", description: "Việc cần xử lý" }, { command: "xong", description: "Đánh dấu xong: /xong 12" }, { command: "help", description: "Cách dùng" }] });
+      await tg("setMyCommands", { commands: [{ command: "homnay", description: "Việc shop sáng nay" }, { command: "viec", description: "Việc cần xử lý" }, { command: "xong", description: "Đánh dấu xong: /xong 12" }, { command: "help", description: "Cách dùng" }] });
       let who = ""; try { who = await owner(); } catch (e) { who = "LỖI: " + (e as Error).message; }
       if (set.ok) await say("✅ Desk Inbox đã bật. Từ giờ nhắn gì cho bot cũng được lưu vào godnc.com/desk. Gõ /help xem cách dùng.");
       return ok({ ok: set.ok, webhook: self, desk_user: who, telegram: set });

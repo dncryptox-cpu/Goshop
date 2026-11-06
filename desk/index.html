@@ -314,6 +314,7 @@ body.noscroll{overflow:hidden}
 
   <nav class="tabs" role="tablist">
     <button role="tab" id="t-today" aria-selected="true" data-tab="today">Hôm nay</button>
+    <button role="tab" id="t-shop" aria-selected="false" data-tab="shop">Shop sáng nay<span class="cnt" id="shopTabN" hidden></span></button>
     <button role="tab" id="t-inbox" aria-selected="false" data-tab="inbox">Inbox<span class="cnt" id="inboxTabN" hidden></span></button>
     <button role="tab" id="t-notes" aria-selected="false" data-tab="notes">Ghi chú</button>
     <button role="tab" id="t-week" aria-selected="false" data-tab="week">Lịch sử</button>
@@ -413,6 +414,9 @@ body.noscroll{overflow:hidden}
     <div class="list" id="journal"></div>
   </section>
 
+  <section id="tab-shop" hidden>
+    <iframe id="shopFrame" title="Shop sáng nay" style="width:100%;border:0;min-height:70vh;display:block;background:transparent" loading="lazy"></iframe>
+  </section>
   <section id="tab-plan" class="panel" hidden>
     <h3>Phân bổ giờ một tuần</h3>
     <p class="sub">Giả định 3 ngày thường + 2 ngày leo núi + 2 ngày cuối tuần. Hôm nay là ngày nào thì chọn ở tab Hôm nay.</p>
@@ -1184,9 +1188,18 @@ window.addEventListener('online', ()=>flushCaptures());
 document.querySelector('.tabs').addEventListener('click', e=>{
   const b = e.target.closest('[data-tab]'); if (!b) return; activeTab = b.dataset.tab;
   document.querySelectorAll('.tabs [data-tab]').forEach(x=>x.setAttribute('aria-selected', x===b));
-  ['today','inbox','notes','week','plan'].forEach(k=>$('tab-'+k).hidden = k!==activeTab);
+  ['today','shop','inbox','notes','week','plan'].forEach(k=>$('tab-'+k).hidden = k!==activeTab);
   if (activeTab==='inbox') renderInbox();
+  if (activeTab==='shop') openShop();
   lsSet(LS.tab, activeTab);
+});
+
+/* Tab "Shop sáng nay": nhúng godnc.com/homnay (cùng tên miền), chỉ tải khi mở lần đầu */
+function openShop(){ const f = $('shopFrame'); if (!f.src) f.src = '/homnay/?embed=1'; }
+window.addEventListener('message', e=>{
+  if (e.origin !== location.origin || !e.data || e.data.src !== 'homnay') return;
+  if (e.data.h) $('shopFrame').style.height = Math.max(400, e.data.h) + 'px';
+  if (e.data.n != null){ const c = $('shopTabN'); c.hidden = !e.data.n; c.textContent = e.data.n; c.classList.toggle('hot', !!e.data.gap); }
 });
 
 function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
