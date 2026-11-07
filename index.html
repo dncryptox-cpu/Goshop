@@ -296,6 +296,13 @@
         .t9-dots b { display: block; min-width: 0; aspect-ratio: 1; border-radius: 4px; background: var(--well); }
         .t9-dots b.on { background: var(--mint); } .t9-dots b.miss { background: rgba(255,107,107,0.3); } .t9-dots b.now { outline: 2px solid var(--mint); outline-offset: 2px; }
         .t9-write { font-size: 16px; line-height: 1.6; min-height: 180px; }
+        .t9-drop { border: 1.5px dashed var(--line); border-radius: 12px; padding: 28px 12px; text-align: center; color: var(--ink-3); font-size: 14px; }
+        .t9-drop.on { border-color: var(--mint); color: var(--mint); }
+        .t9-chart { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+        @media (min-width: 640px) { .t9-chart { grid-template-columns: 260px minmax(0, 1fr); } .t9-chart.small { grid-template-columns: 160px minmax(0, 1fr); } }
+        .t9-chart.small { grid-template-columns: 120px minmax(0, 1fr); }
+        .t9-chart img { width: 100%; border-radius: 10px; border: 1px solid var(--line-soft); display: block; background: var(--well); }
+        .t9-ai { background: var(--well); border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.55; }
         .t9-it { padding: 12px 0; border-top: 1px solid var(--line-soft); } .t9-it:first-child { border-top: 0; }
     </style>
 </head>
@@ -921,12 +928,48 @@
                 <textarea class="field mt-3 t9-write" rows="7" placeholder="Hôm nay mình làm gì, nghĩ gì, đang trì hoãn điều gì? Viết 3 dòng là đủ." :value="t9Day.thought || ''" @input="t9DaySet({ thought: $event.target.value })"></textarea>
             </div>
 
+            <!-- Nhận định chart -->
+            <div class="card p-5" @dragover.prevent="t9.drag = true" @dragleave.prevent="t9.drag = false" @drop.prevent="t9.drag = false; [...$event.dataTransfer.files].forEach(f => t9AddImg(f))">
+                <div class="flex items-center justify-between gap-3">
+                    <h2 class="title-md">Nhận định chart</h2>
+                    <label class="btn btn-gray cursor-pointer"><i data-lucide="image-plus" class="w-4 h-4"></i><span>Thêm ảnh</span>
+                        <input type="file" accept="image/*" multiple class="hidden" @change="[...$event.target.files].forEach(f => t9AddImg(f)); $event.target.value = ''"></label>
+                </div>
+                <p class="caption mt-1">Dán ảnh (Ctrl+V), kéo thả hoặc bấm Thêm ảnh. Mỗi ảnh ghi nhận định riêng.</p>
+                <div x-show="!(t9Day.charts || []).length && !t9.uploading" class="t9-drop mt-3" :class="t9.drag && 'on'">Chưa có chart nào hôm nay</div>
+                <p x-show="t9.uploading" class="caption mt-3" x-text="'Đang tải ' + t9.uploading + ' ảnh…'"></p>
+                <div class="space-y-4 mt-3">
+                    <template x-for="c in (t9Day.charts || [])" :key="c.id">
+                        <div class="t9-chart">
+                            <a :href="c.img" target="_blank" rel="noopener"><img :src="c.img" alt="Chart" loading="lazy"></a>
+                            <div class="space-y-2 min-w-0">
+                                <textarea class="field" rows="3" placeholder="Nhận định của mình: xu hướng, vùng giá quan trọng, kịch bản, khi nào sai." :value="c.note || ''" @input="t9ChartSet(c.id, { note: $event.target.value })"></textarea>
+                                <div x-show="c.ai" class="t9-ai"><div class="caption mb-1">AI nhận định</div><div class="whitespace-pre-wrap" x-text="c.ai"></div></div>
+                                <div class="flex gap-2 flex-wrap">
+                                    <button class="btn btn-gray" :disabled="t9.aiId === c.id" @click="t9AiRead(c.id)"><i data-lucide="sparkles" class="w-4 h-4"></i><span x-text="t9.aiId === c.id ? 'AI đang đọc…' : (c.ai ? 'AI đọc lại' : 'AI nhận định')"></span></button>
+                                    <button class="btn btn-gray" @click="t9DelChart(c.id)"><i data-lucide="trash-2" class="w-4 h-4"></i><span>Xoá</span></button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
             <div x-show="t9S.past.length" class="card p-5">
                 <h2 class="title-md">Những ngày trước</h2>
                 <div class="mt-2"><template x-for="d in t9S.past" :key="d.k">
                     <div class="t9-it">
                         <div class="caption" x-text="'Ngày ' + d.n + ' · ' + t9Dm(d.iso)"></div>
-                        <div class="text-[15px] whitespace-pre-wrap mt-1" x-text="d.thought"></div>
+                        <div x-show="(d.thought || '').trim()" class="text-[15px] whitespace-pre-wrap mt-1" x-text="d.thought"></div>
+                        <template x-for="c in (d.charts || [])" :key="c.id">
+                            <div class="t9-chart small mt-2">
+                                <a :href="c.img" target="_blank" rel="noopener"><img :src="c.img" alt="Chart" loading="lazy"></a>
+                                <div class="min-w-0 text-[14px]">
+                                    <div x-show="c.note" class="whitespace-pre-wrap" x-text="c.note"></div>
+                                    <details x-show="c.ai" class="mt-1"><summary class="caption cursor-pointer">AI nhận định</summary><div class="whitespace-pre-wrap text-ink-2 mt-1" x-text="c.ai"></div></details>
+                                </div>
+                            </div>
+                        </template>
                     </div>
                 </template></div>
             </div>
@@ -2068,7 +2111,7 @@
     function app() {
         return {
             TABS, SLOTS,
-            t9: { loaded: false, docs: {}, saved: '' },
+            t9: { loaded: false, docs: {}, saved: '', uploading: 0, aiId: '', drag: false },
             booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false, isMember: false,
             jView: 'list', memberPage: false, gate: null, rpage: null, rpageGroup: '', planForm: null, nowTs: Date.now(),
             plan: { currency: 'USD', list_price: 200, price: 0, promo_on: false, promo_price: 0, promo_label: '', promo_start: null, promo_end: null }, myAvatar: '', avatarBusy: false, avatars: {},
@@ -2195,7 +2238,7 @@
             get t9Today() { return this.t9Iso(new Date(this.nowTs)); },
             get t9Plan() { return this.t9.docs.plan || null; },
             get t9Running() { return !!(this.t9Plan && this.t9Plan.start); },
-            t9Present(d) { return !!(d && (d.thought || '').trim()); },
+            t9Present(d) { return !!(d && ((d.thought || '').trim() || (d.charts || []).length)); },
             async t9Load() {
                 try {
                     const { data, error } = await sb.from('desk_docs').select('key,data').eq('kind', 'settings').like('key', 't90:%').limit(2000);
@@ -2218,6 +2261,63 @@
             t9Start() { this.t9Save('plan', { ...(this.t9Plan || {}), start: this.t9Today }, 0); },
             get t9Day() { return this.t9.docs['d:' + this.t9Today] || {}; },
             t9DaySet(patch) { this.t9Save('d:' + this.t9Today, { ...this.t9Day, ...patch }); },
+
+            // Nhận định chart: ảnh lên bucket trade-images ({user_id}/t90/...), nhận định lưu trong nhật ký ngày
+            async t9AddImg(file) {
+                if (!file || !/^image\//.test(file.type)) return this.showToast('Không phải ảnh');
+                const day = this.t9Today;
+                this.t9.uploading++;
+                try {
+                    const url = await this.upload(await this.compress(await this.readFile(file), 1800, 0.85), `${this.userId}/t90/${day}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
+                    const k = 'd:' + day, d = this.t9.docs[k] || {};
+                    this.t9Save(k, { ...d, charts: [...(d.charts || []), { id: crypto.randomUUID(), img: url, note: '', ai: '', at: new Date().toISOString() }] }, 0);
+                } catch (e) { this.showToast('Không tải được ảnh: ' + e.message, null, '', 5000); }
+                finally { this.t9.uploading--; this.$nextTick(() => this.icons()); }
+            },
+            t9ChartSet(id, patch) { this.t9DaySet({ charts: (this.t9Day.charts || []).map(c => c.id === id ? { ...c, ...patch } : c) }); },
+            t9DelChart(id) {
+                const k = 'd:' + this.t9Today, list = this.t9Day.charts || [], i = list.findIndex(c => c.id === id), c = list[i];
+                if (!c) return;
+                this.t9Save(k, { ...this.t9Day, charts: list.filter(x => x.id !== id) }, 0);
+                let undone = false;
+                this.showToast('Đã xoá chart', () => { undone = true; const cur = (this.t9.docs[k] || {}).charts || []; const arr = [...cur]; arr.splice(Math.min(i, arr.length), 0, c); this.t9Save(k, { ...(this.t9.docs[k] || {}), charts: arr }, 0); this.$nextTick(() => this.icons()); }, 'Hoàn tác', 6000);
+                setTimeout(() => { if (!undone) this.removeImages([c.img]); }, 6500);
+            },
+            async t9AiRead(id) {
+                const c = (this.t9Day.charts || []).find(x => x.id === id);
+                if (!c) return;
+                if (!this.gemini) return this.showToast('Chưa có Gemini API key', () => this.openSettings(), 'Cài đặt', 5000);
+                this.t9.aiId = id;
+                try {
+                    const b = await (await fetch(c.img)).blob();
+                    const dataUrl = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+                    const prompt = `Bạn là trader kỹ thuật kinh nghiệm. Đọc ảnh chart này và viết nhận định ngắn bằng tiếng Việt, dạng gạch đầu dòng, tối đa 8 dòng:
+- Cặp và khung thời gian (nếu thấy)
+- Xu hướng hiện tại
+- Vùng giá quan trọng (hỗ trợ / kháng cự, ghi số)
+- Kịch bản chính và kịch bản ngược lại
+- Điều kiện để nhận định này sai
+${c.note ? 'Nhận định của người dùng (đối chiếu, chỉ ra điểm đồng ý/không đồng ý): ' + c.note : ''}
+Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
+                    let res = null, last = '';
+                    for (const model of GEMINI_MODELS) {
+                        try {
+                            const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(this.gemini.trim())}`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: b.type || 'image/webp', data: dataUrl.split(',')[1] } }] }] })
+                            });
+                            if (r.ok) { res = r; break; }
+                            const err = await r.json().catch(() => ({})); last = (err.error && err.error.message) || `HTTP ${r.status}`;
+                        } catch (e) { last = e.message; }
+                    }
+                    if (!res) throw new Error(last || 'Không gọi được Gemini');
+                    const data = await res.json();
+                    const text = (((((data.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('')).replace(/\*\*/g, '').trim();
+                    if (!text) throw new Error('AI không trả lời');
+                    this.t9ChartSet(id, { ai: text });
+                } catch (e) { this.showToast('Lỗi AI: ' + e.message, null, '', 5000); }
+                finally { this.t9.aiId = ''; this.$nextTick(() => this.icons()); }
+            },
             get t9S() {
                 const start = this.t9Plan.start, today = this.t9Today;
                 const n = Math.min(90, Math.max(1, this.t9Diff(start, today) + 1));
@@ -2226,7 +2326,7 @@
                 for (let i = n - 1; i >= 0; i--) { const iso = this.t9Add(start, i); if (this.t9Present(this.t9.docs['d:' + iso])) streak++; else if (iso !== today) break; }
                 const dots = Array.from({ length: 90 }, (_, i) => { const iso = this.t9Add(start, i), on = this.t9Present(this.t9.docs['d:' + iso]); return { iso, i, cls: (on ? 'on' : (iso < today ? 'miss' : '')) + (iso === today ? ' now' : '') }; });
                 const past = Object.keys(this.t9.docs).filter(k => k.startsWith('d:') && k !== 'd:' + today && this.t9Present(this.t9.docs[k])).sort().reverse().slice(0, 90)
-                    .map(k => ({ k, iso: k.slice(2), n: this.t9Diff(start, k.slice(2)) + 1, thought: this.t9.docs[k].thought }));
+                    .map(k => ({ k, iso: k.slice(2), n: this.t9Diff(start, k.slice(2)) + 1, thought: this.t9.docs[k].thought, charts: this.t9.docs[k].charts || [] }));
                 return { n, present, streak, dots, past };
             },
 
@@ -2542,6 +2642,11 @@
             onPaste(e) {
                 if (this.art) return this.pasteArticle(e);
                 if (this.isLocked || this.share || this.settingsOpen || this.setForm || this.reader || this.res.form || this.mem.open || this.memberPage) return;
+                if (this.tab === 't90' && this.isAdmin && this.t9Running && !this.formOpen) {
+                    const files = [...(e.clipboardData ? e.clipboardData.items : [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile());
+                    if (files.length) { e.preventDefault(); files.forEach(f => this.t9AddImg(f)); }
+                    return;
+                }
                 const target = this.formOpen ? 'form' : (this.btEdit ? 'btEdit' : (this.tab === 'backtest' && this.bt.set && !this.view ? 'bt' : null));
                 if (!target) return;
                 const item = [...(e.clipboardData ? e.clipboardData.items : [])].find(i => i.type.startsWith('image/'));
