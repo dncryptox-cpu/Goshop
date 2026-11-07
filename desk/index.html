@@ -432,6 +432,31 @@ tr.today td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
   .head h1{font-size:22px}
   .panel{padding:16px}
 }
+/* ---- Hôm nay: một dòng "đang làm" + cần xử lý ---- */
+.topgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:stretch}
+@media (max-width:980px){.topgrid{grid-template-columns:1fr}}
+.nowbar{--mc:var(--accent);background:var(--surface);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:6px;box-shadow:inset 4px 0 0 var(--mc)}
+.nb-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.nb-left{font-size:14px;color:var(--muted)} .nb-left b{color:var(--ink)}
+.nowbar #nowTitle{font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0}
+.nowbar #nowRule{margin:0;color:var(--muted);font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.nowbar .prog{margin-top:6px}
+.nb-sub{display:flex;justify-content:space-between;gap:6px 14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin-top:4px}
+.nb-sub b{color:var(--ink)}
+#sessions{display:inline-flex;align-items:center;gap:6px}
+#sessions .live{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.duebox{padding:14px 16px;display:flex;flex-direction:column}
+.db-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.db-head h3{font-size:17px}
+.lnk{border:0;background:none;color:var(--accent-text);font:500 15px var(--f-body);cursor:pointer;padding:2px 0}
+.drow{--mc:var(--muted);display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 0;cursor:pointer;position:relative}
+.drow+.drow::before{content:"";position:absolute;top:0;left:34px;right:0;height:.5px;background:var(--line)}
+.drow .ck{width:22px;height:22px}
+.drow .dt{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drow .dm{font-size:13px;font-weight:600;white-space:nowrap}
+.drow .dm.late{color:var(--bad)} .drow .dm.today{color:var(--warn)}
+.dnote{font-size:13px;color:var(--dim);padding-top:8px}
+.dempty{font-size:15px;color:var(--muted);padding:10px 0 2px}
 /* ================= Apple layer ================= */
 body{font-variant-numeric:tabular-nums;letter-spacing:-.01em;transition:background-color .25s ease,color .25s ease}
 /* chữ: tracking theo cỡ — lớn thì âm, nhỏ thì gần 0; đậm nhạt tạo thứ bậc */
@@ -610,21 +635,19 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px var(--accent-bg);bo
     <div class="saved" id="loginNote"></div>
   </section>
 
-  <div id="nowWrap" style="display:flex;flex-direction:column;gap:14px">
-  <section class="now" id="nowCard" aria-live="polite">
-    <div>
-      <span class="chip" id="nowChip">—</span>
-      <h2 id="nowTitle">—</h2>
-      <p id="nowRule"></p>
-      <div class="prog"><i id="nowBar"></i></div>
-      <div class="now-meta"><span id="nowLeft"></span><span id="nowNext"></span></div>
-    </div>
-    <div class="sessions" id="sessions"></div>
+  <div id="nowWrap" class="topgrid">
+  <section class="nowbar" id="nowCard" aria-live="polite">
+    <div class="nb-row"><span class="chip" id="nowChip">—</span><span class="nb-left" id="nowLeft"></span></div>
+    <h2 id="nowTitle">—</h2>
+    <p id="nowRule"></p>
+    <div class="prog"><i id="nowBar"></i></div>
+    <div class="nb-sub"><span id="nowNext"></span><span id="sessions"></span></div>
   </section>
-
-  <section class="tl-wrap" aria-label="Dòng thời gian 24 giờ"><div class="tl" id="timeline"></div></section>
+  <section class="panel duebox" aria-label="Cần xử lý hôm nay">
+    <div class="db-head"><h3>Cần xử lý hôm nay</h3><button type="button" class="lnk" id="dueGo">Inbox ›</button></div>
+    <div id="dueList"></div>
+  </section>
   </div>
-
 
   <section id="tab-today" class="grid2">
     <div class="panel">
@@ -934,19 +957,23 @@ function renderNow(){
   }
   $('nowNext').innerHTML = next ? `Tiếp: <b>${fmtMin(next.S)}</b> ${escapeHtml(next.t)}` : '';
   const ss = sessionsFor(date);
-  $('sessions').innerHTML = ss.map(s=>{
-    let st, cls = '';
-    if (s.weekend) st = 'Cuối tuần, TradFi nghỉ';
-    else if (t>=s.S && t<s.E){ st = `Đang mở · đóng ${fmtMin(s.E)}`; cls = 'open'; }
-    else if (t<s.S) st = `Mở lúc ${fmtMin(s.S)} · còn ${fmtDur(s.S-t)}`;
-    else st = `Đã đóng ${fmtMin(s.E)}`;
-    return `<div class="sess ${cls}"><span class="dot"></span><span>${s.name}<br><small>${st}</small></span><span class="mono" style="font-size:12px;color:var(--muted)">${fmtMin(s.S)}–${fmtMin(s.E)}</span></div>`;
-  }).join('');
+  /* chỉ một dòng: phiên đang mở, nếu không thì phiên sắp mở gần nhất */
+  let sl = '';
+  if (ss.length && ss.every(x=>x.weekend)) sl = 'Cuối tuần · TradFi nghỉ';
+  else {
+    const open = ss.filter(x=>!x.weekend && t>=x.S && t<x.E);
+    const up = ss.filter(x=>!x.weekend && t<x.S).sort((a,b)=>a.S-b.S)[0];
+    if (open.length) sl = `<i class="live"></i>${open.map(x=>x.name.replace(/\s*\(.*\)/,'')).join(' + ')} đang mở · đóng ${fmtMin(open[0].E)}`;
+    else if (up) sl = `${up.name.replace(/\s*\(.*\)/,'')} mở ${fmtMin(up.S)} · còn ${fmtDur(up.S-t)}`;
+    else sl = 'Các phiên đã đóng';
+  }
+  $('sessions').innerHTML = sl;
   const key = date+'|'+Math.floor(t);
   if (key !== lastMinuteKey){ lastMinuteKey = key; renderTimeline(N); if (activeTab==='today') markCurrentRow(N); }
   else { const nd = $('needle'); if (nd) nd.style.left = ((t-L.start)/1440*100)+'%'; }
 }
 function renderTimeline(N){
+  if (!$('timeline')) return;
   const {L, t, date} = N; const pos = x => ((x-L.start)/1440*100);
   let h = '';
   L.blocks.forEach(b=>{
@@ -1183,6 +1210,7 @@ function iCounts(){
   return c;
 }
 function renderInboxBadges(){
+  renderDue();
   const c = iCounts(); const on = sbUser && iLoaded;
   $('inboxPill').hidden = !on || !c.now; $('inboxPillN').textContent = c.now; $('inboxPill').classList.toggle('hot', c.late>0);
   $('inboxPill').title = c.late ? `${c.late} việc quá hạn` : 'Mục cần xử lý';
@@ -1190,6 +1218,32 @@ function renderInboxBadges(){
   $('ivNow').textContent = c.now||''; $('ivLater').textContent = c.later||''; $('ivWait').textContent = c.wait||'';
 }
 
+/* Hôm nay: việc trễ + đến hạn hôm nay từ Inbox, tick xong ngay tại đây */
+function renderDue(){
+  const box = $('dueList'); if (!box) return;
+  const card = box.closest('.duebox');
+  if (!sbUser){ card.hidden = true; return; }
+  card.hidden = false;
+  const t = todayStr();
+  const open = Object.values(inbox).filter(it=>!['done','trash'].includes(it.status));
+  const due = open.filter(it=>it.due && it.due<=t).sort((a,b)=>a.due<b.due?-1:a.due>b.due?1:tsMs(a.created_at)-tsMs(b.created_at));
+  const fresh = open.filter(it=>it.status==='inbox' && !it.due).length;
+  const rows = due.slice(0,6).map(it=>{
+    const k = IKIND[it.kind]||IKIND.personal; const late = it.due < t;
+    return `<div class="drow" data-open="${it.id}" style="--mc:${modeVar(k.m)}" role="button" tabindex="0">
+      <button type="button" class="ck" data-done="${it.id}" aria-label="Đánh dấu xong">✓</button>
+      <span class="dt">${linkify(iHead(it))}</span>
+      <span class="dm ${late?'late':'today'}">${late?'Trễ '+fmtDue(it.due).toLowerCase():'Hôm nay'}</span>
+    </div>`;
+  }).join('');
+  const more = due.length>6 ? `<div class="dnote">+${due.length-6} mục nữa trong Inbox</div>` : '';
+  const freshNote = fresh ? `<div class="dnote">${fresh} mục mới chưa phân loại</div>` : '';
+  box.innerHTML = rows ? rows+more+freshNote : `<div class="dempty">Không có việc trễ hay đến hạn.</div>${freshNote}`;
+}
+function goInbox(id){
+  document.querySelector('[data-tab="inbox"]').click();
+  if (id!=null){ iView = 'now'; iOpen = id; renderInbox(); }
+}
 function renderInbox(){
   renderInboxBadges();
   if (activeTab!=='inbox') return;
@@ -1493,6 +1547,14 @@ $('iWrap').addEventListener('change', e=>{
 $('iView').addEventListener('click', e=>{ const b = e.target.closest('[data-v]'); if (!b) return; iView = b.dataset.v; iOpen = null; renderInbox(); });
 $('iCats').addEventListener('click', e=>{ const b = e.target.closest('[data-cat]'); if (!b) return; iCat = b.dataset.cat; renderInbox(); });
 $('iq').addEventListener('input', e=>{ iQuery = e.target.value; renderInbox(); });
+$('dueGo').addEventListener('click', ()=>goInbox());
+$('dueList').addEventListener('click', e=>{
+  const d = e.target.closest('[data-done]');
+  if (d){ e.stopPropagation(); const id = +d.dataset.done; if (inbox[id]) setStatus(id, 'done', 'Đã xong: '+iHead(inbox[id]).slice(0,40)); return; }
+  if (e.target.closest('a,.cp')) return;
+  const r = e.target.closest('[data-open]'); if (r) goInbox(+r.dataset.open);
+});
+$('dueList').addEventListener('keydown', e=>{ if ((e.key==='Enter'||e.key===' ') && e.target.matches('[data-open]')){ e.preventDefault(); goInbox(+e.target.dataset.open); }});
 $('inboxPill').addEventListener('click', ()=>{ iView = 'now'; document.querySelector('[data-tab="inbox"]').click(); });
 
 /* ghi nhanh trên web — mất mạng thì giữ hàng đợi trên máy, có mạng tự đẩy */
