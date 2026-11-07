@@ -39,14 +39,22 @@ async function tg(method: string, body: Record<string, unknown>) {
 const say = (text: string, extra: Record<string, unknown> = {}) =>
   tg("sendMessage", { chat_id: CHAT, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...extra });
 
-/* ---------- chủ Desk: user duy nhất có dữ liệu desk_docs ---------- */
+/* ---------- chủ Desk: tài khoản cố định theo email (bảng desk_docs còn dùng chung với Trading OS) ---------- */
 let OWNER = Deno.env.get("DESK_USER_ID") || "";
+const OWNER_EMAIL = (Deno.env.get("DESK_OWNER_EMAIL") || "dncryptox@gmail.com").toLowerCase();
 async function owner() {
   if (OWNER) return OWNER;
-  const { data } = await db.from("desk_docs").select("user_id").limit(1000);
-  const ids = [...new Set((data || []).map((r: any) => r.user_id))];
-  if (ids.length !== 1) throw new Error(ids.length ? "Desk có nhiều tài khoản, cần đặt secret DESK_USER_ID" : "Chưa có tài khoản Desk nào (đăng nhập godnc.com/desk trước)");
-  return (OWNER = ids[0] as string);
+  for (let page = 1; page <= 5; page++) {
+    const { data, error } = await db.auth.admin.listUsers({ page, perPage: 200 });
+    if (error) throw new Error("Không đọc được danh sách tài khoản: " + error.message);
+    const u = (data?.users || []).find((x: any) => (x.email || "").toLowerCase() === OWNER_EMAIL);
+    if (u) return (OWNER = u.id);
+    if (!data?.users?.length || data.users.length < 200) break;
+  }
+  // dự phòng: tài khoản đang có mục Inbox
+  const { data: r } = await db.from("desk_inbox").select("user_id").order("id", { ascending: false }).limit(1).maybeSingle();
+  if (r?.user_id) return (OWNER = r.user_id);
+  throw new Error(`Không thấy tài khoản ${OWNER_EMAIL} trên Desk`);
 }
 
 /* ---------- đọc nội dung tin ---------- */
