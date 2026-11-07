@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Vườn Thiền: game ghép hoa thư giãn trên hồ sen.">
+<style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+<title>Vườn Thiền</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,500;0,700;1,500&family=Be+Vietnam+Pro:wght@400;500;600&display=swap">
+<style>
+/* Layout: a lotus pond at dusk fills the page; a quiet control column sits to its left (below it on phones). */
+:root {
+  color-scheme: dark;
+  --pond-a: #17463f; --pond-b: #0b2428;
+  --ink: #eef3e4; --ink-soft: #a9c0b2;
+  --panel: #0d2c2dcc; --line: #ffffff1f;
+  --lotus: #f4a3b8; --gold: #f2c65a;
+  --display: "Alegreya", Georgia, serif;
+  --body: "Be Vietnam Pro", system-ui, sans-serif;
+}
+:root[data-season="1"] { --pond-a: #0f4a55; --pond-b: #07232f; --panel: #0a2b35cc; }
+:root[data-season="2"] { --pond-a: #47401f; --pond-b: #1e1c10; --panel: #27230fcc; }
+:root[data-season="3"] { --pond-a: #2a3c58; --pond-b: #11182a; --panel: #151f33cc; }
+html, body { height: 100%; }
+body {
+  background: radial-gradient(120% 90% at 62% 40%, var(--pond-a), var(--pond-b));
+  background-color: var(--pond-b);
+  color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5;
+  overflow: hidden; transition: background-color .8s;
+}
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
+button:focus-visible, canvas:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+#app {
+  height: 100%; display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px;
+  padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+#side { display: flex; flex-direction: column; gap: 18px; min-height: 0; overflow-y: auto; }
+#head h1 { font: italic 500 40px/1 var(--display); margin: 0; letter-spacing: .01em; }
+#where { margin-top: 12px; }
+#where b { font: 700 21px/1.2 var(--display); display: block; }
+#where span { color: var(--ink-soft); font-size: 13px; }
+#stats { display: flex; gap: 24px; font-variant-numeric: tabular-nums; }
+#stats small, .lbl { display: block; color: var(--ink-soft); font-size: 12px; letter-spacing: .03em; }
+#stats strong { font-size: 20px; font-weight: 600; }
+#goal { display: flex; gap: 3px; min-height: 30px; align-items: center; flex-wrap: wrap; }
+#goal i { width: 18px; height: 18px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 1.5px solid var(--lotus); display: block; box-sizing: border-box; margin: 3px; }
+#goal i.on { background: var(--lotus); }
+#tray { display: grid; grid-template-columns: auto auto 1fr; gap: 14px; align-items: end; }
+.slot { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.slot canvas { display: block; background: #ffffff0d; border-radius: 50%; }
+#hold { padding: 0; border-radius: 50%; display: block; }
+#hold canvas { outline: 1.5px dashed var(--line); outline-offset: -1.5px; }
+#hold:hover canvas { background: #ffffff1c; }
+#nexts { display: flex; gap: 6px; }
+#actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { padding: 8px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); font-size: 14px; white-space: nowrap; }
+.btn:hover:not(:disabled) { border-color: var(--ink-soft); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.main { background: var(--gold); border-color: var(--gold); color: #2b2308; font-weight: 600; }
+#msg { color: var(--ink-soft); min-height: 44px; font-size: 14px; }
+#ladder { display: flex; align-items: center; gap: 4px; color: var(--ink-soft); font-size: 13px; margin-top: auto; }
+#ladder canvas { display: block; }
+#stage { position: relative; min-width: 0; min-height: 0; }
+#board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+.veil { position: fixed; inset: 0; z-index: 20; background: #05141ab8; display: flex; align-items: center; justify-content: center; padding: 16px; overflow-y: auto; }
+.card { background: #10312f; border: 1px solid var(--line); border-radius: 18px; padding: 24px; width: min(480px, 100%); max-height: 100%; overflow-y: auto; box-sizing: border-box; }
+.card h2 { font: italic 500 30px/1.1 var(--display); margin: 0 0 10px; text-wrap: balance; }
+.card p { margin: 0 0 12px; }
+.card ul { margin: 0 0 16px; padding-left: 20px; display: grid; gap: 8px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.stars { font-size: 30px; letter-spacing: 4px; color: var(--gold); line-height: 1.2; }
+.stars span { opacity: .22; }
+.starnote { color: var(--ink-soft); font-size: 13px; margin-bottom: 12px; }
+.season { font: italic 500 18px var(--display); color: var(--ink-soft); margin: 14px 0 6px; }
+.pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pick button { padding: 10px 6px; border: 1px solid var(--line); border-radius: 12px; font-size: 13px; line-height: 1.3; min-width: 0; }
+.pick button:hover:not(:disabled) { border-color: var(--ink-soft); }
+.pick button:disabled { opacity: .35; cursor: default; }
+.pick button.now { border-color: var(--gold); }
+.pick em { display: block; font-style: normal; color: var(--gold); font-size: 12px; min-height: 16px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 760px), (max-height: 520px) and (max-width: 900px) {
+  #app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px; padding-block: 10px; }
+  #side { display: contents; }
+  #head { grid-row: 1; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 2px 12px; }
+  #head h1 { display: none; }
+  #where { margin: 0; }
+  #where b { font-size: 18px; display: inline; }
+  #where span { display: block; font-size: 12px; }
+  #stats { gap: 14px; }
+  #stats strong { font-size: 16px; }
+  #goal { min-height: 0; width: 100%; }
+  #goal i { width: 13px; height: 13px; margin: 2px; }
+  #stage { grid-row: 2; }
+  #bottom { grid-row: 3; display: flex; flex-direction: column; gap: 8px; }
+  #msg { min-height: 20px; font-size: 13px; line-height: 1.35; }
+  #ladder { display: none; }
+  .btn { padding: 7px 11px; font-size: 13px; }
+}
+@media (min-width: 761px) { #bottom { display: flex; flex-direction: column; gap: 16px; flex: 1; } }
+@media (prefers-reduced-motion: reduce) { body { transition: none; } }
+</style>
+
+</head>
+<body>
+<div id="app">
+  <div id="side">
+    <div id="head">
+      <h1>Vườn Thiền</h1>
+      <div id="where"><b id="gName"></b><span id="gSeason"></span></div>
+      <div id="stats">
+        <div><small>Điểm</small><strong id="score">0</strong></div>
+        <div><small>Lượt đặt</small><strong id="moves">0</strong></div>
+      </div>
+      <div id="goal" role="img"></div>
+    </div>
+    <div id="bottom">
+      <div id="tray">
+        <div class="slot"><span class="lbl">Đang cầm</span><canvas id="cur" width="84" height="84" style="width:84px;height:84px"></canvas></div>
+        <div class="slot"><span class="lbl">Giỏ</span><button id="hold" aria-label="Cất cây đang cầm vào giỏ hoặc đổi với cây trong giỏ"><canvas id="holdC" style="width:60px;height:60px"></canvas></button></div>
+        <div class="slot" style="align-items:flex-start"><span class="lbl">Kế tiếp</span><div id="nexts"><canvas id="n1" style="width:48px;height:48px"></canvas><canvas id="n2" style="width:36px;height:36px;align-self:end"></canvas></div></div>
+      </div>
+      <div id="msg"></div>
+      <div id="actions">
+        <button class="btn" id="undo"></button>
+        <button class="btn" id="gardens">Các vườn</button>
+        <button class="btn" id="help">Luật chơi</button>
+        <button class="btn" id="snd"></button>
+      </div>
+      <div id="ladder" aria-hidden="true"></div>
+    </div>
+  </div>
+  <div id="stage"><canvas id="board" tabindex="0" aria-label="Hồ sen. Dùng phím mũi tên để chọn lá sen, Enter để đặt cây, H để dùng giỏ, Z để hoàn tác."></canvas></div>
+</div>
+<div class="sr" aria-live="polite" id="live"></div>
+<div id="veil" class="veil" hidden><div class="card" id="card" role="dialog" aria-modal="true"></div></div>
+
+<script>
+//#LOGIC-START
+const DIRS = [[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
+const MAX_ST = 2;
+const hexKeys = r => { const o = []; for (let q=-r;q<=r;q++) for (let s=-r;s<=r;s++) if (Math.abs(q+s)<=r) o.push(q+','+s); return o; };
+const CORNERS3 = ['3,0','0,3','-3,3','-3,0','0,-3','3,-3'];
+const RING1 = ['0,0','1,0','1,-1','0,-1','-1,0','-1,1','0,1'];
+const SPOKES2 = ['2,0','0,2','-2,2','-2,0','0,-2','2,-2'];
+const W = (bud,dew,stone) => ({bud,dew,stone});
+const GARDENS = [
+  {n:'Giọt Đầu Mùa',s:0,r:2,sp:2,goal:1,w:W(.22,.05,0)},
+  {n:'Bờ Tre',s:0,r:3,holes:CORNERS3,sp:2,goal:2,w:W(.22,.05,0)},
+  {n:'Ao Rêu',s:0,r:3,sp:3,goal:1,stones:['0,0','2,-1','-2,1'],w:W(.25,.05,0)},
+  {n:'Sen Trưa',s:1,r:3,sp:3,goal:2,stones:SPOKES2,w:W(.25,.05,0)},
+  {n:'Cầu Đá',s:1,r:3,sp:3,goal:2,stones:['0,-2','0,-1','0,0','0,1','0,2'],w:W(.25,.05,0)},
+  {n:'Mưa Rào',s:1,r:3,sp:3,goal:3,w:W(.25,.05,.05)},
+  {n:'Lá Vàng',s:2,r:3,sp:4,goal:1,w:W(.25,.06,0)},
+  {n:'Gió Heo May',s:2,r:3,holes:RING1,sp:3,goal:2,w:W(.28,.08,0)},
+  {n:'Trăng Rằm',s:2,r:3,sp:4,goal:2,stones:SPOKES2,w:W(.25,.06,.02)},
+  {n:'Sương Sớm',s:3,r:3,holes:CORNERS3,sp:3,goal:3,stones:['0,0'],w:W(.25,.05,.07)},
+  {n:'Đá Lạnh',s:3,r:4,sp:4,goal:3,stones:['0,0',...SPOKES2,'4,-2','-4,2','2,2','-2,-2','2,-4','-2,4'],w:W(.25,.06,.03)},
+  {n:'Tuyết Đầu Năm',s:3,r:4,holes:['4,0','0,4','-4,4','-4,0','0,-4','4,-4'],sp:4,goal:4,stones:['0,0'],w:W(.25,.06,.07)},
+];
+const ENDLESS = {n:'Hồ Vô Tận',s:1,r:3,sp:3,goal:Infinity,w:W(.25,.05,.04),endless:true};
+const gardenOf = i => i >= GARDENS.length ? ENDLESS : GARDENS[i];
+
+function rand(st) { // mulberry32: keeps its seed in the state so undo cannot reroll the deck
+  st.rng = (st.rng + 0x6D2B79F5) | 0; let t = st.rng;
+  t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+function draw(st) {
+  const g = gardenOf(st.idx), x = rand(st), sp = Math.floor(rand(st) * g.sp);
+  if (x < g.w.stone && empties(st) > 4) return {k:'s'};
+  if (x < g.w.stone + g.w.dew) return {k:'d'};
+  if (x < g.w.stone + g.w.dew + g.w.bud) return {k:'f',sp,st:1};
+  return {k:'f',sp,st:0};
+}
+function empties(st) { return st.keys.filter(k => !st.grid[k]).length; }
+function newGame(idx, seed) {
+  const g = gardenOf(idx), holes = new Set(g.holes || []);
+  const st = {idx, rng: seed|0, keys: hexKeys(g.r).filter(k => !holes.has(k)), grid: {}, score: 0, moves: 0, released: 0, undos: 3, usedUndo: false, hold: null, status: 'play', next: []};
+  (g.stones || []).forEach(k => { if (st.keys.includes(k)) st.grid[k] = {k:'s'}; });
+  st.cur = draw(st); st.next = [draw(st), draw(st)];
+  return st;
+}
+const neigh = (st, k) => { const [q,r] = k.split(',').map(Number); return DIRS.map(d => (q+d[0])+','+(r+d[1])).filter(n => st.keys.includes(n)); };
+function group(st, grid, k) {
+  const p = grid[k]; if (!p || p.k !== 'f') return [];
+  const seen = new Set([k]), todo = [k];
+  while (todo.length) for (const n of neigh(st, todo.pop())) {
+    const o = grid[n];
+    if (o && o.k==='f' && o.sp===p.sp && o.st===p.st && !seen.has(n)) { seen.add(n); todo.push(n); }
+  }
+  return [...seen];
+}
+function resolveDew(st, k) { // dew becomes whichever flower gives the biggest merge here
+  const n = gardenOf(st.idx).sp, grid = {...st.grid};
+  for (let s = MAX_ST; s >= 0; s--) for (let sp = 0; sp < n; sp++) {
+    grid[k] = {k:'f',sp,st:s};
+    if (group(st, grid, k).length >= 3) return grid[k];
+  }
+  const adj = neigh(st, k).map(a => st.grid[a]).filter(p => p && p.k==='f').sort((a,b) => a.st-b.st)[0];
+  return adj ? {k:'f',sp:adj.sp,st:adj.st} : {k:'f',sp:st.moves % n,st:0};
+}
+function previewOf(st, k) { // cells that would merge if the held piece landed on k
+  const p = st.cur.k==='d' ? resolveDew(st, k) : st.cur;
+  if (p.k !== 'f') return {piece:p, cells:[]};
+  const grid = {...st.grid, [k]:p}, g = group(st, grid, k);
+  return {piece:p, cells: g.length >= 3 ? g : []};
+}
+function place(st, k) {
+  if (st.status !== 'play' || st.grid[k] || !st.keys.includes(k)) return null;
+  const events = [], p = st.cur.k==='d' ? resolveDew(st, k) : st.cur;
+  st.grid[k] = p; events.push({t:'place',k,p,dew:st.cur.k==='d'});
+  let chain = 0;
+  while (st.grid[k].k === 'f') {
+    const q = st.grid[k], g = group(st, st.grid, k);
+    if (g.length < 3) break;
+    chain++;
+    if (q.st < MAX_ST) {
+      const gain = [10,40][q.st] * g.length * chain;
+      g.forEach(c => delete st.grid[c]);
+      st.grid[k] = {k:'f',sp:q.sp,st:q.st+1};
+      st.score += gain;
+      events.push({t:'merge',cells:g,to:k,from:q,p:st.grid[k],gain,chain});
+    } else {
+      g.forEach(c => delete st.grid[c]);
+      const swept = [...new Set(g.flatMap(c => neigh(st, c)))].filter(c => st.grid[c]).map(c => ({k:c,p:st.grid[c]}));
+      swept.forEach(c => delete st.grid[c.k]);
+      const gain = (400 + swept.length * 15) * chain;
+      st.score += gain; st.released++; st.undos++;
+      events.push({t:'release',cells:g,from:q,swept,gain,to:k});
+      break;
+    }
+  }
+  st.moves++;
+  st.cur = st.next.shift(); st.next.push(draw(st));
+  if (st.released >= gardenOf(st.idx).goal) st.status = 'won';
+  else if (!empties(st)) st.status = 'lost';
+  return events;
+}
+function swapHold(st) {
+  if (st.status !== 'play') return;
+  if (st.hold) { const h = st.hold; st.hold = st.cur; st.cur = h; }
+  else { st.hold = st.cur; st.cur = st.next.shift(); st.next.push(draw(st)); }
+}
+function starsOf(st) { return 1 + (st.usedUndo ? 0 : 1) + (empties(st) * 2 >= st.keys.length ? 1 : 0); }
+//#LOGIC-END
+
+const $ = id => document.getElementById(id);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SPECIES = ['Sen','Cúc','Lan','Mai tuyết'], STAGES = ['Mầm','Nụ','Hoa'], SEASONS = ['Mùa xuân','Mùa hạ','Mùa thu','Mùa đông'];
+const COL = [
+  {a:'#ffe3ea',b:'#f2789b',c:'#ffd76a'},
+  {a:'#ffe9a8',b:'#f0b02e',c:'#b8651a'},
+  {a:'#e7dcff',b:'#a184ee',c:'#ffe08a'},
+  {a:'#ffffff',b:'#9fdcf0',c:'#4d9dbd'},
+];
+
+/* ---------- flower art, drawn in a unit circle ---------- */
+function petal(c, len, wid) { c.beginPath(); c.moveTo(0,0); c.quadraticCurveTo(wid,-len*.55,0,-len); c.quadraticCurveTo(-wid,-len*.55,0,0); c.closePath(); }
+function ringOf(c, n, off, fn) { for (let i=0;i<n;i++) { c.save(); c.rotate(off + i/n*Math.PI*2); fn(); c.restore(); } }
+function grad(c, r, a, b) { const g = c.createRadialGradient(0,0,r*.1,0,0,r); g.addColorStop(0,a); g.addColorStop(1,b); return g; }
+function bead(c, sp, col) { // tip marker: shape differs by species so colour is not the only cue
+  c.fillStyle = col.b; c.strokeStyle = col.a; c.lineWidth = .03;
+  c.beginPath();
+  if (sp===0) { c.moveTo(0,-.2); c.quadraticCurveTo(.17,0,0,.1); c.quadraticCurveTo(-.17,0,0,-.2); }
+  else if (sp===1) c.arc(0,-.05,.14,0,7);
+  else if (sp===2) { c.moveTo(0,-.21); c.lineTo(.14,-.05); c.lineTo(0,.11); c.lineTo(-.14,-.05); c.closePath(); }
+  else { c.arc(-.09,-.05,.09,0,7); c.moveTo(.18,-.05); c.arc(.09,-.05,.09,0,7); }
+  c.fill(); c.stroke();
+}
+function drawPiece(c, x, y, R, p) {
+  c.save(); c.translate(x,y); c.scale(R,R);
+  if (p.k==='s') {
+    c.fillStyle = '#00000033'; c.beginPath(); c.ellipse(.03,.2,.62,.3,0,0,7); c.fill();
+    const g = c.createLinearGradient(0,-.5,0,.5); g.addColorStop(0,'#b5bcb4'); g.addColorStop(1,'#5f6a68');
+    c.fillStyle = g; c.beginPath(); c.moveTo(-.62,.12); c.bezierCurveTo(-.6,-.4,-.1,-.58,.25,-.46); c.bezierCurveTo(.6,-.36,.72,.06,.52,.26); c.bezierCurveTo(.25,.46,-.5,.48,-.62,.12); c.fill();
+    c.fillStyle = '#ffffff30'; c.beginPath(); c.ellipse(-.1,-.28,.26,.08,-.25,0,7); c.fill();
+  } else if (p.k==='d') {
+    const g = c.createRadialGradient(-.14,-.05,.04,0,.08,.56); g.addColorStop(0,'#ffffff'); g.addColorStop(.5,'#b6f0ec'); g.addColorStop(1,'#4fb7c4');
+    c.fillStyle = g; c.beginPath(); c.moveTo(0,-.62); c.bezierCurveTo(.2,-.3,.5,-.05,.46,.2); c.bezierCurveTo(.4,.58,-.4,.58,-.46,.2); c.bezierCurveTo(-.5,-.05,-.2,-.3,0,-.62); c.fill();
+    c.fillStyle = '#ffffffcc'; c.beginPath(); c.ellipse(-.17,.12,.07,.14,.4,0,7); c.fill();
+  } else if (p.st===0) {
+    const col = COL[p.sp];
+    c.strokeStyle = '#a7dc8c'; c.lineWidth = .07; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(0,.42); c.quadraticCurveTo(.02,.12,0,-.14); c.stroke();
+    c.fillStyle = '#8fd27b';
+    c.save(); c.translate(0,.2); c.rotate(-1.05); petal(c,.42,.17); c.fill(); c.restore();
+    c.save(); c.translate(0,.2); c.rotate(1.05); petal(c,.42,.17); c.fill(); c.restore();
+    c.save(); c.translate(0,-.14); bead(c,p.sp,col); c.restore();
+  } else if (p.st===1) {
+    const col = COL[p.sp];
+    c.strokeStyle = '#7fc46e'; c.lineWidth = .08; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(0,.68); c.lineTo(0,.2); c.stroke();
+    c.fillStyle = '#7fc46e';
+    [-.95,.95].forEach(a => { c.save(); c.translate(0,.45); c.rotate(a); petal(c,.42,.15); c.fill(); c.restore(); });
+    const g = c.createLinearGradient(0,-.6,0,.3); g.addColorStop(0,col.b); g.addColorStop(1,col.a);
+    c.fillStyle = g; c.strokeStyle = col.b; c.lineWidth = .025;
+    const wide = [.36,.46,.4,.42][p.sp], tall = [.86,.72,.8,.7][p.sp];
+    [-.3,.3,0].forEach(a => { c.save(); c.translate(0,.26); c.rotate(a); petal(c,tall,wide*1.25); c.fill(); c.stroke(); c.restore(); });
+    if (p.sp===1) { c.fillStyle = col.c; c.beginPath(); c.arc(0,-.42,.05,0,7); c.fill(); }
+    if (p.sp===3) { c.fillStyle = '#ffffff'; c.beginPath(); c.arc(0,-.12,.05,0,7); c.fill(); }
+  } else {
+    const col = COL[p.sp];
+    c.fillStyle = '#00000024'; c.beginPath(); c.arc(.03,.05,.85,0,7); c.fill();
+    if (p.sp===0) {
+      c.fillStyle = grad(c,.92,col.a,col.b); c.strokeStyle = '#d65a80'; c.lineWidth = .018;
+      ringOf(c,9,0,() => { petal(c,.92,.34); c.fill(); c.stroke(); });
+      c.fillStyle = grad(c,.68,'#fff3f6',col.b);
+      ringOf(c,7,.35,() => { petal(c,.66,.28); c.fill(); c.stroke(); });
+      c.fillStyle = col.c; c.beginPath(); c.arc(0,0,.17,0,7); c.fill();
+    } else if (p.sp===1) {
+      c.fillStyle = grad(c,.92,col.a,col.b); c.strokeStyle = '#c98716'; c.lineWidth = .012;
+      ringOf(c,18,0,() => { petal(c,.92,.12); c.fill(); c.stroke(); });
+      ringOf(c,13,.12,() => { petal(c,.62,.1); c.fill(); c.stroke(); });
+      c.fillStyle = col.c; c.beginPath(); c.arc(0,0,.2,0,7); c.fill();
+      c.fillStyle = '#7d3f0e'; for (let i=0;i<9;i++) { c.beginPath(); c.arc(Math.cos(i*2.4)*.03*Math.sqrt(i)*1.6,Math.sin(i*2.4)*.03*Math.sqrt(i)*1.6,.018,0,7); c.fill(); }
+    } else if (p.sp===2) {
+      c.fillStyle = grad(c,.9,col.a,col.b); c.strokeStyle = '#7a5dcb'; c.lineWidth = .018;
+      ringOf(c,5,0,() => { c.beginPath(); c.ellipse(0,-.5,.38,.44,0,0,7); c.fill(); c.stroke(); });
+      c.fillStyle = '#6c4ccb'; c.beginPath(); c.arc(0,0,.2,0,7); c.fill();
+      c.fillStyle = col.c; c.beginPath(); c.ellipse(0,.04,.09,.14,0,0,7); c.fill();
+    } else {
+      c.fillStyle = grad(c,.86,col.a,col.b); c.strokeStyle = '#6fb7cf'; c.lineWidth = .02;
+      ringOf(c,5,.3,() => { c.beginPath(); c.arc(0,-.47,.36,0,7); c.fill(); c.stroke(); });
+      c.strokeStyle = col.c; c.lineWidth = .018; c.fillStyle = '#ffe28a';
+      ringOf(c,10,0,() => { c.beginPath(); c.moveTo(0,0); c.lineTo(0,-.3); c.stroke(); c.beginPath(); c.arc(0,-.32,.03,0,7); c.fill(); });
+      c.fillStyle = col.c; c.beginPath(); c.arc(0,0,.08,0,7); c.fill();
+    }
+  }
+  c.restore();
+}
+const pieceName = p => p.k==='s' ? 'Đá' : p.k==='d' ? 'Giọt sương' : STAGES[p.st] + ' ' + SPECIES[p.sp].toLowerCase();
+
+/* ---------- state ---------- */
+let state, hist = [], view = {}, busy = false;
+let store = {progress:{}, sound:true};
+function load() { try { const s = JSON.parse(localStorage.getItem('vuonthien.v1')); if (s) store = {...store, ...s}; } catch (e) {} }
+function save() { try { localStorage.setItem('vuonthien.v1', JSON.stringify({...store, current: state})); } catch (e) {} }
+const seedNew = () => Math.floor(Math.random() * 2e9);
+
+/* ---------- canvas layout ---------- */
+const cv = $('board'), ctx = cv.getContext('2d');
+let dpr = 1, W_ = 0, H_ = 0, size = 40, ox = 0, oy = 0, pads = null, sprites = {}, cellXY = {};
+const raw = k => { const [q,r] = k.split(',').map(Number); return [Math.sqrt(3)*(q+r/2), 1.5*r]; };
+function layout() {
+  const box = cv.getBoundingClientRect();
+  W_ = box.width; H_ = box.height; dpr = Math.min(devicePixelRatio || 1, 2.5);
+  cv.width = Math.round(W_*dpr); cv.height = Math.round(H_*dpr);
+  if (!state || !W_ || !H_) return;
+  const pts = state.keys.map(raw), xs = pts.map(p=>p[0]), ys = pts.map(p=>p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  size = Math.min(W_/(maxX-minX+Math.sqrt(3)+.2), H_/(maxY-minY+2.2), 66);
+  ox = W_/2 - size*(minX+maxX)/2; oy = H_/2 - size*(minY+maxY)/2;
+  cellXY = {}; state.keys.forEach(k => { const [x,y] = raw(k); cellXY[k] = [ox+x*size, oy+y*size]; });
+  sprites = {};
+  pads = document.createElement('canvas'); pads.width = cv.width; pads.height = cv.height;
+  const c = pads.getContext('2d'); c.scale(dpr,dpr);
+  state.keys.forEach(k => {
+    const [x,y] = cellXY[k];
+    hexPath(c,x,y,size*.93); c.lineJoin='round'; c.lineWidth=size*.1;
+    const g = c.createRadialGradient(x-size*.2,y-size*.3,size*.1,x,y,size);
+    g.addColorStop(0,'#3f8f6f'); g.addColorStop(1,'#1f6152');
+    c.fillStyle=g; c.strokeStyle=g; c.stroke(); c.fill();
+    c.strokeStyle='#ffffff14'; c.lineWidth=1; // leaf veins
+    for (let i=0;i<6;i++) { const a=i/6*Math.PI*2+.26; c.beginPath(); c.moveTo(x,y); c.lineTo(x+Math.cos(a)*size*.72,y+Math.sin(a)*size*.72); c.stroke(); }
+  });
+}
+function hexPath(c,x,y,s) { c.beginPath(); for (let i=0;i<6;i++) { const a=Math.PI/6+i*Math.PI/3; const px=x+Math.cos(a)*s, py=y+Math.sin(a)*s; i?c.lineTo(px,py):c.moveTo(px,py); } c.closePath(); }
+function sprite(p) {
+  const id = p.k==='f' ? p.sp+'-'+p.st : p.k;
+  if (sprites[id]) return sprites[id];
+  const s = document.createElement('canvas'), R = size*.86; s.width = s.height = Math.ceil(R*2.3*dpr);
+  const c = s.getContext('2d'); c.scale(dpr,dpr); drawPiece(c,R*1.15,R*1.15,R,p);
+  return sprites[id] = s;
+}
+function blit(p,x,y,scale=1,alpha=1) {
+  const s = sprite(p), w = s.width/dpr*scale;
+  ctx.globalAlpha = alpha; ctx.drawImage(s,x-w/2,y-w/2,w,w); ctx.globalAlpha = 1;
+}
+
+/* ---------- animation ---------- */
+let pops = {}, ghosts = [], bits = [], rings = [], floaters = [], hover = null, kbd = false, now = 0;
+const speed = reduced ? .02 : 1;
+const ease = t => 1-Math.pow(1-t,3);
+const spring = t => t>=1 ? 1 : 1 + Math.sin(t*Math.PI*1.5) * .22 * (1-t) - Math.pow(1-t,4);
+function burst(x,y,col,n,force) {
+  if (reduced) return;
+  for (let i=0;i<n;i++) { const a=Math.random()*6.28, v=(.3+Math.random())*force;
+    bits.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v-.05,rot:a,vr:(Math.random()-.5)*.1,life:0,max:700+Math.random()*800,col,s:size*(.08+Math.random()*.1)}); }
+}
+function frame(ts) {
+  const dt = Math.min(ts-now,50) || 16; now = ts;
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W_,H_);
+  // ripples under everything
+  rings = rings.filter(r => ts-r.t<r.d);
+  rings.forEach(r => { const t=(ts-r.t)/r.d; if (t<=0) return; ctx.strokeStyle=`rgba(220,245,235,${.32*(1-t)})`; ctx.lineWidth=1.5; ctx.beginPath(); ctx.ellipse(r.x,r.y,r.R*t,r.R*t*.72,0,0,7); ctx.stroke(); });
+  if (pads) ctx.drawImage(pads,0,0,W_,H_);
+  // predicted merge
+  let pv = null;
+  if (hover && !busy && state.status==='play' && !state.grid[hover]) pv = previewOf(state,hover);
+  if (pv && pv.cells.length) {
+    const pulse = .5+.5*Math.sin(ts/170);
+    ctx.fillStyle = `rgba(255,232,150,${.14+.14*pulse})`;
+    pv.cells.forEach(k => { if (k!==hover) { hexPath(ctx,cellXY[k][0],cellXY[k][1],size*.9); ctx.fill(); } });
+  }
+  // pieces
+  for (const k of state.keys) {
+    const p = view[k]; if (!p) continue;
+    const [x,y] = cellXY[k]; let sc = 1;
+    if (pops[k]) { const t=(ts-pops[k])/(420*speed); if (t>=1) delete pops[k]; else sc=spring(Math.max(t,0)); }
+    blit(p,x,y,sc);
+  }
+  // hover
+  if (hover && !busy && state.status==='play' && !state.grid[hover] && cellXY[hover]) {
+    const [x,y] = cellXY[hover];
+    ctx.strokeStyle='#ffffffb0'; ctx.lineWidth=2; ctx.lineJoin='round'; hexPath(ctx,x,y,size*.94); ctx.stroke();
+    blit(pv.piece,x,y,.92,.62);
+  } else if (hover && kbd && cellXY[hover]) {
+    ctx.strokeStyle='#ffffff60'; ctx.lineWidth=2; hexPath(ctx,cellXY[hover][0],cellXY[hover][1],size*.94); ctx.stroke();
+  }
+  // flying and floating ghosts
+  ghosts = ghosts.filter(g => ts-g.t<g.d);
+  ghosts.forEach(g => { const t=Math.max(0,(ts-g.t)/g.d), e=ease(t);
+    if (g.float) blit(g.p,g.x,g.y-size*1.5*e,1+.35*e,1-t);
+    else blit(g.p,g.x+(g.tx-g.x)*e,g.y+(g.ty-g.y)*e,1-.35*e,1-t*.3); });
+  // petals
+  bits = bits.filter(b => (b.life+=dt)<b.max);
+  bits.forEach(b => { b.x+=b.vx*dt*.25; b.y+=b.vy*dt*.25; b.vy+=.0012*dt; b.vx*=.985; b.rot+=b.vr;
+    ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(b.rot); ctx.globalAlpha=1-b.life/b.max; ctx.fillStyle=b.col;
+    ctx.beginPath(); ctx.ellipse(0,0,b.s,b.s*.5,0,0,7); ctx.fill(); ctx.restore(); });
+  // ambient drifting petals and ripples
+  if (!reduced) {
+    if (floaters.length<7 && Math.random()<.006) floaters.push({x:-20,y:Math.random()*H_,v:.012+Math.random()*.02,p:Math.random()*6,s:3+Math.random()*4});
+    floaters = floaters.filter(f => f.x<W_+20);
+    floaters.forEach(f => { f.x+=f.v*dt; f.y+=Math.sin(ts/1400+f.p)*.1; ctx.save(); ctx.translate(f.x,f.y); ctx.rotate(ts/1800+f.p); ctx.globalAlpha=.55; ctx.fillStyle='#f6bccb'; ctx.beginPath(); ctx.ellipse(0,0,f.s,f.s*.5,0,0,7); ctx.fill(); ctx.restore(); });
+    if (Math.random()<.004) rings.push({x:Math.random()*W_,y:Math.random()*H_,R:50,t:ts,d:2600});
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------- sound: a soft pentatonic pluck ---------- */
+let ac;
+const SCALE = [261.63,293.66,329.63,392,440,523.25,587.33,659.25,783.99,880,1046.5];
+function tone(i,delay=0,vol=.13,len=1.1) {
+  if (!store.sound) return;
+  try {
+    ac = ac || new (window.AudioContext||window.webkitAudioContext)();
+    if (ac.state==='suspended') ac.resume();
+    const t=ac.currentTime+delay, o=ac.createOscillator(), g=ac.createGain();
+    o.type='sine'; o.frequency.value=SCALE[Math.min(i,SCALE.length-1)];
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(vol,t+.012); g.gain.exponentialRampToValueAtTime(.0008,t+len);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t+len+.05);
+  } catch (e) {}
+}
+
+/* ---------- play ---------- */
+function act(k) {
+  if (busy || !state || state.status!=='play' || state.grid[k]) return;
+  hist.push(JSON.stringify(state)); if (hist.length>30) hist.shift();
+  const ev = place(state,k); if (!ev) return;
+  busy = true; refresh();
+  let t = 0;
+  ev.forEach(e => {
+    setTimeout(() => apply(e), t*speed);
+    t += e.t==='place' ? 130 : e.t==='merge' ? 340 : 640;
+  });
+  setTimeout(finish, t*speed+10);
+}
+function apply(e) {
+  const ts = performance.now();
+  if (e.t==='place') {
+    view[e.k] = e.p; pops[e.k] = ts;
+    const [x,y] = cellXY[e.k]; rings.push({x,y,R:size*1.1,t:ts,d:800});
+    tone(e.p.k==='s'?0:e.p.st+1,0,.08,.6);
+    if (e.dew) burst(x,y,'#bff3ee',8,.5);
+    return;
+  }
+  if (e.t==='merge') {
+    const [tx,ty] = cellXY[e.to];
+    e.cells.forEach(k => { delete view[k]; const [x,y] = cellXY[k]; ghosts.push({p:e.from,x,y,tx,ty,t:ts,d:250*speed}); });
+    setTimeout(() => {
+      view[e.to] = e.p; pops[e.to] = performance.now();
+      burst(tx,ty,COL[e.p.sp].b,7+e.p.st*5,.5);
+      tone(3+e.p.st*2+e.chain,0,.14); tone(e.p.st+e.chain,.04,.07);
+      say(`${STAGES[e.from.st]} lớn thành ${STAGES[e.p.st].toLowerCase()}: +${e.gain}`);
+    },240*speed);
+    return;
+  }
+  e.cells.forEach(k => { delete view[k]; const [x,y] = cellXY[k]; ghosts.push({p:e.from,x,y,t:ts,d:900*speed,float:true}); burst(x,y,COL[e.from.sp].b,22,1); burst(x,y,COL[e.from.sp].a,10,.8); });
+  e.swept.forEach(s => { delete view[s.k]; const [x,y] = cellXY[s.k]; ghosts.push({p:s.p,x,y,t:ts,d:650*speed,float:true}); });
+  const [cx,cy] = cellXY[e.to]; rings.push({x:cx,y:cy,R:size*5,t:ts,d:1300}); rings.push({x:cx,y:cy,R:size*3,t:ts+120,d:1100});
+  [5,7,8,9,10].forEach((n,i) => tone(n,i*.09,.11,1.6));
+  say(`${SPECIES[e.from.sp]} nở rộ và bay đi: +${e.gain}, thêm 1 hoàn tác`);
+}
+function finish() {
+  view = {...state.grid}; busy = false; refresh(); save();
+  if (state.status==='won') setTimeout(showWin,450*speed);
+  else if (state.status==='lost') setTimeout(showLost,350*speed);
+}
+let msgLock = 0;
+function say(t) { $('msg').textContent = t; $('live').textContent = t; msgLock = performance.now()+1900; }
+function defaultMsg() {
+  if (performance.now()<msgLock) return;
+  const p = state.cur;
+  $('msg').textContent = p.k==='s' ? 'Đá không gộp được. Hãy đặt vào góc, cú nở rộ sát bên sẽ cuốn nó đi.'
+    : p.k==='d' ? 'Giọt sương tự hoá thành cây hợp nhất với chỗ bạn đặt.'
+    : state.moves===0 && state.idx===0 ? 'Chạm vào một lá sen trống. Ba cây giống nhau nằm sát nhau sẽ lớn lên.'
+    : `Đang cầm: ${pieceName(p).toLowerCase()}. ${empties(state)} lá sen còn trống.`;
+}
+function drawSlot(id,p,css) {
+  const c = $(id); const d = Math.min(devicePixelRatio||1,2.5);
+  c.width = c.height = Math.round(css*d);
+  const x = c.getContext('2d'); x.scale(d,d);
+  if (p) drawPiece(x,css/2,css/2,css*.4,p);
+}
+function refresh() {
+  const g = gardenOf(state.idx);
+  document.documentElement.dataset.season = g.s;
+  $('gName').textContent = g.n;
+  $('gSeason').textContent = g.endless ? 'Chơi đến khi kín hồ' : `${SEASONS[g.s]}, vườn ${state.idx+1} trên ${GARDENS.length}`;
+  $('score').textContent = state.score.toLocaleString('vi-VN');
+  $('moves').textContent = state.moves;
+  const goalEl = $('goal');
+  if (g.endless) { goalEl.textContent = `Đã nở rộ: ${state.released}`; goalEl.setAttribute('aria-label',goalEl.textContent); }
+  else { goalEl.innerHTML = Array.from({length:g.goal},(_,i) => `<i class="${i<state.released?'on':''}"></i>`).join(''); goalEl.setAttribute('aria-label',`Đã nở rộ ${state.released} trên ${g.goal} lần`); }
+  drawSlot('cur',state.cur,84); drawSlot('holdC',state.hold,60); drawSlot('n1',state.next[0],48); drawSlot('n2',state.next[1],36);
+  $('undo').textContent = `Hoàn tác (${state.undos})`;
+  $('undo').disabled = !state.undos || !hist.length || busy;
+  $('snd').textContent = store.sound ? 'Âm: bật' : 'Âm: tắt';
+  defaultMsg();
+}
+function undo() {
+  if (busy || !state.undos || !hist.length) return;
+  const left = state.undos;
+  state = JSON.parse(hist.pop()); state.undos = Math.min(state.undos, left) - 1; state.usedUndo = true;
+  view = {...state.grid}; pops = {}; closeVeil(); refresh(); save();
+  tone(1,0,.07,.5);
+}
+function startGarden(i, resume) {
+  state = resume || newGame(i, seedNew());
+  hist = []; view = {...state.grid}; pops = {}; ghosts = []; bits = []; hover = null; busy = false;
+  closeVeil(); layout(); refresh(); save();
+}
+
+/* ---------- dialogs ---------- */
+function openVeil(html) { $('card').innerHTML = html; $('veil').hidden = false; const b = $('card').querySelector('button:not(:disabled)'); if (b) b.focus(); }
+function closeVeil() { $('veil').hidden = true; if (document.activeElement && document.activeElement!==document.body && $('card').contains(document.activeElement)) cv.focus(); }
+const starHtml = n => `<div class="stars" aria-label="${n} trên 3 sao">${'★'.repeat(n)}<span>${'★'.repeat(3-n)}</span></div>`;
+function showWin() {
+  const i = state.idx, n = starsOf(state), prev = store.progress[i] || {stars:0,best:0};
+  store.progress[i] = {stars:Math.max(prev.stars,n),best:Math.max(prev.best,state.score)}; save();
+  [6,8,9,10].forEach((s,j) => tone(s,j*.14,.1,1.8));
+  const nextBtn = i+1<GARDENS.length ? `<button class="btn main" data-go="${i+1}">Sang vườn ${i+2}</button>` : `<button class="btn main" data-go="${GARDENS.length}">Vào Hồ Vô Tận</button>`;
+  openVeil(`<h2>${i+1<GARDENS.length ? gardenOf(i).n+' đã nở trọn' : 'Bạn đã đi hết bốn mùa'}</h2>${starHtml(n)}
+    <div class="starnote">1 sao khi xong vườn, 1 sao khi không hoàn tác, 1 sao khi còn trống ít nhất nửa hồ.</div>
+    <p>${state.score.toLocaleString('vi-VN')} điểm sau ${state.moves} lượt đặt.</p>
+    <div class="row">${nextBtn}<button class="btn" data-go="${i}">Chơi lại</button><button class="btn" data-act="gardens">Các vườn</button></div>`);
+}
+function showLost() {
+  const i = state.idx, g = gardenOf(i);
+  if (g.endless) { const prev = store.progress[i] || {stars:0,best:0}; store.progress[i] = {stars:0,best:Math.max(prev.best,state.score)}; save(); }
+  const best = store.progress[i] && store.progress[i].best;
+  openVeil(`<h2>Hồ đã kín chỗ</h2>
+    <p>${g.endless ? `Lần này có ${state.released} lần nở rộ và ${state.score.toLocaleString('vi-VN')} điểm${best?`. Kỷ lục của bạn là ${best.toLocaleString('vi-VN')}`:''}.` : `Bạn đã nở rộ ${state.released} trên ${g.goal} lần. Không còn lá sen trống để đặt cây.`}</p>
+    <div class="row">${state.undos&&hist.length?`<button class="btn main" data-act="undo">Hoàn tác (${state.undos})</button>`:''}<button class="btn${state.undos&&hist.length?'':' main'}" data-go="${i}">Trồng lại</button><button class="btn" data-act="gardens">Các vườn</button></div>`);
+}
+function showGardens() {
+  let unlocked = 0; GARDENS.forEach((_,i) => { if (store.progress[i] && store.progress[i].stars) unlocked = Math.max(unlocked,i+1); });
+  let html = '<h2>Bốn mùa, mười hai vườn</h2>';
+  SEASONS.forEach((s,si) => {
+    html += `<div class="season">${s}</div><div class="pick">`;
+    GARDENS.forEach((g,i) => { if (g.s!==si) return; const p = store.progress[i];
+      html += `<button data-go="${i}" class="${state.idx===i?'now':''}" ${i>unlocked?'disabled':''}>${i+1}. ${g.n}<em>${p&&p.stars?'★'.repeat(p.stars):i>unlocked?'Chưa mở':''}</em></button>`; });
+    html += '</div>';
+  });
+  const e = store.progress[GARDENS.length];
+  html += `<div class="season">Không mùa</div><div class="pick"><button data-go="${GARDENS.length}" class="${state.idx===GARDENS.length?'now':''}">${ENDLESS.n}<em>${e&&e.best?e.best.toLocaleString('vi-VN'):''}</em></button></div>`;
+  html += '<div class="row" style="margin-top:16px"><button class="btn" data-act="close">Đóng</button></div>';
+  openVeil(html);
+}
+function showHelp() {
+  openVeil(`<h2>Trồng thong thả, không có đồng hồ</h2><ul>
+    <li>Chạm vào một lá sen trống để đặt cây đang cầm.</li>
+    <li>Ba cây cùng loài, cùng tuổi nằm sát nhau sẽ gộp thành một cây lớn hơn ngay ô bạn vừa đặt: mầm thành nụ, nụ thành hoa.</li>
+    <li>Ba hoa cùng loài nở rộ rồi bay đi, cuốn theo mọi thứ sát bên kể cả đá. Mỗi lần như vậy bạn được thêm 1 hoàn tác.</li>
+    <li>Giọt sương tự hoá thành cây hợp nhất. Đá thì không gộp được.</li>
+    <li>Giỏ giữ một cây để dùng sau, đổi lúc nào cũng được.</li>
+    <li>Đủ số lần nở rộ là xong vườn. Hết lá sen trống thì phải hoàn tác hoặc trồng lại.</li>
+    </ul><p style="color:var(--ink-soft);font-size:13px">Phím tắt: mũi tên để chọn lá, Enter để đặt, H để dùng giỏ, Z để hoàn tác.</p>
+    <div class="row"><button class="btn main" data-act="close">Trồng tiếp</button></div>`);
+}
+$('card').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.go!==undefined) startGarden(+b.dataset.go);
+  else if (b.dataset.act==='close') closeVeil();
+  else if (b.dataset.act==='undo') undo();
+  else if (b.dataset.act==='gardens') showGardens();
+});
+$('veil').addEventListener('click', e => { if (e.target===$('veil') && state.status==='play') closeVeil(); });
+
+/* ---------- input ---------- */
+function cellAt(ev) {
+  const b = cv.getBoundingClientRect(), x = ev.clientX-b.left, y = ev.clientY-b.top;
+  let best = null, bd = size*size*1.05;
+  for (const k of state.keys) { const dx=cellXY[k][0]-x, dy=cellXY[k][1]-y, d=dx*dx+dy*dy; if (d<bd) { bd=d; best=k; } }
+  return best;
+}
+cv.addEventListener('pointermove', e => { kbd = false; hover = cellAt(e); });
+cv.addEventListener('pointerleave', () => { if (!kbd) hover = null; });
+cv.addEventListener('pointerdown', e => { kbd = false; hover = cellAt(e); });
+cv.addEventListener('pointerup', e => { const k = cellAt(e); if (k) act(k); if (e.pointerType!=='mouse') hover = null; });
+function hold() { if (busy) return; swapHold(state); refresh(); save(); tone(2,0,.05,.4); }
+$('hold').addEventListener('click', hold);
+$('undo').addEventListener('click', undo);
+$('gardens').addEventListener('click', showGardens);
+$('help').addEventListener('click', showHelp);
+$('snd').addEventListener('click', () => { store.sound = !store.sound; refresh(); save(); tone(4,0,.08,.5); });
+const ARROW = {ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]};
+addEventListener('keydown', e => {
+  if (!$('veil').hidden) { if (e.key==='Escape' && state.status==='play') closeVeil(); return; }
+  if (e.key==='z'||e.key==='Z') return undo();
+  if (e.key==='h'||e.key==='H') return hold();
+  if (document.activeElement!==cv) return;
+  if (ARROW[e.key]) {
+    e.preventDefault(); kbd = true;
+    if (!hover) { hover = state.keys.find(k=>k==='0,0') || state.keys[0]; return; }
+    const [dx,dy] = ARROW[e.key], [x,y] = cellXY[hover]; let best = null, bs = Infinity;
+    for (const k of state.keys) { if (k===hover) continue; const ax=cellXY[k][0]-x, ay=cellXY[k][1]-y, along=ax*dx+ay*dy; if (along<=size*.4) continue; const s=along+Math.abs(ax*dy-ay*dx)*2; if (s<bs) { bs=s; best=k; } }
+    if (best) hover = best;
+  } else if ((e.key==='Enter'||e.key===' ') && hover) { e.preventDefault(); act(hover); }
+});
+new ResizeObserver(() => { layout(); }).observe($('stage'));
+document.fonts && document.fonts.ready && document.fonts.ready.then(() => layout());
+
+/* ---------- boot ---------- */
+function buildLadder() {
+  const steps = [{k:'f',sp:0,st:0},{k:'f',sp:0,st:1},{k:'f',sp:0,st:2}], d = Math.min(devicePixelRatio||1,2.5), box = $('ladder');
+  steps.forEach((p,i) => {
+    const c = document.createElement('canvas'); c.width = c.height = 34*d; c.style.width = c.style.height = '34px';
+    const x = c.getContext('2d'); x.scale(d,d); drawPiece(x,17,17,14,p); box.append(c);
+    const t = document.createElement('span'); t.textContent = i<2 ? '3 →' : '3 → bay đi'; box.append(t);
+  });
+}
+function start(data) {
+  load(); buildLadder();
+  const saved = (data && data.state) || store.current;
+  startGarden(saved ? saved.idx : 0, saved && saved.status==='play' ? saved : (saved ? undefined : newGame(0, 20261107)));
+  window.claude?.hot?.snapshot?.(() => ({state}));
+  requestAnimationFrame(frame);
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
+<script src="/appnav.js" defer></script>
+</body>
+</html>
