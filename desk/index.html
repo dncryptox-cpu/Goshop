@@ -2003,7 +2003,8 @@ window.addEventListener('online', ()=>flushCaptures());
 const RCAT = {perp:{label:'Perp DEX',m:'market'}, dex:{label:'DEX',m:'ops'}, l1:{label:'L1 / L2',m:'research'}, defi:{label:'Lending / Yield',m:'body'}, rwa:{label:'RWA',m:'build'}, ai:{label:'AI',m:'mind'}, infra:{label:'Infra',m:'sleep'}, app:{label:'Ví / App',m:'review'}, meme:{label:'Meme',m:'review'}, other:{label:'Khác',m:'rest'}};
 const RST = {dig:'Đang đào', watch:'Theo dõi', hold:'Đang nắm', pass:'Bỏ qua'};
 let research = {}, curRes = null, rCat = 'all', rStF = 'all', rQuery = '';
-const rDirty = new Set(), rVer = {}, rTimers = {}, rChains = {};
+const rDirty = new Set(lsGet('desk.research.dirty', [])), rVer = {}, rTimers = {}, rChains = {};
+const rDirtySave = () => lsSet('desk.research.dirty', [...rDirty]);
 const rid = () => 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const rInit = n => String(n||'?').replace(/[^\p{L}\p{N}]/gu,'').slice(0,2).toUpperCase() || '?';
 function rDay(ms){ if(!ms) return '—'; const p = partsIn(ms,TZ); return `${pad(p.d)}/${pad(p.mo)}`; }
@@ -2088,13 +2089,13 @@ function persistRes(id){
   const doc = JSON.parse(JSON.stringify(r)); delete doc.id;
   const say = t => { const e = $('rSaved'); if (e && curRes===id) e.textContent = t; };
   rChains[id] = (rChains[id]||Promise.resolve()).then(()=>remoteSave('research', id, doc))
-    .then(ok=>{ if (rVer[id]===v) rDirty.delete(id); say(ok?'Đã đồng bộ':'Đã lưu trên máy này'); })
-    .catch(e=>say('Chưa đồng bộ được, đã giữ trên máy: '+(e&&e.message||e)));
+    .then(ok=>{ if (ok && rVer[id]===v){ rDirty.delete(id); rDirtySave(); } say(ok?'Đã đồng bộ':'Đã lưu trên máy này, sẽ đồng bộ khi đăng nhập'); })
+    .catch(e=>{ say('Chưa đồng bộ được, đã giữ trên máy: '+(e&&e.message||e)); toast('Research chưa lưu lên server, đang giữ trên máy'); });
 }
 function changeRes(id, patch, delay, rerender){
   if (!research[id]) return;
   research[id] = {...research[id], ...patch, updated: Date.now()};
-  rDirty.add(id); rVer[id] = (rVer[id]||0)+1;
+  rDirty.add(id); rDirtySave(); rVer[id] = (rVer[id]||0)+1;
   const e = $('rSaved'); if (e) e.textContent = 'Đang lưu…'; const w = $('rWhen'); if (w) w.textContent = fmtWhen(research[id].updated);
   clearTimeout(rTimers[id]); rTimers[id] = setTimeout(()=>persistRes(id), delay ?? 700);
   if (rerender) renderResearch();
@@ -2102,7 +2103,7 @@ function changeRes(id, patch, delay, rerender){
 function newResearch(init){
   const id = rid(), t = Date.now();
   research[id] = {id, name:'', ticker:'', cat: rCat!=='all'?rCat:'other', status:'dig', score:0, links:{}, thesis:'', risks:'', log:[], created:t, updated:t, ...init};
-  rDirty.add(id); rVer[id] = 1; persistRes(id); return id;
+  rDirty.add(id); rDirtySave(); rVer[id] = 1; persistRes(id); return id;
 }
 function openRes(id){ curRes = id; renderResearch(); window.scrollTo({top:0}); }
 function inboxToResearch(iid){
@@ -2142,9 +2143,9 @@ $('rDetail').addEventListener('click', e=>{
   if (a==='dellog'){ const ms = +b.dataset.ms; const old = r.log; changeRes(curRes, {log:(r.log||[]).filter(l=>l.ms!==ms)}, 0, true); toast('Đã xoá ghi chép', ()=>changeRes(r.id, {log:old}, 0, true)); return; }
   if (a==='del'){
     if (b.dataset.armed!=='1'){ b.dataset.armed='1'; b.classList.add('armed'); b.textContent='Bấm lần nữa để xoá'; setTimeout(()=>{ if (b.isConnected){ b.dataset.armed=''; b.classList.remove('armed'); b.textContent='Xoá dự án'; } },3000); return; }
-    const id = curRes, keep = research[id]; delete research[id]; curRes = null; rDirty.delete(id); lsSet('desk.research', research);
+    const id = curRes, keep = research[id]; delete research[id]; curRes = null; rDirty.delete(id); rDirtySave(); lsSet('desk.research', research);
     remoteDel('research', id).catch(()=>{}); renderResearch();
-    toast('Đã xoá '+(keep.name||'dự án'), ()=>{ research[id] = keep; rDirty.add(id); persistRes(id); renderResearch(); });
+    toast('Đã xoá '+(keep.name||'dự án'), ()=>{ research[id] = keep; rDirty.add(id); rDirtySave(); persistRes(id); renderResearch(); });
   }
 });
 
@@ -2219,6 +2220,7 @@ async function pull(){
       rDirty.forEach(k=>{ if (research[k]) nr[k] = research[k]; });
       days = nd; notes = nn; research = nr; if (curNote && !notes[curNote]) curNote = null; if (curRes && !research[curRes]) curRes = null;
       lsSet('desk.research', research);
+      rDirty.forEach(k=>{ if (research[k]) persistRes(k); else rDirty.delete(k); }); rDirtySave();
       lsSet(LS.tpl, templates); lsSet(LS.days, days); lsSet(LS.notes, notes);
     }
     $('storeNote').textContent = 'Đồng bộ: ' + (sbUser.email||'đã đăng nhập') + ' · cập nhật ' + fmtMin(nowState().t);

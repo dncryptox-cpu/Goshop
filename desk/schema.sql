@@ -1,7 +1,7 @@
 -- DNC Desk: chạy 1 lần trong Supabase SQL Editor
 create table if not exists public.desk_docs (
   user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  kind       text not null check (kind in ('settings','day','note')),
+  kind       text not null check (kind in ('settings','day','note','research')),
   key        text not null,
   data       jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
@@ -71,3 +71,7 @@ select cron.schedule('desk-inbox-digest', '5 1 * * *',
 select cron.unschedule('desk-inbox-retry') where exists (select 1 from cron.job where jobname = 'desk-inbox-retry');
 select cron.schedule('desk-inbox-retry', '*/10 * * * *',
   $$ select net.http_get('https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?retry=1') $$);
+
+-- Tab Research (dự án crypto đã soi): cho phép kind 'research' trên bảng đã có
+alter table public.desk_docs drop constraint if exists desk_docs_kind_check;
+alter table public.desk_docs add constraint desk_docs_kind_check check (kind in ('settings','day','note','research'));
