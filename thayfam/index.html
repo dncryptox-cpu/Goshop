@@ -257,6 +257,7 @@
 
       <nav class="tabs" x-show="!searchOn()">
         <button class="tab" x-show="can('week')" :class="tab==='week' && 'on'" @click="tab='week'; loadWeek()">📋 Tuần này<span class="n" :class="weekLeft() && 'hot'" x-text="wk ? weekLeft() : '·'"></span></button>
+        <button class="tab" x-show="can('queue')" :class="tab==='cmd' && 'on'" @click="tab='cmd'; loadQueue()">🛠 Lệnh<span class="n" :class="cmdOpen() && 'hot'" x-text="cmdOpen()"></span></button>
         <button class="tab" x-show="me.role !== 'ctv'" :class="tab==='due' && 'on'" @click="tab='due'">Đến hạn<span class="n" x-text="due.length"></span></button>
         <button class="tab" x-show="me.role !== 'ctv'" :class="tab==='report' && 'on'" @click="tab='report'">🚨 Khách báo lỗi<span class="n" x-text="reported.length"></span></button>
         <button class="tab" x-show="can('slots')" :class="tab==='slots' && 'on'" @click="tab='slots'; loadSlots()">Còn slot<span class="n" x-text="slotsLoaded ? slots.length : '·'"></span></button>
@@ -1228,6 +1229,97 @@
         <div class="mute" style="font-size:12px;margin-top:8px">Xoá hoặc Đổi key: key cũ hết hiệu lực ngay, người đó phải đăng nhập lại bằng key mới.</div>
       </section>
 
+      <!-- TAB LỆNH: dán tin của Tuấn / tin gửi qua bot → soạn sẵn, bấm Duyệt mới ghi -->
+      <section x-show="tab==='cmd' && !searchOn()">
+        <p class="mute" style="font-size:13px;margin:0 0 8px">Dán tin nhắn (mỗi dòng 1 việc) hoặc nhắn cho bot <b>@goshopassistantbot</b>. Webapp tự đọc và soạn sẵn: <b>đổi mail</b> ("đổi", 2 email) · <b>gia hạn</b> (khách đã có) · <b>đơn mới</b> (email chưa có trong Kho TK) · <b>ghi hủy</b> ("hủy", "hoàn tiền"). Không ghi gì cho tới khi bấm <b>Duyệt</b>.</p>
+        <textarea x-model="cmdText" rows="3" style="width:100%;font-family:inherit;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="1039 nhulephu15@gmail.com | ytb 12th plus | 09/07/2026 → 09/07/2027 | 17.470 - Dovandong.beo@gmail.com đổi về mail chính"></textarea>
+        <div class="row" style="gap:8px;margin:6px 0 14px">
+          <button class="btn pri sm" @click="cmdParse()" :disabled="!cmdText.trim()">Đọc lệnh</button>
+          <button class="btn sm" x-show="cmdText" @click="cmdText=''">Xoá</button>
+          <span class="grow"></span>
+          <button class="btn sm" @click="loadQueue()" x-text="qLoading ? 'Đang tải…' : 'Tải hàng chờ bot'"></button>
+        </div>
+        <template x-for="g in cmdGroups()" :key="g.key">
+          <div class="card" style="padding:10px 12px;margin-bottom:12px">
+            <div class="row" style="gap:8px;font-size:13px">
+              <b x-text="g.qid ? '📨 ' + (g.from || 'Bot') : '📋 Dán tay'"></b>
+              <span class="mute" x-text="g.at || ''"></span>
+              <span class="grow"></span>
+              <button class="btn xs" x-show="g.qid" @click="queueDrop(g)">Bỏ cả tin</button>
+              <button class="btn xs" x-show="!g.qid" @click="cmdCards = cmdCards.filter(c => c.qid)">Đóng</button>
+            </div>
+            <template x-for="c in g.cards" :key="c.key">
+              <div style="border-top:1px solid var(--line);padding:8px 0;font-size:13px" :style="['done','skip'].includes(c.st) ? 'opacity:.55' : ''">
+                <div class="mono" style="font-size:12px;color:var(--mute);white-space:pre-wrap;word-break:break-word" x-text="c.raw"></div>
+                <div x-show="c.st==='loading'" class="mute">Đang tìm khách…</div>
+                <div x-show="c.st==='done'" style="color:var(--ok)" x-text="'✓ ' + (c.result || 'Đã xong')"></div>
+                <div x-show="c.st==='skip'" class="mute" x-text="'Đã bỏ qua' + (c.result ? ' · ' + c.result : '')"></div>
+                <template x-if="c.st==='ready'"><div>
+                  <div class="row" style="gap:4px;flex-wrap:wrap;margin:4px 0">
+                    <template x-for="t in [['doimail','Đổi mail'],['giahan','Gia hạn'],['donmoi','Đơn mới'],['huy','Ghi hủy']]" :key="t[0]">
+                      <button class="chip" :class="c.type===t[0] && 'on'" @click="c.type=t[0]; c.confirm=false" x-text="t[1]"></button>
+                    </template>
+                  </div>
+                  <div x-show="c.cus" class="mute" x-text="c.cus ? 'Khách: ' + c.cus.email + ' · ' + c.cus.rn + (c.cus.arch ? ' (vùng lưu)' : '') + ' dòng ' + c.cus.row + ' · CTV ' + (c.cus.ctv || '—') + ' · HSD ' + (c.cus.hsd || '—') + (c.cus.mailPhu ? ' · mail phụ ' + c.cus.mailPhu : '') : ''"></div>
+                  <div x-show="c.note" style="color:var(--warn)" x-text="c.note"></div>
+                  <!-- Đổi mail -->
+                  <template x-if="c.type==='doimail'"><div style="margin-top:4px">
+                    <div x-show="c.cus"><b x-text="(c.cus || {}).email"></b> → <input class="mono" x-model="c.newEmail" style="width:240px"> <span class="mute">(mail cũ lưu vào Mail phụ, HSD giữ nguyên)</span></div>
+                    <div x-show="!c.cus" style="color:var(--bad)">Không thấy email nào trong tin đang là khách ở Kho TK.</div>
+                    <label class="mute"><input type="checkbox" x-model="c.oldRemoved"> Đã xoá mail cũ khỏi nhóm Gia đình (hoặc mail cũ không có trong nhóm)</label>
+                    <label class="mute" style="margin-left:10px"><input type="checkbox" x-model="c.invited"> Đã mời mail mới</label>
+                  </div></template>
+                  <!-- Gia hạn -->
+                  <template x-if="c.type==='giahan'"><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">
+                    <template x-for="p in ['Youtube','YoutubePlus']" :key="p"><button class="chip" :class="c.product===p && 'on'" @click="c.product=p" x-text="p"></button></template>
+                    <template x-for="k in [1,3,6,12]" :key="k"><button class="chip" :class="c.months===k && 'on'" @click="c.months=k" x-text="k + 'th'"></button></template>
+                    <span class="mute">tính từ</span>
+                    <button class="chip" :class="c.base==='old' && 'on'" @click="c.base='old'">HSD cũ</button>
+                    <button class="chip" :class="c.base==='today' && 'on'" x-show="c.cus && c.cus.daysLeft < 0" @click="c.base='today'">hôm nay</button>
+                    <b x-text="'→ HSD mới ' + cmdNewHsd(c)"></b>
+                    <span class="mute" x-show="c.end" x-text="'(tin ghi ' + c.end + ')'"></span>
+                    <span class="mute">· tự ghi Tài chính</span>
+                  </div></template>
+                  <!-- Đơn mới -->
+                  <template x-if="c.type==='donmoi'"><div style="margin-top:4px">
+                    <div class="row" style="gap:6px;flex-wrap:wrap">
+                      <span class="mono" x-text="c.emails[0]"></span>
+                      <template x-for="p in ['Youtube','YoutubePlus']" :key="p"><button class="chip" :class="c.product===p && 'on'" @click="c.product=p" x-text="p"></button></template>
+                      <template x-for="k in [1,3,6,12]" :key="k"><button class="chip" :class="c.months===k && 'on'" @click="c.months=k" x-text="k + 'th'"></button></template>
+                      <label class="mute">Ngày mua <input type="date" x-model="c.buy"></label>
+                      <label class="mute">CTV <input list="ctvOpts" x-model="c.ctv" style="width:90px"></label>
+                    </div>
+                    <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">
+                      <span class="mute">Vào slot</span>
+                      <select x-model="c.toRow" style="max-width:360px">
+                        <option value="">— chọn slot —</option>
+                        <template x-for="o in cmdSlotOpts()" :key="o.row"><option :value="o.row" x-text="o.label"></option></template>
+                      </select>
+                      <label class="mute"><input type="checkbox" x-model="c.invited"> Đã mời luôn</label>
+                      <label class="mute"><input type="checkbox" x-model="c.finance"> Ghi Tài chính (New)</label>
+                    </div>
+                  </div></template>
+                  <!-- Ghi hủy -->
+                  <template x-if="c.type==='huy'"><div style="margin-top:4px">
+                    <div x-show="c.cus">Mail phụ: <b x-text="(c.cus || {}).mailPhu || '(trống)'"></b> → <b x-text="cmdHuyVal(c)"></b> <span class="mute">(khách hiện ở danh sách cần kick)</span></div>
+                    <div x-show="!c.cus" style="color:var(--bad)">Không thấy khách trong Kho TK.</div>
+                  </div></template>
+                  <div class="row" style="gap:6px;margin-top:6px">
+                    <button class="btn sm pri" :disabled="!!c.busy || !cmdCan(c)" @click="cmdRun(c)" x-text="c.busy ? 'Đang ghi…' : (c.confirm ? 'Bấm lần nữa để ghi' : 'Duyệt')"></button>
+                    <button class="btn sm" @click="cmdSkip(c)">Bỏ qua</button>
+                    <span class="err" style="margin:0" x-show="c.err" x-text="c.err"></span>
+                  </div>
+                </div></template>
+              </div>
+            </template>
+          </div>
+        </template>
+        <div class="empty" x-show="!cmdGroups().length && !qLoading">Chưa có lệnh nào. Dán tin vào ô trên, hoặc nhắn cho bot.</div>
+        <details x-show="qDone.length" style="font-size:13px;margin-top:10px"><summary class="mute">Tin bot đã xử lý gần đây</summary>
+          <template x-for="q in qDone" :key="q.id"><div style="padding:4px 0;border-top:1px solid var(--line)"><span class="mute" x-text="q.at + ' · ' + q.status + ' · ' + (q.by || '')"></span><div class="mono" style="font-size:12px;white-space:pre-wrap" x-text="q.text"></div></div></template>
+        </details>
+      </section>
+
       <!-- TAB LỊCH SỬ -->
       <section x-show="tab==='log' && !searchOn()">
         <template x-if="logLoading"><div class="empty">Đang tải…</div></template>
@@ -1523,7 +1615,7 @@
 <script>
 /* ========= ĐIỀN SAU KHI DEPLOY APPS SCRIPT ========= */
 const RENEW_API = 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_UU5VykUaj8YRL_rP0ZVVmqeqYo_hVyi7JdpmcCIX1eJzd1/exec'; // hệ thống báo lỗi (renew)
-const READS = ['dashboard', 'log', 'review', 'search', 'slots', 'week', 'mailLog', 'all', 'users', 'notes', 'blocks', 'mailPhu'];
+const READS = ['dashboard', 'log', 'review', 'search', 'slots', 'week', 'mailLog', 'all', 'users', 'notes', 'blocks', 'mailPhu', 'queue'];
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 const FIXYTB_URL = 'https://godnc.com/fixytb/';
 
@@ -1532,6 +1624,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
+    cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
     tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', lastCopy: '', lastCopyFor: '', notify: null,
     slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
@@ -1643,6 +1736,7 @@ function app() {
         if (this.tab === 'slots' && this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
         if (this.can('review') && !this._reviewed) { this._reviewed = true; this.bg(() => this.loadReview()); }
         if (this.can('mailLog') && !this._mailLoaded) { this._mailLoaded = true; this.bg(() => this.loadMailLog()); }
+        if (this.can('queue') && !this._qLoaded) { this._qLoaded = true; if (location.hash === '#lenh') this.tab = 'cmd'; this.bg(() => this.loadQueue()); }
         if (this.can('slots')) this.bg(() => { if (!this.slotsLoaded && !this.slotsLoading) return this.loadSlots(); });
         this.frs = d.frs.filter(x => !this.skipped.includes(x.row));
       } catch (e) {
@@ -1721,6 +1815,166 @@ function app() {
         this.toast = f.rn + ': hẹn mời lại từ ' + d.until; setTimeout(() => this.toast = '', 2000);
       } catch (e) { this.error = e.message; }
       f.blocking = false;
+    },
+    /* ===== Lệnh: đọc tin nhắn → thẻ soạn sẵn ===== */
+    cmdOpen() { return this.qOpen.reduce((n, q) => n + q.lines.filter((l, i) => !q.res[i]).length, 0); },
+    cmdGroups() {
+      const gs = [], idx = {};
+      this.cmdCards.forEach(c => {
+        const k = c.qid || 'web';
+        if (!(k in idx)) { idx[k] = gs.length; gs.push({ key: k, qid: c.qid, from: c.from, at: c.at, cards: [] }); }
+        gs[idx[k]].cards.push(c);
+      });
+      return gs.sort((a, b) => (a.qid ? 1 : 0) - (b.qid ? 1 : 0));
+    },
+    async loadQueue() {
+      if (!this.can('queue')) return;
+      this.qLoading = true;
+      try {
+        const d = await this.api({ action: 'queue', op: 'list' });
+        this.qOpen = (d.open || []).map(q => Object.assign(q, { lines: q.text.split(/\r?\n/).map(x => x.trim()).filter(Boolean) }));
+        this.qDone = d.done || [];
+        const have = new Set(this.cmdCards.filter(c => c.qid).map(c => c.qid));
+        this.qOpen.filter(q => !have.has(q.id)).forEach(q => this.cmdAdd(q.lines, q));
+      } catch (e) { this.error = e.message; }
+      this.qLoading = false;
+    },
+    cmdParse() {
+      const lines = this.cmdText.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+      this.cmdCards = this.cmdCards.filter(c => c.qid);
+      this.cmdAdd(lines, null); this.cmdText = '';
+    },
+    cmdAdd(lines, q) {
+      const iso = d => { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(d); return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : ''; };
+      const today = new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+      lines.forEach((raw, i) => {
+        const done = q && q.res[i];
+        const emails = [...new Set((raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map(e => e.toLowerCase()))];
+        const t = raw.toLowerCase();
+        const mm = /(\d{1,2})\s*(?:th|tháng|thang|t)\b/i.exec(raw);
+        const months = mm && [1, 3, 6, 12].includes(+mm[1]) ? +mm[1] : 12;
+        const dates = raw.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || [];
+        const code = (/^\s*(\d{2,6})\b/.exec(raw) || [])[1] || '';
+        let type = '';
+        if (/h[uủ]y|hoàn tiền|hoan tien|refund/.test(t)) type = 'huy';
+        else if (/đổi|doi |chuyển mail|chuyen mail/.test(t) && emails.length >= 2) type = 'doimail';
+        else if (emails.length) type = 'order';
+        const c = {
+          key: (q ? q.id : 'w' + Date.now()) + ':' + i, qid: q ? q.id : '', from: q ? q.from : '', at: q ? q.at : '', li: i, raw: raw,
+          emails: emails, months: months, product: /plus/i.test(raw) ? 'YoutubePlus' : 'Youtube', start: dates[0] || '', end: dates[1] || '', code: code,
+          type: type, st: done ? (done.s === 'bỏ' ? 'skip' : 'done') : (type ? 'loading' : 'ready'), result: done ? done.note : '', cus: null, newEmail: '', note: type ? '' : 'Không đọc được loại việc: chọn tay ở trên.',
+          base: 'old', buy: iso(dates[0] || '') || today, ctv: 'Tuan', toRow: '', invited: false, finance: true, oldRemoved: false, confirm: false, busy: false, err: '',
+        };
+        this.cmdCards.push(c);
+        if (c.st === 'loading') this.cmdResolve(this.cmdCards[this.cmdCards.length - 1]);
+      });
+    },
+    async cmdFind(e) {
+      if (this._cusCache[e] !== undefined) return this._cusCache[e];
+      const d = await this.api({ action: 'search', q: e });
+      let hit = null;
+      (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!hit && String(c.email).toLowerCase() === e) hit = { rn: f.rn, row: c.row, email: c.email, hsd: c.hsd, daysLeft: c.daysLeft, ctv: c.ctv, mailPhu: c.mailPhu || '', months: c.months }; }));
+      if (!hit) { const a = (d.archived || []).find(x => String(x.email).toLowerCase() === e); if (a) hit = { rn: 'Lưu', arch: true, row: a.row, email: a.email, hsd: a.hsd, daysLeft: null, ctv: a.ctv, mailPhu: a.mailPhu || '' }; }
+      let phuOf = null;
+      if (!hit) (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!phuOf && String(c.mailPhu || '').toLowerCase().indexOf(e) >= 0) phuOf = { rn: f.rn, email: c.email }; }));
+      return (this._cusCache[e] = hit ? hit : (phuOf ? { phuOf: phuOf } : null));
+    },
+    async cmdResolve(c) {
+      try {
+        const found = [];
+        for (const e of c.emails) found.push([e, await this.cmdFind(e)]);
+        const cus = found.filter(x => x[1] && !x[1].phuOf);
+        if (c.type === 'doimail') {
+          if (cus.length) { c.cus = cus[0][1]; c.newEmail = (found.find(x => x[0] !== c.cus.email.toLowerCase() && !(x[1] && !x[1].phuOf)) || [''])[0]; }
+          if (cus.length > 1) c.note = 'Cả ' + cus.map(x => x[0]).join(' và ') + ' đều đang là khách: kiểm tra lại trước khi đổi.';
+          if (c.cus && c.cus.arch) c.note = 'Khách đang ở vùng lưu cuối sheet (không có slot).';
+        } else if (c.type === 'huy') {
+          if (cus.length) c.cus = cus[0][1];
+        } else {
+          if (cus.length) {
+            c.cus = cus[0][1]; c.type = 'giahan';
+            if (c.cus.arch) { c.note = 'Khách đang ở vùng lưu cuối sheet: dùng Chuyển khách vào slot trước rồi gia hạn.'; }
+            const hsd = this.cmdDate(c.cus.hsd), end = this.cmdDate(c.end);
+            if (hsd && end && hsd >= end) c.note = 'HSD hiện tại ' + c.cus.hsd + ' ≥ ' + c.end + ': có thể đã gia hạn rồi. Kiểm tra trước khi duyệt.';
+            if (c.cus.daysLeft < 0 && c.start) { const st = this.cmdDate(c.start), td = Date.now() + 7 * 3600e3; if (st && Math.abs(st - td) < 4 * 864e5) c.base = 'today'; }
+          } else {
+            c.type = 'donmoi';
+            const p = found.find(x => x[1] && x[1].phuOf);
+            if (p) c.note = p[0] + ' đang là mail phụ của ' + p[1].phuOf.email + ' (' + p[1].phuOf.rn + '): có thể không phải khách mới.';
+            if (!this.slotsLoaded) { if (!this.slotsLoading) await this.loadSlots(); else for (let k = 0; k < 40 && !this.slotsLoaded; k++) await new Promise(r => setTimeout(r, 300)); }
+            const o = this.cmdSlotOpts()[0]; if (o && !c.toRow) c.toRow = String(o.row);
+          }
+        }
+        if (!c.cus && ['doimail', 'huy'].includes(c.type)) c.note = c.note || 'Không thấy khách trong Kho TK.';
+      } catch (e) { c.err = e.message; }
+      c.st = 'ready';
+    },
+    cmdDate(s) { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '')); return m ? Date.UTC(+m[3], +m[2] - 1, +m[1]) : null; },
+    cmdEdate(v, n) { const d = new Date(v), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d; },
+    cmdNewHsd(c) {
+      let v = c.base === 'today' ? Date.parse(new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10) + 'T00:00:00Z') : this.cmdDate(c.cus && c.cus.hsd);
+      if (!v) return '—';
+      const d = this.cmdEdate(v, c.months);
+      return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + d.getUTCFullYear();
+    },
+    cmdHuyVal(c) { const m = String((c.cus || {}).mailPhu || '').trim(); return /h[uủ]y/i.test(m) ? m : (m ? m + ' (hủy)' : 'hủy'); },
+    cmdSlotOpts() {
+      if (this._slotOptsFor === this.slots) return this._slotOpts;
+      const out = [];
+      (this.slots || []).forEach(x => {
+        if (x.blockedUntil || x.days == null || x.days < 7) return;
+        const chk = (x.rows || []).some(r => ['joined', 'nojoin', 'ok'].includes(r.state));
+        (x.rows || []).forEach(r => { if (['free', 'reuse'].includes(r.state)) out.push({ row: r.row, chk: chk, days: x.days, label: (chk ? '✓ ' : '') + x.rn + ' · còn ' + x.days + ' ngày · ' + (r.state === 'free' ? 'trống' : 'thế ' + r.email + ' (hết hạn)') }); });
+      });
+      out.sort((a, b) => (b.chk - a.chk) || (b.days - a.days));
+      this._slotOptsFor = this.slots; this._slotOpts = out;
+      return out;
+    },
+    cmdCan(c) {
+      if (c.type === 'doimail') return !!(c.cus && !c.cus.arch && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.newEmail.trim()) && c.oldRemoved);
+      if (c.type === 'giahan') return !!(c.cus && !c.cus.arch);
+      if (c.type === 'donmoi') return !!(c.emails[0] && c.toRow && String(c.ctv).trim());
+      if (c.type === 'huy') return !!c.cus;
+      return false;
+    },
+    async cmdRun(c) {
+      if (!c.confirm) { c.confirm = true; setTimeout(() => { c.confirm = false; }, 4000); return; }
+      c.confirm = false; c.busy = true; c.err = '';
+      try {
+        let r, msg = '';
+        if (c.type === 'doimail') {
+          r = await this.api({ action: 'swapMail', row: c.cus.row, oldEmail: c.cus.email, newEmail: c.newEmail.trim(), invited: !!c.invited, oldRemoved: !!c.oldRemoved, force: false });
+          msg = 'Đổi mail ' + c.cus.email + ' → ' + c.newEmail.trim() + ' (' + c.cus.rn + ')';
+        } else if (c.type === 'giahan') {
+          r = await this.api({ action: 'renewCus', row: c.cus.row, email: c.cus.email, months: c.months, bonusDays: 0, base: c.base, product: c.product });
+          msg = 'Gia hạn ' + c.cus.email + ' +' + c.months + 'th → HSD ' + (r.newHsd || r.hsd || this.cmdNewHsd(c));
+        } else if (c.type === 'donmoi') {
+          r = await this.api({ action: 'newOrder', email: c.emails[0], toRow: Number(c.toRow), buy: c.buy, months: c.months, product: c.product, ctv: String(c.ctv).trim(), mailPhu: '', note: c.code ? 'mã ' + c.code : '', finance: !!c.finance, invited: !!c.invited, replace: false });
+          msg = 'Đơn mới ' + r.email + ' → ' + r.rn + ' · HSD ' + r.hsd;
+        } else if (c.type === 'huy') {
+          r = await this.api({ action: 'setPhu', row: c.cus.row, email: c.cus.email, mailPhu: this.cmdHuyVal(c) });
+          msg = 'Ghi hủy ' + c.cus.email + ' (' + c.cus.rn + ')';
+        }
+        if (r && r.actionId) this.lastActionId = r.actionId;
+        c.st = 'done'; c.result = msg;
+        this.lastDone = '✓ ' + msg + '. Hoàn tác được ở tab Lịch sử.';
+        this._cusCache = {};
+        if (c.qid) await this.queueMark(c, 'xong', msg);
+      } catch (e) { c.err = e.message; }
+      c.busy = false;
+    },
+    async cmdSkip(c) {
+      c.st = 'skip';
+      if (c.qid) { try { await this.queueMark(c, 'bỏ', ''); } catch (e) { c.err = e.message; } }
+    },
+    async queueMark(c, status, note) {
+      const r = await this.api({ action: 'queue', op: 'set', id: c.qid, line: c.li, status: status, note: note });
+      const q = this.qOpen.find(x => x.id === c.qid); if (q) q.res = r.res || q.res;
+      if (r.done) { this.qOpen = this.qOpen.filter(x => x.id !== c.qid); }
+    },
+    async queueDrop(g) {
+      try { await this.api({ action: 'queue', op: 'drop', id: g.qid }); this.qOpen = this.qOpen.filter(x => x.id !== g.qid); this.cmdCards = this.cmdCards.filter(c => c.qid !== g.qid); }
+      catch (e) { this.error = e.message; }
     },
     async loadSlots() {
       this.slotsLoading = true;

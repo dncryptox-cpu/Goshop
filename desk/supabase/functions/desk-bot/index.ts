@@ -317,7 +317,7 @@ async function listOpen() {
   return { late, dueToday, fresh, later, text: (sec("🔴 Quá hạn", late) + sec("📌 Hôm nay", dueToday) + sec("📥 Mới vào / đang làm", fresh)).trim() };
 }
 async function help() {
-  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/xong 12 — đánh dấu mục #12 xong\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
+  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/xong 12 — đánh dấu mục #12 xong\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email kèm “đổi mail”, “gia hạn”, “12th”, “hủy”… tự vào luôn, không cần /tf.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
 }
 async function setStatus(id: number, patch: any) {
   if (patch.status) patch.done_at = patch.status === "done" ? new Date().toISOString() : null;
@@ -509,6 +509,12 @@ async function digest() {
   return { sent: true };
 }
 
+/* tin trông như lệnh Thay Fam: có email + (đổi mail / gia hạn / hủy / hoàn tiền / "12th" / ngày → ngày) */
+function looksTF(t: string) {
+  if (!/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/.test(t)) return false;
+  return /đổi\s*(về\s*)?mail|đổi về|gia hạn|giahan|h[uủ]y|hoàn tiền|refund|\b\d{1,2}\s*th\b|\d{1,2}\/\d{1,2}\/\d{4}\s*(→|->|-)\s*\d{1,2}\/\d{1,2}\/\d{4}/i.test(t);
+}
+
 async function handle(u: any) {
   if (u.callback_query) {
     const q = u.callback_query;
@@ -551,6 +557,22 @@ async function handle(u: any) {
     await sendBrief(L.text);
     return;
   }
+  // Lệnh Thay Fam (đổi mail / gia hạn / đơn mới / hủy): đưa vào hàng chờ godnc.com/thayfam, anh duyệt trên web
+  const tfm = text.match(/^\/(tf|thayfam)\b\s*([\s\S]*)$/i);
+  if (tfm || looksTF(text)) {
+    const body = tfm ? tfm[2].trim() : text;
+    if (!body) return say("Gõ /tf rồi dán tin, ví dụ:\n<code>/tf 1039 abc@gmail.com | ytb 12th plus | 09/07/2026 → 09/07/2027</code>");
+    try {
+      const d = await tf({ action: "queue", op: "add", text: body, from: fwdOf(m) || "Telegram", src: "bot" });
+      return say(`🛠 Đã đưa ${d.lines} dòng vào hàng chờ <b>Thay Fam</b>. Mở web để kiểm tra và bấm Duyệt (chưa ghi gì vào sheet).`, {
+        reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true },
+        reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] },
+      });
+    } catch (e) {
+      // lỗi thì rơi xuống lưu Desk như tin thường để không mất
+      await say(`⚠️ Chưa đưa được vào Thay Fam (${esc((e as Error).message)}). Lưu tạm vào Desk.`);
+    }
+  }
   const dm = text.match(/^\/(xong|done)\s+#?(\d+)/i);
   if (dm) {
     const it = await setStatus(Number(dm[2]), { status: "done" });
@@ -571,7 +593,7 @@ Deno.serve(async (req) => {
       if (info.result?.url && info.result.url !== self && url.searchParams.get("force") !== "1")
         return ok({ ok: false, error: "Bot đang gắn webhook khác, không gỡ", current: info.result.url });
       const set = await tg("setWebhook", { url: self, secret_token: SECRET, allowed_updates: ["message", "edited_message", "callback_query"], max_connections: 1 });
-      await tg("setMyCommands", { commands: [{ command: "homnay", description: "Việc shop sáng nay" }, { command: "viec", description: "Việc cần xử lý" }, { command: "xong", description: "Đánh dấu xong: /xong 12" }, { command: "help", description: "Cách dùng" }] });
+      await tg("setMyCommands", { commands: [{ command: "homnay", description: "Việc shop sáng nay" }, { command: "viec", description: "Việc cần xử lý" }, { command: "xong", description: "Đánh dấu xong: /xong 12" }, { command: "tf", description: "Lệnh Thay Fam: /tf + tin của Tuấn" }, { command: "help", description: "Cách dùng" }] });
       let who = ""; try { who = await owner(); } catch (e) { who = "LỖI: " + (e as Error).message; }
       if (set.ok) await say("✅ Desk Inbox đã bật. Từ giờ nhắn gì cho bot cũng được lưu vào godnc.com/desk. Gõ /help xem cách dùng.");
       return ok({ ok: set.ok, webhook: self, desk_user: who, telegram: set });
