@@ -1268,6 +1268,16 @@
                     </template>
                   </div>
                   <div x-show="c.cus" class="mute"><span>Khách: </span><span class="mono cp" @click="copy(c.cus.email, 'Đã copy email')" x-text="(c.cus || {}).email"></span><span x-text="c.cus ? ' · ' + c.cus.rn + (c.cus.arch ? ' (vùng lưu)' : '') + ' dòng ' + c.cus.row + ' · CTV ' + (c.cus.ctv || '—') + ' · HSD ' + (c.cus.hsd || '—') + (c.cus.mailPhu ? ' · mail phụ ' + c.cus.mailPhu : '') : ''"></span></div>
+                  <template x-if="c.cus && c.cus.fam && c.cus.fam.email && ['doimail','loi','huy'].includes(c.type)">
+                    <div style="font-size:13px;margin:4px 0;padding:6px 8px;background:var(--soft, #f3f1ec);border-radius:6px">
+                      <b x-text="'Đăng nhập ' + c.cus.rn + ': '"></b>
+                      <span class="mono cp" @click="copy(c.cus.fam.email, 'Đã copy email chủ fam')" x-text="c.cus.fam.email"></span>
+                      · Pass <span class="mono cp" @click="copy(c.cus.fam.pass, 'Đã copy pass')" x-text="c.cus.fam.pass || '—'"></span>
+                      <span x-show="c.cus.fam.mkp"> · MKP <span class="mono cp" @click="copy(c.cus.fam.mkp, 'Đã copy MKP')" x-text="c.cus.fam.mkp"></span></span>
+                      · 2FA <b class="mono" :class="c.cus.fam.twofa && 'cp'" @click="c.cus.fam.twofa && copy(slotOtp['C' + c.cus.rn], 'Đã copy mã 2FA')" x-text="c.cus.fam.twofa ? (slotOtp['C' + c.cus.rn] || '······') : 'không'"></b>
+                      · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
+                    </div>
+                  </template>
                   <div x-show="c.note" style="color:var(--warn)" x-text="c.note"></div>
                   <!-- Đổi mail -->
                   <template x-if="c.type==='doimail'"><div style="margin-top:4px">
@@ -1966,7 +1976,7 @@ function app() {
       if (this._cusCache[e] !== undefined) return this._cusCache[e];
       const d = await this.api({ action: 'search', q: e });
       let hit = null;
-      (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!hit && String(c.email).toLowerCase() === e) hit = { rn: f.rn, row: c.row, email: c.email, hsd: c.hsd, daysLeft: c.daysLeft, ctv: c.ctv, mailPhu: c.mailPhu || '', months: c.months, famStatus: f.status, famRenew: f.daysToRenew, famState: f.famState ? ({ deleted: 'Đã xoá nhóm', scanned: 'Bị quét' }[f.famState.state] || f.famState.state) : '', report: !!f.report, nojoin: c.nojoin || '', invitedAt: c.invitedAt || '' }; }));
+      (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!hit && String(c.email).toLowerCase() === e) hit = { rn: f.rn, row: c.row, email: c.email, hsd: c.hsd, daysLeft: c.daysLeft, ctv: c.ctv, mailPhu: c.mailPhu || '', months: c.months, famStatus: f.status, famRenew: f.daysToRenew, fam: { email: f.email, pass: f.pass, mkp: f.mkp, twofa: f.twofa }, famState: f.famState ? ({ deleted: 'Đã xoá nhóm', scanned: 'Bị quét' }[f.famState.state] || f.famState.state) : '', report: !!f.report, nojoin: c.nojoin || '', invitedAt: c.invitedAt || '' }; }));
       if (!hit) { const a = (d.archived || []).find(x => String(x.email).toLowerCase() === e); if (a) hit = { rn: 'Lưu', arch: true, row: a.row, email: a.email, hsd: a.hsd, daysLeft: null, ctv: a.ctv, mailPhu: a.mailPhu || '' }; }
       let phuOf = null;
       if (!hit) (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!phuOf && String(c.mailPhu || '').toLowerCase().indexOf(e) >= 0) phuOf = { rn: f.rn, email: c.email }; }));
@@ -2999,6 +3009,11 @@ function app() {
       if (this.searchOn() || this.tab === 'due' || this.tab === 'report') {
         const m = {};
         for (const f of (this.searchOn() ? this.results : (this.tab === 'report' ? this.reported : this.due))) if (f.twofa && this.expanded(f)) m['S' + f.rn] = await totp(f.twofa);
+        this.slotOtp = { ...this.slotOtp, ...m };
+      }
+      if (this.tab === 'cmd') {
+        const m = {};
+        for (const c of this.cmdCards) if (c.st === 'ready' && c.cus && c.cus.fam && c.cus.fam.twofa) m['C' + c.cus.rn] = await totp(c.cus.fam.twofa);
         this.slotOtp = { ...this.slotOtp, ...m };
       }
       if (this.pick.list && this.pick.list.length) {
