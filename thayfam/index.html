@@ -1231,7 +1231,7 @@
 
       <!-- TAB LỆNH: dán tin của Tuấn / tin gửi qua bot → soạn sẵn, bấm Duyệt mới ghi -->
       <section x-show="tab==='cmd' && !searchOn()">
-        <p class="mute" style="font-size:13px;margin:0 0 8px">Dán tin nhắn (mỗi dòng 1 việc) hoặc nhắn cho bot <b>@goshopassistantbot</b>. Webapp tự đọc và soạn sẵn: <b>đổi mail</b> ("đổi", 2 email) · <b>gia hạn</b> (khách đã có) · <b>đơn mới</b> (email chưa có trong Kho TK) · <b>ghi hủy</b> ("hủy", "hoàn tiền"). Không ghi gì cho tới khi bấm <b>Duyệt</b>.</p>
+        <p class="mute" style="font-size:13px;margin:0 0 8px">Dán tin nhắn (mỗi dòng 1 việc) hoặc nhắn cho bot <b>@goshopassistantbot</b>. Webapp tự đọc và soạn sẵn: <b>báo lỗi</b> ("mất pre", "lỗi", "không vào"… → mở fam xử lý) · <b>đổi mail</b> ("đổi", 2 email) · <b>gia hạn</b> (khách đã có) · <b>đơn mới</b> (email chưa có trong Kho TK) · <b>ghi hủy</b> ("hủy", "hoàn tiền"). Không ghi gì cho tới khi bấm <b>Duyệt</b>.</p>
         <textarea x-model="cmdText" rows="3" style="width:100%;font-family:inherit;font-size:14px;padding:8px;border:1px solid var(--line);border-radius:8px" placeholder="1039 nhulephu15@gmail.com | ytb 12th plus | 09/07/2026 → 09/07/2027 | 17.470 - Dovandong.beo@gmail.com đổi về mail chính"></textarea>
         <div class="row" style="gap:8px;margin:6px 0 14px">
           <button class="btn pri sm" @click="cmdParse()" :disabled="!cmdText.trim()">Đọc lệnh</button>
@@ -1256,7 +1256,7 @@
                 <div x-show="c.st==='skip'" class="mute" x-text="'Đã bỏ qua' + (c.result ? ' · ' + c.result : '')"></div>
                 <template x-if="c.st==='ready'"><div>
                   <div class="row" style="gap:4px;flex-wrap:wrap;margin:4px 0">
-                    <template x-for="t in [['doimail','Đổi mail'],['giahan','Gia hạn'],['donmoi','Đơn mới'],['huy','Ghi hủy']]" :key="t[0]">
+                    <template x-for="t in [['loi','Báo lỗi'],['doimail','Đổi mail'],['giahan','Gia hạn'],['donmoi','Đơn mới'],['huy','Ghi hủy']]" :key="t[0]">
                       <button class="chip" :class="c.type===t[0] && 'on'" @click="c.type=t[0]; c.confirm=false" x-text="t[1]"></button>
                     </template>
                   </div>
@@ -1299,13 +1299,18 @@
                       <label class="mute"><input type="checkbox" x-model="c.finance"> Ghi Tài chính (New)</label>
                     </div>
                   </div></template>
+                  <!-- Báo lỗi: mở fam để xử lý (Kiểm tra fam / Đổi khách / Tìm fam như bình thường) -->
+                  <template x-if="c.type==='loi'"><div class="row" style="gap:6px;margin-top:4px">
+                    <button class="btn sm" x-show="c.cus && !c.cus.arch" @click="q = c.cus.email; doSearch(); window.scrollTo({ top: 0, behavior: 'smooth' })">Mở fam <span x-text="(c.cus || {}).rn"></span> ↗</button>
+                    <span class="mute">Xử lý trong fam như bình thường, xong thì bấm Xong ở đây.</span>
+                  </div></template>
                   <!-- Ghi hủy -->
                   <template x-if="c.type==='huy'"><div style="margin-top:4px">
                     <div x-show="c.cus">Mail phụ: <b x-text="(c.cus || {}).mailPhu || '(trống)'"></b> → <b x-text="cmdHuyVal(c)"></b> <span class="mute">(khách hiện ở danh sách cần kick)</span></div>
                     <div x-show="!c.cus" style="color:var(--bad)">Không thấy khách trong Kho TK.</div>
                   </div></template>
                   <div class="row" style="gap:6px;margin-top:6px">
-                    <button class="btn sm pri" :disabled="!!c.busy || !cmdCan(c)" @click="cmdRun(c)" x-text="c.busy ? 'Đang ghi…' : (c.confirm ? 'Bấm lần nữa để ghi' : 'Duyệt')"></button>
+                    <button class="btn sm pri" :disabled="!!c.busy || !cmdCan(c)" @click="cmdRun(c)" x-text="c.type==='loi' ? 'Xong' : (c.busy ? 'Đang ghi…' : (c.confirm ? 'Bấm lần nữa để ghi' : 'Duyệt'))"></button>
                     <button class="btn sm" @click="cmdSkip(c)">Bỏ qua</button>
                     <span class="err" style="margin:0" x-show="c.err" x-text="c.err"></span>
                   </div>
@@ -1858,7 +1863,9 @@ function app() {
         let type = '';
         if (/h[uủ]y|hoàn tiền|hoan tien|refund/.test(t)) type = 'huy';
         else if (/đổi|doi |chuyển mail|chuyen mail/.test(t) && emails.length >= 2) type = 'doimail';
-        else if (emails.length) type = 'order';
+        else if (/mất\s*pre|mat\s*pre|mất premium|hết pre|lỗi|\bloi\b|không vào|ko vào|k vào|bị out|bị kick|bị đá|văng|out fam|không xem|ko xem/.test(t) && emails.length) type = 'loi';
+        else if (emails.length && (mm || dates.length || /gia hạn|giahan|ytb|youtube|plus/.test(t))) type = 'order';
+        else if (emails.length) type = 'loi';
         const c = {
           key: (q ? q.id : 'w' + Date.now()) + ':' + i, qid: q ? q.id : '', from: q ? q.from : '', at: q ? q.at : '', li: i, raw: raw,
           emails: emails, months: months, product: /plus/i.test(raw) ? 'YoutubePlus' : 'Youtube', start: dates[0] || '', end: dates[1] || '', code: code,
@@ -1888,8 +1895,10 @@ function app() {
           if (cus.length) { c.cus = cus[0][1]; c.newEmail = (found.find(x => x[0] !== c.cus.email.toLowerCase() && !(x[1] && !x[1].phuOf)) || [''])[0]; }
           if (cus.length > 1) c.note = 'Cả ' + cus.map(x => x[0]).join(' và ') + ' đều đang là khách: kiểm tra lại trước khi đổi.';
           if (c.cus && c.cus.arch) c.note = 'Khách đang ở vùng lưu cuối sheet (không có slot).';
-        } else if (c.type === 'huy') {
+        } else if (c.type === 'huy' || c.type === 'loi') {
           if (cus.length) c.cus = cus[0][1];
+          else { const p = found.find(x => x[1] && x[1].phuOf); if (p) c.note = p[0] + ' là mail phụ của ' + p[1].phuOf.email + ' (' + p[1].phuOf.rn + ').'; }
+          if (c.type === 'loi' && c.cus) c.note = c.cus.arch ? 'Khách đang ở vùng lưu cuối sheet (không có slot).' : (c.cus.daysLeft != null && c.cus.daysLeft < 0 ? 'Khách đã hết hạn ' + (-c.cus.daysLeft) + ' ngày.' : '');
         } else {
           if (cus.length) {
             c.cus = cus[0][1]; c.type = 'giahan';
@@ -1905,7 +1914,7 @@ function app() {
             const o = this.cmdSlotOpts()[0]; if (o && !c.toRow) c.toRow = String(o.row);
           }
         }
-        if (!c.cus && ['doimail', 'huy'].includes(c.type)) c.note = c.note || 'Không thấy khách trong Kho TK.';
+        if (!c.cus && ['doimail', 'huy', 'loi'].includes(c.type)) c.note = c.note || 'Không thấy khách trong Kho TK.';
       } catch (e) { c.err = e.message; }
       c.st = 'ready';
     },
@@ -1935,9 +1944,15 @@ function app() {
       if (c.type === 'giahan') return !!(c.cus && !c.cus.arch);
       if (c.type === 'donmoi') return !!(c.emails[0] && c.toRow && String(c.ctv).trim());
       if (c.type === 'huy') return !!c.cus;
+      if (c.type === 'loi') return true;
       return false;
     },
     async cmdRun(c) {
+      if (c.type === 'loi') {
+        c.busy = true; c.err = '';
+        try { c.st = 'done'; c.result = 'Đã xử lý báo lỗi ' + (c.emails[0] || ''); if (c.qid) await this.queueMark(c, 'xong', c.result); } catch (e) { c.err = e.message; c.st = 'ready'; }
+        c.busy = false; return;
+      }
       if (!c.confirm) { c.confirm = true; setTimeout(() => { c.confirm = false; }, 4000); return; }
       c.confirm = false; c.busy = true; c.err = '';
       try {

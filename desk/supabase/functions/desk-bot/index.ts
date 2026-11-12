@@ -317,7 +317,7 @@ async function listOpen() {
   return { late, dueToday, fresh, later, text: (sec("🔴 Quá hạn", late) + sec("📌 Hôm nay", dueToday) + sec("📥 Mới vào / đang làm", fresh)).trim() };
 }
 async function help() {
-  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/xong 12 — đánh dấu mục #12 xong\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email kèm “đổi mail”, “gia hạn”, “12th”, “hủy”… tự vào luôn, không cần /tf.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
+  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/xong 12 — đánh dấu mục #12 xong\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email khách (đổi mail, gia hạn, hủy, mất pre…) tự vào Thay Fam, không vào Desk. Muốn lưu Desk thì gõ /desk + tin.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
 }
 async function setStatus(id: number, patch: any) {
   if (patch.status) patch.done_at = patch.status === "done" ? new Date().toISOString() : null;
@@ -509,10 +509,12 @@ async function digest() {
   return { sent: true };
 }
 
-/* tin trông như lệnh Thay Fam: có email + (đổi mail / gia hạn / hủy / hoàn tiền / "12th" / ngày → ngày) */
+/* Tin về khách YouTube (có email khách) → Thay Fam, KHÔNG lưu Desk (tránh trùng).
+   Trừ tin kiểu tài khoản / mật khẩu / 2FA (anh lưu đồ của mình) → vẫn vào Desk. Muốn ép vào Desk: gõ /desk + tin. */
 function looksTF(t: string) {
   if (!/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/.test(t)) return false;
-  return /đổi\s*(về\s*)?mail|đổi về|gia hạn|giahan|h[uủ]y|hoàn tiền|refund|\b\d{1,2}\s*th\b|\d{1,2}\/\d{1,2}\/\d{4}\s*(→|->|-)\s*\d{1,2}\/\d{1,2}\/\d{4}/i.test(t);
+  if (/pass(word)?\b|\bpw\b|\bmk\b|mật khẩu|2fa|\botp\b|netflix|chatgpt|\bgpt\b|capcut|canva|gg1|google one/i.test(t)) return false;
+  return true;
 }
 
 async function handle(u: any) {
@@ -559,7 +561,9 @@ async function handle(u: any) {
   }
   // Lệnh Thay Fam (đổi mail / gia hạn / đơn mới / hủy): đưa vào hàng chờ godnc.com/thayfam, anh duyệt trên web
   const tfm = text.match(/^\/(tf|thayfam)\b\s*([\s\S]*)$/i);
-  if (tfm || looksTF(text)) {
+  const toDesk = /^\/desk\b/i.test(text);
+  if (toDesk) { m.text = text.replace(/^\/desk\b\s*/i, ""); return capture(m); }
+  if (tfm || (!m.photo && !m.document && !m.voice && looksTF(text))) {
     const body = tfm ? tfm[2].trim() : text;
     if (!body) return say("Gõ /tf rồi dán tin, ví dụ:\n<code>/tf 1039 abc@gmail.com | ytb 12th plus | 09/07/2026 → 09/07/2027</code>");
     try {
