@@ -1300,9 +1300,17 @@
                     </div>
                   </div></template>
                   <!-- Báo lỗi: mở fam để xử lý (Kiểm tra fam / Đổi khách / Tìm fam như bình thường) -->
-                  <template x-if="c.type==='loi'"><div class="row" style="gap:6px;margin-top:4px">
-                    <button class="btn sm" x-show="c.cus && !c.cus.arch" @click="q = c.cus.email; doSearch(); window.scrollTo({ top: 0, behavior: 'smooth' })">Mở fam <span x-text="(c.cus || {}).rn"></span> ↗</button>
-                    <span class="mute">Xử lý trong fam như bình thường, xong thì bấm Xong ở đây.</span>
+                  <template x-if="c.type==='loi'"><div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
+                    <template x-if="c.cus && c.cus.arch">
+                      <button class="btn sm pri" @click="cmdFix(c, 'move')">Tìm fam mời lại</button>
+                    </template>
+                    <template x-if="c.cus && !c.cus.arch">
+                      <span class="row" style="gap:6px;flex-wrap:wrap">
+                        <button class="btn sm" @click="cmdFix(c, 'open')" title="Mở fam: Kiểm tra fam (đăng nhập, xem nhóm), Đổi khách, Thay fam…" x-text="'Mở fam ' + c.cus.rn + ' để kiểm tra'"></button>
+                        <button class="btn sm pri" @click="cmdFix(c, 'move')" title="Fam lỗi / khách bị out: chuyển khách sang fam khác còn slot rồi mời">Chuyển fam khác + mời</button>
+                      </span>
+                    </template>
+                    <span class="mute" style="width:100%">Xử lý xong (đã mời / fam đã fix) thì bấm <b>Xong</b> ở dưới.</span>
                   </div></template>
                   <!-- Ghi hủy -->
                   <template x-if="c.type==='huy'"><div style="margin-top:4px">
@@ -1880,7 +1888,7 @@ function app() {
       if (this._cusCache[e] !== undefined) return this._cusCache[e];
       const d = await this.api({ action: 'search', q: e });
       let hit = null;
-      (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!hit && String(c.email).toLowerCase() === e) hit = { rn: f.rn, row: c.row, email: c.email, hsd: c.hsd, daysLeft: c.daysLeft, ctv: c.ctv, mailPhu: c.mailPhu || '', months: c.months }; }));
+      (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!hit && String(c.email).toLowerCase() === e) hit = { rn: f.rn, row: c.row, email: c.email, hsd: c.hsd, daysLeft: c.daysLeft, ctv: c.ctv, mailPhu: c.mailPhu || '', months: c.months, famStatus: f.status, famRenew: f.daysToRenew, famState: f.famState ? ({ deleted: 'Đã xoá nhóm', scanned: 'Bị quét' }[f.famState.state] || f.famState.state) : '', report: !!f.report, nojoin: c.nojoin || '', invitedAt: c.invitedAt || '' }; }));
       if (!hit) { const a = (d.archived || []).find(x => String(x.email).toLowerCase() === e); if (a) hit = { rn: 'Lưu', arch: true, row: a.row, email: a.email, hsd: a.hsd, daysLeft: null, ctv: a.ctv, mailPhu: a.mailPhu || '' }; }
       let phuOf = null;
       if (!hit) (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!phuOf && String(c.mailPhu || '').toLowerCase().indexOf(e) >= 0) phuOf = { rn: f.rn, email: c.email }; }));
@@ -1898,7 +1906,19 @@ function app() {
         } else if (c.type === 'huy' || c.type === 'loi') {
           if (cus.length) c.cus = cus[0][1];
           else { const p = found.find(x => x[1] && x[1].phuOf); if (p) c.note = p[0] + ' là mail phụ của ' + p[1].phuOf.email + ' (' + p[1].phuOf.rn + ').'; }
-          if (c.type === 'loi' && c.cus) c.note = c.cus.arch ? 'Khách đang ở vùng lưu cuối sheet (không có slot).' : (c.cus.daysLeft != null && c.cus.daysLeft < 0 ? 'Khách đã hết hạn ' + (-c.cus.daysLeft) + ' ngày.' : '');
+          if (c.type === 'loi' && c.cus) {
+            const k = c.cus, why = [];
+            if (k.arch) why.push('Khách đang ở vùng lưu cuối sheet, CHƯA có slot → chưa được mời lại.');
+            else {
+              if (k.daysLeft != null && k.daysLeft < 0) why.push('Khách đã hết hạn ' + (-k.daysLeft) + ' ngày.');
+              if (k.famStatus && !['FULL', 'Còn slot', 'Còn slot(đang check)'].includes(k.famStatus)) why.push('Fam ' + k.rn + ' đang "' + k.famStatus + '".');
+              if (k.famState) why.push('Fam ' + k.rn + ' đã đánh dấu: ' + k.famState + '.');
+              if (k.famRenew != null && k.famRenew <= 0) why.push('Fam ' + k.rn + ' đã tới ngày renew (' + (k.famRenew === 0 ? 'hôm nay' : 'quá ' + (-k.famRenew) + ' ngày') + ').');
+              if (k.nojoin) why.push('Đã ghi khách chưa vào nhóm (' + k.nojoin + ').');
+              if (!why.length) why.push('Fam ' + k.rn + ' trên sheet vẫn bình thường → đăng nhập fam kiểm tra: khách còn trong nhóm không, fam còn Premium không.');
+            }
+            c.note = why.join(' ');
+          }
         } else {
           if (cus.length) {
             c.cus = cus[0][1]; c.type = 'giahan';
@@ -1977,6 +1997,15 @@ function app() {
         if (c.qid) await this.queueMark(c, 'xong', msg);
       } catch (e) { c.err = e.message; }
       c.busy = false;
+    },
+    // Báo lỗi: mở đúng khách ở khung tìm kiếm. move = tự mở luôn khung Tìm fam (chuyển / mời lại)
+    async cmdFix(c, mode) {
+      this.q = c.cus.email; await this.doSearch();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (mode !== 'move') return;
+      const e = c.cus.email.toLowerCase();
+      if (c.cus.arch) { const a = this.archHits.find(x => String(x.email).toLowerCase() === e); if (a) this.findSlot({ rn: '' }, a); return; }
+      for (const f of this.results) { const k = (f.customers || []).find(x => String(x.email).toLowerCase() === e); if (k) { this.findSlot(f, k); return; } }
     },
     async cmdSkip(c) {
       c.st = 'skip';
