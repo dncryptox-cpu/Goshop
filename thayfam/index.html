@@ -1245,6 +1245,9 @@
               <b x-text="g.qid ? '📨 ' + (g.from || 'Bot') : '📋 Dán tay'"></b>
               <span class="mute" x-text="g.at || ''"></span>
               <span class="grow"></span>
+              <template x-for="cv in [...new Set(g.cards.filter(c => c.st === 'done' && c.info && !cmdLe(c)).map(c => c.info.ctv))]" :key="cv">
+                <button class="btn xs" x-show="g.cards.filter(c => c.st === 'done' && c.info && c.info.ctv === cv).length > 1" @click="copy(g.cards.filter(c => c.st === 'done' && c.info && c.info.ctv === cv).map(c => cmdMsg(c)).join('\n'), 'Đã copy tin gửi ' + cv)" x-text="'Copy hết gửi ' + cv"></button>
+              </template>
               <button class="btn xs" x-show="g.qid" @click="queueDrop(g)">Bỏ cả tin</button>
               <button class="btn xs" x-show="!g.qid" @click="cmdCards = cmdCards.filter(c => c.qid)">Đóng</button>
             </div>
@@ -1253,6 +1256,10 @@
                 <div class="mono" style="font-size:12px;color:var(--mute);white-space:pre-wrap;word-break:break-word" x-text="c.raw"></div>
                 <div x-show="c.st==='loading'" class="mute">Đang tìm khách…</div>
                 <div x-show="c.st==='done'" style="color:var(--ok)" x-text="'✓ ' + (c.result || 'Đã xong')"></div>
+                <div x-show="c.st==='done' && c.info" class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
+                  <span class="mono" style="font-size:12px;background:var(--soft, #f3f1ec);padding:3px 8px;border-radius:6px" x-text="cmdMsg(c)"></span>
+                  <button class="btn xs pri" @click="copy(cmdMsg(c), 'Đã copy tin ' + (cmdLe(c) ? 'gửi khách' : 'gửi CTV ' + c.info.ctv))" x-text="cmdLe(c) ? 'Copy gửi khách' : 'Copy gửi ' + c.info.ctv"></button>
+                </div>
                 <div x-show="c.st==='skip'" class="mute" x-text="'Đã bỏ qua' + (c.result ? ' · ' + c.result : '')"></div>
                 <template x-if="c.st==='ready'"><div>
                   <div class="row" style="gap:4px;flex-wrap:wrap;margin:4px 0">
@@ -2063,11 +2070,31 @@ function app() {
         }
         if (r && r.actionId) this.lastActionId = r.actionId;
         c.st = 'done'; c.result = msg;
+        c.info = c.type === 'doimail' ? { kind: 'doimail', email: c.newEmail.trim(), old: c.cus.email, rn: c.cus.rn, hsd: c.cus.hsd, ctv: c.cus.ctv, invited: !!c.invited }
+          : c.type === 'giahan' ? { kind: 'giahan', email: c.cus.email, hsd: (r && r.hsd) || this.cmdNewHsd(c), months: c.months, ctv: c.cus.ctv }
+          : c.type === 'donmoi' ? { kind: 'donmoi', email: r.email, rn: r.rn, hsd: r.hsd, ctv: r.ctv, invited: !!c.invited } : null;
         this.lastDone = '✓ ' + msg + '. Hoàn tác được ở tab Lịch sử.';
         this._cusCache = {};
         if (c.qid) await this.queueMark(c, 'xong', msg);
       } catch (e) { c.err = e.message; }
       c.busy = false;
+    },
+    // Tin ngắn gửi sau khi xong: khách của CTV → báo CTV; khách lẻ (Dnc / không CTV) → nhắn thẳng khách
+    cmdLe(c) { const v = String((c.info || {}).ctv || '').trim().toLowerCase(); return !v || v === 'dnc'; },
+    cmdMsg(c) {
+      const i = c.info; if (!i) return '';
+      const now = new Date(Date.now() + 7 * 3600e3), at = String(now.getUTCHours()).padStart(2, '0') + ':' + String(now.getUTCMinutes()).padStart(2, '0') + ' ' + String(now.getUTCDate()).padStart(2, '0') + '/' + String(now.getUTCMonth() + 1).padStart(2, '0');
+      const moi = i.kind === 'moi' || i.invited;
+      if (this.cmdLe(c)) {
+        if (i.kind === 'giahan') return 'Mình đã gia hạn ' + i.email + ' đến ' + i.hsd + ', cảm ơn bạn!';
+        if (moi) return 'Mình đã mời lại ' + i.email + ' vào nhóm Gia đình, bạn mở Gmail bấm Chấp nhận lời mời giúp mình nhé.';
+        if (i.kind === 'doimail') return 'Mình đã đổi sang ' + i.email + ', lát mình gửi lời mời, bạn chấp nhận giúp mình nhé.';
+        return 'Mình đã xử lý xong ' + i.email + ' rồi nhé.';
+      }
+      if (i.kind === 'giahan') return i.email + ': đã gia hạn ' + i.months + 'th → HSD ' + i.hsd;
+      if (i.kind === 'doimail') return i.old + ' → ' + i.email + ': đã đổi mail' + (moi ? ', đã mời lại ' + at : '') + (i.hsd ? ' · HSD ' + i.hsd : '');
+      if (i.kind === 'donmoi') return i.email + ': đã thêm' + (moi ? ', đã mời ' + at : '') + ' · HSD ' + i.hsd;
+      return i.email + ': đã mời lại ' + at + (i.hsd ? ' · HSD ' + i.hsd : '');
     },
     // Báo lỗi: mở đúng khách ở khung tìm kiếm. move = tự mở luôn khung Tìm fam (chuyển / mời lại)
     async cmdFix(c, mode) {
@@ -2230,7 +2257,7 @@ function app() {
         this.archHits = this.archHits.filter(x => x.row !== p.row); if (this.allArch) this.allArch = this.allArch.filter(x => x.row !== p.row); this.pick = { row: null, list: [] };
         // mở từ thẻ Lệnh → thẻ đó tự Xong
         const cc = p.cmdKey && this.cmdCards.find(x => x.key === p.cmdKey);
-        if (cc) { cc.st = 'done'; cc.result = 'Đã mời ' + (p.usePhu ? String(p.phu).trim() : p.email) + ' vào ' + t.rn; this._cusCache = {}; if (cc.qid) this.queueMark(cc, 'xong', cc.result).catch(e => { cc.err = e.message; }); }
+        if (cc) { cc.st = 'done'; cc.result = 'Đã mời ' + (p.usePhu ? String(p.phu).trim() : p.email) + ' vào ' + t.rn; cc.info = { kind: 'moi', email: p.usePhu ? String(p.phu).trim() : p.email, rn: t.rn, hsd: (cc.cus || {}).hsd, ctv: (cc.cus || {}).ctv }; this._cusCache = {}; if (cc.qid) this.queueMark(cc, 'xong', cc.result).catch(e => { cc.err = e.message; }); }
       }
       else p.confirm = false;
     },
