@@ -1269,6 +1269,8 @@
                     </template>
                   </div>
                   <div x-show="c.cus" class="mute"><span>Khách: </span><span class="mono cp" @click="copy(c.cus.email, 'Đã copy email')" x-text="(c.cus || {}).email"></span><span x-text="c.cus ? ' · ' + c.cus.rn + (c.cus.arch ? ' (vùng lưu)' : '') + ' dòng ' + c.cus.row + ' · CTV ' + (c.cus.ctv || '—') + ' · HSD ' + (c.cus.hsd || '—') + (c.cus.mailPhu ? ' · mail phụ ' + c.cus.mailPhu : '') : ''"></span></div>
+                  <div x-show="c.cus && !c.cus.arch && c.cus.famRenewDate" style="font-size:13px;margin-top:2px"><span class="mute">Fam </span><b x-text="(c.cus || {}).rn"></b><span x-text="c.cus ? ' · renew ' + c.cus.famRenewDate + (c.cus.famRenew != null ? (c.cus.famRenew < 0 ? ' (quá ' + (-c.cus.famRenew) + ' ngày)' : c.cus.famRenew === 0 ? ' (hôm nay)' : ' (còn ' + c.cus.famRenew + ' ngày)') : '') : ''" :style="c.cus && c.cus.famRenew != null && c.cus.famRenew <= 0 ? 'color:var(--bad)' : ''"></span></div>
+                  <div x-show="c.type==='loi' && c.ok" style="margin:4px 0"><span class="badge ok" style="font-weight:700;font-size:13px">✓ Bình thường</span> <span class="mute" style="font-size:13px">Fam còn hạn, khách còn hạn. Khách vẫn báo lỗi → mở fam xem khách còn trong nhóm không.</span></div>
                   <template x-if="c.cus && c.cus.fam && c.cus.fam.email && ['doimail','loi','huy'].includes(c.type)">
                     <div style="font-size:13px;margin:4px 0;padding:6px 8px;background:var(--soft, #f3f1ec);border-radius:6px">
                       <b x-text="'Đăng nhập ' + c.cus.rn + ': '"></b>
@@ -1966,7 +1968,7 @@ function app() {
         const c = {
           key: (q ? q.id : 'w' + Date.now()) + ':' + i, qid: q ? q.id : '', from: q ? q.from : '', at: q ? q.at : '', li: i, raw: raw,
           emails: emails, months: months, product: /plus/i.test(raw) ? 'YoutubePlus' : 'Youtube', start: dates[0] || '', end: dates[1] || '', code: code,
-          type: type, st: done ? (done.s === 'bỏ' ? 'skip' : 'done') : (type ? 'loading' : 'ready'), result: done ? done.note : '', cus: null, newEmail: '', note: type ? '' : 'Không đọc được loại việc: chọn tay ở trên.',
+          type: type, st: done ? (done.s === 'bỏ' ? 'skip' : 'done') : (type ? 'loading' : 'ready'), result: done ? done.note : '', cus: null, ok: false, newEmail: '', note: type ? '' : 'Không đọc được loại việc: chọn tay ở trên.',
           base: 'old', buy: iso(dates[0] || '') || today, ctv: 'Tuan', toRow: '', invited: false, finance: true, oldRemoved: false, confirm: false, busy: false, err: '',
         };
         this.cmdCards.push(c);
@@ -1977,10 +1979,11 @@ function app() {
       if (this._cusCache[e] !== undefined) return this._cusCache[e];
       const d = await this.api({ action: 'search', q: e });
       let hit = null;
-      (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!hit && String(c.email).toLowerCase() === e) hit = { rn: f.rn, row: c.row, email: c.email, hsd: c.hsd, daysLeft: c.daysLeft, ctv: c.ctv, mailPhu: c.mailPhu || '', months: c.months, famStatus: f.status, famRenew: f.daysToRenew, fam: { email: f.email, pass: f.pass, mkp: f.mkp, twofa: f.twofa }, famState: f.famState ? ({ deleted: 'Đã xoá nhóm', scanned: 'Bị quét' }[f.famState.state] || f.famState.state) : '', report: !!f.report, nojoin: c.nojoin || '', invitedAt: c.invitedAt || '' }; }));
+      const mk = (f, c) => ({ rn: f.rn, row: c.row, email: c.email, hsd: c.hsd, daysLeft: c.daysLeft, ctv: c.ctv, mailPhu: c.mailPhu || '', months: c.months, famStatus: f.status, famRenew: f.daysToRenew, famRenewDate: f.renew || '', fam: { email: f.email, pass: f.pass, mkp: f.mkp, twofa: f.twofa }, famState: f.famState ? ({ deleted: 'Đã xoá nhóm', scanned: 'Bị quét' }[f.famState.state] || f.famState.state) : '', report: !!f.report, nojoin: c.nojoin || '', invitedAt: c.invitedAt || '' });
+      (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!hit && String(c.email).toLowerCase() === e) hit = mk(f, c); }));
       if (!hit) { const a = (d.archived || []).find(x => String(x.email).toLowerCase() === e); if (a) hit = { rn: 'Lưu', arch: true, row: a.row, email: a.email, hsd: a.hsd, daysLeft: null, ctv: a.ctv, mailPhu: a.mailPhu || '' }; }
       let phuOf = null;
-      if (!hit) (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!phuOf && String(c.mailPhu || '').toLowerCase().indexOf(e) >= 0) phuOf = { rn: f.rn, email: c.email }; }));
+      if (!hit) (d.items || []).forEach(f => (f.customers || []).forEach(c => { if (!phuOf && String(c.mailPhu || '').toLowerCase().indexOf(e) >= 0) phuOf = { rn: f.rn, email: c.email, cus: mk(f, c) }; }));
       return (this._cusCache[e] = hit ? hit : (phuOf ? { phuOf: phuOf } : null));
     },
     async cmdResolve(c) {
@@ -1993,8 +1996,9 @@ function app() {
           if (cus.length > 1) c.note = 'Cả ' + cus.map(x => x[0]).join(' và ') + ' đều đang là khách: kiểm tra lại trước khi đổi.';
           if (c.cus && c.cus.arch) c.note = 'Khách đang ở vùng lưu cuối sheet (không có slot).';
         } else if (c.type === 'huy' || c.type === 'loi') {
+          let phuNote = '';
           if (cus.length) c.cus = cus[0][1];
-          else { const p = found.find(x => x[1] && x[1].phuOf); if (p) c.note = p[0] + ' là mail phụ của ' + p[1].phuOf.email + ' (' + p[1].phuOf.rn + ').'; }
+          else { const p = found.find(x => x[1] && x[1].phuOf); if (p) { phuNote = p[0] + ' là mail phụ của ' + p[1].phuOf.email + ' (' + p[1].phuOf.rn + ').'; c.cus = p[1].phuOf.cus; c.note = phuNote; } }
           if (c.type === 'loi' && c.cus) {
             const k = c.cus, why = [];
             if (k.arch) why.push('Khách đang ở vùng lưu cuối sheet, CHƯA có slot → chưa được mời lại.');
@@ -2004,9 +2008,9 @@ function app() {
               if (k.famState) why.push('Fam ' + k.rn + ' đã đánh dấu: ' + k.famState + '.');
               if (k.famRenew != null && k.famRenew <= 0) why.push('Fam ' + k.rn + ' đã tới ngày renew (' + (k.famRenew === 0 ? 'hôm nay' : 'quá ' + (-k.famRenew) + ' ngày') + ').');
               if (k.nojoin) why.push('Đã ghi khách chưa vào nhóm (' + k.nojoin + ').');
-              if (!why.length) why.push('Fam ' + k.rn + ' trên sheet vẫn bình thường → đăng nhập fam kiểm tra: khách còn trong nhóm không, fam còn Premium không.');
             }
-            c.note = why.join(' ');
+            c.ok = !why.length;
+            c.note = [phuNote].concat(why).filter(Boolean).join(' ');
           }
         } else {
           if (cus.length) {
