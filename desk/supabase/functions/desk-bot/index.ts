@@ -1,6 +1,6 @@
 // DNC Desk — Edge Function "desk-bot": nhận MỌI tin nhắn của @goshopassistantbot và lưu vào bảng desk_inbox.
 // Webhook Telegram trỏ thẳng vào đây (luôn trả 200 → Telegram không bao giờ kẹt hàng đợi).
-// Tắt "Verify JWT" cho function này. Secrets: TG_BOT_TOKEN, TG_SECRET, GEMINI_API_KEY (tuỳ chọn: TG_CHAT_ID, DESK_USER_ID, GEMINI_MODEL)
+// Tắt "Verify JWT" cho function này. Secrets: TG_BOT_TOKEN, TG_SECRET, GEMINI_API_KEY (tuỳ chọn: TG_CHAT_ID, DESK_USER_ID, GEMINI_MODEL, TF_PASS, TUAN_BOT_TOKEN = bot nhóm Tuấn: cài 1 lần ?setup_tuan=<TG_SECRET>)
 // Cài webhook 1 lần: mở  https://<project>.supabase.co/functions/v1/desk-bot?setup=<TG_SECRET>
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -28,8 +28,8 @@ const fmtDue = (d?: string | null) => {
   return `${WD[x.getUTCDay()]} ${d.slice(8)}/${d.slice(5, 7)}`;
 };
 
-async function tg(method: string, body: Record<string, unknown>) {
-  const r = await fetch(`https://api.telegram.org/bot${TOKEN}/${method}`, {
+async function tg(method: string, body: Record<string, unknown>, token = TOKEN) {
+  const r = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   });
   const j = await r.json().catch(() => ({}));
@@ -559,6 +559,91 @@ async function tfReport(text: string) {
   return out.join("\n\n");
 }
 
+
+/* ---------- Bot nhóm CTV Tuấn (bot riêng, secret TUAN_BOT_TOKEN) ----------
+   Tuấn gõ email khách vào nhóm → bot tra Kho TK:
+   - đã fix (mời lại ≤3 ngày, fam ổn) → trả kết quả ngắn
+   - chưa fix → "đợi DNC check" + đưa vào tab Lệnh Thay Fam (from = "Nhóm Tuấn")
+   DNC bấm Xong trên Thay Fam → web gọi ?tuan_notify → bot báo lại nhóm.
+   Nối nhóm: anh gõ /ketnoi trong nhóm (chỉ tài khoản anh mới nối được). */
+const TUAN_TOKEN = Deno.env.get("TUAN_BOT_TOKEN") || "";
+const TUAN_FROM = "Nhóm Tuấn";
+const ttg = (method: string, body: Record<string, unknown>) => tg(method, body, TUAN_TOKEN);
+async function tuanGroup(): Promise<string> {
+  const { data } = await db.from("desk_docs").select("data").eq("user_id", await owner()).eq("kind", "settings").eq("key", "tuan_group").maybeSingle();
+  return data?.data?.chat ? String(data.data.chat) : "";
+}
+async function tuanSay(text: string, extra: Record<string, unknown> = {}) {
+  const chat = await tuanGroup(); if (!chat) throw new Error("chưa nối nhóm Tuấn (gõ /ketnoi trong nhóm)");
+  return ttg("sendMessage", { chat_id: chat, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...extra });
+}
+/* "10/11 14:20", "10/11/2026", "2026-11-10…" → số ngày đã qua (null nếu không đọc được) */
+function agoDays(s: string): number | null {
+  const t = String(s || "").trim(); let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  let v: number | null = null;
+  if (m) v = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  else if ((m = t.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/))) {
+    const now = new Date(Date.now() + TZ_MS); let y = m[3] ? +m[3] : now.getUTCFullYear(); if (y < 100) y += 2000;
+    v = Date.UTC(y, +m[2] - 1, +m[1]); if (!m[3] && v > Date.parse(today() + "T00:00:00Z")) v = Date.UTC(y - 1, +m[2] - 1, +m[1]);
+  }
+  return v == null || isNaN(v) ? null : -daysU(v);
+}
+function famProblems(f: any, c: any) {
+  const why: string[] = [];
+  if (c.daysLeft != null && c.daysLeft < 0) why.push(`khách hết hạn ${-c.daysLeft} ngày`);
+  if (f.famState) why.push("fam đang lỗi");
+  else if (f.status && !["FULL", "Còn slot", "Còn slot(đang check)"].includes(f.status)) why.push("fam đang lỗi");
+  if (f.daysToRenew != null && f.daysToRenew < 0) why.push("fam quá ngày renew");
+  return why;
+}
+async function tuanCheck(e: string, raw: string, openText: string): Promise<{ text: string; queue: boolean }> {
+  const r = await tfFind(e);
+  if (!r) return { text: `❓ <b>${esc(e)}</b>: chưa thấy trong danh sách. ⏳ Đợi DNC check lại.`, queue: true };
+  if (r.arch) return { text: `⏳ <b>${esc(e)}</b>: đang chờ xếp fam mới, chưa mời. Đợi DNC xử lý.`, queue: true };
+  const { f, c } = r;
+  if (normCtv(c.ctv) !== "Tuấn") return { text: `ℹ️ <b>${esc(e)}</b>: không phải khách của Tuấn.`, queue: false };
+  const who = r.phuOf ? ` (mail phụ của ${esc(c.email)})` : "";
+  const hsd = c.hsd ? ` · HSD ${shortD(c.hsd)}` : "";
+  if (c.daysLeft != null && c.daysLeft < 0) return { text: `⛔ <b>${esc(e)}</b>${who}: <b>hết hạn ${shortD(c.hsd)}</b>. Khách cần gia hạn.`, queue: false };
+  const why = famProblems(f, c), ago = agoDays(c.invitedAt);
+  if (!why.length && ago != null && ago <= 3)
+    return { text: `✅ <b>${esc(e)}</b>${who}: đã mời lại ${ago === 0 ? "hôm nay" : ago === 1 ? "hôm qua" : ago + " ngày trước"}${hsd}.\nBáo khách mở Gmail bấm <b>Chấp nhận lời mời</b>, hoặc vào https://myaccount.google.com/family/details`, queue: false };
+  if (openText.includes(e)) return { text: `⏳ <b>${esc(e)}</b>${who}: đã báo rồi, đang đợi DNC check.`, queue: false };
+  return { text: `⏳ <b>${esc(e)}</b>${who}: đã ghi nhận, đợi DNC check lại. Xong bot sẽ báo.`, queue: true };
+}
+async function tuanHandle(m: any) {
+  const text = String(m.text || m.caption || "").trim();
+  const isOwner = String(m.from?.id) === CHAT;
+  if (/^\/ketnoi\b/i.test(text)) {
+    if (!isOwner || m.chat.type === "private") return ttg("sendMessage", { chat_id: m.chat.id, text: "Chỉ DNC mới nối được bot, và phải gõ trong nhóm." });
+    await db.from("desk_docs").upsert({ user_id: await owner(), kind: "settings", key: "tuan_group", data: { chat: m.chat.id, title: m.chat.title || "" }, updated_at: new Date().toISOString() }, { onConflict: "user_id,kind,key" });
+    return ttg("sendMessage", { chat_id: m.chat.id, text: "✅ Đã nối nhóm. Tuấn gõ email khách (vd: abc@gmail.com chưa có lời mời) để bot kiểm tra." });
+  }
+  const grp = await tuanGroup();
+  if (!grp || String(m.chat.id) !== grp) return; // chỉ trả lời trong nhóm đã nối
+  if (/^\/(start|help)\b/i.test(text)) return tuanSay("Gõ email khách (1 hoặc nhiều mail, kèm mô tả lỗi nếu có). Bot báo: ✅ đã fix · ⏳ đợi DNC check · ⛔ hết hạn.");
+  const ems = [...new Set((text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map((x) => x.toLowerCase()))].slice(0, 8);
+  if (!ems.length) return;
+  let openText = "";
+  try { const q = await tf({ action: "queue", op: "list" }); openText = (q.open || []).map((x: any) => String(x.text || "")).join("\n").toLowerCase(); } catch (_) { /* bỏ qua */ }
+  const out: string[] = [], toQ: string[] = [];
+  const lines = text.split(/\r?\n/);
+  for (const e of ems) {
+    try {
+      const r = await tuanCheck(e, text, openText); out.push(r.text);
+      if (r.queue) toQ.push(lines.find((l) => l.toLowerCase().includes(e)) || e);
+    } catch (err) { out.push(`⚠️ <b>${esc(e)}</b>: chưa tra được, đợi DNC check.`); toQ.push(e); console.error("tuan", e, (err as Error).message); }
+  }
+  if (toQ.length) {
+    try { await tf({ action: "queue", op: "add", text: toQ.join("\n"), from: TUAN_FROM, src: "tuan" }); }
+    catch (err) { console.error("tuan queue", (err as Error).message); await say(`⚠️ Nhóm Tuấn báo nhưng chưa vào được Thay Fam:\n${esc(toQ.join("\n"))}`); }
+    // báo DNC trên bot riêng
+    await say(`👥 <b>Tuấn báo</b> (${toQ.length}) — đã vào tab Lệnh Thay Fam:\n${esc(toQ.join("\n"))}`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } }).catch(() => {});
+  }
+  return tuanSay(out.join("\n\n"), { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } });
+}
+const CORS = { "Access-Control-Allow-Origin": "https://godnc.com", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "content-type" };
+
 async function handle(u: any) {
   if (u.callback_query) {
     const q = u.callback_query;
@@ -644,6 +729,34 @@ Deno.serve(async (req) => {
       let who = ""; try { who = await owner(); } catch (e) { who = "LỖI: " + (e as Error).message; }
       if (set.ok) await say("✅ Desk Inbox đã bật. Từ giờ nhắn gì cho bot cũng được lưu vào godnc.com/desk. Gõ /help xem cách dùng.");
       return ok({ ok: set.ok, webhook: self, desk_user: who, telegram: set });
+    }
+    // ---- bot nhóm Tuấn ----
+    if (url.searchParams.has("tuan_notify")) {
+      // Thay Fam gọi khi DNC bấm Xong / ghi nhận thay fam. Xác thực bằng mật khẩu Thay Fam (TF_PASS).
+      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+      const b = await req.json().catch(() => ({}));
+      const pass = Deno.env.get("TF_PASS") || "";
+      if (!pass || b.pass !== pass) return new Response(JSON.stringify({ ok: false, error: "sai mật khẩu" }), { status: 403, headers: { ...CORS, "Content-Type": "application/json" } });
+      const t = String(b.text || "").trim().slice(0, 3500);
+      let r: any = { ok: false, error: "trống" };
+      if (t) { try { r = await tuanSay(esc(t)); } catch (e) { r = { ok: false, error: (e as Error).message }; } }
+      return new Response(JSON.stringify({ ok: !!r.ok, error: r.ok ? undefined : (r.error || r.description) }), { headers: { ...CORS, "Content-Type": "application/json" } });
+    }
+    if (url.searchParams.has("setup_tuan")) {
+      if (!SECRET || url.searchParams.get("setup_tuan") !== SECRET) return ok({ ok: false, error: "sai TG_SECRET" });
+      if (!TUAN_TOKEN) return ok({ ok: false, error: "thiếu secret TUAN_BOT_TOKEN" });
+      const self = `${SB_URL}/functions/v1/desk-bot?bot=tuan`;
+      const set = await ttg("setWebhook", { url: self, secret_token: SECRET, allowed_updates: ["message"], max_connections: 1 });
+      await ttg("setMyCommands", { commands: [{ command: "help", description: "Cách dùng" }] });
+      const me = await ttg("getMe", {});
+      return ok({ ok: set.ok, webhook: self, bot: me.result?.username, can_read_all_group_messages: me.result?.can_read_all_group_messages, telegram: set });
+    }
+    if (url.searchParams.get("bot") === "tuan") {
+      if (req.method !== "POST" || req.headers.get("x-telegram-bot-api-secret-token") !== SECRET) return new Response("forbidden", { status: 403 });
+      const u = await req.json();
+      const job = (async () => { try { if (u.message) await tuanHandle(u.message); } catch (e) { console.error("tuan", e); } })();
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(job); else await job;
+      return ok();
     }
     if (url.searchParams.has("digest")) return ok(await digest());
     if (url.searchParams.has("retry")) {

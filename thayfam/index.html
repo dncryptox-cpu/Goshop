@@ -1722,6 +1722,7 @@ const RENEW_API = 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_
 const READS = ['dashboard', 'log', 'review', 'search', 'slots', 'week', 'mailLog', 'all', 'users', 'notes', 'blocks', 'mailPhu', 'queue'];
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 const FIXYTB_URL = 'https://godnc.com/fixytb/';
+const TUAN_BOT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tuan_notify=1';
 
 const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], ['12 tháng', '280k']];
 
@@ -2136,6 +2137,18 @@ function app() {
       const r = await this.api({ action: 'queue', op: 'set', id: c.qid, line: c.li, status: status, note: note });
       const q = this.qOpen.find(x => x.id === c.qid); if (q) q.res = r.res || q.res;
       if (r.done) { this.qOpen = this.qOpen.filter(x => x.id !== c.qid); }
+      // Tin từ nhóm Tuấn: xong thì bot tự báo lại nhóm
+      if (status === 'xong' && c.from === 'Nhóm Tuấn') {
+        const msg = '✅ ' + (c.info ? this.cmdMsg(c) : (c.emails[0] || '') + ': DNC đã xử lý xong, báo khách kiểm tra lại giúp nhé.');
+        this.tuanNotify(msg).then(ok => { c.result = (c.result || '') + (ok ? ' · đã báo nhóm Tuấn' : ' · chưa báo được nhóm Tuấn'); });
+      }
+    },
+    // Gửi tin vào nhóm Telegram của Tuấn (qua bot). Trả true/false, không làm hỏng thao tác chính.
+    async tuanNotify(text) {
+      try {
+        const r = await fetch(TUAN_BOT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, text: text }) });
+        const d = await r.json(); return !!d.ok;
+      } catch (e) { return false; }
     },
     async queueDrop(g) {
       try { await this.api({ action: 'queue', op: 'drop', id: g.qid }); this.qOpen = this.qOpen.filter(x => x.id !== g.qid); this.cmdCards = this.cmdCards.filter(c => c.qid !== g.qid); }
@@ -2999,6 +3012,12 @@ function app() {
         const nowStr = new Date().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' });
         this.notify = { rn: r.rn, at: nowStr, url: r.fixUrl || FIXYTB_URL, sent: [], ctvSent: [], items: s.f.customers.filter(c => s.sel.includes(c.email)).map(c => ({ email: c.email, ctv: c.ctv, hsd: c.hsd, zalo: zaloOf(c.email) })) };
         if (!this.notify.items.length) this.notify = null;
+        // Khách của Tuấn đã mời lại → bot gửi list vào nhóm Tuấn
+        const tl = this.notify ? this.notify.items.filter(i => /^tu[aấ]n/i.test(String(i.ctv || '').trim())) : [];
+        if (tl.length) {
+          const n = this.notify, txt = '🔄 Thay fam ' + n.rn + ' xong, đã mời lại lúc ' + n.at + ' (' + tl.length + ' khách của Tuấn):\n' + tl.map(i => '- ' + i.email + (i.hsd ? ' · HSD ' + i.hsd : '')).join('\n') + '\nBáo khách mở Gmail bấm Chấp nhận lời mời giúp nhé.';
+          this.tuanNotify(txt).then(ok => { if (ok) n.ctvSent.push(tl[0].ctv); this.lastDone += ok ? ' Đã gửi list ' + tl.length + ' khách cho nhóm Tuấn.' : ' (Chưa gửi được list cho nhóm Tuấn — copy tay.)'; });
+        }
         if (this.me.role === 'admin') this.openNotes += (r.invited < 5 ? 1 : 0) + (s.note && s.note.trim() ? 1 : 0);
         if (this.me.limit) this.me.usedToday++;
         this.loadReview();
