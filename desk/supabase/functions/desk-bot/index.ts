@@ -1,6 +1,6 @@
 // DNC Desk — Edge Function "desk-bot": nhận MỌI tin nhắn của @goshopassistantbot và lưu vào bảng desk_inbox.
 // Webhook Telegram trỏ thẳng vào đây (luôn trả 200 → Telegram không bao giờ kẹt hàng đợi).
-// Tắt "Verify JWT" cho function này. Secrets: TG_BOT_TOKEN, TG_SECRET, GEMINI_API_KEY (tuỳ chọn: TG_CHAT_ID, DESK_USER_ID, GEMINI_MODEL, TF_PASS, TUAN_BOT_TOKEN = bot nhóm Tuấn: cài 1 lần ?setup_tuan=<TG_SECRET>)
+// Tắt "Verify JWT" cho function này. Secrets: TG_BOT_TOKEN, TG_SECRET, GEMINI_API_KEY (tuỳ chọn: TG_CHAT_ID, DESK_USER_ID, GEMINI_MODEL, TF_PASS)
 // Cài webhook 1 lần: mở  https://<project>.supabase.co/functions/v1/desk-bot?setup=<TG_SECRET>
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -560,15 +560,14 @@ async function tfReport(text: string) {
 }
 
 
-/* ---------- Bot nhóm CTV Tuấn (bot riêng, secret TUAN_BOT_TOKEN) ----------
+/* ---------- Nhóm CTV Tuấn (dùng chung bot này, chỉ làm đúng việc tra mail) ----------
    Tuấn gõ email khách vào nhóm → bot tra Kho TK:
    - đã fix (mời lại ≤3 ngày, fam ổn) → trả kết quả ngắn
    - chưa fix → "đợi DNC check" + đưa vào tab Lệnh Thay Fam (from = "Nhóm Tuấn")
    DNC bấm Xong trên Thay Fam → web gọi ?tuan_notify → bot báo lại nhóm.
    Nối nhóm: anh gõ /ketnoi trong nhóm (chỉ tài khoản anh mới nối được). */
-const TUAN_TOKEN = Deno.env.get("TUAN_BOT_TOKEN") || "";
 const TUAN_FROM = "Nhóm Tuấn";
-const ttg = (method: string, body: Record<string, unknown>) => tg(method, body, TUAN_TOKEN);
+const ttg = (method: string, body: Record<string, unknown>) => tg(method, body);
 async function tuanGroup(): Promise<string> {
   const { data } = await db.from("desk_docs").select("data").eq("user_id", await owner()).eq("kind", "settings").eq("key", "tuan_group").maybeSingle();
   return data?.data?.chat ? String(data.data.chat) : "";
@@ -617,6 +616,8 @@ async function tuanHandle(m: any) {
   if (/^\/ketnoi\b/i.test(text)) {
     if (!isOwner || m.chat.type === "private") return ttg("sendMessage", { chat_id: m.chat.id, text: "Chỉ DNC mới nối được bot, và phải gõ trong nhóm." });
     await db.from("desk_docs").upsert({ user_id: await owner(), kind: "settings", key: "tuan_group", data: { chat: m.chat.id, title: m.chat.title || "" }, updated_at: new Date().toISOString() }, { onConflict: "user_id,kind,key" });
+    // menu lệnh trong nhóm chỉ còn /help (ẩn /homnay, /viec… của Desk)
+    await ttg("setMyCommands", { commands: [{ command: "help", description: "Cách dùng" }], scope: { type: "chat", chat_id: m.chat.id } });
     return ttg("sendMessage", { chat_id: m.chat.id, text: "✅ Đã nối nhóm. Tuấn gõ email khách (vd: abc@gmail.com chưa có lời mời) để bot kiểm tra." });
   }
   const grp = await tuanGroup();
@@ -663,6 +664,8 @@ async function handle(u: any) {
   const m = u.message || edited;
   if (!m) return;
   if (String(m.chat.id) !== CHAT) {
+    // Nhóm (vd nhóm Tuấn): chỉ xử lý tra mail trong nhóm đã nối; mọi việc Desk khác không chạy ở đây
+    if (m.chat.type === "group" || m.chat.type === "supergroup") { if (!edited) await tuanHandle(m); return; }
     if (m.chat.type === "private") await tg("sendMessage", { chat_id: m.chat.id, text: "Bot riêng, không nhận tin từ tài khoản này." });
     return;
   }
@@ -741,22 +744,6 @@ Deno.serve(async (req) => {
       let r: any = { ok: false, error: "trống" };
       if (t) { try { r = await tuanSay(esc(t)); } catch (e) { r = { ok: false, error: (e as Error).message }; } }
       return new Response(JSON.stringify({ ok: !!r.ok, error: r.ok ? undefined : (r.error || r.description) }), { headers: { ...CORS, "Content-Type": "application/json" } });
-    }
-    if (url.searchParams.has("setup_tuan")) {
-      if (!SECRET || url.searchParams.get("setup_tuan") !== SECRET) return ok({ ok: false, error: "sai TG_SECRET" });
-      if (!TUAN_TOKEN) return ok({ ok: false, error: "thiếu secret TUAN_BOT_TOKEN" });
-      const self = `${SB_URL}/functions/v1/desk-bot?bot=tuan`;
-      const set = await ttg("setWebhook", { url: self, secret_token: SECRET, allowed_updates: ["message"], max_connections: 1 });
-      await ttg("setMyCommands", { commands: [{ command: "help", description: "Cách dùng" }] });
-      const me = await ttg("getMe", {});
-      return ok({ ok: set.ok, webhook: self, bot: me.result?.username, can_read_all_group_messages: me.result?.can_read_all_group_messages, telegram: set });
-    }
-    if (url.searchParams.get("bot") === "tuan") {
-      if (req.method !== "POST" || req.headers.get("x-telegram-bot-api-secret-token") !== SECRET) return new Response("forbidden", { status: 403 });
-      const u = await req.json();
-      const job = (async () => { try { if (u.message) await tuanHandle(u.message); } catch (e) { console.error("tuan", e); } })();
-      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(job); else await job;
-      return ok();
     }
     if (url.searchParams.has("digest")) return ok(await digest());
     if (url.searchParams.has("retry")) {
