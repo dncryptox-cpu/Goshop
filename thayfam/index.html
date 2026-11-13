@@ -1240,16 +1240,17 @@
           <button class="btn sm" @click="loadQueue()" x-text="qLoading ? 'Đang tải…' : 'Tải hàng chờ bot'"></button>
         </div>
         <template x-for="g in cmdGroups()" :key="g.key">
-          <div class="card" style="padding:10px 12px;margin-bottom:12px">
+          <div class="card" style="padding:10px 12px;margin-bottom:12px" :style="g.cards.some(c => cmdDead(c)) ? 'border:2px solid var(--bad, #c0392b);background:#fdf0ee' : ''">
             <div class="row" style="gap:8px;font-size:13px">
               <b x-text="g.qid ? '📨 ' + (g.from || 'Bot') : '📋 Dán tay'"></b>
+              <span x-show="g.cards.some(c => cmdDead(c))" style="background:var(--bad, #c0392b);color:#fff;border-radius:6px;padding:1px 8px;font-weight:700;font-size:12px" x-text="cmdDead(g.cards[0]) || ''"></span>
               <span class="mute" x-text="g.at || ''"></span>
               <span class="grow"></span>
               <template x-for="cv in [...new Set(g.cards.filter(c => c.st === 'done' && c.info && !cmdLe(c)).map(c => c.info.ctv))]" :key="cv">
                 <button class="btn xs" x-show="g.cards.filter(c => c.st === 'done' && c.info && c.info.ctv === cv).length > 1" @click="copy(g.cards.filter(c => c.st === 'done' && c.info && c.info.ctv === cv).map(c => cmdMsg(c)).join('\n'), 'Đã copy tin gửi ' + cv)" x-text="'Copy hết gửi ' + cv"></button>
               </template>
-              <button class="btn xs" x-show="g.qid" @click="queueDrop(g)">Bỏ cả tin</button>
-              <button class="btn xs" x-show="!g.qid" @click="cmdCards = cmdCards.filter(c => c.qid)">Đóng</button>
+              <button class="btn xs" x-show="g.qid && (qOpen.find(q => q.id === g.qid) || { lines: [] }).lines.length <= 1" @click="queueDrop(g)">Bỏ cả tin</button>
+              <button class="btn xs" x-show="!g.qid" @click="cmdCards = cmdCards.filter(c => c.key !== g.key)">Đóng</button>
             </div>
             <template x-for="c in g.cards" :key="c.key">
               <div style="border-top:1px solid var(--line);padding:8px 0;font-size:13px" :style="['done','skip'].includes(c.st) ? 'opacity:.55' : ''">
@@ -1278,7 +1279,7 @@
                       · <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a>
                     </div>
                   </template>
-                  <div x-show="c.note" style="color:var(--warn)" x-text="c.note"></div>
+                  <div x-show="c.note" :style="cmdDead(c) ? 'color:var(--bad, #c0392b);font-weight:600' : 'color:var(--warn)'" x-text="c.note"></div>
                   <!-- Đổi mail -->
                   <template x-if="c.type==='doimail'"><div style="margin-top:4px">
                     <div x-show="c.cus"><b x-text="(c.cus || {}).email"></b> → <input class="mono" x-model="c.newEmail" style="width:240px"> <span class="mute">(mail cũ lưu vào Mail phụ, HSD giữ nguyên)</span></div>
@@ -1922,7 +1923,7 @@ function app() {
     cmdGroups() {
       const gs = [], idx = {};
       this.cmdCards.forEach(c => {
-        const k = c.qid || 'web';
+        const k = c.key;   // mỗi dòng 1 khung riêng (bot gửi nhiều dòng cũng tách ra)
         if (!(k in idx)) { idx[k] = gs.length; gs.push({ key: k, qid: c.qid, from: c.from, at: c.at, cards: [] }); }
         gs[idx[k]].cards.push(c);
       });
@@ -2090,6 +2091,13 @@ function app() {
       c.busy = false;
     },
     // Tin ngắn gửi sau khi xong: khách của CTV → báo CTV; khách lẻ (Dnc / không CTV) → nhắn thẳng khách
+    // Fam đã chết (đã xoá nhóm / bị quét / Banned / Trống) → bôi đỏ cả khung
+    cmdDead(c) {
+      const k = c && c.st === 'ready' && c.cus; if (!k || k.arch) return '';
+      if (k.famState) return k.famState.toUpperCase() + ' · ' + k.rn;
+      if (k.famStatus && !['FULL', 'Còn slot', 'Còn slot(đang check)'].includes(k.famStatus)) return String(k.famStatus).toUpperCase() + ' · ' + k.rn;
+      return '';
+    },
     cmdParts(t) { const out = []; let i = 0; String(t).replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, (m, at) => { if (at > i) out.push({ t: t.slice(i, at) }); out.push({ t: m, e: true }); i = at + m.length; return m; }); if (i < t.length) out.push({ t: t.slice(i) }); return out; },
     cmdLe(c) { const v = String((c.info || {}).ctv || '').trim().toLowerCase(); return !v || v === 'dnc'; },
     cmdMsg(c) {
