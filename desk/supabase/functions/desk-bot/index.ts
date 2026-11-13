@@ -595,7 +595,24 @@ function famProblems(f: any, c: any) {
   if (f.daysToRenew != null && f.daysToRenew < 0) why.push("fam quá ngày renew");
   return why;
 }
-async function tuanCheck(e: string, raw: string, openText: string): Promise<{ text: string; queue: boolean }> {
+/* Mail DNC đã fix (ghi khi bấm Xong / thay fam trên Thay Fam) — để Tuấn hỏi lại vẫn thấy "đã fix" */
+type Fixed = Record<string, { at: number; msg: string }>;
+async function tuanFixedGet(): Promise<Fixed> {
+  const { data } = await db.from("desk_docs").select("data").eq("user_id", await owner()).eq("kind", "settings").eq("key", "tuan_fixed").maybeSingle();
+  return (data?.data as Fixed) || {};
+}
+async function tuanFixedAdd(emails: string[], msg: string) {
+  const m = await tuanFixedGet(), now = Date.now();
+  for (const k of Object.keys(m)) if (now - m[k].at > 7 * 864e5) delete m[k];
+  for (const e of emails) m[String(e).toLowerCase()] = { at: now, msg: msg.slice(0, 300) };
+  await db.from("desk_docs").upsert({ user_id: await owner(), kind: "settings", key: "tuan_fixed", data: m, updated_at: new Date().toISOString() }, { onConflict: "user_id,kind,key" });
+}
+const fmtAt = (t: number) => { const d = new Date(t + TZ_MS); const p = (n: number) => String(n).padStart(2, "0"); return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} ${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}`; };
+const STILL = /vẫn\s*(lỗi|chưa|ch|ko|k\b|không|mất)|van\s*(loi|chua|ko|khong)|lại lỗi|lai loi/i;
+async function tuanCheck(e: string, raw: string, openText: string, fixed: Fixed = {}): Promise<{ text: string; queue: boolean }> {
+  const fx = fixed[e], line = raw.split(/\r?\n/).find((l) => l.toLowerCase().includes(e)) || raw;
+  if (fx && Date.now() - fx.at < 3 * 864e5 && !STILL.test(line))
+    return { text: `✅ <b>${esc(e)}</b>: DNC đã fix lúc ${fmtAt(fx.at)}.\nBáo khách kiểm tra lại (mở Gmail bấm Chấp nhận lời mời). Khách vẫn lỗi thì gõ: <code>${esc(e)} vẫn lỗi</code>`, queue: false };
   const r = await tfFind(e);
   if (!r) return { text: `❓ <b>${esc(e)}</b>: chưa thấy trong danh sách. ⏳ Đợi DNC check lại.`, queue: true };
   if (r.arch) return { text: `⏳ <b>${esc(e)}</b>: đang chờ xếp fam mới, chưa mời. Đợi DNC xử lý.`, queue: true };
@@ -605,9 +622,9 @@ async function tuanCheck(e: string, raw: string, openText: string): Promise<{ te
   const hsd = c.hsd ? ` · HSD ${shortD(c.hsd)}` : "";
   if (c.daysLeft != null && c.daysLeft < 0) return { text: `⛔ <b>${esc(e)}</b>${who}: <b>hết hạn ${shortD(c.hsd)}</b>. Khách cần gia hạn.`, queue: false };
   const why = famProblems(f, c), ago = agoDays(c.invitedAt);
-  if (!why.length && ago != null && ago <= 3)
+  if (!why.length && ago != null && ago <= 3 && !STILL.test(line))
     return { text: `✅ <b>${esc(e)}</b>${who}: đã mời lại ${ago === 0 ? "hôm nay" : ago === 1 ? "hôm qua" : ago + " ngày trước"}${hsd}.\nBáo khách mở Gmail bấm <b>Chấp nhận lời mời</b>, hoặc vào https://myaccount.google.com/family/details`, queue: false };
-  if (openText.includes(e)) return { text: `⏳ <b>${esc(e)}</b>${who}: đã báo rồi, đang đợi DNC check.`, queue: false };
+  if (openText.includes(e) && !STILL.test(line)) return { text: `⏳ <b>${esc(e)}</b>${who}: đã báo rồi, đang đợi DNC check.`, queue: false };
   return { text: `⏳ <b>${esc(e)}</b>${who}: đã ghi nhận, đợi DNC check lại. Xong bot sẽ báo.`, queue: true };
 }
 async function tuanHandle(m: any) {
@@ -627,11 +644,12 @@ async function tuanHandle(m: any) {
   if (!ems.length) return;
   let openText = "";
   try { const q = await tf({ action: "queue", op: "list" }); openText = (q.open || []).map((x: any) => String(x.text || "")).join("\n").toLowerCase(); } catch (_) { /* bỏ qua */ }
+  let fixed: Fixed = {}; try { fixed = await tuanFixedGet(); } catch (_) { /* bỏ qua */ }
   const out: string[] = [], toQ: string[] = [];
   const lines = text.split(/\r?\n/);
   for (const e of ems) {
     try {
-      const r = await tuanCheck(e, text, openText); out.push(r.text);
+      const r = await tuanCheck(e, text, openText, fixed); out.push(r.text);
       if (r.queue) toQ.push(lines.find((l) => l.toLowerCase().includes(e)) || e);
     } catch (err) { out.push(`⚠️ <b>${esc(e)}</b>: chưa tra được, đợi DNC check.`); toQ.push(e); console.error("tuan", e, (err as Error).message); }
   }
@@ -743,6 +761,8 @@ Deno.serve(async (req) => {
       const t = String(b.text || "").trim().slice(0, 3500);
       let r: any = { ok: false, error: "trống" };
       if (t) { try { r = await tuanSay(esc(t)); } catch (e) { r = { ok: false, error: (e as Error).message }; } }
+      const ems = Array.isArray(b.emails) ? b.emails.filter((x: unknown) => typeof x === "string" && x.includes("@")).slice(0, 50) : [];
+      if (ems.length) { try { await tuanFixedAdd(ems, t); } catch (e) { console.error("tuan_fixed", (e as Error).message); } }
       return new Response(JSON.stringify({ ok: !!r.ok, error: r.ok ? undefined : (r.error || r.description) }), { headers: { ...CORS, "Content-Type": "application/json" } });
     }
     if (url.searchParams.has("digest")) return ok(await digest());
