@@ -282,6 +282,12 @@
         .ghost { display: block; height: 10px; border-radius: 6px; background: rgba(255,255,255,0.10); filter: blur(1.5px); }
         .lock-card { position: relative; overflow: hidden; }
         .lock-card::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(120deg, transparent 40%, rgba(151,252,228,0.06) 50%, transparent 60%); }
+        .md-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 18px 0; }
+        .md-gallery .md-shot { position: relative; display: block; border-radius: 12px; overflow: hidden; border: 1px solid var(--line, #26282E); background: #000; }
+        .md-gallery .md-shot img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; margin: 0 !important; border: 0 !important; border-radius: 0 !important; transition: transform 260ms; }
+        .md-gallery .md-shot:hover img { transform: scale(1.03); }
+        .md-gallery .md-shot span { position: absolute; left: 8px; top: 8px; z-index: 1; font: 500 11px/1 "IBM Plex Mono", monospace; padding: 4px 6px; border-radius: 6px; background: rgba(0,0,0,.65); color: #F5F6F7; }
+        @media (max-width: 520px) { .md-gallery { grid-template-columns: repeat(2, 1fr); gap: 6px; } }
         .res-card { transition: border-color 200ms, transform 260ms var(--spring); }
         .res-card:hover { border-color: #3A3D45; }
         .res-more[open] summary i { transform: rotate(180deg); }
@@ -3258,6 +3264,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 };
                 const out = [], lines = String(src || '').replace(/\r/g, '').split('\n');
                 let para = [], list = null;
+                let gallery = null;
                 const flush = () => {
                     if (para.length) { out.push('<p>' + para.map(inline).join('<br>') + '</p>'); para = []; }
                     if (list) { out.push(`<${list.tag}>` + list.items.map(i => '<li>' + inline(i) + '</li>').join('') + `</${list.tag}>`); list = null; }
@@ -3276,11 +3283,17 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                         (list = list || { tag, items: [] }).items.push(item); continue;
                     }
                     if (list) flush();
-                    if (/^!\[[^\]]*\]\(https:\/\/[^\s)]+\)$/.test(l.trim())) { flush(); out.push(inline(l.trim())); continue; }
+                    if (/^!\[[^\]]*\]\(https:\/\/[^\s)]+\)$/.test(l.trim())) {
+                        flush();
+                        const img = inline(l.trim()), last = out[out.length - 1];
+                        if (gallery && last === gallery) gallery.items.push(img); else { gallery = { items: [img] }; out.push(gallery); }
+                        continue;
+                    }
                     para.push(l);
                 }
                 flush();
-                return out.join('\n');
+                return out.map(o => typeof o === 'string' ? o : (o.items.length === 1 ? o.items[0]
+                    : '<div class="md-gallery">' + o.items.map((im, i) => `<a href="${(im.match(/src="([^"]+)"/) || [])[1] || ''}" target="_blank" rel="noopener" class="md-shot"><span>${String(i + 1).padStart(2, '0')}</span>${im}</a>`).join('') + '</div>')).join('\n');
             },
             excerpt(body) {
                 return String(body || '').replace(/<[^>]*>?/g, '').replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/^#{1,3}\s+/gm, '').replace(/[*`>]/g, '').replace(/^\s*[-•]\s+/gm, '').replace(/\s+/g, ' ').trim().slice(0, 220);
