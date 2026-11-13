@@ -517,6 +517,48 @@ function looksTF(t: string) {
   return true;
 }
 
+/* Tra trạng thái khách YouTube ngay trong bot (giống thẻ Lệnh trên Thay Fam), trả lời ngắn */
+const shortD = (s: string) => String(s || "").replace(/\/(\d{4})$/, (_, y) => (y === String(new Date().getFullYear()) ? "" : "/" + y.slice(2)));
+const conL = (n: number | null | undefined) => (n == null ? "" : n < 0 ? `hết ${-n} ngày` : n === 0 ? "hết hôm nay" : `còn ${n} ngày`);
+async function tfFind(e: string) {
+  const d = await tf({ action: "search", q: e });
+  let hit: any = null, phu: any = null;
+  for (const f of d.items || []) for (const c of f.customers || []) {
+    const it = { f, c };
+    if (!hit && String(c.email || "").toLowerCase() === e) hit = it;
+    if (!phu && String(c.mailPhu || "").toLowerCase().includes(e)) phu = it;
+  }
+  if (hit) return { ...hit };
+  const a = (d.archived || []).find((x: any) => String(x.email || "").toLowerCase() === e);
+  if (a) return { arch: a };
+  if (phu) return { ...phu, phuOf: true };
+  return null;
+}
+function tfStatus(e: string, r: any) {
+  if (!r) return `❓ <b>${esc(e)}</b>\nKhông có trong Kho TK (khách mới / gõ sai mail?).`;
+  if (r.arch) return `⚠️ <b>${esc(e)}</b>\nĐang ở vùng lưu, <b>chưa có slot</b> → chưa được mời. Cần chuyển vào fam còn slot.` + (r.arch.hsd ? `\nHSD ${shortD(r.arch.hsd)}` : "");
+  const { f, c } = r, why: string[] = [];
+  if (c.daysLeft != null && c.daysLeft < 0) why.push(`Khách hết hạn ${-c.daysLeft} ngày`);
+  const st = f.famState ? ({ deleted: "đã xoá nhóm", scanned: "bị quét" } as any)[f.famState.state] || f.famState.state : "";
+  if (st) why.push(`Fam ${st}`);
+  else if (f.status && !["FULL", "Còn slot", "Còn slot(đang check)"].includes(f.status)) why.push(`Fam đang "${esc(f.status)}"`);
+  if (f.daysToRenew != null && f.daysToRenew <= 0) why.push(`Fam tới ngày renew (${f.daysToRenew === 0 ? "hôm nay" : "quá " + -f.daysToRenew + " ngày"})`);
+  if (c.nojoin) why.push(`Đã ghi khách chưa vào nhóm (${esc(c.nojoin)})`);
+  const head = why.length ? `⚠️ <b>${esc(e)}</b> — ${why.join(" · ")}` : `✅ <b>${esc(e)}</b> — Bình thường`;
+  const lines = [head];
+  if (r.phuOf) lines.push(`Là mail phụ của <code>${esc(c.email)}</code>`);
+  lines.push(`${esc(f.rn)} · khách HSD ${shortD(c.hsd) || "—"}${c.daysLeft != null ? " (" + conL(c.daysLeft) + ")" : ""} · fam renew ${shortD(f.renew) || "—"}${f.daysToRenew != null && f.daysToRenew > 0 ? " (còn " + f.daysToRenew + " ngày)" : ""} · CTV ${esc(c.ctv || "—")}`);
+  if (c.invitedAt) lines.push(`Mời lần cuối ${esc(c.invitedAt)}`);
+  lines.push(why.length ? "→ Mở Thay Fam xử lý (chuyển fam khác + mời)." : "→ Sheet ổn. Mở fam xem khách còn trong nhóm không / mời lại.");
+  return lines.join("\n");
+}
+async function tfReport(text: string) {
+  const ems = [...new Set((text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map((x) => x.toLowerCase()))].slice(0, 5);
+  const out: string[] = [];
+  for (const e of ems) { try { out.push(tfStatus(e, await tfFind(e))); } catch (err) { out.push(`⚠️ <b>${esc(e)}</b>: không tra được (${esc((err as Error).message)})`); } }
+  return out.join("\n\n");
+}
+
 async function handle(u: any) {
   if (u.callback_query) {
     const q = u.callback_query;
@@ -568,7 +610,8 @@ async function handle(u: any) {
     if (!body) return say("Gõ /tf rồi dán tin, ví dụ:\n<code>/tf 1039 abc@gmail.com | ytb 12th plus | 09/07/2026 → 09/07/2027</code>");
     try {
       const d = await tf({ action: "queue", op: "add", text: body, from: fwdOf(m) || "Telegram", src: "bot" });
-      return say(`🛠 Đã đưa ${d.lines} dòng vào hàng chờ <b>Thay Fam</b>. Mở web để kiểm tra và bấm Duyệt (chưa ghi gì vào sheet).`, {
+      const rep = await tfReport(body).catch(() => "");
+      return say(`${rep ? rep + "\n\n" : ""}🛠 Đã vào hàng chờ Thay Fam (${d.lines} dòng), chưa ghi gì vào sheet.`, {
         reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true },
         reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] },
       });
