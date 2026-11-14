@@ -403,6 +403,7 @@
                       <button class="chip" :class="pick.i===k && 'on'" style="font-size:12px" @click="pick.i=k; pick.confirm=false; pick.blockConfirm=''; slotOtp = { ...slotOtp, P: '' }" :title="x.label" x-text="(x.chk ? '✓ ' : '') + x.rn + ' · còn ' + x.days + ' ngày · ' + (x.alts || []).length + ' slot' + (x.chk ? '' : ' · chưa check')" :style="x.chk ? '' : 'opacity:.6'"></button>
                     </template>
                   </div>
+                  <details x-show="pickHidden().length" style="font-size:12px;margin:0 0 6px"><summary class="mute" x-text="'Fam không hiện (' + pickHidden().length + ') — vì sao?'"></summary><div class="mute" style="line-height:1.6" x-text="pickHidden().join(' · ')"></div></details>
 
                   <div class="pk-step"><span class="pk-n">1</span><div class="grow">
                     <b>Đăng nhập fam</b>
@@ -738,6 +739,7 @@
                             <button class="chip" :class="pick.i===k && 'on'" style="font-size:12px" @click="pick.i=k; pick.confirm=false; pick.blockConfirm=''; slotOtp = { ...slotOtp, P: '' }" :title="x.label" x-text="(x.chk ? '✓ ' : '') + x.rn + ' · còn ' + x.days + ' ngày · ' + (x.alts || []).length + ' slot' + (x.chk ? '' : ' · chưa check')" :style="x.chk ? '' : 'opacity:.6'"></button>
                           </template>
                         </div>
+                        <details x-show="pickHidden().length" style="font-size:12px;margin:0 0 6px"><summary class="mute" x-text="'Fam không hiện (' + pickHidden().length + ') — vì sao?'"></summary><div class="mute" style="line-height:1.6" x-text="pickHidden().join(' · ')"></div></details>
 
                         <div class="pk-step"><span class="pk-n">1</span><div class="grow">
                           <b>Đăng nhập fam</b>
@@ -1356,6 +1358,7 @@
                       <button class="chip" :class="pick.i===k && 'on'" style="font-size:12px" @click="pick.i=k; pick.confirm=false; pick.blockConfirm=''; slotOtp = { ...slotOtp, P: '' }" :title="x.label" x-text="(x.chk ? '✓ ' : '') + x.rn + ' · còn ' + x.days + ' ngày · ' + (x.alts || []).length + ' slot' + (x.chk ? '' : ' · chưa check')" :style="x.chk ? '' : 'opacity:.6'"></button>
                     </template>
                   </div>
+                  <details x-show="pickHidden().length" style="font-size:12px;margin:0 0 6px"><summary class="mute" x-text="'Fam không hiện (' + pickHidden().length + ') — vì sao?'"></summary><div class="mute" style="line-height:1.6" x-text="pickHidden().join(' · ')"></div></details>
 
                   <div class="pk-step"><span class="pk-n">1</span><div class="grow">
                     <b>Đăng nhập fam</b>
@@ -1598,6 +1601,7 @@
                       <button class="chip" :class="pick.i===k && 'on'" style="font-size:12px" @click="pick.i=k; pick.confirm=false; pick.blockConfirm=''; slotOtp = { ...slotOtp, P: '' }" :title="x.label" x-text="(x.chk ? '✓ ' : '') + x.rn + ' · còn ' + x.days + ' ngày · ' + (x.alts || []).length + ' slot' + (x.chk ? '' : ' · chưa check')" :style="x.chk ? '' : 'opacity:.6'"></button>
                     </template>
                   </div>
+                  <details x-show="pickHidden().length" style="font-size:12px;margin:0 0 6px"><summary class="mute" x-text="'Fam không hiện (' + pickHidden().length + ') — vì sao?'"></summary><div class="mute" style="line-height:1.6" x-text="pickHidden().join(' · ')"></div></details>
 
                   <div class="pk-step"><span class="pk-n">1</span><div class="grow">
                     <b>Đăng nhập fam</b>
@@ -2223,6 +2227,12 @@ function app() {
       this.mailBusy = false;
     },
     cur() { return this.pick.list[this.pick.i] || {}; },
+    // vì sao fam không có trong danh sách chọn
+    pickHidden() {
+      const p = this.pick, d = p.min || 7;
+      const short = (p.all || []).filter(x => x.days == null || x.days < d).map(x => x.rn + (x.days == null ? ' chưa có ngày renew' : ' renew còn ' + x.days + ' ngày'));
+      return short.concat(p.hidden || []);
+    },
     setPickMin(d) {
       const p = this.pick; p.min = d;
       p.list = (p.all || []).filter(x => x.days != null && x.days >= d);   // chưa có / đã qua ngày renew → bỏ
@@ -2251,22 +2261,34 @@ function app() {
       this.pick = { row: c.row, email: c.email, list: [], all: [], min: 7, i: 0, loading: true, invited: false, confirm: false, usePhu: false, phu: this.livePhu(c.mailPhu) };
       await this.loadSlots();
       const lab = { free: 'trống', reuse: 'khách hết hạn (chép xuống cuối DATA)', nojoin: 'khách chưa vào (chép xuống cuối DATA)', pending: 'đã mời ≥2 ngày, chưa xác nhận vào → kiểm tra: chưa vào thì thế, đã vào thì tick' };
-      const list = [];
+      const list = [], hidden = [];
       this.slots.forEach(x => {
-        if (x.rn === f.rn || x.blockedUntil) return;
+        if (x.rn === f.rn) return;
+        if (x.blockedUntil) { hidden.push(x.rn + ' chặn mời tới ' + x.blockedUntil); return; }
+        const n0 = list.length;
         // Fam đã log vào kiểm tra ít nhất 1 lần (có khách đánh dấu Đã vào / Chưa vào) → chắc chắn hơn, xếp trước
         const chk = x.rows.filter(r => ['joined', 'nojoin', 'ok'].includes(r.state)).length;   // ok = khách cũ ổn định, không phải mời mới
         x.rows.forEach(r => {
           if (r.state === 'pending' && !(r.hours >= 48)) return;
           if (lab[r.state]) list.push({ chk: chk, fam: x, rn: x.rn, renew: x.renew, days: x.days, used: x.used, limit: x.limit, row: r.row, slot: r, state: r.state, label: lab[r.state] + (r.email ? ': ' + r.email : ''), replace: ['nojoin', 'pending'].includes(r.state) ? r.email : '' });
         });
+        if (list.length === n0) {
+          const pend = x.rows.filter(r => r.state === 'pending' && !(r.hours >= 48)).length;
+          hidden.push(x.rn + (pend ? ' đủ người (' + pend + ' khách mới mời <2 ngày)' : ' đủ người'));
+        }
       });
+      // fam không nằm trong danh sách Còn slot (đủ người / lỗi) → vẫn ghi lý do
+      if (this.allFams) {
+        const inSlots = new Set(this.slots.map(x => x.rn));
+        this.allFams.forEach(x => { if (x.rn && x.rn !== f.rn && !inSlots.has(x.rn)) hidden.push(x.rn + (x.famState ? ' fam lỗi' : x.status && x.status !== 'FULL' ? ' ' + x.status : ' đủ người')); });
+      }
+      hidden.sort((a, b) => +((a.match(/\d+/) || [0])[0]) - +((b.match(/\d+/) || [0])[0]));
       const rank = { free: 0, reuse: 1, nojoin: 2, pending: 3 };
       list.sort((a, b) => (b.chk > 0) - (a.chk > 0) || (a.days == null) - (b.days == null) || (b.days || 0) - (a.days || 0) || rank[a.state] - rank[b.state]);
       // Mỗi fam 1 mục (slot tốt nhất: trống > hết hạn > chưa vào > chờ check); các slot khác của fam để chọn ở bước 2
       const byFam = [], idx = {};
       list.forEach(x => { if (!(x.rn in idx)) { idx[x.rn] = byFam.length; byFam.push(Object.assign({}, x, { alts: [] })); } byFam[idx[x.rn]].alts.push(x); });
-      if (this.pick.row === c.row) { Object.assign(this.pick, { all: byFam, loading: false }); this.setPickMin(this.pick.min || 7); }
+      if (this.pick.row === c.row) { Object.assign(this.pick, { all: byFam, hidden: hidden, loading: false }); this.setPickMin(this.pick.min || 7); }
     },
     async pickMark(r, v) {
       const t = this.cur(); r.mkBusy = true; this.error = '';
