@@ -649,8 +649,12 @@ async function tuanHandle(m: any) {
   const lines = text.split(/\r?\n/);
   for (const e of ems) {
     try {
-      const r = await tuanCheck(e, text, openText, fixed); out.push(r.text);
-      if (r.queue) toQ.push(lines.find((l) => l.toLowerCase().includes(e)) || e);
+      const r = await tuanCheck(e, text, openText, fixed);
+      const ln = lines.find((l) => l.toLowerCase().includes(e)) || e;
+      // đã có tin đang chờ cùng mail → không tạo việc trùng (trừ khi Tuấn ghi "vẫn lỗi")
+      if (r.queue && openText.includes(e) && !STILL.test(ln)) { out.push(`⏳ <b>${esc(e)}</b>: đã báo rồi, đang đợi DNC check.`); continue; }
+      out.push(r.text);
+      if (r.queue) toQ.push(ln);
     } catch (err) { out.push(`⚠️ <b>${esc(e)}</b>: chưa tra được, đợi DNC check.`); toQ.push(e); console.error("tuan", e, (err as Error).message); }
   }
   if (toQ.length) {

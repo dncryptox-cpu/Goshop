@@ -1245,6 +1245,7 @@
               <b x-text="g.qid ? '📨 ' + (g.from || 'Bot') : '📋 Dán tay'"></b>
               <span x-show="g.cards.some(c => cmdDead(c))" style="background:var(--bad, #c0392b);color:#fff;border-radius:6px;padding:1px 8px;font-weight:700;font-size:12px" x-text="cmdDead(g.cards[0]) || ''"></span>
               <span class="mute" x-text="g.at || ''"></span>
+              <span x-show="g.dupAt.length" style="background:#fff3cd;border-radius:6px;padding:1px 8px;font-size:12px" x-text="'Báo ' + (g.dupAt.length + 1) + ' lần · trước đó ' + g.dupAt.join(', ')"></span>
               <span class="grow"></span>
               <template x-for="cv in [...new Set(g.cards.filter(c => c.st === 'done' && c.info && !cmdLe(c)).map(c => c.info.ctv))]" :key="cv">
                 <button class="btn xs" x-show="g.cards.filter(c => c.st === 'done' && c.info && c.info.ctv === cv).length > 1" @click="copy(g.cards.filter(c => c.st === 'done' && c.info && c.info.ctv === cv).map(c => cmdMsg(c)).join('\n'), 'Đã copy tin gửi ' + cv)" x-text="'Copy hết gửi ' + cv"></button>
@@ -1924,14 +1925,24 @@ function app() {
     /* ===== Lệnh: đọc tin nhắn → thẻ soạn sẵn ===== */
     cmdOpen() { return this.qOpen.reduce((n, q) => n + q.lines.filter((l, i) => !q.res[i]).length, 0); },
     cmdGroups() {
-      const gs = [], idx = {};
-      this.cmdCards.forEach(c => {
+      const gs = [], idx = {}, byMail = {};
+      // mới nhất lên trước để thẻ gộp hiện tin mới nhất
+      const cards = [...this.cmdCards].sort((a, b) => this.cmdTs(b) - this.cmdTs(a));
+      cards.forEach(c => {
+        // báo trùng (cùng mail, cùng đang chờ) → gộp vào 1 khung
+        const open = !['done', 'skip'].includes(c.st), em = c.type === 'loi' && open && c.emails[0];
+        if (em && byMail[em]) { byMail[em].dupAt.push(c.at || ''); return; }
         const k = c.key;   // mỗi dòng 1 khung riêng (bot gửi nhiều dòng cũng tách ra)
-        if (!(k in idx)) { idx[k] = gs.length; gs.push({ key: k, qid: c.qid, from: c.from, at: c.at, cards: [] }); }
+        if (!(k in idx)) { idx[k] = gs.length; gs.push({ key: k, qid: c.qid, from: c.from, at: c.at, cards: [], dupAt: [] }); }
         gs[idx[k]].cards.push(c);
+        if (em) byMail[em] = gs[idx[k]];
       });
-      return gs.sort((a, b) => (a.qid ? 1 : 0) - (b.qid ? 1 : 0));
+      const fin = g => g.cards.every(c => ['done', 'skip'].includes(c.st)) ? 1 : 0;
+      return gs.sort((a, b) => fin(a) - fin(b) || (a.qid ? 1 : 0) - (b.qid ? 1 : 0));
     },
+    cmdTs(c) { const m = /(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\s+(\d{1,2}):(\d{2})/.exec(c.at || ''); if (!m) return 0; const y = +(m[3] || new Date().getFullYear()); return Date.UTC(y, +m[2] - 1, +m[1], +m[4], +m[5]); },
+    // thẻ báo lỗi khác đang chờ cùng mail (báo trùng)
+    cmdDups(c) { const e = c.emails[0]; return e && c.type === 'loi' ? this.cmdCards.filter(d => d !== c && d.type === 'loi' && d.emails[0] === e && !['done', 'skip'].includes(d.st)) : []; },
     async loadQueue() {
       if (!this.can('queue')) return;
       this.qLoading = true;
@@ -2030,7 +2041,7 @@ function app() {
         }
         if (!c.cus && ['doimail', 'huy', 'loi'].includes(c.type)) c.note = c.note || 'Không thấy khách trong Kho TK.';
       } catch (e) { c.err = e.message; }
-      c.st = 'ready';
+      if (c.st === 'loading') c.st = 'ready';
     },
     cmdDate(s) { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '')); return m ? Date.UTC(+m[3], +m[2] - 1, +m[1]) : null; },
     cmdEdate(v, n) { const d = new Date(v), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d; },
@@ -2133,15 +2144,32 @@ function app() {
       c.st = 'skip';
       if (c.qid) { try { await this.queueMark(c, 'bỏ', ''); } catch (e) { c.err = e.message; } }
     },
-    async queueMark(c, status, note) {
+    async queueMark(c, status, note, opt) {
+      opt = opt || {};
+      const dups = opt.noDup ? [] : this.cmdDups(c);
       const r = await this.api({ action: 'queue', op: 'set', id: c.qid, line: c.li, status: status, note: note });
       const q = this.qOpen.find(x => x.id === c.qid); if (q) q.res = r.res || q.res;
       if (r.done) { this.qOpen = this.qOpen.filter(x => x.id !== c.qid); }
+      // báo trùng: đánh dấu luôn các thẻ cùng mail
+      for (const d of dups) {
+        d.st = status === 'bỏ' ? 'skip' : 'done'; d.result = note; d.info = c.info;
+        if (d.qid) this.queueMark(d, status, note, { noDup: true, silent: true }).catch(e => { d.err = e.message; });
+      }
       // Tin từ nhóm Tuấn: xong thì bot tự báo lại nhóm
-      if (status === 'xong' && c.from === 'Nhóm Tuấn') {
+      if (status === 'xong' && !opt.silent && (c.from === 'Nhóm Tuấn' || dups.some(d => d.from === 'Nhóm Tuấn'))) {
         const msg = '✅ ' + (c.info ? this.cmdMsg(c) : (c.emails[0] || '') + ': DNC đã xử lý xong, báo khách kiểm tra lại giúp nhé.');
         this.tuanNotify(msg, c.emails).then(ok => { c.result = (c.result || '') + (ok ? ' · đã báo nhóm Tuấn' : ' · chưa báo được nhóm Tuấn'); });
       }
+    },
+    // Thay fam xong: các tin báo lỗi đang chờ của khách vừa được mời lại → tự đánh Xong (không báo nhóm lần nữa, list đã gửi)
+    async cmdCloseInvited(emails, note) {
+      if (!this.can('queue')) return;
+      const set = new Set(emails.map(e => String(e).toLowerCase()));
+      try { if (!this.qOpen.length) await this.loadQueue(); } catch (e) { return; }
+      const hit = this.cmdCards.filter(c => c.qid && c.type === 'loi' && !['done', 'skip'].includes(c.st) && (c.emails.some(e => set.has(e)) || (c.cus && set.has(String(c.cus.email).toLowerCase()))));
+      let n = 0;
+      for (const c of hit) { if (['done', 'skip'].includes(c.st)) continue; c.st = 'done'; c.result = note; try { await this.queueMark(c, 'xong', note, { silent: true }); n++; } catch (e) { c.err = e.message; } }
+      if (n) this.lastDone += ' Đã đánh Xong ' + n + ' tin báo lỗi của khách vừa mời lại.';
     },
     // Gửi tin vào nhóm Telegram của Tuấn (qua bot). Trả true/false, không làm hỏng thao tác chính.
     async tuanNotify(text, emails) {
@@ -3018,6 +3046,7 @@ function app() {
           const n = this.notify, txt = '🔄 Thay fam ' + n.rn + ' xong, đã mời lại lúc ' + n.at + ' (' + tl.length + ' khách của Tuấn):\n' + tl.map(i => '- ' + i.email + (i.hsd ? ' · HSD ' + i.hsd : '')).join('\n') + '\nBáo khách mở Gmail bấm Chấp nhận lời mời giúp nhé.';
           this.tuanNotify(txt, tl.map(i => i.email)).then(ok => { if (ok) n.ctvSent.push(tl[0].ctv); this.lastDone += ok ? ' Đã gửi list ' + tl.length + ' khách cho nhóm Tuấn.' : ' (Chưa gửi được list cho nhóm Tuấn — copy tay.)'; });
         }
+        if (this.notify) this.cmdCloseInvited(this.notify.items.map(i => i.email), 'Đã mời lại khi thay fam ' + this.notify.rn);
         if (this.me.role === 'admin') this.openNotes += (r.invited < 5 ? 1 : 0) + (s.note && s.note.trim() ? 1 : 0);
         if (this.me.limit) this.me.usedToday++;
         this.loadReview();
