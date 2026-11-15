@@ -317,7 +317,7 @@ async function listOpen() {
   return { late, dueToday, fresh, later, text: (sec("🔴 Quá hạn", late) + sec("📌 Hôm nay", dueToday) + sec("📥 Mới vào / đang làm", fresh)).trim() };
 }
 async function help() {
-  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/xong 12 — đánh dấu mục #12 xong\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email khách (đổi mail, gia hạn, hủy, mất pre…) tự vào Thay Fam, không vào Desk. Muốn lưu Desk thì gõ /desk + tin.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
+  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/hoi + câu hỏi (hoặc tin bắt đầu bằng ?) — hỏi trợ lý Thay Fam: khách ở fam nào, fam nào cần thay, khách Tuấn sắp hết hạn…\n/xong 12 — đánh dấu mục #12 xong\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email khách (đổi mail, gia hạn, hủy, mất pre…) tự vào Thay Fam, không vào Desk. Muốn lưu Desk thì gõ /desk + tin.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
 }
 async function setStatus(id: number, patch: any) {
   if (patch.status) patch.done_at = patch.status === "done" ? new Date().toISOString() : null;
@@ -665,12 +665,283 @@ async function tuanHandle(m: any) {
   }
   return tuanSay(out.join("\n\n"), { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } });
 }
+/* ---------- Gia hạn duyệt ngay trên bot ----------
+   Gõ "abc@gmail.com gia hạn 12 tháng" → vào hàng chờ Lệnh như cũ + bot gửi thẻ xem trước HSD mới có nút ✅ Duyệt.
+   Bấm Duyệt = đúng như Duyệt trên web (renewCus): HSD bản sao + data gốc + dòng Tài chính, rồi đánh Xong dòng lệnh. */
+type RenewP = { qid: string; li: number; email: string; months: number; base: "old" | "today"; product: string; at: number; done?: string };
+function lineKind(raw: string) { // giống cmdAdd trên web
+  const t = raw.toLowerCase(), ems = raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || [];
+  const mm = /(\d{1,2})\s*(?:th|tháng|thang|t)\b/i.exec(raw), dates = raw.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || [];
+  if (/h[uủ]y|hoàn tiền|hoan tien|refund/.test(t)) return null;
+  if (/đổi|doi |chuyển mail|chuyen mail/.test(t) && ems.length >= 2) return null;
+  if (/mất\s*pre|mat\s*pre|mất premium|hết pre|lỗi|\bloi\b|không vào|ko vào|k vào|bị out|bị kick|bị đá|văng|out fam|không xem|ko xem/.test(t)) return null;
+  if (!ems.length || !(mm || dates.length || /gia hạn|giahan|gia han|\bgh\b|ytb|youtube|plus/.test(t))) return null;
+  return { email: String(ems[0]).toLowerCase(), months: mm && [1, 3, 6, 12].includes(Number(mm[1])) ? Number(mm[1]) : 12, product: /plus/i.test(raw) ? "YoutubePlus" : "Youtube", start: String(dates[0] || "") };
+}
+async function renewGet(): Promise<Record<string, RenewP>> {
+  const { data } = await db.from("desk_docs").select("data").eq("user_id", await owner()).eq("kind", "settings").eq("key", "tf_renew").maybeSingle();
+  return (data?.data as Record<string, RenewP>) || {};
+}
+async function renewPut(m: Record<string, RenewP>) {
+  for (const k of Object.keys(m)) if (Date.now() - m[k].at > 14 * 864e5) delete m[k];
+  await db.from("desk_docs").upsert({ user_id: await owner(), kind: "settings", key: "tf_renew", data: m, updated_at: new Date().toISOString() }, { onConflict: "user_id,kind,key" });
+}
+const newHsdOf = (hsd: string, months: number, base: string) => { const v = base === "today" ? Date.parse(today() + "T00:00:00Z") : pDate(hsd); return v == null ? "—" : dmyU(addMonthsU(v, months)); };
+function famBadOf(f: any) { return f.famState || (f.status && !["FULL", "Còn slot", "Còn slot(đang check)"].includes(f.status)) || (f.daysToRenew != null && f.daysToRenew < 0); }
+function renewCard(p: RenewP, r: any): { text: string; kb: any } {
+  const PL = p.product === "YoutubePlus" ? "YTB Plus" : "YTB";
+  if (!r) return { text: `❓ <b>${esc(p.email)}</b> — gia hạn ${p.months}th\nKhông có trong Kho TK → là đơn mới, xử lý ở tab Lệnh.`, kb: null };
+  if (r.arch) return { text: `⚠️ <b>${esc(p.email)}</b> — gia hạn ${p.months}th\nKhách ở vùng lưu (chưa có slot) → chuyển vào fam trước rồi gia hạn ở tab Lệnh.`, kb: null };
+  if (r.phuOf) return { text: `⚠️ <b>${esc(p.email)}</b> là mail phụ của <code>${esc(r.c.email)}</code> — kiểm tra lại trên tab Lệnh.`, kb: null };
+  const { f, c } = r, exp = c.daysLeft != null && c.daysLeft < 0;
+  const lines = [`🔁 <b>Gia hạn ${PL} +${p.months}th</b> · <code>${esc(c.email)}</code>`,
+    `${esc(f.rn)} · CTV ${esc(normCtv(c.ctv))}${exp ? ` · <b>đã hết ${-c.daysLeft} ngày</b>` : ""}`,
+    `HSD ${shortD(c.hsd) || "—"} → <b>${newHsdOf(c.hsd, p.months, p.base)}</b> ${p.base === "today" ? "(tính từ hôm nay)" : "(nối tiếp HSD cũ)"}`];
+  if (c.daysLeft != null && c.daysLeft > 25) lines.push(`<i>Còn ${c.daysLeft} ngày — kiểm tra có phải đã gia hạn rồi không.</i>`);
+  if (famBadOf(f)) lines.push(`⚠️ Fam ${esc(f.rn)} đang lỗi/Banned → duyệt xong cần mời khách vào fam mới.`);
+  const row1: any[] = [{ text: "✅ Duyệt", callback_data: "" }];
+  if (exp) row1.push({ text: p.base === "today" ? "↩️ Nối HSD cũ" : "📅 Tính từ hôm nay", callback_data: "" });
+  return { text: lines.join("\n"), kb: row1 };
+}
+async function renewCards(body: string, from: string) {
+  const ls = body.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const want = ls.map((l, i) => ({ i, k: lineKind(l) })).filter((x) => x.k);
+  if (!want.length) return [];
+  let qid = "";
+  try {
+    const q = await tf({ action: "queue", op: "list" });
+    const hit = (q.open || []).filter((x: any) => String(x.text || "").trim() === body.trim()).pop();
+    qid = hit ? String(hit.id) : "";
+  } catch (_) { /* bỏ qua */ }
+  const store = await renewGet(), out: { text: string; kb: any }[] = [];
+  for (const w of want) {
+    const k = w.k!, p: RenewP = { qid, li: w.i, email: k.email, months: k.months, base: "old", product: k.product, at: Date.now() };
+    let r: any = null;
+    try { r = await tfFind(k.email); } catch (e) { out.push({ text: `⚠️ <b>${esc(k.email)}</b>: không tra được (${esc((e as Error).message)})`, kb: null }); continue; }
+    if (r?.phuOf) r = { phuOf: true, c: r.c };
+    // khách hết hạn mà ngày mua ghi trong tin ≈ hôm nay → mua lại, tính từ hôm nay (giống web)
+    if (r?.c && r.c.daysLeft < 0 && k.start) { const st = pDate(k.start); if (st != null && Math.abs(daysU(st)) < 4) p.base = "today"; }
+    const cd = renewCard(p, r);
+    if (cd.kb) {
+      const id = Date.now().toString(36) + w.i; store[id] = p;
+      cd.kb[0].callback_data = `g:ok:${id}`; if (cd.kb[1]) cd.kb[1].callback_data = `g:base:${id}`;
+      cd.kb = { inline_keyboard: [cd.kb, [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] };
+    }
+    out.push(cd);
+  }
+  await renewPut(store);
+  return out;
+}
+const vnd = (n: unknown) => (n ? Number(n).toLocaleString("vi-VN") + "đ" : "—");
+async function renewCallback(q: any, a: string, id: string) {
+  const store = await renewGet(), p = store[id];
+  const edit = (text: string, kb?: any) => tg("editMessageText", { chat_id: CHAT, message_id: q.message.message_id, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: kb || { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] } });
+  if (!p) return tg("answerCallbackQuery", { callback_query_id: q.id, text: "Thẻ cũ, không còn dữ liệu — làm trên Thay Fam" });
+  if (p.done) return tg("answerCallbackQuery", { callback_query_id: q.id, text: "Đã duyệt rồi" });
+  if (a === "base") {
+    p.base = p.base === "today" ? "old" : "today"; await renewPut(store);
+    await tg("answerCallbackQuery", { callback_query_id: q.id, text: p.base === "today" ? "Tính từ hôm nay" : "Nối tiếp HSD cũ" });
+    const cd = renewCard(p, await tfFind(p.email));
+    if (cd.kb) { cd.kb[0].callback_data = `g:ok:${id}`; if (cd.kb[1]) cd.kb[1].callback_data = `g:base:${id}`; }
+    return edit(cd.text, cd.kb ? { inline_keyboard: [cd.kb, [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } : undefined);
+  }
+  await tg("answerCallbackQuery", { callback_query_id: q.id, text: "Đang gia hạn…" });
+  try {
+    // dòng lệnh đã được xử lý trên web chưa?
+    if (p.qid) {
+      const ql = await tf({ action: "queue", op: "list" });
+      const it = (ql.open || []).find((x: any) => String(x.id) === p.qid);
+      if (!it || (it.res && it.res[p.li])) { p.done = "web"; await renewPut(store); return edit(`ℹ️ <b>${esc(p.email)}</b>: dòng này đã xử lý trên Thay Fam rồi, bot không gia hạn lần nữa.`); }
+    }
+    // tra lại ngay trước khi ghi (dòng trong sheet có thể đã đổi)
+    const r = await tfFind(p.email);
+    if (!r || r.arch || r.phuOf) return edit(renewCard(p, r).text + "\n\n<i>Không duyệt được trên bot → làm ở tab Lệnh.</i>");
+    const x = await tf({ action: "renewCus", row: r.c.row, email: r.c.email, months: p.months, bonusDays: 0, base: p.base, product: p.product });
+    const msg = `${x.email || r.c.email} HSD ${x.oldHsd || r.c.hsd} + ${p.months}th → ${x.hsd || x.newHsd}`;
+    p.done = "bot"; await renewPut(store);
+    if (p.qid) { try { await tf({ action: "queue", op: "set", id: p.qid, line: p.li, status: "xong", note: "Gia hạn " + msg + " (duyệt trên bot)" }); } catch (e) { console.error("queue set", (e as Error).message); } }
+    const lines = [`✅ <b>Đã gia hạn</b> ${esc(x.sku || "")}: <code>${esc(r.c.email)}</code>`, `HSD ${esc(x.oldHsd || r.c.hsd)} → <b>${esc(x.hsd || x.newHsd || "")}</b> · ${esc(r.f.rn)}`];
+    if (x.tcRow) lines.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}, HH ${vnd(x.hh)}, lãi ${vnd(x.profit)}`);
+    lines.push(x.sync && x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync?.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
+    if (famBadOf(r.f) || p.base === "today") lines.push(famBadOf(r.f) ? `⚠️ Fam ${esc(r.f.rn)} đang lỗi → mời khách vào fam mới trên Thay Fam.` : `⚠️ Tính từ hôm nay (khách mua lại) → kiểm tra khách còn trong ${esc(r.f.rn)} không, không thì mời vào fam mới.`);
+    lines.push(`\n📋 <code>${esc(msg)}</code>`);
+    return edit(lines.join("\n"));
+  } catch (e) {
+    return edit(`⚠️ Gia hạn <b>${esc(p.email)}</b> lỗi: ${esc((e as Error).message)}\nChưa chắc đã ghi — kiểm tra tab Lịch sử trước khi làm lại.`, { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] });
+  }
+}
+
+/* ---------- Trợ lý Thay Fam: AI agent hỏi-đáp trên dữ liệu Thay Fam ----------
+   Một bộ não, 2 cửa: Telegram riêng (/hoi hoặc tin bắt đầu bằng "?", trả lời tin của trợ lý để hỏi tiếp)
+   và tab "Hỏi" trên godnc.com/thayfam (POST ?tf_ask, xác thực bằng TF_PASS).
+   Chỉ ĐỌC sheet. Việc cần ghi → chỉ được đưa vào hàng chờ tab Lệnh để DNC duyệt. Không bao giờ gửi mật khẩu/2FA cho AI. */
+const SECRET_KEY = /^(pass|pw|password|mkp|twofa|2fa|otp|secret|token)$/i;
+function compact(v: any, d = 0): any {
+  if (v == null || typeof v !== "object") return typeof v === "string" ? v.slice(0, 300) : v;
+  if (d > 6) return "…";
+  if (Array.isArray(v)) return v.slice(0, 150).map((x) => compact(x, d + 1)).concat(v.length > 150 ? [`…còn ${v.length - 150} mục`] : []);
+  const o: any = {};
+  for (const [k, x] of Object.entries(v)) { if (SECRET_KEY.test(k) || x === "" || x == null) continue; o[k] = compact(x, d + 1); }
+  return o;
+}
+const cutJ = (o: unknown, n = 24000) => { const s = JSON.stringify(compact(o)); return s.length > n ? s.slice(0, n) + "…(cắt bớt, hãy lọc hẹp hơn)" : s; };
+const noAcc = (s: unknown) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").trim();
+
+function agentTools(ctx: { all?: any; queued: string[] }) {
+  const all = async () => (ctx.all ||= await tf({ action: "all" }));
+  const flatCus = async () => {
+    const d = await all(), out: any[] = [];
+    for (const f of d.items || []) for (const c of f.customers || []) if (c.email)
+      out.push({ email: c.email, rn: f.rn, hsd: c.hsd, daysLeft: c.daysLeft, ctv: normCtv(c.ctv), mailPhu: c.mailPhu, nojoin: c.nojoin, invitedAt: c.invitedAt, kicked: c.kicked, famStatus: f.status, famRenew: f.renew, famDaysToRenew: f.daysToRenew, famState: f.famState?.state });
+    return out;
+  };
+  const fns: Record<string, (a: any) => Promise<unknown>> = {
+    tim: async (a) => { const d = await tf({ action: "search", q: String(a.q || "") }); return { fams: d.items, total: d.total, vung_luu_chua_co_slot: d.archived }; },
+    loc_khach: async (a) => {
+      let r = await flatCus();
+      if (a.ctv) { const k = noAcc(a.ctv); r = r.filter((c) => noAcc(c.ctv).startsWith(k)); }
+      if (a.rn) { const k = noAcc(a.rn); r = r.filter((c) => noAcc(c.rn).includes(k)); }
+      if (a.con_ngay_tu != null) r = r.filter((c) => c.daysLeft != null && c.daysLeft >= +a.con_ngay_tu);
+      if (a.con_ngay_den != null) r = r.filter((c) => c.daysLeft != null && c.daysLeft <= +a.con_ngay_den);
+      if (a.chua_vao_nhom) r = r.filter((c) => c.nojoin);
+      if (a.co_huy) r = r.filter((c) => /h[uủ]y|hoàn/i.test(String(c.mailPhu || "")));
+      r.sort((x, y) => (x.daysLeft ?? 999) - (y.daysLeft ?? 999));
+      const n = Math.min(+a.gioi_han || 60, 150);
+      return { tong: r.length, hien: Math.min(n, r.length), khach: r.slice(0, n) };
+    },
+    loc_fam: async (a) => {
+      const d = await all();
+      let r = (d.items || []).map((f: any) => ({ rn: f.rn, status: f.status, renew: f.renew, daysToRenew: f.daysToRenew, famState: f.famState?.state, baoLoi: !!f.report, soKhach: (f.customers || []).filter((c: any) => c.email).length, khachHetHan: (f.customers || []).filter((c: any) => c.email && c.daysLeft != null && c.daysLeft < 0).length }));
+      if (a.trang_thai) { const k = noAcc(a.trang_thai); r = r.filter((f: any) => noAcc(f.status).includes(k)); }
+      if (a.renew_trong_ngay != null) r = r.filter((f: any) => f.daysToRenew != null && f.daysToRenew <= +a.renew_trong_ngay);
+      if (a.bao_loi) r = r.filter((f: any) => f.baoLoi || f.famState);
+      if (a.rn) { const k = noAcc(a.rn); r = r.filter((f: any) => noAcc(f.rn).includes(k)); }
+      r.sort((x: any, y: any) => (x.daysToRenew ?? 999) - (y.daysToRenew ?? 999));
+      const n = Math.min(+a.gioi_han || 60, 200);
+      return { tong: r.length, hien: Math.min(n, r.length), fams: r.slice(0, n), vung_luu: (d.archive?.length ?? d.archive?.items?.length) };
+    },
+    tong_quan: async () => tf({ action: "dashboard", ahead: 3 }),
+    tuan_nay: async () => tf({ action: "week" }),
+    con_slot: async () => tf({ action: "slots" }),
+    chan_moi: async () => tf({ action: "blocks", op: "list" }),
+    lich_su: async (a) => { const d = await tf({ action: "log", days: Math.min(+a.ngay || 7, 30) }); return { log: (d.log || []).slice(-120) }; },
+    hang_cho: async () => { const d = await tf({ action: "queue", op: "list" }); return { dang_cho: d.open }; },
+    gg1: async () => tf({ action: "gg_list" }),
+    dua_vao_lenh: async (a) => {
+      const t = String(a.noi_dung || "").trim(); if (!t) return { loi: "trống" };
+      const d = await tf({ action: "queue", op: "add", text: t, from: "Trợ lý", src: "agent" });
+      ctx.queued.push(t); return { ok: true, so_dong: d.lines, ghi_chu: "Đã vào tab Lệnh, CHƯA ghi sheet — DNC duyệt." };
+    },
+  };
+  const S = (props: Record<string, unknown>, req: string[] = []) => ({ type: "object", properties: props, required: req });
+  const str = (d: string) => ({ type: "string", description: d }), num = (d: string) => ({ type: "number", description: d }), bool = (d: string) => ({ type: "boolean", description: d });
+  const decls = [
+    { name: "tim", description: "Tìm khách hoặc fam theo email khách, mail phụ, RN (vd RN123) hoặc email fam. Trả fam kèm danh sách khách + khách ở vùng lưu (chưa có slot).", parameters: S({ q: str("email / RN / từ khoá") }, ["q"]) },
+    { name: "loc_khach", description: "Lọc toàn bộ khách YouTube trong Kho TK. daysLeft = số ngày còn lại của khách (âm = đã hết hạn).", parameters: S({ ctv: str("Dnc, Tuấn, Vương, Lộc"), rn: str("lọc theo fam"), con_ngay_tu: num("daysLeft >= "), con_ngay_den: num("daysLeft <= (vd 3 = sắp hết hạn trong 3 ngày, -1 = đã hết hạn)"), chua_vao_nhom: bool("chỉ khách đã ghi là chưa vào nhóm"), co_huy: bool("chỉ khách có ghi hủy/hoàn tiền"), gioi_han: num("số dòng trả về, mặc định 60") }) },
+    { name: "loc_fam", description: "Lọc toàn bộ fam (RN). daysToRenew = số ngày tới ngày renew (≤0 = tới hạn thay fam).", parameters: S({ trang_thai: str("FULL, Còn slot, Banned…"), renew_trong_ngay: num("fam có daysToRenew <= số này"), bao_loi: bool("chỉ fam bị báo lỗi / đã xoá nhóm / bị quét"), rn: str("RN"), gioi_han: num("mặc định 60") }) },
+    { name: "tong_quan", description: "Bảng tổng quan hôm nay: fam đến hạn thay (3 ngày tới), fam bị báo lỗi, khách cần gia hạn.", parameters: S({}) },
+    { name: "tuan_nay", description: "Kế hoạch 7 ngày: fam đến hạn, số FR sẵn sàng, fam bị chặn mời, khách đang chờ xếp fam, khách sắp hết hạn.", parameters: S({}) },
+    { name: "con_slot", description: "Các fam còn slot trống / mời chưa vào (cần kiểm tra join).", parameters: S({}) },
+    { name: "chan_moi", description: "Fam đang bị Google chặn mời (hết lượt mời tuần) và còn bao nhiêu ngày mới mời lại được.", parameters: S({}) },
+    { name: "lich_su", description: "Lịch sử thao tác trên Thay Fam (thay fam, mời, đổi mail…).", parameters: S({ ngay: num("số ngày gần nhất, mặc định 7") }) },
+    { name: "hang_cho", description: "Các lệnh đang chờ duyệt ở tab Lệnh (tin Tuấn, báo lỗi…).", parameters: S({}) },
+    { name: "gg1", description: "Dữ liệu Google One (GG1): các fam và khách.", parameters: S({}) },
+    { name: "dua_vao_lenh", description: "CHỈ dùng khi DNC yêu cầu rõ làm một việc ghi (đổi mail, gia hạn, đơn mới, hủy, báo lỗi). Đưa 1 dòng lệnh vào hàng chờ tab Lệnh, không ghi sheet. Viết theo mẫu tin của Tuấn, vd: 'abc@gmail.com gia hạn 12 tháng', 'đổi a@gmail.com sang b@gmail.com', 'hủy abc@gmail.com', 'abc@gmail.com mất pre'.", parameters: S({ noi_dung: str("dòng lệnh") }, ["noi_dung"]) },
+  ];
+  return { fns, decls };
+}
+
+function agentPrompt() {
+  const t = today();
+  return `Bạn là trợ lý Thay Fam của DNC (DNL) — shop bán slot YouTube Premium gia đình (fam). Trả lời tiếng Việt, ngắn, thẳng, đúng số liệu.
+Hôm nay ${t} (${WD[new Date(t + "T00:00:00Z").getUTCDay()]}), GMT+7.
+Kiến thức nghiệp vụ:
+- RN = fam đang dùng để mời khách; FR = fam chờ, được nâng lên thay RN khi RN tới ngày renew. Thay fam: RN cũ → Banned, FR mới thành RN, mời lại khách còn hạn (khách hết hạn không mời, trừ khi CTV báo đang gia hạn). Ngày renew mới = ngày này tháng sau.
+- Fam còn khách hết hạn không mời lại → trạng thái "Còn slot" (slot trống cần lấp), không phải FULL.
+- Google giới hạn ~6-7 lời mời/tuần/fam; bị chặn thì 4-5 ngày sau mới mời lại được. Mời xong phải kiểm tra lại sau vài ngày xem khách đã vào chưa.
+- "Mất pre" = khách chưa được mời lại hoặc fam hỏng → cần fix (chuyển fam còn slot + mời).
+- CTV: Dnc (khách của DNC), Tuấn, Vương, Lộc. Khách ở "vùng lưu" = chưa có slot, chưa được mời.
+- Data gốc (Kho TK) không sửa trực tiếp; webapp sửa bản sao, admin duyệt rồi đồng bộ.
+Cách làm:
+- LUÔN gọi công cụ lấy dữ liệu thật trước khi trả lời về khách/fam; không đoán. Câu hỏi đếm/lọc → dùng loc_khach / loc_fam. Có email/RN → tim.
+- Bạn chỉ đọc. Nếu DNC bảo làm việc ghi, dùng dua_vao_lenh rồi nói rõ "đã vào tab Lệnh, anh duyệt". Không tự đưa lệnh khi DNC chỉ hỏi.
+- Không bao giờ nêu mật khẩu, MKP, 2FA.
+- Định dạng: chữ thường, gạch đầu dòng "• ", không markdown (không **, #, bảng). Ngày dạng dd/mm. Danh sách dài thì nêu tổng + tối đa ~15 dòng quan trọng nhất. Cuối câu trả lời có việc cần làm thì ghi 1 dòng "→ ...".`;
+}
+
+type Turn = { role: "user" | "model"; text: string };
+async function askTF(q: string, hist: Turn[] = []): Promise<{ text: string; used: string[]; queued: string[] }> {
+  const key = Deno.env.get("GEMINI_API_KEY"); if (!key) throw new Error("chưa có GEMINI_API_KEY");
+  const ctx: { all?: any; queued: string[] } = { queued: [] };
+  const { fns, decls } = agentTools(ctx);
+  const contents: any[] = [...hist.slice(-8).map((h) => ({ role: h.role, parts: [{ text: h.text }] })), { role: "user", parts: [{ text: q }] }];
+  const used: string[] = [];
+  let model = MODELS[0];
+  for (let round = 0; round < 7; round++) {
+    let j: any = null, lastErr = "";
+    for (const m of round === 0 ? MODELS : [model, ...MODELS.filter((x) => x !== model)]) {
+      try {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`, {
+          method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(45000),
+          body: JSON.stringify({ systemInstruction: { parts: [{ text: agentPrompt() }] }, contents, tools: [{ functionDeclarations: decls }], generationConfig: { temperature: 0.2 } }),
+        });
+        if (!r.ok) { lastErr = `${m} ${r.status}`; console.error("agent", m, r.status, (await r.text()).slice(0, 200)); if (r.status === 429) lastErr = "Gemini hết hạn mức, thử lại sau"; continue; }
+        j = await r.json(); model = m; break;
+      } catch (e) { lastErr = `${m}: ${(e as Error).message}`; }
+    }
+    if (!j) throw new Error(lastErr || "AI không trả lời");
+    const content = j.candidates?.[0]?.content;
+    if (!content?.parts?.length) throw new Error("AI trả về rỗng" + (j.candidates?.[0]?.finishReason ? ` (${j.candidates[0].finishReason})` : ""));
+    contents.push(content);
+    const calls = content.parts.filter((p: any) => p.functionCall);
+    if (!calls.length) {
+      const text = content.parts.map((p: any) => (p.thought ? "" : p.text || "")).join("").trim();
+      return { text: text.replace(/\*\*/g, "") || "(không có câu trả lời)", used, queued: ctx.queued };
+    }
+    const resp: any[] = [];
+    for (const p of calls) {
+      const { name, args } = p.functionCall; used.push(name);
+      let out: string;
+      try { const f = fns[name]; out = f ? cutJ(await f(args || {})) : JSON.stringify({ loi: "không có công cụ " + name }); }
+      catch (e) { out = JSON.stringify({ loi: (e as Error).message }); }
+      resp.push({ functionResponse: { name, response: { ket_qua: out } } });
+    }
+    contents.push({ role: "user", parts: resp });
+  }
+  return { text: "Câu hỏi cần tra quá nhiều bước — hỏi hẹp hơn giúp mình (vd theo CTV, RN hoặc 1 email).", used, queued: ctx.queued };
+}
+
+/* Telegram: hội thoại gần nhất lưu ở desk_docs settings/tf_chat (hết hạn sau 2 tiếng) */
+async function tfChatGet() {
+  const { data } = await db.from("desk_docs").select("data").eq("user_id", await owner()).eq("kind", "settings").eq("key", "tf_chat").maybeSingle();
+  const d = data?.data; return d && Date.now() - (d.at || 0) < 2 * 3600e3 ? d as { at: number; hist: Turn[]; ids: number[] } : null;
+}
+async function tfChatSave(d: { hist: Turn[]; ids: number[] }) {
+  await db.from("desk_docs").upsert({ user_id: await owner(), kind: "settings", key: "tf_chat", data: { at: Date.now(), hist: d.hist.slice(-10), ids: d.ids.slice(-20) }, updated_at: new Date().toISOString() }, { onConflict: "user_id,kind,key" });
+}
+async function tgAsk(m: any, q: string, cont: boolean) {
+  const prev = cont ? await tfChatGet() : null;
+  await tg("sendChatAction", { chat_id: CHAT, action: "typing" });
+  const wait = await say("🤖 Đang tra Thay Fam…", { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } });
+  let text: string, r: Awaited<ReturnType<typeof askTF>> | null = null;
+  try { r = await askTF(q, prev?.hist || []); text = r.text; }
+  catch (e) { text = "⚠️ Trợ lý lỗi: " + (e as Error).message; }
+  let body = esc(text).slice(0, 3900);
+  if (r?.queued.length) body += `\n\n<i>🛠 Đã đưa ${r.queued.length} lệnh vào tab Lệnh — chưa ghi sheet.</i>`;
+  const kbd = { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" + (r?.queued.length ? "#lenh" : "") }]] };
+  let id = wait.ok ? wait.result.message_id : 0;
+  if (id) { const e2 = await tg("editMessageText", { chat_id: CHAT, message_id: id, text: body, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: kbd }); if (!e2.ok) id = 0; }
+  if (!id) { const s = await say(body, { reply_markup: kbd }); id = s.ok ? s.result.message_id : 0; }
+  if (r) await tfChatSave({ hist: [...(prev?.hist || []), { role: "user", text: q }, { role: "model", text: r.text }], ids: [...(prev?.ids || []), id].filter(Boolean) }).catch(() => {});
+}
+
 const CORS = { "Access-Control-Allow-Origin": "https://godnc.com", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "content-type" };
 
 async function handle(u: any) {
   if (u.callback_query) {
     const q = u.callback_query;
     if (String(q.from.id) !== CHAT) return;
+    if (String(q.data || "").startsWith("g:")) { const [, ga, gid] = String(q.data).split(":"); return renewCallback(q, ga, gid); }
     const [, a, sid] = String(q.data || "").split(":");
     const id = Number(sid);
     const p: any = a === "done" ? { status: "done" } : a === "trash" ? { status: "trash" } : a === "open" ? { status: "inbox" }
@@ -711,6 +982,17 @@ async function handle(u: any) {
     await sendBrief(L.text);
     return;
   }
+  // Trợ lý Thay Fam: /hoi + câu hỏi, tin bắt đầu bằng "?", hoặc trả lời (reply) tin của trợ lý để hỏi tiếp
+  const hm = text.match(/^\/(hoi|hỏi|ask)\b\s*([\s\S]*)$/i);
+  if (hm || /^[?？]\s*\S/.test(text)) {
+    const q = hm ? hm[2].trim() : text.replace(/^[?？]\s*/, "");
+    if (!q) return say("Hỏi gì về Thay Fam cũng được, ví dụ:\n<code>/hoi abc@gmail.com đang ở fam nào?</code>\n<code>? hôm nay cần thay fam nào</code>\n<code>? khách Tuấn hết hạn 3 ngày tới</code>\nTrả lời (reply) tin của trợ lý để hỏi tiếp.");
+    return tgAsk(m, q, false);
+  }
+  if (m.reply_to_message && text && !text.startsWith("/")) {
+    const c = await tfChatGet().catch(() => null);
+    if (c?.ids?.includes(m.reply_to_message.message_id)) return tgAsk(m, text, true);
+  }
   // Lệnh Thay Fam (đổi mail / gia hạn / đơn mới / hủy): đưa vào hàng chờ godnc.com/thayfam, anh duyệt trên web
   const tfm = text.match(/^\/(tf|thayfam)\b\s*([\s\S]*)$/i);
   const toDesk = /^\/desk\b/i.test(text);
@@ -720,6 +1002,15 @@ async function handle(u: any) {
     if (!body) return say("Gõ /tf rồi dán tin, ví dụ:\n<code>/tf 1039 abc@gmail.com | ytb 12th plus | 09/07/2026 → 09/07/2027</code>");
     try {
       const d = await tf({ action: "queue", op: "add", text: body, from: fwdOf(m) || "Telegram", src: "bot" });
+      // dòng gia hạn → thẻ có nút Duyệt; các dòng khác báo trạng thái như cũ
+      const gh = await renewCards(body, fwdOf(m) || "Telegram").catch((e) => { console.error("renew", e); return []; });
+      if (gh.length) {
+        for (const c of gh) await say(c.text, { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true }, ...(c.kb ? { reply_markup: c.kb } : {}) });
+        const rest = body.split(/\r?\n/).filter((l: string) => l.trim() && !lineKind(l.trim())).join("\n");
+        const rep2 = rest ? await tfReport(rest).catch(() => "") : "";
+        if (rep2) await say(rep2 + "\n\n🛠 Các dòng này đã vào hàng chờ Thay Fam.", { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
+        return;
+      }
       const rep = await tfReport(body).catch(() => "");
       return say(`${rep ? rep + "\n\n" : ""}🛠 Đã vào hàng chờ Thay Fam (${d.lines} dòng), chưa ghi gì vào sheet.`, {
         reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true },
@@ -750,7 +1041,7 @@ Deno.serve(async (req) => {
       if (info.result?.url && info.result.url !== self && url.searchParams.get("force") !== "1")
         return ok({ ok: false, error: "Bot đang gắn webhook khác, không gỡ", current: info.result.url });
       const set = await tg("setWebhook", { url: self, secret_token: SECRET, allowed_updates: ["message", "edited_message", "callback_query"], max_connections: 1 });
-      await tg("setMyCommands", { commands: [{ command: "homnay", description: "Việc shop sáng nay" }, { command: "viec", description: "Việc cần xử lý" }, { command: "xong", description: "Đánh dấu xong: /xong 12" }, { command: "tf", description: "Lệnh Thay Fam: /tf + tin của Tuấn" }, { command: "help", description: "Cách dùng" }] });
+      await tg("setMyCommands", { commands: [{ command: "homnay", description: "Việc shop sáng nay" }, { command: "viec", description: "Việc cần xử lý" }, { command: "xong", description: "Đánh dấu xong: /xong 12" }, { command: "tf", description: "Lệnh Thay Fam: /tf + tin của Tuấn" }, { command: "hoi", description: "Hỏi trợ lý Thay Fam" }, { command: "help", description: "Cách dùng" }] });
       let who = ""; try { who = await owner(); } catch (e) { who = "LỖI: " + (e as Error).message; }
       if (set.ok) await say("✅ Desk Inbox đã bật. Từ giờ nhắn gì cho bot cũng được lưu vào godnc.com/desk. Gõ /help xem cách dùng.");
       return ok({ ok: set.ok, webhook: self, desk_user: who, telegram: set });
@@ -768,6 +1059,18 @@ Deno.serve(async (req) => {
       const ems = Array.isArray(b.emails) ? b.emails.filter((x: unknown) => typeof x === "string" && x.includes("@")).slice(0, 50) : [];
       if (ems.length) { try { await tuanFixedAdd(ems, t); } catch (e) { console.error("tuan_fixed", (e as Error).message); } }
       return new Response(JSON.stringify({ ok: !!r.ok, error: r.ok ? undefined : (r.error || r.description) }), { headers: { ...CORS, "Content-Type": "application/json" } });
+    }
+    // ---- Trợ lý Thay Fam (tab Hỏi trên godnc.com/thayfam) ----
+    if (url.searchParams.has("tf_ask")) {
+      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+      const J = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+      const b = await req.json().catch(() => ({}));
+      const pass = Deno.env.get("TF_PASS") || "";
+      if (!pass || b.pass !== pass) return J({ ok: false, error: "Chỉ admin dùng được trợ lý" }, 403);
+      const q = String(b.q || "").trim().slice(0, 2000); if (!q) return J({ ok: false, error: "trống" });
+      const hist: Turn[] = (Array.isArray(b.history) ? b.history : []).filter((h: any) => (h.role === "user" || h.role === "model") && typeof h.text === "string").map((h: any) => ({ role: h.role, text: h.text.slice(0, 4000) }));
+      try { const r = await askTF(q, hist); return J({ ok: true, answer: r.text, used: r.used, queued: r.queued }); }
+      catch (e) { return J({ ok: false, error: (e as Error).message }); }
     }
     if (url.searchParams.has("digest")) return ok(await digest());
     if (url.searchParams.has("retry")) {

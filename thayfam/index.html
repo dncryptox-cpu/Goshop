@@ -170,6 +170,13 @@
 .wk-pill{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:2px 8px}
 .wk-pill.bad{border-color:var(--bad);color:var(--bad)}
 .wk-row{gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+  .ask-m{display:flex;flex-direction:column;margin-bottom:10px}
+  .ask-m.user{align-items:flex-end}
+  .ask-b{max-width:760px;white-space:pre-wrap;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);font-size:14px;line-height:1.5}
+  .ask-m.user .ask-b{background:var(--chip);border-color:transparent}
+  .ask-meta{font-size:11px;margin-top:3px}
+  .ask-in{display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding:10px 0 4px}
+  .ask-in textarea{flex:1;font:inherit;font-size:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card);color:var(--ink);resize:vertical}
 </style>
 <script src="/appnav.js" defer></script>
 </head>
@@ -266,6 +273,7 @@
         <button class="tab" x-show="can('review')" :class="tab==='sync' && 'on'" @click="tab='sync'; loadReview()">Đồng bộ<span class="n" x-text="review.length"></span></button>
         <button class="tab" :class="tab==='log' && 'on'" @click="tab='log'; loadLog()">Lịch sử</button>
         <button class="tab" x-show="me.role==='admin'" :class="tab==='notes' && 'on'" @click="tab='notes'; loadNotes()">Cần xử lý<span class="n" :class="openNotes && 'hot'" x-text="openNotes"></span></button>
+        <button class="tab" x-show="me.role==='admin'" :class="tab==='ask' && 'on'" @click="tab='ask'; $nextTick(() => $refs.askIn && $refs.askIn.focus())">🤖 Hỏi</button>
         <button class="tab" x-show="me.role==='admin'" :class="tab==='users' && 'on'" @click="tab='users'; loadUsers()">Tài khoản</button>
       </nav>
 
@@ -1165,6 +1173,28 @@
       </section>
 
       <!-- TAB CẦN XỬ LÝ (admin) -->
+      <section x-show="tab==='ask' && !searchOn()" class="ask">
+        <div class="mute" style="font-size:13px;margin-bottom:10px">Hỏi gì về fam / khách cũng được — trợ lý tra dữ liệu thật rồi trả lời. Chỉ đọc; bảo nó làm việc ghi thì nó đưa vào tab <b>Lệnh</b> để anh duyệt. Trên Telegram: <span class="mono">/hoi …</span> hoặc tin bắt đầu bằng <span class="mono">?</span></div>
+        <div class="chips" x-show="!askLog.length">
+          <template x-for="s in askSamples"><button class="chip" @click="askQ = s; askSend()" x-text="s"></button></template>
+        </div>
+        <template x-for="(m, i) in askLog" :key="i">
+          <div class="ask-m" :class="m.role">
+            <div class="ask-b" x-text="m.text"></div>
+            <div class="mute ask-meta" x-show="m.meta" x-text="m.meta"></div>
+          </div>
+        </template>
+        <div class="ask-m model" x-show="askBusy"><div class="ask-b mute">Đang tra Thay Fam…</div></div>
+        <div class="err" x-show="askErr" x-text="askErr"></div>
+        <form class="ask-in" @submit.prevent="askSend()">
+          <textarea x-ref="askIn" rows="2" x-model="askQ" placeholder="vd: khách Tuấn hết hạn 3 ngày tới?" @keydown.enter="if (!$event.shiftKey) { $event.preventDefault(); askSend(); }"></textarea>
+          <div class="row" style="flex-direction:column;align-items:stretch;gap:6px">
+            <button class="btn pri" :disabled="askBusy || !askQ.trim()">Hỏi</button>
+            <button type="button" class="btn sm" x-show="askLog.length" @click="askLog = []; askErr = ''; askSave()">Mới</button>
+          </div>
+        </form>
+      </section>
+
       <section x-show="tab==='notes' && !searchOn()">
         <div class="mute" style="font-size:13px;margin-bottom:12px">Fam còn slot trống sau khi thay (tự báo) và ghi chú của nhân viên / outsource. Xử lý xong bấm <b>Đã xử lý</b>.</div>
         <template x-if="notesLoading"><div class="empty">Đang tải…</div></template>
@@ -1727,6 +1757,7 @@ const RENEW_API = 'https://script.google.com/macros/s/AKfycbwWQkopYjL131FKXIN1A_
 const READS = ['dashboard', 'log', 'review', 'search', 'slots', 'week', 'mailLog', 'all', 'users', 'notes', 'blocks', 'mailPhu', 'queue'];
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 const FIXYTB_URL = 'https://godnc.com/fixytb/';
+const ASK_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tf_ask=1';
 const TUAN_BOT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tuan_notify=1';
 
 const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], ['12 tháng', '280k']];
@@ -1734,6 +1765,8 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
+    askQ: '', askBusy: false, askErr: '', askLog: (() => { try { return JSON.parse(sessionStorage.getItem('tf_ask') || '[]'); } catch (e) { return []; } })(),
+    askSamples: ['Hôm nay cần thay fam nào?', 'Fam nào đang bị chặn mời, bao giờ mời lại được?', 'Khách Tuấn hết hạn trong 3 ngày tới', 'Fam nào còn slot trống?', 'Khách nào đã mời mà chưa vào nhóm?', 'Có bao nhiêu khách đang chờ xếp fam?'],
     cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
     tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', lastCopy: '', lastCopyFor: '', notify: null,
     slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
@@ -1793,6 +1826,21 @@ function app() {
       this.load().then(() => { if (this.slotsLoaded) this.bg(() => this.loadSlots()); if (this.wk) this.bg(() => this.loadWeek()); if (this.allFams) { this._allLoading = false; this.warmSearch(); } });
     },
     warmSearch() { if (this.can('all') && (!this.allFams || this.allStale) && !this._allLoading) { this._allLoading = true; this.bg(() => this.loadAll()).then(() => { this._allLoading = false; }); } },
+    askSave() { try { sessionStorage.setItem('tf_ask', JSON.stringify(this.askLog.slice(-30))); } catch (e) {} },
+    async askSend() {
+      const q = this.askQ.trim(); if (!q || this.askBusy) return;
+      const history = this.askLog.filter(m => !m.err).slice(-8).map(m => ({ role: m.role, text: m.text }));
+      this.askLog.push({ role: 'user', text: q }); this.askQ = ''; this.askErr = ''; this.askBusy = true;
+      try {
+        const r = await fetch(ASK_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, q, history }) }).then(x => x.json());
+        if (!r.ok) throw new Error(r.error || 'Trợ lý lỗi');
+        const meta = (r.queued && r.queued.length ? '🛠 Đã vào tab Lệnh: ' + r.queued.join(' · ') + ' — ' : '') + (r.used && r.used.length ? 'tra: ' + [...new Set(r.used)].join(', ') : '');
+        this.askLog.push({ role: 'model', text: r.answer, meta });
+        if (r.queued && r.queued.length) this.bg(() => this.loadQueue());
+      } catch (e) { this.askErr = e.message; this.askQ = q; this.askLog.pop(); }
+      this.askBusy = false; this.askSave();
+      this.$nextTick(() => window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }));
+    },
     async loadAll() {
       if (!this.can('all')) return;
       try {
