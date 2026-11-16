@@ -1530,6 +1530,10 @@
         <h3><span class="num">2</span>Đăng nhập FR mới
           <span class="badge ok" x-text="swap.fr ? swap.fr.fr : 'Hết FR'"></span>
           <span class="sp" style="flex:1"></span>
+          <select class="btn sm" x-show="!swap.noFr && frsAll.length > 1" :disabled="saving" @change="pickFr($event.target.value); $event.target.value = ''" title="Chọn FR khác để thay">
+            <option value="">Đổi FR ▾</option>
+            <template x-for="x in frsAll" :key="x.row"><option :value="x.row" :disabled="swap.fr && x.row === swap.fr.row" x-text="x.fr + ' · ' + x.email + (x.twofa || x.ccTwofa ? ' · có 2FA' : ' · chưa 2FA') + (x.renew ? ' · renew ' + x.renew : '')"></option></template>
+          </select>
           <button class="btn sm" @click="skipFr()" x-show="swap.fr && !swap.noFr" :disabled="saving">Bỏ qua FR này</button>
           <button class="btn sm" :class="swap.noFr && 'pri'" @click="swap.noFr = !swap.noFr; confirming = false; pick = { row: null, list: [] }; if (swap.noFr) loadSlots()" title="Không lấy FR mới: chuyển từng khách sang fam đang dư slot, xong thì đóng fam cũ" x-text="swap.noFr ? 'Đang chuyển sang fam dư slot ✓' : 'Không dùng FR'"></button>
         </h3>
@@ -1777,7 +1781,7 @@ function app() {
       'Trống': ['', ''],
     }, autoSync: lsGet('thayfam_autosync') !== '0', syncSel: [], batchBusy: '', batchConfirm: false, batchReport: '',
     blocks: [], blocksLoading: false, blocksBusy: '', blocksOpen: 0, blocksDue: 0, blockWait: 5,
-    today: '', due: [], reported: [], renewals: [], frs: [], skipped: [],
+    today: '', due: [], reported: [], renewals: [], frs: [], frsAll: [], skipped: [],
     ctvFilter: '', log: [], logLoading: false, actions: [],
     lastActionId: '', undoConfirm: '', undoBusy: '', undoConflict: null,
     review: [], reviewLoading: false, syncConfirm: '', openRows: [],
@@ -1854,7 +1858,7 @@ function app() {
     snapGet(k) { try { return JSON.parse(localStorage.getItem(this.snapKey(k)) || 'null'); } catch (e) { return null; } },
     snapRestore() {
       const d = this.snapGet('dash');
-      if (d) { this.today = d.today; this.due = d.due; this.reported = d.reported || []; this.renewals = d.renewals; this.me = d.me || this.me; this.frs = (d.frs || []).filter(x => !this.skipped.includes(x.row)); this.blocksOpen = d.blocksOpen || 0; this.blocksDue = d.blocksDue || 0; }
+      if (d) { this.today = d.today; this.due = d.due; this.reported = d.reported || []; this.renewals = d.renewals; this.me = d.me || this.me; this.frsAll = d.frs || []; this.frs = (d.frs || []).filter(x => !this.skipped.includes(x.row)); this.blocksOpen = d.blocksOpen || 0; this.blocksDue = d.blocksDue || 0; }
       const sl = this.snapGet('slots');
       if (sl) { this.slots = sl.items.map(f => Object.assign(f, { check: false, mark: {}, saving: false })); this.slotLimit = sl.limit; this.slotPendingH = sl.pendingHours; }
       const w = this.snapGet('week'); if (w) this.wk = w;
@@ -1896,6 +1900,7 @@ function app() {
         if (this.can('mailLog') && !this._mailLoaded) { this._mailLoaded = true; this.bg(() => this.loadMailLog()); }
         if (this.can('queue') && !this._qLoaded) { this._qLoaded = true; if (location.hash === '#lenh') this.tab = 'cmd'; this.bg(() => this.loadQueue()); }
         if (this.can('slots')) this.bg(() => { if (!this.slotsLoaded && !this.slotsLoading) return this.loadSlots(); });
+        this.frsAll = d.frs || [];
         this.frs = d.frs.filter(x => !this.skipped.includes(x.row));
       } catch (e) {
         this.error = e.message;
@@ -2904,6 +2909,13 @@ function app() {
     closeSwap() { this.swap = null; },
     frSecret() { return this.swap && this.swap.fr ? (this.swap.fr.twofa || (this.twofaOk() ? this.swap.newTwofa : '')) : ''; },
     twofaOk() { return !!this.swap && /^[a-z2-7 ]{16,}$/.test(String(this.swap.newTwofa || '').toLowerCase().replace(/\s+/g, ' ').trim()); },
+    pickFr(row) {
+      const x = this.frsAll.find(f => String(f.row) === String(row)); if (!x || !this.swap) return;
+      this.skipped = this.skipped.filter(r => r !== x.row);
+      if (!this.frs.some(f => f.row === x.row)) this.frs.unshift(x);
+      this.swap.fr = x; this.swap.renewEdit = ''; this.swap.newTwofa = x.ccTwofa || ''; this.swap.editTwofa = false;
+      this.tickOtp();
+    },
     skipFr() {
       if (!this.swap.fr) return;
       this.skipped.push(this.swap.fr.row);
