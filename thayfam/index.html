@@ -1762,6 +1762,7 @@ const READS = ['dashboard', 'log', 'review', 'search', 'slots', 'week', 'mailLog
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 const FIXYTB_URL = 'https://godnc.com/fixytb/';
 const ASK_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tf_ask=1';
+const CUS_BOT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?cus_notify=1';
 const TUAN_BOT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tuan_notify=1';
 
 const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], ['12 tháng', '280k']];
@@ -2212,6 +2213,11 @@ function app() {
         d.st = status === 'bỏ' ? 'skip' : 'done'; d.result = note; d.info = c.info;
         if (d.qid) this.queueMark(d, status, note, { noDup: true, silent: true }).catch(e => { d.err = e.message; });
       }
+      // Khách lẻ đã báo lỗi qua bot khách → bot tự nhắn lại khách (bot chỉ nhắn khách đang chờ)
+      if (status === 'xong' && !opt.silent) {
+        const ems = [...(c.emails || []), c.cus && c.cus.email].filter(Boolean);
+        if (ems.length) this.cusNotify(ems, 'fixed').then(n => { if (n) c.result = (c.result || '') + ' · đã nhắn khách qua bot'; });
+      }
       // Tin từ nhóm Tuấn: xong thì bot tự báo lại nhóm
       if (status === 'xong' && !opt.silent && (c.from === 'Nhóm Tuấn' || dups.some(d => d.from === 'Nhóm Tuấn'))) {
         const msg = '✅ ' + (c.info ? this.cmdMsg(c) : (c.emails[0] || '') + ': DNC đã xử lý xong, báo khách kiểm tra lại giúp nhé.');
@@ -2227,6 +2233,13 @@ function app() {
       let n = 0;
       for (const c of hit) { if (['done', 'skip'].includes(c.st)) continue; c.st = 'done'; c.result = note; try { await this.queueMark(c, 'xong', note, { silent: true }); n++; } catch (e) { c.err = e.message; } }
       if (n) this.lastDone += ' Đã đánh Xong ' + n + ' tin báo lỗi của khách vừa mời lại.';
+    },
+    // Nhắn khách lẻ đã báo lỗi qua bot khách. Trả số khách đã nhắn (0 nếu không ai chờ / lỗi).
+    async cusNotify(emails, kind) {
+      try {
+        const r = await fetch(CUS_BOT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, emails: emails, kind: kind }) });
+        const d = await r.json(); return d.ok ? (d.sent || 0) : 0;
+      } catch (e) { return 0; }
     },
     // Gửi tin vào nhóm Telegram của Tuấn (qua bot). Trả true/false, không làm hỏng thao tác chính.
     async tuanNotify(text, emails) {
@@ -3135,6 +3148,7 @@ function app() {
           const n = this.notify, txt = '🔄 Thay fam ' + n.rn + ' xong, đã mời lại lúc ' + n.at + ' (' + tl.length + ' khách của Tuấn):\n' + tl.map(i => '- ' + i.email + (i.hsd ? ' · HSD ' + i.hsd : '')).join('\n') + '\nBáo khách mở Gmail bấm Chấp nhận lời mời giúp nhé.';
           this.tuanNotify(txt, tl.map(i => i.email)).then(ok => { if (ok) n.ctvSent.push(tl[0].ctv); this.lastDone += ok ? ' Đã gửi list ' + tl.length + ' khách cho nhóm Tuấn.' : ' (Chưa gửi được list cho nhóm Tuấn — copy tay.)'; });
         }
+        if (this.notify) { const n2 = this.notify; this.cusNotify(n2.items.map(i => i.email), 'invited').then(k => { if (k) this.lastDone += ' Bot đã nhắn ' + k + ' khách lẻ đang chờ.'; }); }
         if (this.notify) this.cmdCloseInvited(this.notify.items.map(i => i.email), 'Đã mời lại khi thay fam ' + this.notify.rn);
         if (this.me.role === 'admin') this.openNotes += (r.invited < 5 ? 1 : 0) + (s.note && s.note.trim() ? 1 : 0);
         if (this.me.limit) this.me.usedToday++;

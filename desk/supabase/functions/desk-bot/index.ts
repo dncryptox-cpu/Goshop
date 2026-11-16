@@ -675,6 +675,104 @@ async function tuanHandle(m: any) {
   }
   return tuanSay(out.join("\n\n"), { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } });
 }
+/* ---------- Bot khách lẻ (bot Telegram RIÊNG, token CUS_BOT_TOKEN) ----------
+   Khách gõ email → bot báo trạng thái (không lộ RN, mail fam, CTV, tên shop).
+   Lỗi → vào tab Lệnh (from "Khách lẻ") + báo DNC trên @goshopassistantbot.
+   DNC bấm Xong / thay fam mời lại → Thay Fam gọi ?cus_notify → bot nhắn lại đúng khách đã báo.
+   Chỉ phục vụ khách CTV Dnc; khách của CTV khác được bảo liên hệ nơi đã mua.
+   Cài: thêm secret CUS_BOT_TOKEN, deploy, mở 1 lần  .../desk-bot?cus_setup=<TG_SECRET> */
+const CUS_TOKEN = Deno.env.get("CUS_BOT_TOKEN") || "";
+const CUS_FROM = "Khách lẻ";
+const FAMILY_URL = "https://myaccount.google.com/family/details";
+const ctg = (method: string, body: Record<string, unknown>) => tg(method, body, CUS_TOKEN);
+const csay = (chat: number | string, text: string, extra: Record<string, unknown> = {}) =>
+  ctg("sendMessage", { chat_id: chat, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...extra });
+type CusSub = { chat: number; name: string; at: number; pending: boolean };
+type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }> };
+async function cusGet(): Promise<CusDoc> {
+  const { data } = await db.from("desk_docs").select("data").eq("user_id", await owner()).eq("kind", "settings").eq("key", "cus_bot").maybeSingle();
+  const d = (data?.data as CusDoc) || { subs: {}, rate: {} };
+  d.subs ||= {}; d.rate ||= {}; return d;
+}
+async function cusPut(d: CusDoc) {
+  const now = Date.now(), t = today();
+  for (const k of Object.keys(d.subs)) if (now - d.subs[k].at > 60 * 864e5) delete d.subs[k];
+  for (const k of Object.keys(d.rate)) if (d.rate[k].day !== t) delete d.rate[k];
+  await db.from("desk_docs").upsert({ user_id: await owner(), kind: "settings", key: "cus_bot", data: d, updated_at: new Date().toISOString() }, { onConflict: "user_id,kind,key" });
+}
+const CUS_HELP = "Chào bạn 👋 Đây là bot hỗ trợ <b>YouTube Premium gia đình</b>.\n\nGửi <b>email bạn dùng để vào gia đình YouTube</b> (vd: abc@gmail.com), có thể kèm mô tả lỗi. Bot sẽ kiểm tra và báo lại ngay tại đây.";
+const acceptGuide = (e: string) => `Bạn mở Gmail của <b>${esc(e)}</b>, tìm thư mời từ Google và bấm <b>Chấp nhận lời mời</b> (hoặc vào ${FAMILY_URL}).\nVẫn lỗi thì gõ: <code>${esc(e)} vẫn lỗi</code>`;
+
+async function cusCheck(e: string, line: string, openText: string, fixed: Fixed): Promise<{ text: string; queue: boolean }> {
+  const r = await tfFind(e);
+  if (!r) return { text: `❓ Chưa thấy <b>${esc(e)}</b> trong danh sách.\nBạn kiểm tra lại đúng email đã đăng ký khi mua nhé.`, queue: false };
+  const hsdRaw = r.arch ? r.arch.hsd : r.c.hsd, ctv = r.arch ? r.arch.ctv : r.c.ctv;
+  if (normCtv(ctv) !== "Dnc") return { text: `ℹ️ <b>${esc(e)}</b> được đăng ký qua đại lý khác. Bạn liên hệ nơi đã mua để được hỗ trợ nhanh nhất nhé.`, queue: false };
+  const v = pDate(hsdRaw), left = v == null ? null : daysU(v);
+  if (left != null && left < 0) return { text: `⛔ Gói của <b>${esc(e)}</b> đã hết hạn ngày <b>${esc(hsdRaw)}</b>.\nMuốn gia hạn, bạn nhắn người bán nhé.`, queue: false };
+  const hsd = hsdRaw ? `\nHạn dùng: ${esc(hsdRaw)}` : "";
+  const still = STILL.test(line);
+  const fx = fixed[e];
+  if (fx && Date.now() - fx.at < 3 * 864e5 && !still) return { text: `✅ <b>${esc(e)}</b> đã được xử lý lúc ${fmtAt(fx.at)}.${hsd}\n\n${acceptGuide(e)}`, queue: false };
+  if (!r.arch) {
+    const ago = agoDays(r.c.invitedAt);
+    if (!famProblems(r.f, r.c).length && ago != null && ago <= 3 && !still)
+      return { text: `✅ Đã gửi lời mời mới cho <b>${esc(e)}</b> ${ago === 0 ? "hôm nay" : ago === 1 ? "hôm qua" : ago + " ngày trước"}.${hsd}\n\n${acceptGuide(e)}`, queue: false };
+  }
+  if (openText.includes(e) && !still) return { text: `⏳ Lỗi của <b>${esc(e)}</b> đã được ghi nhận, đang chờ kiểm tra. Xử lý xong bot sẽ nhắn bạn tại đây.`, queue: false };
+  return { text: `📝 Đã ghi nhận lỗi của <b>${esc(e)}</b>.${hsd}\nBên mình sẽ kiểm tra và <b>nhắn lại bạn ngay tại đây</b> khi xử lý xong.`, queue: true };
+}
+
+async function cusHandle(u: any) {
+  const m = u.message || u.edited_message; if (!m || m.chat?.type !== "private") return;
+  const chat = m.chat.id, text = String(m.text || m.caption || "").trim();
+  if (!text || /^\/(start|help)\b/i.test(text)) return csay(chat, CUS_HELP);
+  const ems = [...new Set((text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map((x) => x.toLowerCase()))].slice(0, 3);
+  if (!ems.length) return csay(chat, "Bạn gửi giúp mình <b>email</b> dùng để vào gia đình YouTube (vd: abc@gmail.com) nhé.");
+  const doc = await cusGet(), t = today(), key = String(chat);
+  const rt = doc.rate[key]?.day === t ? doc.rate[key] : { day: t, emails: [] as string[] };
+  const fresh = ems.filter((e) => !rt.emails.includes(e));
+  if (rt.emails.length + fresh.length > 5) return csay(chat, "Hôm nay bạn đã tra nhiều email rồi, thử lại vào ngày mai nhé.");
+  rt.emails.push(...fresh); doc.rate[key] = rt;
+  await ctg("sendChatAction", { chat_id: chat, action: "typing" });
+  let openText = "";
+  try { const q = await tf({ action: "queue", op: "list" }); openText = (q.open || []).map((x: any) => String(x.text || "")).join("\n").toLowerCase(); } catch (_) { /* bỏ qua */ }
+  let fixed: Fixed = {}; try { fixed = await tuanFixedGet(); } catch (_) { /* bỏ qua */ }
+  const lines = text.split(/\r?\n/), name = [m.from?.first_name, m.from?.last_name].filter(Boolean).join(" ") + (m.from?.username ? ` @${m.from.username}` : "");
+  const out: string[] = [], toQ: string[] = [];
+  for (const e of ems) {
+    const ln = lines.find((l) => l.toLowerCase().includes(e)) || e;
+    try {
+      const r = await cusCheck(e, ln, openText, fixed);
+      out.push(r.text);
+      if (r.queue || (openText.includes(e) && !STILL.test(ln))) doc.subs[e] = { chat, name, at: Date.now(), pending: true };
+      if (r.queue) toQ.push(ln.toLowerCase().includes("pre") || ln.length > e.length + 3 ? ln : `${e} mất pre`);
+    } catch (err) { console.error("cus", e, (err as Error).message); out.push(`⚠️ Chưa kiểm tra được <b>${esc(e)}</b>, bạn thử lại sau ít phút nhé.`); }
+  }
+  if (toQ.length) {
+    try {
+      await tf({ action: "queue", op: "add", text: toQ.join("\n"), from: CUS_FROM, src: "cusbot" });
+      await say(`🆘 <b>Khách lẻ báo lỗi</b> (${esc(name || "Telegram")}):\n${toQ.map((l) => "• " + esc(l)).join("\n")}\n\nĐã vào tab Lệnh — bấm Xong là bot tự nhắn lại khách.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
+    } catch (e) { console.error("cus queue", (e as Error).message); }
+  }
+  await cusPut(doc);
+  return csay(chat, out.join("\n\n"));
+}
+
+/* Thay Fam gọi khi Xong / thay fam mời lại. Chỉ nhắn khách đang chờ (pending), mỗi lần báo 1 tin. */
+async function cusNotify(emails: string[], kind: string) {
+  const doc = await cusGet(); let sent = 0;
+  for (const raw of emails) {
+    const e = String(raw).toLowerCase(), s = doc.subs[e];
+    if (!s || !s.pending) continue;
+    const head = kind === "invited" ? `🔄 Đã chuyển <b>${esc(e)}</b> sang gia đình YouTube mới và gửi lời mời.` : `✅ Lỗi của <b>${esc(e)}</b> đã được xử lý xong.`;
+    const r = await csay(s.chat, `${head}\n\n${acceptGuide(e)}`);
+    if (r.ok) { s.pending = false; s.at = Date.now(); sent++; }
+  }
+  if (sent) await cusPut(doc);
+  return sent;
+}
+
 /* ---------- Gia hạn duyệt ngay trên bot ----------
    Gõ "abc@gmail.com gia hạn 12 tháng" → vào hàng chờ Lệnh như cũ + bot gửi thẻ xem trước HSD mới có nút ✅ Duyệt.
    Bấm Duyệt = đúng như Duyệt trên web (renewCus): HSD bản sao + data gốc + dòng Tài chính, rồi đánh Xong dòng lệnh. */
@@ -1055,6 +1153,38 @@ Deno.serve(async (req) => {
       let who = ""; try { who = await owner(); } catch (e) { who = "LỖI: " + (e as Error).message; }
       if (set.ok) await say("✅ Desk Inbox đã bật. Từ giờ nhắn gì cho bot cũng được lưu vào godnc.com/desk. Gõ /help xem cách dùng.");
       return ok({ ok: set.ok, webhook: self, desk_user: who, telegram: set });
+    }
+    // ---- bot khách lẻ ----
+    if (url.searchParams.has("cus_setup")) {
+      if (!SECRET || url.searchParams.get("cus_setup") !== SECRET) return ok({ ok: false, error: "sai TG_SECRET" });
+      if (!CUS_TOKEN) return ok({ ok: false, error: "thiếu secret CUS_BOT_TOKEN" });
+      if (CUS_TOKEN === TOKEN) return ok({ ok: false, error: "CUS_BOT_TOKEN phải là bot khác @goshopassistantbot" });
+      const self = `${SB_URL}/functions/v1/desk-bot?cus=1`;
+      const set = await ctg("setWebhook", { url: self, secret_token: SECRET, allowed_updates: ["message", "edited_message"], max_connections: 2 });
+      await ctg("setMyCommands", { commands: [{ command: "start", description: "Hướng dẫn" }] });
+      const me = await ctg("getMe", {});
+      return ok({ ok: set.ok, bot: me.result?.username, webhook: self, telegram: set });
+    }
+    if (url.searchParams.has("cus")) {
+      if (req.method !== "POST" || req.headers.get("x-telegram-bot-api-secret-token") !== SECRET || !CUS_TOKEN) return new Response("forbidden", { status: 403 });
+      const u = await req.json();
+      const job = cusHandle(u).catch((e) => console.error("cus", e));
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(job); else await job;
+      return ok();
+    }
+    if (url.searchParams.has("cus_notify")) {
+      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+      const J = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+      const b = await req.json().catch(() => ({}));
+      const pass = Deno.env.get("TF_PASS") || "";
+      if (!pass || b.pass !== pass) return J({ ok: false, error: "sai mật khẩu" }, 403);
+      if (!CUS_TOKEN) return J({ ok: true, sent: 0, note: "chưa cài bot khách" });
+      const ems = Array.isArray(b.emails) ? b.emails.filter((x: unknown) => typeof x === "string" && x.includes("@")).slice(0, 50) : [];
+      try {
+        const sent = await cusNotify(ems, String(b.kind || "fixed"));
+        if (sent && b.kind !== "invited") { try { await tuanFixedAdd(ems, "Khách lẻ: đã xử lý"); } catch (_) { /* bỏ qua */ } }
+        return J({ ok: true, sent });
+      } catch (e) { return J({ ok: false, error: (e as Error).message }); }
     }
     // ---- bot nhóm Tuấn ----
     if (url.searchParams.has("tuan_notify")) {
