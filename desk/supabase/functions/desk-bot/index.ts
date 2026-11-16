@@ -536,7 +536,11 @@ async function tfFind(e: string) {
 }
 function tfStatus(e: string, r: any) {
   if (!r) return `❓ <b>${esc(e)}</b>\nKhông có trong Kho TK (khách mới / gõ sai mail?).`;
-  if (r.arch) return `⚠️ <b>${esc(e)}</b>\nĐang ở vùng lưu, <b>chưa có slot</b> → chưa được mời. Cần chuyển vào fam còn slot.` + (r.arch.hsd ? `\nHSD ${shortD(r.arch.hsd)}` : "");
+  if (r.arch) {
+    const v = pDate(r.arch.hsd), left = v == null ? null : daysU(v);
+    if (left != null && left < 0) return `⛔ <b>${esc(e)}</b>\nĐang ở vùng lưu, <b>hết hạn ${shortD(r.arch.hsd)}</b> (${conL(left)}) → gia hạn thì chuyển vào fam còn slot rồi mời.`;
+    return `⚠️ <b>${esc(e)}</b>\nĐang ở vùng lưu, <b>chưa có slot</b> → chưa được mời. Cần chuyển vào fam còn slot.` + (r.arch.hsd ? `\nHSD ${shortD(r.arch.hsd)}` : "");
+  }
   const { f, c } = r, why: string[] = [];
   if (c.daysLeft != null && c.daysLeft < 0) why.push(`Khách hết hạn ${-c.daysLeft} ngày`);
   const st = f.famState ? ({ deleted: "đã xoá nhóm", scanned: "bị quét" } as any)[f.famState.state] || f.famState.state : "";
@@ -615,7 +619,13 @@ async function tuanCheck(e: string, raw: string, openText: string, fixed: Fixed 
     return { text: `✅ <b>${esc(e)}</b>: DNC đã fix lúc ${fmtAt(fx.at)}.\nBáo khách kiểm tra lại (mở Gmail bấm Chấp nhận lời mời). Khách vẫn lỗi thì gõ: <code>${esc(e)} vẫn lỗi</code>`, queue: false };
   const r = await tfFind(e);
   if (!r) return { text: `❓ <b>${esc(e)}</b>: chưa thấy trong danh sách. ⏳ Đợi DNC check lại.`, queue: true };
-  if (r.arch) return { text: `⏳ <b>${esc(e)}</b>: đang chờ xếp fam mới, chưa mời. Đợi DNC xử lý.`, queue: true };
+  if (r.arch) {
+    // khách ở vùng lưu: hết hạn thì báo hết hạn (không phải chờ xếp fam)
+    const a = r.arch, v = pDate(a.hsd), left = v == null ? null : daysU(v);
+    if (a.ctv && normCtv(a.ctv) !== "Tuấn") return { text: `ℹ️ <b>${esc(e)}</b>: không phải khách của Tuấn.`, queue: false };
+    if (left != null && left < 0) return { text: `⛔ <b>${esc(e)}</b>: <b>hết hạn ${shortD(a.hsd)}</b>. Khách cần gia hạn.`, queue: false };
+    return { text: `⏳ <b>${esc(e)}</b>: đang chờ xếp fam mới, chưa mời${a.hsd ? ` · HSD ${shortD(a.hsd)}` : ""}. Đợi DNC xử lý.`, queue: true };
+  }
   const { f, c } = r;
   if (normCtv(c.ctv) !== "Tuấn") return { text: `ℹ️ <b>${esc(e)}</b>: không phải khách của Tuấn.`, queue: false };
   const who = r.phuOf ? ` (mail phụ của ${esc(c.email)})` : "";
