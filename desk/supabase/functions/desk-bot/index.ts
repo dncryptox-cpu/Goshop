@@ -680,7 +680,7 @@ async function tuanHandle(m: any) {
    Lỗi → vào tab Lệnh (from "Khách lẻ") + báo DNC trên @goshopassistantbot.
    DNC bấm Xong / thay fam mời lại → Thay Fam gọi ?cus_notify → bot nhắn lại đúng khách đã báo.
    Chỉ phục vụ khách CTV Dnc; khách của CTV khác được bảo liên hệ nơi đã mua.
-   Cài: thêm secret CUS_BOT_TOKEN, deploy, mở 1 lần  .../desk-bot?cus_setup=<TG_SECRET> */
+   Cài: thêm secret CUS_BOT_TOKEN, deploy, mở 1 lần  .../desk-bot?cus_setup=<mật khẩu admin Thay Fam> */
 const CUS_TOKEN = Deno.env.get("CUS_BOT_TOKEN") || "";
 const CUS_FROM = "Khách lẻ";
 const FAMILY_URL = "https://myaccount.google.com/family/details";
@@ -1156,7 +1156,10 @@ Deno.serve(async (req) => {
     }
     // ---- bot khách lẻ ----
     if (url.searchParams.has("cus_setup")) {
-      if (!SECRET || url.searchParams.get("cus_setup") !== SECRET) return ok({ ok: false, error: "sai TG_SECRET" });
+      // mở bằng TG_SECRET hoặc mật khẩu admin Thay Fam (TF_PASS)
+      const k = url.searchParams.get("cus_setup") || "", tfp = Deno.env.get("TF_PASS") || "";
+      if (!SECRET) return ok({ ok: false, error: "thiếu TG_SECRET" });
+      if (k !== SECRET && !(tfp && k === tfp)) return ok({ ok: false, error: "sai mã (dùng mật khẩu admin Thay Fam)" });
       if (!CUS_TOKEN) return ok({ ok: false, error: "thiếu secret CUS_BOT_TOKEN" });
       if (CUS_TOKEN === TOKEN) return ok({ ok: false, error: "CUS_BOT_TOKEN phải là bot khác @goshopassistantbot" });
       const self = `${SB_URL}/functions/v1/desk-bot?cus=1`;
