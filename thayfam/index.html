@@ -177,6 +177,11 @@
   .ask-meta{font-size:11px;margin-top:3px}
   .ask-in{display:flex;gap:8px;position:sticky;bottom:0;background:var(--bg);padding:10px 0 4px}
   .ask-in textarea{flex:1;font:inherit;font-size:16px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--card);color:var(--ink);resize:vertical}
+  .botk .bk{padding:14px 16px;margin-bottom:12px}
+  .botk .bk h3{margin:0 0 10px;font-size:16px}
+  .botk .okc{color:#2e7d4f} .botk .bad{color:#b3261e}
+  .botk input[type=text]{padding:6px 8px} .botk .tbl{border-collapse:collapse;white-space:nowrap;margin-bottom:8px;font-size:14px} .botk .tbl td,.botk .tbl th{padding:4px 6px 4px 0;text-align:left}
+  .botsave{position:sticky;bottom:0;background:var(--bg);padding:10px 0;display:flex;gap:10px;justify-content:flex-end;align-items:center}
 </style>
 <script src="/appnav.js" defer></script>
 </head>
@@ -273,6 +278,7 @@
         <button class="tab" x-show="can('review')" :class="tab==='sync' && 'on'" @click="tab='sync'; loadReview()">Đồng bộ<span class="n" x-text="review.length"></span></button>
         <button class="tab" :class="tab==='log' && 'on'" @click="tab='log'; loadLog()">Lịch sử</button>
         <button class="tab" x-show="me.role==='admin'" :class="tab==='notes' && 'on'" @click="tab='notes'; loadNotes()">Cần xử lý<span class="n" :class="openNotes && 'hot'" x-text="openNotes"></span></button>
+        <button class="tab" x-show="me.role==='admin'" :class="tab==='bot' && 'on'" @click="tab='bot'; loadBot()">📮 Bot khách</button>
         <button class="tab" x-show="me.role==='admin'" :class="tab==='ask' && 'on'" @click="tab='ask'; $nextTick(() => $refs.askIn && $refs.askIn.focus())">🤖 Hỏi</button>
         <button class="tab" x-show="me.role==='admin'" :class="tab==='users' && 'on'" @click="tab='users'; loadUsers()">Tài khoản</button>
       </nav>
@@ -1173,6 +1179,75 @@
       </section>
 
       <!-- TAB CẦN XỬ LÝ (admin) -->
+      <section x-show="tab==='bot' && !searchOn()" class="botk">
+        <div class="err" x-show="bot.err" x-text="bot.err"></div>
+        <div class="mute" x-show="bot.loading">Đang tải…</div>
+        <template x-if="bot.d">
+          <div>
+            <div class="card bk">
+              <h3>Trạng thái</h3>
+              <div x-show="!bot.d.token" class="warn">Chưa có secret <span class="mono">CUS_BOT_TOKEN</span> trên Supabase → tạo bot ở @BotFather, thêm token vào Supabase › Edge Functions › Secrets.</div>
+              <div x-show="bot.d.token">
+                Bot: <b x-text="bot.d.bot ? '@' + bot.d.bot : '?'"></b>
+                <a x-show="bot.d.bot" :href="'https://t.me/' + bot.d.bot" target="_blank">mở</a>
+                · Webhook: <b :class="bot.d.hook && bot.d.hook.ok ? 'okc' : 'bad'" x-text="bot.d.hook && bot.d.hook.ok ? 'đang chạy' : 'chưa cài'"></b>
+                <span class="mute" x-show="bot.d.hook && bot.d.hook.err" x-text="' · lỗi gần nhất: ' + (bot.d.hook || {}).err"></span>
+                <button class="btn sm" :class="!(bot.d.hook && bot.d.hook.ok) && 'pri'" @click="botCall('setup')" :disabled="bot.saving" x-text="bot.d.hook && bot.d.hook.ok ? 'Cài lại' : 'Bật bot'"></button>
+                <button class="btn sm" @click="botCopyLink()" x-show="bot.d.bot">Copy link gửi khách</button>
+              </div>
+              <div class="mute" style="font-size:13px;margin-top:6px" x-show="bot.d.waiting.length" x-text="'Đang chờ bot nhắn lại: ' + bot.d.waiting.map(w => w.email + (w.kind === 'order' ? ' (đơn mới)' : w.kind === 'renew' ? ' (gia hạn)' : '')).join(', ')"></div>
+            </div>
+
+            <div class="card bk">
+              <h3>Bán hàng <label style="font-weight:400;font-size:14px;margin-left:8px"><input type="checkbox" x-model="bot.d.sell.on"> bật bán qua bot</label></h3>
+              <div class="mute" style="font-size:13px;margin-bottom:8px">Khách bấm 🛒 hoặc gõ /mua → chọn gói → gửi email → nhận QR chuyển khoản (nội dung = mã đơn) → bấm "Tôi đã chuyển khoản" → đơn vào tab <b>Lệnh</b>. Anh kiểm tra tiền rồi Duyệt/Xong → bot nhắn khách "đã kích hoạt / đã gia hạn". Khách hết hạn tra email sẽ thấy nút gia hạn. Gói giá 0đ = ẩn.</div>
+              <table class="tbl"><thead><tr><th>Tên gói</th><th>Tháng</th><th>Giá (đ)</th><th></th></tr></thead><tbody>
+                <template x-for="(p, i) in bot.d.sell.packs" :key="i"><tr>
+                  <td><input type="text" x-model="p.name" style="width:100px"></td>
+                  <td><input type="text" inputmode="numeric" x-model.number="p.months" style="width:44px"></td>
+                  <td><input type="text" inputmode="numeric" x-model.number="p.price" style="width:86px"></td>
+                  <td><button class="btn sm" @click="bot.d.sell.packs.splice(i, 1)">Xoá</button></td>
+                </tr></template>
+              </tbody></table>
+              <button class="btn sm" @click="bot.d.sell.packs.push({ id: 'p' + Date.now().toString(36).slice(-5), name: '', months: 1, price: 0 })">+ Thêm gói</button>
+              <h4 style="margin:14px 0 6px">Tài khoản nhận tiền (tạo QR VietQR)</h4>
+              <div class="row" style="gap:8px;flex-wrap:wrap">
+                <input type="text" x-model="bot.d.sell.bank.id" placeholder="Ngân hàng: MB, VCB, TCB, ACB…" style="width:200px">
+                <input type="text" inputmode="numeric" x-model="bot.d.sell.bank.acc" placeholder="Số tài khoản" style="width:180px">
+                <input type="text" x-model="bot.d.sell.bank.name" placeholder="Tên chủ TK (không dấu)" style="width:220px">
+              </div>
+              <div class="mute" style="font-size:12px;margin-top:4px" x-show="bot.d.sell.bank.id && bot.d.sell.bank.acc">Xem thử QR: <a target="_blank" :href="'https://img.vietqr.io/image/' + encodeURIComponent(bot.d.sell.bank.id) + '-' + encodeURIComponent(bot.d.sell.bank.acc) + '-compact2.png?amount=10000&addInfo=TEST&accountName=' + encodeURIComponent(bot.d.sell.bank.name || '')">mở ảnh QR 10.000đ</a></div>
+            </div>
+
+            <div class="card bk">
+              <h3>Câu chữ bot</h3>
+              <div class="mute" style="font-size:13px;margin-bottom:8px">Biến tự điền (in đậm): <span class="mono">{email} {hsd} {ngay} {goi} {gia} {ma}</span>. Để trống = dùng câu mặc định.</div>
+              <template x-for="k in Object.keys(bot.d.texts)" :key="k">
+                <div style="margin-bottom:10px">
+                  <div style="font-size:13px;font-weight:600;display:flex;gap:8px;align-items:center"><span x-text="bot.d.texts[k].label"></span>
+                    <button class="btn sm" x-show="bot.d.texts[k].val !== bot.d.texts[k].def" @click="bot.d.texts[k].val = bot.d.texts[k].def">Về mặc định</button></div>
+                  <textarea rows="3" x-model="bot.d.texts[k].val" style="width:100%;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--ink)"></textarea>
+                </div>
+              </template>
+            </div>
+
+            <div class="card bk" x-show="bot.d.orders.length">
+              <h3>Đơn qua bot (30 gần nhất)</h3>
+              <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Mã</th><th>Email</th><th>Gói</th><th>Giá</th><th>Loại</th><th>Trạng thái</th><th>Lúc</th></tr></thead><tbody>
+                <template x-for="o in bot.d.orders" :key="o.ma"><tr>
+                  <td class="mono" x-text="o.ma"></td><td class="mono" x-text="o.email"></td><td x-text="o.pack"></td>
+                  <td x-text="Number(o.price).toLocaleString('vi-VN') + 'đ'"></td><td x-text="o.kind === 'renew' ? 'gia hạn' : 'mới'"></td>
+                  <td x-text="({ wait: 'chờ CK', paid: 'đã báo CK', done: 'xong', cancel: 'huỷ' })[o.st] || o.st"></td>
+                  <td x-text="new Date(o.at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })"></td>
+                </tr></template>
+              </tbody></table></div>
+            </div>
+
+            <div class="botsave"><span class="mute" x-text="bot.msg"></span><button class="btn pri" @click="botCall('set')" :disabled="bot.saving" x-text="bot.saving ? 'Đang lưu…' : 'Lưu'"></button></div>
+          </div>
+        </template>
+      </section>
+
       <section x-show="tab==='ask' && !searchOn()" class="ask">
         <div class="mute" style="font-size:13px;margin-bottom:10px">Hỏi gì về fam / khách cũng được — trợ lý tra dữ liệu thật rồi trả lời. Chỉ đọc; bảo nó làm việc ghi thì nó đưa vào tab <b>Lệnh</b> để anh duyệt. Trên Telegram: <span class="mono">/hoi …</span> hoặc tin bắt đầu bằng <span class="mono">?</span></div>
         <div class="chips" x-show="!askLog.length">
@@ -1762,6 +1837,7 @@ const READS = ['dashboard', 'log', 'review', 'search', 'slots', 'week', 'mailLog
 const API_URL = 'https://script.google.com/macros/s/AKfycby2lwu9UYCAsbYMZtXnGTLMWlRE2aaO_FaBG312jiBEEjZdf5NotZsJ06I39TgG3Zjg/exec';
 const FIXYTB_URL = 'https://godnc.com/fixytb/';
 const ASK_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tf_ask=1';
+const CUS_ADMIN_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?cus_admin=1';
 const CUS_BOT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?cus_notify=1';
 const TUAN_BOT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tuan_notify=1';
 
@@ -1770,6 +1846,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
+    bot: { d: null, loading: false, saving: false, err: '', msg: '' },
     askQ: '', askBusy: false, askErr: '', askLog: (() => { try { return JSON.parse(sessionStorage.getItem('tf_ask') || '[]'); } catch (e) { return []; } })(),
     askSamples: ['Hôm nay cần thay fam nào?', 'Fam nào đang bị chặn mời, bao giờ mời lại được?', 'Khách Tuấn hết hạn trong 3 ngày tới', 'Fam nào còn slot trống?', 'Khách nào đã mời mà chưa vào nhóm?', 'Có bao nhiêu khách đang chờ xếp fam?'],
     cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
@@ -1831,6 +1908,20 @@ function app() {
       this.load().then(() => { if (this.slotsLoaded) this.bg(() => this.loadSlots()); if (this.wk) this.bg(() => this.loadWeek()); if (this.allFams) { this._allLoading = false; this.warmSearch(); } });
     },
     warmSearch() { if (this.can('all') && (!this.allFams || this.allStale) && !this._allLoading) { this._allLoading = true; this.bg(() => this.loadAll()).then(() => { this._allLoading = false; }); } },
+    async botCall(op) {
+      const b = this.bot; b.err = ''; b.msg = '';
+      if (op === 'get') b.loading = true; else b.saving = true;
+      try {
+        const body = { pass: this.pass, op: op };
+        if (op === 'set') body.cfg = { sell: b.d.sell, texts: Object.fromEntries(Object.entries(b.d.texts).map(([k, t]) => [k, t.val])) };
+        const r = await fetch(CUS_ADMIN_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(x => x.json());
+        if (!r.ok) throw new Error(r.error || 'Lỗi');
+        b.d = r; b.msg = op === 'set' ? 'Đã lưu ✓' : op === 'setup' ? 'Đã bật bot ✓' : '';
+      } catch (e) { b.err = e.message; }
+      b.loading = false; b.saving = false;
+    },
+    loadBot() { if (!this.bot.d) this.botCall('get'); },
+    botCopyLink() { const u = 'https://t.me/' + this.bot.d.bot; try { navigator.clipboard.writeText(u); this.bot.msg = 'Đã copy ' + u; } catch (e) { this.bot.msg = u; } },
     askSave() { try { sessionStorage.setItem('tf_ask', JSON.stringify(this.askLog.slice(-30))); } catch (e) {} },
     async askSend() {
       const q = this.askQ.trim(); if (!q || this.askBusy) return;
