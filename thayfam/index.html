@@ -1199,17 +1199,19 @@
             </div>
 
             <div class="card bk">
-              <h3>Bán hàng <label style="font-weight:400;font-size:14px;margin-left:8px"><input type="checkbox" x-model="bot.d.sell.on"> bật bán qua bot</label></h3>
-              <div class="mute" style="font-size:13px;margin-bottom:8px">Khách bấm 🛒 hoặc gõ /mua → chọn gói → gửi email → nhận QR chuyển khoản (nội dung = mã đơn) → bấm "Tôi đã chuyển khoản" → đơn vào tab <b>Lệnh</b>. Anh kiểm tra tiền rồi Duyệt/Xong → bot nhắn khách "đã kích hoạt / đã gia hạn". Khách hết hạn tra email sẽ thấy nút gia hạn. Gói giá 0đ = ẩn.</div>
-              <table class="tbl"><thead><tr><th>Tên gói</th><th>Tháng</th><th>Giá (đ)</th><th></th></tr></thead><tbody>
+              <h3>Sản phẩm bán <label style="font-weight:400;font-size:14px;margin-left:8px"><input type="checkbox" x-model="bot.d.sell.on"> bật bán qua bot</label></h3>
+              <div class="mute" style="font-size:13px;margin-bottom:8px">Khách bấm 🛒 hoặc /mua → chọn → gửi email → QR chuyển khoản (nội dung = mã đơn) → bấm "Đã chuyển khoản".<br>• <b>YT</b> tick: đơn vào tab Lệnh, Duyệt/Xong là bot báo khách.<br>• Không tick (CapCut…): anh giao rồi bấm <b>Đã giao</b>.<br>• <b>Tồn</b> trống = không giới hạn; 0 = "Hết hàng 🔔". Nhập lại tồn rồi Lưu → bot nhắn khách đã bấm 🔔. Giá 0 = ẩn.</div>
+              <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Tên</th><th>Tháng</th><th>Giá (đ)</th><th>Tồn</th><th>YT</th><th></th></tr></thead><tbody>
                 <template x-for="(p, i) in bot.d.sell.packs" :key="i"><tr>
-                  <td><input type="text" x-model="p.name" style="width:100px"></td>
+                  <td><input type="text" x-model="p.name" style="width:120px"></td>
                   <td><input type="text" inputmode="numeric" x-model.number="p.months" style="width:44px"></td>
                   <td><input type="text" inputmode="numeric" x-model.number="p.price" style="width:86px"></td>
+                  <td><input type="text" inputmode="numeric" x-model="p.stock" placeholder="∞" style="width:50px"><div class="mute" style="font-size:11px" x-show="(bot.d.waitN || {})[p.id]" x-text="'🔔 ' + (bot.d.waitN || {})[p.id] + ' chờ'"></div></td>
+                  <td><input type="checkbox" :checked="p.ytb !== false" @change="p.ytb = $event.target.checked"></td>
                   <td><button class="btn sm" @click="bot.d.sell.packs.splice(i, 1)">Xoá</button></td>
                 </tr></template>
-              </tbody></table>
-              <button class="btn sm" @click="bot.d.sell.packs.push({ id: 'p' + Date.now().toString(36).slice(-5), name: '', months: 1, price: 0 })">+ Thêm gói</button>
+              </tbody></table></div>
+              <button class="btn sm" @click="bot.d.sell.packs.push({ id: 'p' + Date.now().toString(36).slice(-5), name: '', months: 1, price: 0, stock: '', ytb: false })">+ Thêm sản phẩm</button>
               <h4 style="margin:14px 0 6px">Tài khoản nhận tiền (tạo QR VietQR)</h4>
               <div class="row" style="gap:8px;flex-wrap:wrap">
                 <input type="text" x-model="bot.d.sell.bank.id" placeholder="Ngân hàng: MB, VCB, TCB, ACB…" style="width:200px">
@@ -1232,12 +1234,13 @@
             </div>
 
             <div class="card bk" x-show="bot.d.orders.length">
-              <h3>Đơn qua bot (30 gần nhất)</h3>
+              <h3>Đơn qua bot</h3>
               <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Mã</th><th>Email</th><th>Gói</th><th>Giá</th><th>Loại</th><th>Trạng thái</th><th>Lúc</th></tr></thead><tbody>
                 <template x-for="o in bot.d.orders" :key="o.ma"><tr>
                   <td class="mono" x-text="o.ma"></td><td class="mono" x-text="o.email"></td><td x-text="o.pack"></td>
-                  <td x-text="Number(o.price).toLocaleString('vi-VN') + 'đ'"></td><td x-text="o.kind === 'renew' ? 'gia hạn' : 'mới'"></td>
-                  <td x-text="({ wait: 'chờ CK', paid: 'đã báo CK', done: 'xong', cancel: 'huỷ' })[o.st] || o.st"></td>
+                  <td x-text="Number(o.price).toLocaleString('vi-VN') + 'đ'"></td><td x-text="!o.ytb ? 'SP khác' : o.kind === 'renew' ? 'gia hạn' : 'mới'"></td>
+                  <td><span x-text="({ wait: 'chờ CK', paid: 'đã báo CK', done: 'xong', cancel: 'huỷ' })[o.st] || o.st"></span>
+                    <button class="btn sm pri" x-show="!o.ytb && o.st === 'paid'" @click="botDeliver(o)" :disabled="bot.saving">Đã giao</button></td>
                   <td x-text="new Date(o.at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })"></td>
                 </tr></template>
               </tbody></table></div>
@@ -1908,17 +1911,24 @@ function app() {
       this.load().then(() => { if (this.slotsLoaded) this.bg(() => this.loadSlots()); if (this.wk) this.bg(() => this.loadWeek()); if (this.allFams) { this._allLoading = false; this.warmSearch(); } });
     },
     warmSearch() { if (this.can('all') && (!this.allFams || this.allStale) && !this._allLoading) { this._allLoading = true; this.bg(() => this.loadAll()).then(() => { this._allLoading = false; }); } },
-    async botCall(op) {
+    async botCall(op, opt) {
       const b = this.bot; b.err = ''; b.msg = '';
       if (op === 'get') b.loading = true; else b.saving = true;
       try {
         const body = { pass: this.pass, op: op };
         if (op === 'set') body.cfg = { sell: b.d.sell, texts: Object.fromEntries(Object.entries(b.d.texts).map(([k, t]) => [k, t.val])) };
+        if (opt) Object.assign(body, opt);
         const r = await fetch(CUS_ADMIN_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(x => x.json());
         if (!r.ok) throw new Error(r.error || 'Lỗi');
-        b.d = r; b.msg = op === 'set' ? 'Đã lưu ✓' : op === 'setup' ? 'Đã bật bot ✓' : '';
+        for (const p of r.sell.packs) { p.stock = p.stock == null ? '' : p.stock; p.stock0 = p.stock; }
+        b.d = r; b.msg = (op === 'set' ? 'Đã lưu ✓' : op === 'setup' ? 'Đã bật bot ✓' : '') + (r.note ? ' · ' + r.note : '');
       } catch (e) { b.err = e.message; }
       b.loading = false; b.saving = false;
+    },
+    botDeliver(o) {
+      const note = prompt('Gửi kèm cho khách (tài khoản, hướng dẫn…) — để trống nếu không cần:', '');
+      if (note === null) return;
+      this.botCall('deliver', { ma: o.ma, note: note });
     },
     loadBot() { if (!this.bot.d) this.botCall('get'); },
     botCopyLink() { const u = 'https://t.me/' + this.bot.d.bot; try { navigator.clipboard.writeText(u); this.bot.msg = 'Đã copy ' + u; } catch (e) { this.bot.msg = u; } },
