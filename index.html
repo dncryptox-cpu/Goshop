@@ -366,6 +366,7 @@
                 </template>
             </nav>
             <button x-show="tab === 'journal'" @click="openTradeForm()" title="Lệnh mới (N)" class="btn btn-primary !rounded-full !px-3.5 !py-1.5 text-[14px] ml-1"><i data-lucide="plus" class="w-4 h-4"></i><span class="hidden sm:inline">Lệnh mới</span></button>
+            <button @click="openSim()" title="Tìm lệnh cũ giống chart này" class="press w-8 h-8 rounded-full flex items-center justify-center text-ink-2 hover:text-ink shrink-0 ml-1"><i data-lucide="scan-search" class="w-4 h-4"></i></button>
             <button @click="openSettings()" class="press w-8 h-8 rounded-full flex items-center justify-center font-semibold text-[13px] text-canvas shrink-0 ml-1 relative overflow-hidden" :style="`background:${avatarColor(username)}`" :title="'@' + username"><span x-text="(username || '?').slice(0, 1).toUpperCase()"></span><img x-show="av(userId)" :src="av(userId) || null" class="absolute inset-0 w-full h-full object-cover" alt="" loading="lazy"></button>
         </div>
     </header>
@@ -518,7 +519,10 @@
                 <h1 class="title-lg">Nhật ký</h1>
                 <p class="text-[15px] text-ink-2 mt-1"><span x-text="journal.closed.length"></span> lệnh đã đóng • <span x-text="journal.running"></span> đang chạy</p>
             </div>
+            <div class="flex items-center gap-1">
+            <button @click="openSim()" class="btn btn-gray !py-1.5 text-[14px]"><i data-lucide="scan-search" class="w-4 h-4"></i><span>Tìm case tương tự</span></button>
             <button @click="syncAll()" class="btn btn-plain text-[14px]" :disabled="syncing"><span class="inline-flex" :class="syncing && 'animate-spin'"><i data-lucide="refresh-cw" class="w-4 h-4"></i></span><span class="hidden sm:inline">Đồng bộ</span></button>
+            </div>
         </div>
 
         <div class="seg !w-auto max-w-max">
@@ -1455,6 +1459,106 @@
 </div>
 
 <!-- ═════════════ SHEET: XEM LỆNH ═════════════ -->
+<!-- ═════════════ SHEET: TÌM CASE TƯƠNG TỰ (kho chart AI) ═════════════ -->
+<div x-show="sim.open" x-cloak class="fixed inset-0 z-40 scrim flex items-end md:items-center justify-center md:p-6" @click.self="sim.open = false">
+    <template x-if="sim.open">
+        <div class="sheet w-full md:max-w-3xl">
+            <div class="sheet-head border-b border-line">
+                <div class="grabber md:hidden"></div>
+                <div class="flex items-center justify-between px-4 h-12">
+                    <button @click="sim.open = false" class="btn btn-plain !px-1">Đóng</button>
+                    <span class="title-sm">Tìm case tương tự</span>
+                    <button @click="simReset()" class="btn btn-plain !px-1" :disabled="!!sim.busy">Làm lại</button>
+                </div>
+            </div>
+            <div class="p-4 sm:p-5 space-y-5">
+                <!-- Trạng thái kho -->
+                <div class="well p-3 flex items-center gap-3">
+                    <i data-lucide="database" class="w-5 h-5 shrink-0" :class="sim.idx.run ? 'text-accent animate-pulse' : 'text-ink-3'"></i>
+                    <div class="flex-1 min-w-0 text-[14px]">
+                        <template x-if="sim.idx.run">
+                            <span>AI đang đọc chart cũ: <span class="num" x-text="sim.idx.done + '/' + sim.idx.todo"></span> <span class="caption">— có thể tìm ngay, kho đầy dần</span></span>
+                        </template>
+                        <template x-if="!sim.idx.run">
+                            <span>Kho: <span class="num font-semibold" x-text="sim.idx.indexed"></span><span class="num text-ink-3" x-text="'/' + sim.idx.total"></span> chart đã được AI đọc</span>
+                        </template>
+                        <p x-show="sim.idx.err" class="caption !text-down truncate" x-text="sim.idx.err"></p>
+                    </div>
+                    <button x-show="sim.idx.run" @click="sim.idx.run = false" class="btn btn-plain !py-1 !px-2 text-[13px]">Dừng</button>
+                    <button x-show="!sim.idx.run" @click="simSync()" class="btn btn-plain !py-1 !px-2 text-[13px]">Cập nhật</button>
+                </div>
+
+                <!-- Ảnh chart đang định vào -->
+                <section class="space-y-2">
+                    <div class="grid grid-cols-3 gap-2">
+                        <template x-for="sl in SLOTS" :key="sl.key">
+                            <div class="slot" :class="{ active: sim.slot === sl.key && !sim.imgs[sl.key] }"
+                                 @click="sim.slot = sl.key; $event.currentTarget.querySelector('input[type=file]').click()" @dragover.prevent @drop.prevent="simTake($event.dataTransfer.files[0], sl.key)">
+                                <input type="file" accept="image/*" class="hidden" @click.stop @change="simTake($event.target.files[0], sl.key); $event.target.value = ''">
+                                <img x-show="sim.imgs[sl.key]" :src="sim.imgs[sl.key] || null" alt="">
+                                <div x-show="!sim.imgs[sl.key]" class="absolute inset-0 flex flex-col items-center justify-center text-center px-1">
+                                    <span class="font-semibold text-[15px]" :class="sim.slot === sl.key ? 'text-accent' : 'text-ink'" x-text="sl.key"></span>
+                                    <span class="text-[11px] text-ink-3" x-text="sl.label"></span>
+                                </div>
+                                <span x-show="sim.imgs[sl.key]" class="absolute top-1.5 left-1.5 chip chip-glass" x-text="sl.key"></span>
+                                <button x-show="sim.imgs[sl.key]" type="button" @click.stop="sim.imgs[sl.key] = ''; sim.slot = sl.key" class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/70 text-ink text-xs flex items-center justify-center" title="Bỏ ảnh">✕</button>
+                            </div>
+                        </template>
+                    </div>
+                    <p class="caption"><span class="hidden sm:inline">Ctrl+V để dán ảnh. </span>1 ảnh là đủ, thêm khung lớn thì so chính xác hơn. Ảnh này không được lưu.</p>
+                    <div class="flex gap-2 items-center">
+                        <div class="seg !w-auto">
+                            <button @click="sim.dir = ''" :class="{ on: sim.dir === '' }">Mọi hướng</button>
+                            <button @click="sim.dir = 'LONG'" :class="{ on: sim.dir === 'LONG' }">Long</button>
+                            <button @click="sim.dir = 'SHORT'" :class="{ on: sim.dir === 'SHORT' }">Short</button>
+                        </div>
+                        <button @click="simSearch()" class="btn btn-primary flex-1" :disabled="!!sim.busy"><i data-lucide="scan-search" class="w-4 h-4"></i><span x-text="sim.busy || 'Tìm'"></span></button>
+                    </div>
+                </section>
+
+                <!-- AI đọc chart mới -->
+                <div x-show="sim.q" class="text-[14px] text-ink-2">
+                    <span class="caption uppercase tracking-wide block mb-1">AI đọc chart của bạn</span>
+                    <span x-text="sim.q && [sim.q.setup, sim.q.structure, sim.q.location].filter(Boolean).join(' · ')"></span>
+                </div>
+
+                <!-- Tổng kết -->
+                <div x-show="sim.results && sim.results.length" class="well p-4 space-y-2">
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <span class="caption uppercase tracking-wide mr-1">Các case giống</span>
+                        <span class="chip chip-up" x-text="simStats.w + ' thắng'"></span>
+                        <span class="chip chip-down" x-text="simStats.l + ' thua'"></span>
+                        <span x-show="simStats.be" class="chip chip-gray" x-text="simStats.be + ' hoà'"></span>
+                        <span class="chip num" :class="simStats.sumR >= 0 ? 'chip-up' : 'chip-down'" x-text="'Tổng ' + fmtR(simStats.sumR, true)"></span>
+                    </div>
+                    <p x-show="sim.summary" class="text-[14px] whitespace-pre-line leading-relaxed" x-text="sim.summary"></p>
+                </div>
+                <p x-show="sim.results && !sim.results.length" class="caption text-center">Chưa có chart nào trong kho để so. Chờ AI đọc xong kho rồi tìm lại.</p>
+
+                <!-- Kết quả -->
+                <div x-show="sim.results && sim.results.length" class="grid sm:grid-cols-2 gap-3">
+                    <template x-for="c in (sim.results || [])" :key="c.id">
+                        <button @click="simOpen(c)" class="well p-2 text-left flex gap-3 items-start">
+                            <img :src="c.img || null" class="w-28 h-20 rounded-xl object-cover bg-fill shrink-0" alt="" loading="lazy">
+                            <div class="flex-1 min-w-0 space-y-1">
+                                <div class="flex flex-wrap gap-1 items-center">
+                                    <span class="chip chip-blue num" x-text="Math.round(c.similarity * 100) + '%'"></span>
+                                    <span x-show="c.direction" class="chip" :class="c.direction === 'LONG' ? 'chip-up' : 'chip-down'" x-text="c.direction"></span>
+                                    <span x-show="c.result" class="chip" :class="statusChip(c.result)" x-text="statusLabel(c.result)"></span>
+                                    <span x-show="c.result && c.result !== 'RUNNING'" class="num text-[13px]" :class="c.r > 0 ? 'text-up' : (c.r < 0 ? 'text-down' : 'text-ink-2')" x-text="fmtR(c.r, true)"></span>
+                                </div>
+                                <div class="caption truncate" x-text="[c.pair, c.label, fmtDate(c.at)].filter(Boolean).join(' · ')"></div>
+                                <div class="text-[13px] text-ink-2 line-clamp-2" x-text="(c.features && c.features.setup) || ''"></div>
+                                <div x-show="c.note" class="text-[13px] line-clamp-2" x-text="c.note"></div>
+                            </div>
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </div>
+    </template>
+</div>
+
 <div x-show="view" x-cloak class="fixed inset-0 z-40 scrim flex items-end md:items-center justify-center md:p-6" @click.self="view = null">
     <template x-if="view">
         <div class="sheet w-full md:max-w-3xl">
@@ -2103,6 +2207,15 @@
     const toAuthPw = p => 'dnc_' + String(p);
     const BUCKET = 'trade-images';
     const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+    // Kho chart AI: đổi model embedding = toàn bộ kho tự đọc lại (vector khác model không so được với nhau)
+    const EMBED_MODEL = 'gemini-embedding-001';
+    const CHART_PROMPT = `Bạn là trader price action. Đọc (các) ảnh chart và mô tả BỐI CẢNH TẠI THỜI ĐIỂM VÀO LỆNH, để sau này so sánh với chart khác.
+Quy tắc:
+- Nếu ảnh có công cụ Long/Short (vùng xanh/đỏ) thì điểm vào là cạnh chung của hai vùng. CHỈ mô tả giá TRƯỚC điểm vào; bỏ qua mọi diễn biến sau điểm vào, không nói lệnh thắng hay thua.
+- Dùng thuật ngữ chuẩn, ngắn gọn: xu hướng tăng/giảm/đi ngang, đỉnh đáy cao dần/thấp dần, BOS, CHoCH, phá vỡ, retest, quét thanh khoản, vùng cung/cầu, hỗ trợ/kháng cự, FVG, trendline, EMA, tích luỹ, nến đảo chiều.
+- Không bịa: không thấy thì để chuỗi rỗng.
+Trả về đúng 1 object JSON:
+{"pair":"cặp nếu đọc được","timeframe":"khung của ảnh vào lệnh","side":"LONG hoặc SHORT hoặc rỗng","trend":"xu hướng khung lớn","structure":"cấu trúc giá ngay trước điểm vào","setup":"tên setup ngắn, vd: retest kháng cự cũ thành hỗ trợ","location":"điểm vào nằm ở đâu so với cấu trúc / vùng giá","trigger":"tín hiệu kích hoạt vào lệnh","desc":"3-4 câu tiếng Việt tóm tắt bối cảnh"}`;
     // 3 khung ảnh. j = trường trong nhật ký, bt = cột bảng bt_trades, post = cột bảng posts
     const SLOTS = [
         { key: 'HTF', j: 'imgHtf', bt: 'img_htf', post: 'img_htf', label: 'Khung lớn' },
@@ -2129,6 +2242,8 @@
         return {
             TABS, SLOTS,
             t9: { loaded: false, docs: {}, saved: '', uploading: 0, aiId: '', drag: false },
+            sim: { open: false, imgs: { HTF: '', MTF: '', LTF: '' }, slot: 'LTF', dir: '', busy: '', q: null, results: null, summary: '',
+                   idx: { run: false, done: 0, todo: 0, total: 0, indexed: 0, failed: 0, err: '' } },
             booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false, isMember: false,
             jView: 'list', memberPage: false, gate: null, rpage: null, rpageGroup: '', planForm: null, nowTs: Date.now(),
             plan: { currency: 'USD', list_price: 200, price: 0, promo_on: false, promo_price: 0, promo_label: '', promo_start: null, promo_end: null }, myAvatar: '', avatarBusy: false, avatars: {},
@@ -2334,6 +2449,202 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                     this.t9ChartSet(id, { ai: text });
                 } catch (e) { this.showToast('Lỗi AI: ' + e.message, null, '', 5000); }
                 finally { this.t9.aiId = ''; this.$nextTick(() => this.icons()); }
+            },
+            // ═════════════ KHO CHART AI: tìm lệnh cũ giống chart đang định vào ═════════════
+            // Lệnh nhật ký + backtest (+ chart 90 ngày) → Gemini đọc bối cảnh lúc vào lệnh → vector (bảng chart_ai, pgvector)
+            // Tìm: ảnh mới → đọc y hệt → match_charts → top lệnh cũ + thống kê thắng/thua
+            async aiGen(parts, json = false) {
+                let last = '';
+                for (const model of GEMINI_MODELS) {
+                    for (let attempt = 0; attempt < 3; attempt++) {
+                        try {
+                            const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(this.gemini.trim())}`, {
+                                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ contents: [{ parts }], generationConfig: json ? { responseMimeType: 'application/json', temperature: 0.2 } : { temperature: 0.4 } })
+                            });
+                            if (r.ok) {
+                                const d = await r.json();
+                                const text = (((((d.candidates || [])[0] || {}).content || {}).parts || []).map(p => p.text || '').join('')).trim();
+                                if (!text) throw new Error('AI không trả lời');
+                                return json ? JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')) : text.replace(/\*\*/g, '');
+                            }
+                            const err = await r.json().catch(() => ({})); last = (err.error && err.error.message) || `HTTP ${r.status}`;
+                            if (r.status === 429 || r.status >= 500) { await new Promise(ok => setTimeout(ok, 5000 * (attempt + 1))); continue; }
+                            break;
+                        } catch (e) { last = e.message; break; }
+                    }
+                }
+                throw new Error(last || 'Không gọi được Gemini');
+            },
+            async aiEmbed(text) {
+                let last = '';
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${EMBED_MODEL}:embedContent?key=${encodeURIComponent(this.gemini.trim())}`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model: 'models/' + EMBED_MODEL, content: { parts: [{ text }] }, taskType: 'SEMANTIC_SIMILARITY', outputDimensionality: 768 })
+                    });
+                    if (r.ok) {
+                        const v = (((await r.json()).embedding) || {}).values || [];
+                        if (v.length !== 768) throw new Error('Vector sai kích thước: ' + v.length);
+                        const n = Math.hypot(...v) || 1;
+                        return v.map(x => x / n);
+                    }
+                    const err = await r.json().catch(() => ({})); last = (err.error && err.error.message) || `HTTP ${r.status}`;
+                    if (r.status === 429 || r.status >= 500) { await new Promise(ok => setTimeout(ok, 5000 * (attempt + 1))); continue; }
+                    break;
+                }
+                throw new Error('Embedding: ' + last);
+            },
+            async aiImgPart(src) {
+                let dataUrl = String(src || '');
+                if (!dataUrl.startsWith('data:')) {
+                    const b = await (await fetch(dataUrl)).blob();
+                    dataUrl = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => no(new Error('Không đọc được ảnh')); fr.readAsDataURL(b); });
+                }
+                dataUrl = await this.compress(dataUrl, 1280, 0.8);
+                return { inline_data: { mime_type: 'image/webp', data: dataUrl.split(',')[1] } };
+            },
+            async aiReadChart(imgs) {
+                const parts = [{ text: CHART_PROMPT }];
+                for (const im of imgs) { parts.push({ text: `Ảnh ${im.key} (${this.slotOf(im.key).label}):` }); parts.push(await this.aiImgPart(im.src)); }
+                const f = await this.aiGen(parts, true) || {};
+                const g = k => String(f[k] || '').trim().slice(0, 600);
+                const feat = { pair: g('pair'), timeframe: g('timeframe'), side: g('side').toUpperCase(), trend: g('trend'), structure: g('structure'), setup: g('setup'), location: g('location'), trigger: g('trigger'), desc: g('desc') };
+                const text = [feat.setup, feat.structure, feat.location, feat.trigger, feat.trend && 'Xu hướng khung lớn: ' + feat.trend, feat.desc].filter(Boolean).join('. ');
+                if (!text) throw new Error('AI không đọc được chart');
+                return { feat, text };
+            },
+            simTableErr(e) { const m = (e && e.message) || String(e); return /chart_ai|match_charts/.test(m) && /exist|find|schema cache/i.test(m) ? 'Chưa cài kho: chạy file trading/supabase/2026-11-17_chart_ai.sql trong Supabase' : m; },
+            // Mọi chart của mình: { src, src_id, sig (bộ ảnh), imgs, meta (thông tin hiển thị, đổi không cần AI đọc lại) }
+            async simItems() {
+                const items = [];
+                const imgsOf = (t, f) => SLOTS.filter(s => t[s[f]] && !String(t[s[f]]).startsWith('data:')).map(s => ({ key: s.key, src: t[s[f]] }));
+                if (!this.tradesLoaded) await this.loadTrades(true);
+                for (const t of this.trades) {
+                    const imgs = imgsOf(t, 'j');
+                    if (t._state !== 'ok' || !imgs.length) continue;
+                    items.push({ src: 'trade', src_id: t.id, sig: imgs.map(i => i.src).join('|'), imgs,
+                        meta: { label: 'Lệnh thật', img: this.thumbOf(t), pair: t.pair || '', direction: t.direction || '', result: t.status || '', r: Number(t.r) || 0,
+                                note: [t.setup && `[${t.setup}]`, t.note].filter(Boolean).join(' '), at: t.date || null } });
+                }
+                const [sets, bts] = await Promise.all([
+                    this.fetchAll(() => sb.from('bt_sets').select('id,name').order('id')),
+                    this.fetchAll(() => sb.from('bt_trades').select('id,set_id,result,r,direction,note,img,img_mtf,img_htf,created_at').order('id')),
+                ]);
+                const setName = Object.fromEntries(sets.map(x => [x.id, x.name]));
+                for (const t of bts) {
+                    const imgs = imgsOf(t, 'bt');
+                    if (!imgs.length) continue;
+                    items.push({ src: 'bt', src_id: t.id, sig: imgs.map(i => i.src).join('|'), imgs,
+                        meta: { label: 'Backtest · ' + (setName[t.set_id] || ''), img: this.btThumb(t), pair: '', direction: t.direction || '', result: t.result || '', r: Number(t.r) || 0,
+                                note: t.note || '', at: String(t.created_at || '').slice(0, 10) || null } });
+                }
+                if (this.isAdmin) {
+                    const { data } = await sb.from('desk_docs').select('key,data').eq('kind', 'settings').like('key', 't90:d:%').limit(2000);
+                    for (const row of data || []) for (const c of ((row.data || {}).charts || [])) if (c.img) items.push({ src: 't90', src_id: c.id, sig: c.img, imgs: [{ key: 'LTF', src: c.img }],
+                        meta: { label: 'Nhận định 90 ngày', img: c.img, pair: '', direction: '', result: '', r: 0, note: c.note || '', at: row.key.slice(6) } });
+                }
+                return items;
+            },
+            async simSync() {
+                const X = this.sim.idx;
+                if (X.run || !this.gemini) return;
+                Object.assign(X, { run: true, done: 0, todo: 0, failed: 0, err: '' });
+                try {
+                    const items = await this.simItems();
+                    const have = await this.fetchAll(() => sb.from('chart_ai').select('src,src_id,sig,model,label,img,pair,direction,result,r,note,at').order('id'));
+                    const key = x => x.src + ':' + x.src_id;
+                    const map = new Map(have.map(h => [key(h), h])), keys = new Set(items.map(key));
+                    // Lệnh đã xoá → bỏ khỏi kho
+                    for (const src of ['trade', 'bt', 't90']) {
+                        const ids = have.filter(h => h.src === src && !keys.has(key(h))).map(h => h.src_id);
+                        for (let i = 0; i < ids.length; i += 100) await sb.from('chart_ai').delete().eq('src', src).in('src_id', ids.slice(i, i + 100));
+                    }
+                    const todo = [], metaOnly = [];
+                    for (const it of items) {
+                        const h = map.get(key(it));
+                        if (!h || h.sig !== it.sig || h.model !== EMBED_MODEL) todo.push(it);
+                        else if (Object.keys(it.meta).some(k => k === 'r' ? Number(h.r) !== it.meta.r : String(h[k] ?? '') !== String(it.meta[k] ?? ''))) metaOnly.push(it);
+                    }
+                    for (let i = 0; i < metaOnly.length; i += 10)
+                        await Promise.all(metaOnly.slice(i, i + 10).map(it => sb.from('chart_ai').update(it.meta).eq('src', it.src).eq('src_id', it.src_id)));
+                    Object.assign(X, { total: items.length, todo: todo.length, indexed: items.length - todo.length });
+                    let next = 0;
+                    const worker = async () => {
+                        while (X.run && next < todo.length) {
+                            const it = todo[next++];
+                            try {
+                                const { feat, text } = await this.aiReadChart(it.imgs);
+                                const embedding = await this.aiEmbed(text);
+                                const { error } = await sb.from('chart_ai').upsert({ src: it.src, src_id: it.src_id, sig: it.sig, ...it.meta, features: feat, embedding, model: EMBED_MODEL }, { onConflict: 'user_id,src,src_id' });
+                                if (error) throw error;
+                                X.indexed++;
+                            } catch (e) {
+                                X.failed++; X.err = `Lỗi ${X.failed} chart: ` + this.simTableErr(e);
+                                if (/api key|api_key|permission|chart_ai/i.test(e.message || '')) X.run = false;
+                            }
+                            X.done++;
+                        }
+                    };
+                    await Promise.all([worker(), worker()]);
+                } catch (e) { X.err = this.simTableErr(e); }
+                X.run = false;
+                this.icons();
+            },
+            openSim() {
+                if (!this.gemini) return this.showToast('Chưa có Gemini API key', () => this.openSettings(), 'Cài đặt', 5000);
+                this.sim.open = true;
+                this.icons();
+                this.simSync();
+            },
+            simReset() { Object.assign(this.sim, { imgs: { HTF: '', MTF: '', LTF: '' }, slot: 'LTF', q: null, results: null, summary: '' }); this.icons(); },
+            async simTake(file, key) {
+                try {
+                    const url = await this.compress(await this.readFile(file), 1600, 0.85);
+                    const k = key || this.sim.slot;
+                    this.sim.imgs[k] = url;
+                    const i = SLOTS.findIndex(s => s.key === k), nx = [1, 2].map(d => SLOTS[(i + d) % 3]).find(s => !this.sim.imgs[s.key]);
+                    if (nx) this.sim.slot = nx.key;
+                } catch (e) { this.showToast(e.message); }
+            },
+            get simStats() {
+                const c = (this.sim.results || []).filter(x => ['WIN', 'LOSS', 'BE'].includes(x.result));
+                return { n: c.length, w: c.filter(x => x.result === 'WIN').length, l: c.filter(x => x.result === 'LOSS').length, be: c.filter(x => x.result === 'BE').length, sumR: c.reduce((a, x) => a + (Number(x.r) || 0), 0) };
+            },
+            async simSearch() {
+                const S = this.sim;
+                const imgs = SLOTS.filter(s => S.imgs[s.key]).map(s => ({ key: s.key, src: S.imgs[s.key] }));
+                if (!imgs.length) return this.showToast('Dán hoặc chọn ít nhất 1 ảnh chart');
+                Object.assign(S, { busy: 'Đang đọc chart…', q: null, results: null, summary: '' });
+                try {
+                    const { feat, text } = await this.aiReadChart(imgs);
+                    S.q = feat;
+                    S.busy = 'Đang tìm…';
+                    const { data, error } = await sb.rpc('match_charts', { q: await this.aiEmbed(text), k: 6, dir: S.dir });
+                    if (error) throw error;
+                    S.results = data || [];
+                    this.icons();
+                    if (S.results.length) {
+                        S.busy = 'Đang tổng kết…';
+                        const st = this.simStats;
+                        const lines = S.results.map((c, i) => `${i + 1}. [${c.label}] ${c.pair || ''} ${c.direction || ''} · ${c.result ? this.statusLabel(c.result) + (c.result !== 'RUNNING' ? ' ' + this.fmtR(c.r, true) : '') : 'chưa có kết quả'} · giống ${Math.round(c.similarity * 100)}% · setup: ${(c.features || {}).setup || ''} · bối cảnh: ${(c.features || {}).desc || ''}${c.note ? ' · ghi chú: ' + c.note.slice(0, 300) : ''}`).join('\n');
+                        S.summary = await this.aiGen([{ text: `Bạn review nhật ký giao dịch của chính người dùng.
+Chart mới (chưa vào lệnh): setup: ${feat.setup}; cấu trúc: ${feat.structure}; vị trí: ${feat.location}; xu hướng khung lớn: ${feat.trend}.
+Các case cũ giống nhất:
+${lines}
+Thống kê đã tính sẵn (dùng đúng số này): ${st.n} lệnh có kết quả — ${st.w} thắng, ${st.l} thua, ${st.be} hoà, tổng ${this.fmtR(st.sumR, true)}.
+Viết tối đa 4 gạch đầu dòng tiếng Việt, mỗi dòng 1 câu ngắn:
+- Điểm chung của các lệnh thắng, điểm chung của các lệnh thua (dựa vào bối cảnh và ghi chú)
+- Chart mới giống nhóm nào hơn, cần kiểm tra điều gì trước khi vào
+Nếu dưới 3 lệnh có kết quả thì nói rõ dữ liệu còn ít. Không khuyên vào hay không vào lệnh. Không dùng markdown đậm.` }]);
+                    }
+                } catch (e) { this.showToast('Lỗi: ' + this.simTableErr(e), null, '', 6000); }
+                finally { S.busy = ''; this.icons(); }
+            },
+            simOpen(c) {
+                const t = c.src === 'trade' && this.trades.find(x => x.id === c.src_id);
+                if (t) return this.openTrade(t);
+                if (c.img) window.open(c.img, '_blank', 'noopener');
             },
             get t9S() {
                 const start = this.t9Plan.start, today = this.t9Today;
@@ -2659,6 +2970,11 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
             onPaste(e) {
                 if (this.art) return this.pasteArticle(e);
                 if (this.isLocked || this.share || this.settingsOpen || this.setForm || this.reader || this.res.form || this.mem.open || this.memberPage) return;
+                if (this.sim.open && !this.view) {
+                    const it = [...(e.clipboardData ? e.clipboardData.items : [])].find(i => i.type.startsWith('image/'));
+                    if (it) { e.preventDefault(); this.simTake(it.getAsFile()); }
+                    return;
+                }
                 if (this.tab === 't90' && this.isAdmin && this.t9Running && !this.formOpen) {
                     const files = [...(e.clipboardData ? e.clipboardData.items : [])].filter(i => i.type.startsWith('image/')).map(i => i.getAsFile());
                     if (files.length) { e.preventDefault(); files.forEach(f => this.t9AddImg(f)); }
@@ -3706,7 +4022,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
                 if (e.key === 'Escape') {
                     if (this.share) this.share = null; else if (this.setForm) this.setForm = null;
-                    else if (this.btEdit) this.btEdit = null; else if (this.formOpen) this.closeTradeForm(); else if (this.view) this.view = null; else if (this.settingsOpen) this.settingsOpen = false;
+                    else if (this.btEdit) this.btEdit = null; else if (this.formOpen) this.closeTradeForm(); else if (this.view) this.view = null; else if (this.sim.open) this.sim.open = false; else if (this.settingsOpen) this.settingsOpen = false;
                     return;
                 }
                 if (this.btEdit && !typing && !this.share) {
