@@ -2468,12 +2468,23 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                                 return json ? JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')) : text.replace(/\*\*/g, '');
                             }
                             const err = await r.json().catch(() => ({})); last = (err.error && err.error.message) || `HTTP ${r.status}`;
-                            if (r.status === 429 || r.status >= 500) { await new Promise(ok => setTimeout(ok, 5000 * (attempt + 1))); continue; }
+                            const wait = this.aiWait(r.status, err, attempt);
+                            if (wait < 0) throw Object.assign(new Error('DAILY_QUOTA'), { daily: true });
+                            if (wait) { await new Promise(ok => setTimeout(ok, wait)); continue; }
                             break;
-                        } catch (e) { last = e.message; break; }
+                        } catch (e) { if (e.daily) throw e; last = e.message; break; }
                     }
                 }
                 throw new Error(last || 'Không gọi được Gemini');
+            },
+            // Gemini 429: hết lượt theo NGÀY → -1 (dừng hẳn, mai đọc tiếp); hết lượt theo PHÚT → chờ đúng retryDelay Google báo
+            aiWait(status, err, attempt) {
+                if (status !== 429 && status < 500) return 0;
+                const det = (err.error && err.error.details) || [];
+                if (status === 429 && JSON.stringify(det).match(/PerDay/i)) return -1;
+                const rd = (det.find(d => d.retryDelay) || {}).retryDelay;
+                const sec = rd ? parseFloat(rd) : 0;
+                return Math.min(70000, (sec ? sec * 1000 + 1000 : 6000 * (attempt + 1)));
             },
             async aiEmbed(text) {
                 let last = '';
@@ -2489,7 +2500,9 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                         return v.map(x => x / n);
                     }
                     const err = await r.json().catch(() => ({})); last = (err.error && err.error.message) || `HTTP ${r.status}`;
-                    if (r.status === 429 || r.status >= 500) { await new Promise(ok => setTimeout(ok, 5000 * (attempt + 1))); continue; }
+                    const wait = this.aiWait(r.status, err, attempt);
+                    if (wait < 0) throw Object.assign(new Error('DAILY_QUOTA'), { daily: true });
+                    if (wait) { await new Promise(ok => setTimeout(ok, wait)); continue; }
                     break;
                 }
                 throw new Error('Embedding: ' + last);
@@ -2586,6 +2599,7 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                                 if (error) throw error;
                                 X.indexed++;
                             } catch (e) {
+                                if (e.daily) { X.run = false; X.err = 'Hết lượt Gemini miễn phí hôm nay — chart đã đọc được giữ lại, mai mở lại sẽ đọc tiếp phần còn thiếu.'; break; }
                                 X.failed++; X.err = `Lỗi ${X.failed} chart: ` + this.simTableErr(e);
                                 if (/api key|api_key|permission|chart_ai/i.test(e.message || '')) X.run = false;
                             }
@@ -2644,7 +2658,7 @@ Viết tối đa 4 gạch đầu dòng tiếng Việt, mỗi dòng 1 câu ngắn
 - Chart mới giống nhóm nào hơn, cần kiểm tra điều gì trước khi vào
 Nếu dưới 3 lệnh có kết quả thì nói rõ dữ liệu còn ít. Không khuyên vào hay không vào lệnh. Không dùng markdown đậm.` }]);
                     }
-                } catch (e) { this.showToast('Lỗi: ' + this.simTableErr(e), null, '', 6000); }
+                } catch (e) { this.showToast(e.daily ? 'Hết lượt Gemini miễn phí hôm nay — thử lại ngày mai hoặc dùng key khác' : 'Lỗi: ' + this.simTableErr(e), null, '', 6000); }
                 finally { S.busy = ''; this.icons(); }
             },
             simOpen(c) {
