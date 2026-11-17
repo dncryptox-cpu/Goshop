@@ -986,10 +986,90 @@ async function cusAdmin(b: any) {
   return { ok: true, token: !!CUS_TOKEN, bot, hook, sell: cfg.sell, texts, orders, waiting, waitN, users: Object.keys(doc.users).length, note };
 }
 
+/* ---------- Đơn sản phẩm khác (GG1, CapCut, GPT, Netflix…) gõ cho @goshopassistantbot ----------
+   "abc@gmail.com đơn mới tk cấp GG1 2TB 350k" → thẻ chờ duyệt (SKU, giá, HSD). Bấm ✅ Duyệt → ghi 1 dòng sheet Tài chính
+   qua webapp tài chính có sẵn (log_financial_ytb, cùng cách admin/googleone.html ghi). Giá: lấy trong tin, không có thì tra tab PRICE. */
+const FIN_WEBAPP = "https://script.google.com/macros/s/AKfycbxoBHLdCgValY0h2LtV5jDo1hhidv0nW_QXZ9rDf0RM0bl2ktpHpL38Utk2NbHos4PF/exec";
+const SP_PRODUCTS: { re: RegExp; sku: string; label: string; price?: string; months?: number }[] = [
+  { re: /gg1|google\s*one|\b2\s*tb\b/i, sku: "Google One", label: "Google One 2TB", price: "2tb", months: 12 },
+  { re: /500\s*gb/i, sku: "500gb", label: "Google One 500GB", months: 12 },
+  { re: /capcut\s*share|cc\s*share/i, sku: "Capcutshare1", label: "CapCut share" },
+  { re: /capcut/i, sku: "Capcut", label: "CapCut Pro" },
+  { re: /gpt\s*go/i, sku: "GPTGo", label: "ChatGPT Go", months: 12 },
+  { re: /chatgpt|\bgpt\b/i, sku: "GPTshare", label: "ChatGPT share" },
+  { re: /netflix/i, sku: "Netflix", label: "Netflix" },
+  { re: /spotify/i, sku: "Spotify", label: "Spotify" },
+  { re: /canva/i, sku: "Canva", label: "Canva", months: 12 },
+  { re: /office|\b365\b/i, sku: "office365", label: "Office 365", months: 12 },
+  { re: /adobe/i, sku: "Adobe", label: "Adobe" },
+  { re: /eleven\s*labs?/i, sku: "Elevenlabs", label: "ElevenLabs" },
+];
+type SpOrder = { email: string; sku: string; label: string; months: number; price: number; cost: number; ctv: string; type: string; note: string; at: number; done?: string };
+function spParse(text: string) {
+  const em = text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/); if (!em) return null;
+  const p = SP_PRODUCTS.find((x) => x.re.test(text)); if (!p) return null;
+  const mm = /(\d{1,2})\s*(?:th|tháng|thang|t)\b/i.exec(text);
+  const months = mm ? Math.max(1, Math.min(36, +mm[1])) : p.months || 1;
+  const pm = text.replace(em[0], "").replace(/\b\d{1,2}\s*(?:th|tháng|thang|t)\b/gi, "").match(/(\d{1,3}(?:[.,]\d{3})+|\d{2,7})\s*(k|đ|d|vnd|vnđ)?\b/i);
+  let price = 0;
+  if (pm) { const n = +pm[1].replace(/[.,]/g, ""); price = /k/i.test(pm[2] || "") ? n * 1000 : n >= 1000 ? n : 0; }
+  const ctvM = text.match(/\b(tuấn|tuan|vương|vuong|lộc|loc)\b/i);
+  return { email: em[0].toLowerCase(), sku: `${p.sku}-${months}`, label: p.label, priceKey: `${p.price || p.sku}-${months}`.toLowerCase(), months, price, ctv: ctvM ? normCtv(ctvM[1]) : "Dnc", type: /gia\s*hạn|gia\s*han|\bgh\b|renew/i.test(text) ? "Gia hạn" : "New", note: text.trim().slice(0, 200) };
+}
+async function finPrice(key: string): Promise<{ price: number; cost: number } | null> {
+  try {
+    const txt = await fetch(`https://docs.google.com/spreadsheets/d/${FIN_SHEET}/gviz/tq?tqx=out:csv&sheet=PRICE`, { signal: AbortSignal.timeout(20000) }).then((r) => r.text());
+    const num = (s: string) => +String(s || "").replace(/[^\d]/g, "") || 0;
+    for (const r of csvRows(txt)) if (r && String(r[4] || "").trim().toLowerCase() === key) return { price: num(r[2]), cost: num(r[3]) };
+  } catch (e) { console.error("PRICE", (e as Error).message); }
+  return null;
+}
+async function spGet(): Promise<Record<string, SpOrder>> { return docGet<Record<string, SpOrder>>("sp_pending", {}); }
+async function spPut(m: Record<string, SpOrder>) { for (const k of Object.keys(m)) if (Date.now() - m[k].at > 30 * 864e5) delete m[k]; await docPut("sp_pending", m); }
+const spHsd = (months: number) => dmyU(addMonthsU(Date.parse(today() + "T00:00:00Z"), months));
+function spCard(o: SpOrder, id: string) {
+  const lines = [`🧾 <b>${o.type === "Gia hạn" ? "Gia hạn" : "Đơn mới"} ${esc(o.label)} ${o.months}th</b>`, `<code>${esc(o.email)}</code> · CTV ${esc(o.ctv)}`,
+    `Giá ${o.price ? `<b>${money(o.price)}</b>` : "<b>chưa có</b>"}${o.cost ? ` · vốn ${money(o.cost)}` : ""} · HSD ${spHsd(o.months)}`, `Ghi Tài chính: <code>${esc(o.sku)}</code>`];
+  if (!o.price) lines.push("\n<i>Chưa có giá → gõ lại kèm giá, vd: … 350k</i>");
+  const kb = o.price ? [[{ text: "✅ Duyệt · ghi Tài chính", callback_data: `sp:ok:${id}` }, { text: "Bỏ", callback_data: `sp:no:${id}` }]] : [[{ text: "Bỏ", callback_data: `sp:no:${id}` }]];
+  return { text: lines.join("\n"), kb: { inline_keyboard: kb } };
+}
+async function spNew(m: any, x: NonNullable<ReturnType<typeof spParse>>) {
+  let price = x.price, cost = 0;
+  const pr = await finPrice(x.priceKey) || (x.priceKey !== x.sku.toLowerCase() ? await finPrice(x.sku.toLowerCase()) : null);
+  if (pr) { if (!price) price = pr.price; cost = pr.cost; }
+  const o: SpOrder = { email: x.email, sku: x.sku, label: x.label, months: x.months, price, cost, ctv: x.ctv, type: x.type, note: x.note, at: Date.now() };
+  const id = Date.now().toString(36), all = await spGet(); all[id] = o; await spPut(all);
+  const c = spCard(o, id);
+  return say(c.text, { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true }, reply_markup: c.kb });
+}
+async function spCallback(q: any, a: string, id: string) {
+  const all = await spGet(), o = all[id];
+  const edit = (text: string) => tg("editMessageText", { chat_id: CHAT, message_id: q.message.message_id, text, parse_mode: "HTML", link_preview_options: { is_disabled: true } });
+  if (!o) return tg("answerCallbackQuery", { callback_query_id: q.id, text: "Thẻ cũ, không còn dữ liệu" });
+  if (o.done) return tg("answerCallbackQuery", { callback_query_id: q.id, text: o.done === "ok" ? "Đã ghi rồi" : "Đã bỏ" });
+  if (a === "no") { o.done = "no"; await spPut(all); await tg("answerCallbackQuery", { callback_query_id: q.id, text: "Đã bỏ" }); return edit(`🗑 Đã bỏ đơn ${esc(o.label)} · ${esc(o.email)}`); }
+  await tg("answerCallbackQuery", { callback_query_id: q.id, text: "Đang ghi Tài chính…" });
+  const d = today(), date = `${d.slice(8)}/${d.slice(5, 7)}/${d.slice(0, 4)}`, hsd = spHsd(o.months);
+  const code = `GS${d.slice(2, 4)}${d.slice(5, 7)}${d.slice(8)}-${Math.floor(100 + Math.random() * 900)}`;
+  try {
+    const r = await fetch(FIN_WEBAPP, { method: "POST", headers: { "Content-Type": "text/plain" }, signal: AbortSignal.timeout(45000),
+      body: JSON.stringify({ action: "log_financial_ytb", date, orderCode: code, email: o.email, product: o.sku, duration: o.months, months: o.months, ctv: o.ctv, price: o.price, cost: o.cost, hsd, type: o.type, note: `[Mã: ${code} | HSD: ${hsd}] ${o.note}` }) });
+    const body = await r.text();
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    let j: any = null; try { j = JSON.parse(body); } catch (_) { /* webapp có thể trả text */ }
+    if (j && (j.success === false || j.ok === false)) throw new Error(j.error || j.message || "webapp báo lỗi");
+    o.done = "ok"; await spPut(all);
+    return edit(`✅ <b>Đã ghi Tài chính</b> · mã <code>${code}</code>\n${esc(o.label)} ${o.months}th · <code>${esc(o.email)}</code>\n${money(o.price)} · CTV ${esc(o.ctv)} · HSD ${hsd}`);
+  } catch (e) {
+    return edit(`⚠️ Chưa ghi được Tài chính (${esc((e as Error).message)}).\n${esc(o.label)} · ${esc(o.email)} — kiểm tra sheet trước khi bấm lại.\n\n` + spCard(o, id).text).then(() => tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: spCard(o, id).kb }));
+  }
+}
+
 /* ---------- Gia hạn duyệt ngay trên bot ----------
    Gõ "abc@gmail.com gia hạn 12 tháng" → vào hàng chờ Lệnh như cũ + bot gửi thẻ xem trước HSD mới có nút ✅ Duyệt.
    Bấm Duyệt = đúng như Duyệt trên web (renewCus): HSD bản sao + data gốc + dòng Tài chính, rồi đánh Xong dòng lệnh. */
-type RenewP = { qid: string; li: number; email: string; months: number; base: "old" | "today"; product: string; at: number; done?: string };
+type RenewP = { qid: string; li: number; email: string; months: number; base: "old" | "today"; product: string; at: number; done?: string; isNew?: boolean };
 function lineKind(raw: string) { // giống cmdAdd trên web
   const t = raw.toLowerCase(), ems = raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || [];
   const mm = /(\d{1,2})\s*(?:th|tháng|thang|t)\b/i.exec(raw), dates = raw.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || [];
@@ -997,7 +1077,7 @@ function lineKind(raw: string) { // giống cmdAdd trên web
   if (/đổi|doi |chuyển mail|chuyen mail/.test(t) && ems.length >= 2) return null;
   if (/mất\s*pre|mat\s*pre|mất premium|hết pre|lỗi|\bloi\b|không vào|ko vào|k vào|bị out|bị kick|bị đá|văng|out fam|không xem|ko xem/.test(t)) return null;
   if (!ems.length || !(mm || dates.length || /gia hạn|giahan|gia han|\bgh\b|ytb|youtube|plus/.test(t))) return null;
-  return { email: String(ems[0]).toLowerCase(), months: mm && [1, 3, 6, 12].includes(Number(mm[1])) ? Number(mm[1]) : 12, product: /plus/i.test(raw) ? "YoutubePlus" : "Youtube", start: String(dates[0] || "") };
+  return { isNew: /đơn\s*mới|don\s*moi|\bmới\b|\bnew\b/i.test(raw) && !/gia\s*hạn|gia\s*han|\bgh\b/i.test(raw), email: String(ems[0]).toLowerCase(), months: mm && [1, 3, 6, 12].includes(Number(mm[1])) ? Number(mm[1]) : 12, product: /plus/i.test(raw) ? "YoutubePlus" : "Youtube", start: String(dates[0] || "") };
 }
 async function renewGet(): Promise<Record<string, RenewP>> {
   const { data } = await db.from("desk_docs").select("data").eq("user_id", await owner()).eq("kind", "settings").eq("key", "tf_renew").maybeSingle();
@@ -1011,11 +1091,11 @@ const newHsdOf = (hsd: string, months: number, base: string) => { const v = base
 function famBadOf(f: any) { return f.famState || (f.status && !["FULL", "Còn slot", "Còn slot(đang check)"].includes(f.status)) || (f.daysToRenew != null && f.daysToRenew < 0); }
 function renewCard(p: RenewP, r: any): { text: string; kb: any } {
   const PL = p.product === "YoutubePlus" ? "YTB Plus" : "YTB";
-  if (!r) return { text: `❓ <b>${esc(p.email)}</b> — gia hạn ${p.months}th\nKhông có trong Kho TK → là đơn mới, xử lý ở tab Lệnh.`, kb: null };
+  if (!r) return { text: p.isNew ? `🆕 <b>Đơn mới ${PL} ${p.months}th</b> · <code>${esc(p.email)}</code>\nĐã vào tab Lệnh → chọn fam rồi Duyệt ở đó.` : `❓ <b>${esc(p.email)}</b> — gia hạn ${p.months}th\nKhông có trong Kho TK → là đơn mới, xử lý ở tab Lệnh.`, kb: null };
   if (r.arch) return { text: `⚠️ <b>${esc(p.email)}</b> — gia hạn ${p.months}th\nKhách ở vùng lưu (chưa có slot) → chuyển vào fam trước rồi gia hạn ở tab Lệnh.`, kb: null };
   if (r.phuOf) return { text: `⚠️ <b>${esc(p.email)}</b> là mail phụ của <code>${esc(r.c.email)}</code> — kiểm tra lại trên tab Lệnh.`, kb: null };
   const { f, c } = r, exp = c.daysLeft != null && c.daysLeft < 0;
-  const lines = [`🔁 <b>Gia hạn ${PL} +${p.months}th</b> · <code>${esc(c.email)}</code>`,
+  const lines = [...(p.isNew ? [`⚠️ Tin ghi "đơn mới" nhưng email đã có trong Kho TK — nếu là gia hạn thì Duyệt, không thì Bỏ dòng này ở tab Lệnh.`] : []),`🔁 <b>Gia hạn ${PL} +${p.months}th</b> · <code>${esc(c.email)}</code>`,
     `${esc(f.rn)} · CTV ${esc(normCtv(c.ctv))}${exp ? ` · <b>đã hết ${-c.daysLeft} ngày</b>` : ""}`,
     `HSD ${shortD(c.hsd) || "—"} → <b>${newHsdOf(c.hsd, p.months, p.base)}</b> ${p.base === "today" ? "(tính từ hôm nay)" : "(nối tiếp HSD cũ)"}`];
   if (c.daysLeft != null && c.daysLeft > 25) lines.push(`<i>Còn ${c.daysLeft} ngày — kiểm tra có phải đã gia hạn rồi không.</i>`);
@@ -1036,7 +1116,7 @@ async function renewCards(body: string, from: string) {
   } catch (_) { /* bỏ qua */ }
   const store = await renewGet(), out: { text: string; kb: any }[] = [];
   for (const w of want) {
-    const k = w.k!, p: RenewP = { qid, li: w.i, email: k.email, months: k.months, base: "old", product: k.product, at: Date.now() };
+    const k = w.k!, p: RenewP = { qid, li: w.i, email: k.email, months: k.months, base: "old", product: k.product, at: Date.now(), isNew: k.isNew };
     let r: any = null;
     try { r = await tfFind(k.email); } catch (e) { out.push({ text: `⚠️ <b>${esc(k.email)}</b>: không tra được (${esc((e as Error).message)})`, kb: null }); continue; }
     if (r?.phuOf) r = { phuOf: true, c: r.c };
@@ -1263,6 +1343,7 @@ async function handle(u: any) {
     const q = u.callback_query;
     if (String(q.from.id) !== CHAT) return;
     if (q.data === "noop") return tg("answerCallbackQuery", { callback_query_id: q.id });
+    if (String(q.data || "").startsWith("sp:")) { const [, sa, sid] = String(q.data).split(":"); return spCallback(q, sa, sid); }
     if (String(q.data || "").startsWith("cg:")) {
       const ma = String(q.data).slice(3), r = await cusDeliver(ma);
       await tg("answerCallbackQuery", { callback_query_id: q.id, text: r.ok ? "Đã nhắn khách" : r.error });
@@ -1325,6 +1406,8 @@ async function handle(u: any) {
   const tfm = text.match(/^\/(tf|thayfam)\b\s*([\s\S]*)$/i);
   const toDesk = /^\/desk\b/i.test(text);
   if (toDesk) { m.text = text.replace(/^\/desk\b\s*/i, ""); return capture(m); }
+  // Đơn sản phẩm khác (GG1, CapCut, GPT…) → thẻ chờ duyệt ghi Tài chính (không vào Desk / Thay Fam)
+  if (!tfm && !m.photo && !m.document && !m.voice) { const sp = spParse(text); if (sp && /đơn|don\b|mới|moi\b|gia\s*hạn|gia\s*han|\bgh\b|bán|ban\b|\d+\s*k\b/i.test(text)) return spNew(m, sp); }
   if (tfm || (!m.photo && !m.document && !m.voice && looksTF(text))) {
     const body = tfm ? tfm[2].trim() : text;
     if (!body) return say("Gõ /tf rồi dán tin, ví dụ:\n<code>/tf 1039 abc@gmail.com | ytb 12th plus | 09/07/2026 → 09/07/2027</code>");
