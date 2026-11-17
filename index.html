@@ -2539,6 +2539,13 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                         meta: { label: 'Backtest · ' + (setName[t.set_id] || ''), img: this.btThumb(t), pair: '', direction: t.direction || '', result: t.result || '', r: Number(t.r) || 0,
                                 note: t.note || '', at: String(t.created_at || '').slice(0, 10) || null } });
                 }
+                // Chart mẫu trong Tài nguyên (vd bộ setup Tuấn tặng): không có thắng/thua, chỉ để tham khảo setup giống
+                const { data: rs } = await sb.from('resources').select('id,title,category,body').ilike('category', '%chart%');
+                for (const r of rs || []) for (const m of String(r.body || '').matchAll(/!\[([^\]]*)\]\(([^)\s]+)\)/g)) {
+                    const url = new URL(m[2], location.href).href;
+                    items.push({ src: 'res', src_id: r.id + ':' + url, sig: url, imgs: [{ key: 'LTF', src: url }],
+                        meta: { label: r.title || 'Chart mẫu', img: url, pair: '', direction: '', result: '', r: 0, note: m[1] || '', at: null } });
+                }
                 if (this.isAdmin) {
                     const { data } = await sb.from('desk_docs').select('key,data').eq('kind', 'settings').like('key', 't90:d:%').limit(2000);
                     for (const row of data || []) for (const c of ((row.data || {}).charts || [])) if (c.img) items.push({ src: 't90', src_id: c.id, sig: c.img, imgs: [{ key: 'LTF', src: c.img }],
@@ -2556,7 +2563,7 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                     const key = x => x.src + ':' + x.src_id;
                     const map = new Map(have.map(h => [key(h), h])), keys = new Set(items.map(key));
                     // Lệnh đã xoá → bỏ khỏi kho
-                    for (const src of ['trade', 'bt', 't90']) {
+                    for (const src of ['trade', 'bt', 't90', 'res']) {
                         const ids = have.filter(h => h.src === src && !keys.has(key(h))).map(h => h.src_id);
                         for (let i = 0; i < ids.length; i += 100) await sb.from('chart_ai').delete().eq('src', src).in('src_id', ids.slice(i, i + 100));
                     }

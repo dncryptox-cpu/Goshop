@@ -1,7 +1,7 @@
 -- DNC Trading OS — Kho chart AI: tìm lệnh cũ giống chart đang định vào
 -- Chạy 1 lần trong SQL Editor của Supabase (sau schema.sql, 2026-10-29_backtest*.sql). Chạy lại nhiều lần vẫn an toàn.
 --
--- Mỗi lệnh (nhật ký, backtest) hoặc chart nhận định 90 ngày = 1 dòng:
+-- Mỗi lệnh (nhật ký, backtest), chart nhận định 90 ngày hoặc chart mẫu trong Tài nguyên = 1 dòng:
 --   features  = AI (Gemini) đọc chart: setup, cấu trúc, xu hướng... (chỉ bối cảnh lúc vào lệnh, không kết quả)
 --   embedding = vector của phần mô tả đó → so độ giống bằng pgvector
 --   sig       = chữ ký bộ ảnh; ảnh đổi thì đọc lại, chỉ đổi note/kết quả thì chỉ cập nhật thông tin (không tốn AI)
@@ -11,7 +11,7 @@ create extension if not exists vector with schema extensions;
 create table if not exists public.chart_ai (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  src        text not null check (src in ('trade','bt','t90')),
+  src        text not null,
   src_id     text not null,
   sig        text not null default '',
   label      text not null default '',          -- 'Lệnh thật' / tên bộ backtest / '90 ngày'
@@ -29,6 +29,9 @@ create table if not exists public.chart_ai (
   updated_at timestamptz not null default now(),
   unique (user_id, src, src_id)
 );
+-- Nguồn: trade = nhật ký, bt = backtest, t90 = nhận định 90 ngày, res = chart mẫu trong Tài nguyên
+alter table public.chart_ai drop constraint if exists chart_ai_src_check;
+alter table public.chart_ai add constraint chart_ai_src_check check (src in ('trade','bt','t90','res'));
 alter table public.chart_ai enable row level security;
 drop policy if exists "own chart ai" on public.chart_ai;
 create policy "own chart ai" on public.chart_ai for all
