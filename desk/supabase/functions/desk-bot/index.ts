@@ -1205,12 +1205,18 @@ async function cusAdmin(b: any) {
   if (op === "broadcast") { const r = await cusBroadcast(String(b.id || ""), String(b.to || "wait"), b.them === "" || b.them == null ? null : Math.round(+b.them) || null, String(b.extra || "")); if (!r.ok) return r; note = r.msg || ""; }
   if (op === "confirm") { const r = await cusConfirm(String(b.ma || ""), !!b.paid); if (!r.ok) return r; note = r.msg || ""; }
   if (op === "set_zalo") { const d = await cusGet(), u = d.users[String(b.chat)]; if (!u) return { ok: false, error: "không thấy khách" }; const ph = normPhone(String(b.zalo || "")); if (b.zalo && !ph) return { ok: false, error: "số không đúng" }; u.zalo = ph || undefined; await cusPut(d); note = "Đã lưu Zalo"; }
-  if (op === "kho_add" || op === "kho_clear") {
+  if (op === "kho_add" || op === "kho_clear" || op === "kho_del") {
     const id = String(b.id || ""), kho = await khoGet(), before = (kho[id] || []).length;
     if (op === "kho_clear") kho[id] = [];
-    else { const add = String(b.lines || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 500); const cur = new Set(kho[id] || []); kho[id] = [...(kho[id] || []), ...[...new Set(add)].filter((l) => !cur.has(l))]; }
+    else if (op === "kho_del") { const line = String(b.line || ""), l0 = kho[id] || []; if (b.all) kho[id] = l0.filter((l) => l !== line); else { const i = l0.indexOf(line); if (i >= 0) l0.splice(i, 1); kho[id] = l0; } }
+    else {
+      // tài khoản dùng chung: mỗi dòng nhân lên "times" lần (1 tk bán cho nhiều khách); cho phép trùng
+      const times = Math.max(1, Math.min(50, Math.round(+b.times || 1)));
+      const add = String(b.lines || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 500);
+      kho[id] = [...(kho[id] || []), ...add.flatMap((l) => Array(times).fill(l))];
+    }
     await docPut("cus_kho", kho);
-    const after = kho[id].length; note = op === "kho_clear" ? "Đã xoá kho" : `Kho ${after} (+${after - before})`;
+    const after = (kho[id] || []).length; note = op === "kho_clear" ? "Đã xoá kho" : op === "kho_del" ? `Kho còn ${after}` : `Kho ${after} (+${after - before})`;
     if (before === 0 && after > 0) { const cfg0 = await cusCfg(), p0 = cfg0.sell.packs.find((p) => p.id === id); if (p0 && p0.price > 0) { const n = await cusRestock(cfg0, p0, after); if (n) note += ` · đã báo hàng về cho ${n} khách`; } }
   }
   if (op === "set") {
@@ -1255,11 +1261,14 @@ async function cusAdmin(b: any) {
   const waitN: Record<string, number> = {}; for (const [k, l] of Object.entries(doc.wait)) waitN[k] = l.length;
   const waiting = Object.entries(doc.subs).filter(([, s]) => s.pending).map(([e, s]) => ({ email: e, kind: s.kind || "report", at: s.at, name: s.name }));
   const kho = await khoGet(), khoN: Record<string, number> = {}; for (const [k, l] of Object.entries(kho)) khoN[k] = l.length;
+  // kho gộp dòng trùng: [{line, n}] để admin xem (chỉ trả về cho admin)
+  const khoList: Record<string, { line: string; n: number }[]> = {};
+  for (const [k, l] of Object.entries(kho)) { const m = new Map<string, number>(); for (const x of l) m.set(x, (m.get(x) || 0) + 1); khoList[k] = [...m].map(([line, n]) => ({ line, n })); }
   const buyers = Object.entries(doc.users).map(([chat, u]) => {
     const os = Object.values(doc.orders).filter((o) => String(o.chat) === chat && (o.st === "paid" || o.st === "done"));
     return { chat, name: u.name, user: u.user || "", zalo: u.zalo || "", n: os.length, spent: os.reduce((a, o) => a + (o.price || 0), 0), last: Math.max(u.at || 0, ...os.map((o) => o.at)), emails: [...new Set(os.map((o) => o.email).filter((e) => /^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(e)))].join(", ") };
   }).filter((b) => b.zalo || b.n).sort((a, b) => b.last - a.last).slice(0, 300);
-  return { ok: true, token: !!CUS_TOKEN, bot, hook, sell: cfg.sell, texts, orders, waiting, waitN, khoN, buyers, users: Object.keys(doc.users).length, note,
+  return { ok: true, token: !!CUS_TOKEN, bot, hook, sell: cfg.sell, texts, orders, waiting, waitN, khoN, khoList, buyers, users: Object.keys(doc.users).length, note,
     sepay: { on: !!SEPAY_KEY, url: `${SB_URL}/functions/v1/desk-bot?pay=1` }, pays: doc.pays.slice(-15).reverse() };
 }
 
