@@ -710,7 +710,7 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   qr_expired: ["QR quá 10 phút chưa trả", "⌛ Đơn {ma} đã quá hạn thanh toán. Bấm 🛒 Mua hàng để tạo đơn mới (nếu bạn đã chuyển tiền, bot vẫn tự xác nhận)."],
   support: ["Nút 💬 Hỗ trợ", "💬 Cần hỗ trợ, bạn nhắn trực tiếp người bán nhé."],
   no_orders: ["Đơn của tôi: chưa có đơn", "Bạn chưa có đơn nào."],
-  ask_zalo: ["Xin số Zalo (lần mua đầu)", "📱 Cho shop xin số Zalo để bảo hành và hỗ trợ bạn nhé.\nBấm nút “Gửi số điện thoại” bên dưới hoặc gõ số (vd 0912345678)."],
+  ask_zalo: ["Xin số Zalo (lần mua đầu)", "📱 Cho shop xin số Zalo để bảo hành và hỗ trợ bạn nhé.\nBấm nút “Gửi số điện thoại” bên dưới, gõ số (vd 0912345678), hoặc bấm “Bỏ qua”."],
   bad_zalo: ["Số Zalo sai", "Số chưa đúng, bạn gõ lại dạng 09xxxxxxxx nhé."],
   sell_paid: ["Bán: khách báo đã chuyển (chờ shop xác nhận)", "🙏 Đã nhận báo chuyển khoản đơn {ma}. Shop kiểm tra tiền xong bot sẽ nhắn bạn tại đây."],
   pay_ok: ["Shop xác nhận đã nhận tiền", "✅ Shop đã nhận {gia} cho đơn {ma}. Đang xử lý, xong bot nhắn bạn tại đây."],
@@ -758,7 +758,7 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
 
 type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" };
 type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string };
-type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number };
+type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number; noZalo?: boolean };
 type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
   const d = await docGet<CusDoc>("cus_bot", {} as CusDoc);
@@ -785,7 +785,8 @@ function touchUser(doc: CusDoc, chat: number, from: any) {
   u.name = nameOf(from) || u.name; u.user = from?.username || u.user; u.at = Date.now();
   return u;
 }
-const askZaloKb = { reply_markup: { keyboard: [[{ text: "📱 Gửi số điện thoại", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } };
+const SKIP_ZALO = "Bỏ qua";
+const askZaloKb = { reply_markup: { keyboard: [[{ text: "📱 Gửi số điện thoại", request_contact: true }], [{ text: SKIP_ZALO }]], resize_keyboard: true, one_time_keyboard: true } };
 const nameOf = (f: any) => [f?.first_name, f?.last_name].filter(Boolean).join(" ") + (f?.username ? ` @${f.username}` : "");
 const isYtb = (p: CusPack) => p.ytb !== false;
 const inStock = (p: CusPack) => p.stock == null || p.stock > 0;
@@ -837,7 +838,7 @@ async function cusStartOrder(cfg: CusCfg, doc: CusDoc, chat: number, from: any, 
   if (!inStock(p)) { delete doc.state[String(chat)]; await cusPut(doc); return csay(chat, T(cfg, "out_stock", { goi: p.name }), { reply_markup: { inline_keyboard: [[{ text: "🔔 Báo khi có hàng", callback_data: `w:${p.id}` }]] } }); }
   // lần mua đầu: xin Zalo trước khi tạo đơn
   const u = touchUser(doc, chat, from);
-  if (!u.zalo) { doc.state[String(chat)] = { step: "zalo", pack: packId, kind, email, qty, at: Date.now() }; await cusPut(doc); return csay(chat, T(cfg, "ask_zalo"), askZaloKb); }
+  if (!u.zalo && !u.noZalo) { doc.state[String(chat)] = { step: "zalo", pack: packId, kind, email, qty, at: Date.now() }; await cusPut(doc); return csay(chat, T(cfg, "ask_zalo"), askZaloKb); }
   let ma = ""; do { ma = (isYtb(p) ? "YT" : "SP") + Math.floor(10000 + Math.random() * 90000); } while (doc.orders[ma]);
   const total = p.price * qty, pname = qty > 1 ? `${p.name} × ${qty}` : p.name;
   doc.orders[ma] = { chat, name: nameOf(from), email, pack: pname, packId: p.id, ytb: isYtb(p), months: p.months, price: total, qty, kind: isYtb(p) ? kind : "new", at: Date.now(), st: "wait", zalo: u.zalo, user: u.user };
@@ -1013,10 +1014,11 @@ async function cusHandle(u: any) {
   { const d0 = await cusGet(), st0 = d0.state[String(chat)];
     if (/^\/zalo\b/i.test(text)) { d0.state[String(chat)] = { step: "zalo", at: Date.now() }; await cusPut(d0); return csay(chat, T(cfg, "ask_zalo"), askZaloKb); }
     if (st0?.step === "zalo" && !/^\/(start|help|mua)\b/i.test(text) && !["🛒 Mua hàng", "📋 Đơn của tôi", "💬 Hỗ trợ", "🔎 Kiểm tra / báo lỗi"].includes(text)) {
-      const ph = normPhone(m.contact?.phone_number || text);
-      if (!ph) return csay(chat, T(cfg, "bad_zalo"), askZaloKb);
-      const u = touchUser(d0, chat, m.from); u.zalo = ph; delete d0.state[String(chat)]; await cusPut(d0);
-      await csay(chat, `✅ Đã lưu Zalo <b>${ph}</b>. Đổi số: gõ /zalo`, cusMenu(cfg));
+      const skip = text === SKIP_ZALO || /^bo qua|^bỏ qua|^skip/i.test(text);
+      const ph = skip ? "" : normPhone(m.contact?.phone_number || text);
+      if (!ph && !skip) return csay(chat, T(cfg, "bad_zalo"), askZaloKb);
+      const u = touchUser(d0, chat, m.from); if (ph) { u.zalo = ph; u.noZalo = false; } else u.noZalo = true; delete d0.state[String(chat)]; await cusPut(d0);
+      await csay(chat, ph ? `✅ Đã lưu Zalo <b>${ph}</b>. Đổi số: gõ /zalo` : "Ok, bỏ qua. Muốn thêm số sau: gõ /zalo", cusMenu(cfg));
       if (st0.pack) return cusStartOrder(cfg, await cusGet(), chat, m.from, st0.pack, (st0.kind as "new" | "renew") || "new", st0.email || nameOf(m.from) || "Telegram " + chat, st0.qty || 1);
       return;
     }
