@@ -182,6 +182,7 @@
   .botk .okc{color:#2e7d4f} .botk .bad{color:#b3261e}
   .botk input[type=text]{padding:6px 8px} .botk .tbl{border-collapse:collapse;white-space:nowrap;margin-bottom:8px;font-size:14px} .botk .tbl td,.botk .tbl th{padding:4px 6px 4px 0;text-align:left}
   .botk .pk{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+  .botk .pv{border-top:1px dashed var(--line);padding-top:6px;margin-top:6px}
   .botk .bta{width:100%;margin-top:6px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--ink)}
   .botsave{position:sticky;bottom:0;background:var(--bg);padding:10px 0;display:flex;gap:10px;justify-content:flex-end;align-items:center}
 </style>
@@ -1202,38 +1203,46 @@
 
             <div class="card bk">
               <h3>Sản phẩm bán <label style="font-weight:400;font-size:14px;margin-left:8px"><input type="checkbox" x-model="bot.d.sell.on"> bật bán qua bot</label></h3>
-              <div class="mute" style="font-size:13px;margin-bottom:8px">Khách bấm 🛒 hoặc /mua → chọn → gửi email → QR chuyển khoản (nội dung = mã đơn) → bấm "Đã chuyển khoản".<br>• <b>YT</b> tick: đơn vào tab Lệnh, Duyệt/Xong là bot báo khách.<br>• Không tick (CapCut…): tick <b>⚡ Tự giao</b> + nạp kho <span class="mono">mail|pass|2fa</span> → trả tiền xong bot tự gửi 1 tài khoản. Không tự giao thì anh giao rồi bấm <b>Đã giao</b>.<br>• <b>Tồn</b> trống = không giới hạn; 0 = "Hết hàng 🔔". Nhập lại tồn rồi Lưu → bot nhắn khách đã bấm 🔔. Giá 0 = ẩn.</div>
-              <div class="warn" x-show="bot.d.sell.on && !bot.d.sell.packs.some(p => Number(p.price) > 0)" style="margin-bottom:8px">⚠️ Chưa sản phẩm nào có <b>Giá</b> → bot vẫn báo "chưa mở bán". Điền giá rồi Lưu.</div>
+              <div class="mute" style="font-size:13px;margin-bottom:8px">Mỗi sản phẩm có nhiều <b>thời hạn</b>, mỗi thời hạn chọn loại:<br>• <b>🔑 Cấp</b>: thanh toán xong (anh xác nhận tiền) bot gửi tài khoản trong kho — bấm <b>Kho</b> để nạp <span class="mono">mail|pass|2fa</span>. Kho trống = hết hàng.<br>• <b>👤 Chính chủ</b>: bot xin email trước → khách thanh toán → anh mời/kích hoạt rồi bấm <b>Đã kích hoạt</b>. Tick <b>YouTube</b> thì đơn chính chủ vào tab Lệnh như cũ.<br>• Một sản phẩm có cả 2 loại thì khách chọn. Giá 0 = ẩn. Tồn chính chủ trống = không giới hạn.</div>
+              <div class="warn" x-show="bot.d.sell.on && !(bot.d.sell.catalog || []).some(pr => pr.vars.some(v => Number(v.price) > 0))" style="margin-bottom:8px">⚠️ Chưa sản phẩm nào có <b>Giá</b> → bot vẫn báo "chưa mở bán". Điền giá rồi Lưu.</div>
               <div class="warn" x-show="bot.d.sell.on && !(bot.d.sell.bank.id && bot.d.sell.bank.acc)" style="margin-bottom:8px">⚠️ Chưa có tài khoản nhận tiền → khách không có QR.</div>
-              <div class="warn" x-show="bot.d.sell.packs.some(p => p.ytb !== false && /capcut|gpt|netflix|canva|spotify|gg1|google one/i.test(p.name))" style="margin-bottom:8px">⚠️ Sản phẩm không phải YouTube (CapCut…) phải <b>bỏ tick YT</b>, không thì đơn vào tab Lệnh như đơn YouTube.</div>
-              <template x-for="(p, i) in bot.d.sell.packs" :key="p.id">
-                <div class="pk">
+              
+              <template x-for="(pr, i) in bot.d.sell.catalog" :key="pr.id">
+                <div class="pk" :style="pr.on === false && 'opacity:.55'">
                   <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
-                    <input type="text" x-model="p.name" placeholder="Tên sản phẩm" style="flex:1;min-width:150px">
-                    <label class="mute" style="font-size:12px">tháng <input type="text" inputmode="numeric" x-model.number="p.months" style="width:42px"></label>
-                    <label class="mute" style="font-size:12px">giá <input type="text" inputmode="numeric" x-model.number="p.price" style="width:86px"></label>
+                    <input type="text" x-model="pr.name" placeholder="Tên sản phẩm" style="flex:1;min-width:160px;font-weight:600">
+                    <label style="font-size:13px"><input type="checkbox" :checked="pr.on !== false" @change="pr.on = $event.target.checked"> Đang bán</label>
+                    <label style="font-size:13px"><input type="checkbox" x-model="pr.ytb"> YouTube</label>
+                    <button class="btn sm" @click="pr._desc = !pr._desc" x-text="pr.desc ? '✏️ Mô tả ✓' : '✏️ Mô tả'"></button>
+                    <button class="btn sm" @click="if (confirm('Xoá sản phẩm ' + (pr.name || '') + '?')) bot.d.sell.catalog.splice(i, 1)">Xoá</button>
                   </div>
-                  <div class="row" style="gap:12px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:13px">
-                    <label><input type="checkbox" :checked="p.ytb !== false" @change="p.ytb = $event.target.checked; if (p.ytb) p.auto = false"> YouTube</label>
-                    <label x-show="p.ytb === false"><input type="checkbox" x-model="p.auto"> ⚡ Tự giao từ kho</label>
-                    <span x-show="!p.auto">Tồn <input type="text" inputmode="numeric" x-model="p.stock" placeholder="∞" style="width:50px"></span>
-                    <span x-show="p.auto"><b x-text="'Kho: ' + ((bot.d.khoN || {})[p.id] || 0)"></b> <button class="btn sm" @click="p._kho = !p._kho">Nạp kho</button></span>
-                    <span class="mute" x-show="(bot.d.waitN || {})[p.id]" x-text="'🔔 ' + (bot.d.waitN || {})[p.id] + ' chờ hàng'"></span>
-                    <button class="btn sm" @click="p._desc = !p._desc" x-text="p.desc ? '✏️ Mô tả ✓' : '✏️ Mô tả'"></button>
-                    <button class="btn sm" @click="if (confirm('Xoá ' + (p.name || 'sản phẩm') + '?')) bot.d.sell.packs.splice(i, 1)">Xoá</button>
-                  </div>
-                  <textarea x-show="p._desc" rows="4" x-model="p.desc" placeholder="Mô tả, bảo hành, cách nhận hàng… (khách thấy trước khi bấm Mua)" class="bta"></textarea>
-                  <div x-show="p.auto && p._kho" style="margin-top:6px">
-                    <textarea rows="4" x-model="p._lines" placeholder="Mỗi dòng 1 tài khoản: mail|pass|2fa" class="bta mono"></textarea>
-                    <div class="row" style="gap:6px;margin-top:4px">
-                      <button class="btn sm pri" :disabled="bot.saving || !(p._lines || '').trim()" @click="botKho(p, 'kho_add')">Thêm vào kho</button>
-                      <button class="btn sm" :disabled="bot.saving" @click="if (confirm('Xoá hết ' + ((bot.d.khoN || {})[p.id] || 0) + ' tài khoản trong kho ' + p.name + '?')) botKho(p, 'kho_clear')">Xoá kho</button>
-                      <span class="mute" style="font-size:12px">Lưu sản phẩm trước rồi mới nạp kho.</span>
+                  <textarea x-show="pr._desc" rows="3" x-model="pr.desc" placeholder="Mô tả, bảo hành… (khách thấy khi bấm vào sản phẩm)" class="bta"></textarea>
+                  <template x-for="(v, k) in pr.vars" :key="v.id">
+                    <div class="pv">
+                      <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
+                        <select x-model="v.type" style="padding:5px"><option value="cap">🔑 Cấp</option><option value="cc">👤 Chính chủ</option></select>
+                        <input type="text" x-model="v.label" placeholder="vd 1 tháng" style="width:84px">
+                        <label class="mute" style="font-size:12px">tháng <input type="text" inputmode="numeric" x-model.number="v.months" style="width:38px"></label>
+                        <label class="mute" style="font-size:12px">giá <input type="text" inputmode="numeric" x-model.number="v.price" style="width:82px"></label>
+                        <span x-show="v.type === 'cc'" class="mute" style="font-size:12px">tồn <input type="text" inputmode="numeric" x-model="v.stock" placeholder="∞" style="width:42px"></span>
+                        <button x-show="v.type === 'cap'" class="btn sm" @click="v._kho = !v._kho" x-text="'Kho: ' + ((bot.d.khoN || {})[pr.id + '.' + v.id] || 0)"></button>
+                        <span class="mute" style="font-size:12px" x-show="(bot.d.waitN || {})[pr.id + '.' + v.id]" x-text="'🔔' + (bot.d.waitN || {})[pr.id + '.' + v.id]"></span>
+                        <button class="btn sm" @click="pr.vars.splice(k, 1)">✕</button>
+                      </div>
+                      <div x-show="v.type === 'cap' && v._kho" style="margin-top:6px">
+                        <textarea rows="4" x-model="v._lines" placeholder="Mỗi dòng 1 tài khoản: mail|pass|2fa" class="bta mono"></textarea>
+                        <div class="row" style="gap:6px;margin-top:4px;flex-wrap:wrap">
+                          <button class="btn sm pri" :disabled="bot.saving || !(v._lines || '').trim()" @click="botKho(pr.id + '.' + v.id, v, 'kho_add')">Thêm vào kho</button>
+                          <button class="btn sm" :disabled="bot.saving" @click="if (confirm('Xoá hết tài khoản trong kho ' + pr.name + ' ' + v.label + '?')) botKho(pr.id + '.' + v.id, v, 'kho_clear')">Xoá kho</button>
+                          <span class="mute" style="font-size:12px">Lưu sản phẩm trước rồi mới nạp kho.</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  </template>
+                  <button class="btn sm" style="margin-top:6px" @click="pr.vars.push({ id: 'v' + Date.now().toString(36).slice(-4), label: '', months: 1, type: (pr.vars[pr.vars.length - 1] || {}).type || 'cap', price: 0, stock: '' })">+ Thêm thời hạn</button>
                 </div>
               </template>
-              <button class="btn sm" @click="bot.d.sell.packs.push({ id: 'p' + Date.now().toString(36).slice(-5), name: '', months: 1, price: 0, stock: '', ytb: false, auto: false, desc: '' })">+ Thêm sản phẩm</button>
+              <button class="btn sm" @click="bot.d.sell.catalog.push({ id: 'sp' + Date.now().toString(36).slice(-5), name: '', desc: '', ytb: false, on: true, vars: [{ id: 'v1', label: '1 tháng', months: 1, type: 'cap', price: 0, stock: '' }] })">+ Thêm sản phẩm</button>
               <h4 style="margin:14px 0 6px">Tài khoản nhận tiền (tạo QR VietQR)</h4>
               <div class="row" style="gap:8px;flex-wrap:wrap">
                 <input type="text" x-model="bot.d.sell.bank.id" placeholder="Ngân hàng: MB, VCB, TCB, ACB…" style="width:200px">
@@ -1972,11 +1981,11 @@ function app() {
       if (op === 'get') b.loading = true; else b.saving = true;
       try {
         const body = { pass: this.pass, op: op };
-        if (op === 'set') body.cfg = { sell: { ...b.d.sell, packs: b.d.sell.packs.map(p => ({ id: p.id, name: p.name, months: p.months, price: p.price, stock: p.stock, stock0: p.stock0, ytb: p.ytb, auto: p.auto, desc: p.desc })) }, texts: Object.fromEntries(Object.entries(b.d.texts).map(([k, t]) => [k, t.val])) };
+        if (op === 'set') body.cfg = { sell: { on: b.d.sell.on, bank: b.d.sell.bank, catalog: b.d.sell.catalog.map(pr => ({ id: pr.id, name: pr.name, desc: pr.desc, ytb: pr.ytb, on: pr.on, vars: pr.vars.map(v => ({ id: v.id, label: v.label, months: v.months, type: v.type, price: v.price, stock: v.stock, stock0: v.stock0 })) })) }, texts: Object.fromEntries(Object.entries(b.d.texts).map(([k, t]) => [k, t.val])) };
         if (opt) Object.assign(body, opt);
         const r = await fetch(CUS_ADMIN_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) }).then(x => x.json());
         if (!r.ok) throw new Error(r.error || 'Lỗi');
-        for (const p of r.sell.packs) { p.stock = p.stock == null ? '' : p.stock; p.stock0 = p.stock; }
+        for (const pr of (r.sell.catalog || [])) for (const v of pr.vars) { v.stock = v.stock == null ? '' : v.stock; v.stock0 = v.stock; }
         b.d = r; b.msg = (op === 'set' ? 'Đã lưu ✓' : op === 'setup' ? 'Đã bật bot ✓' : '') + (r.note ? ' · ' + r.note : '');
       } catch (e) { b.err = e.message; }
       b.loading = false; b.saving = false;
@@ -1987,9 +1996,9 @@ function app() {
       const csv = rows.map(r => r.map(q).join(',')).join('\n');
       try { navigator.clipboard.writeText(csv); this.bot.msg = 'Đã copy ' + this.bot.d.buyers.length + ' khách (dán vào Google Sheets)'; } catch (e) { this.bot.msg = 'Không copy được'; }
     },
-    async botKho(p, op) {
-      await this.botCall(op, { id: p.id, lines: p._lines || '' });
-      if (!this.bot.err) p._lines = '';
+    async botKho(id, v, op) {
+      await this.botCall(op, { id: id, lines: v._lines || '' });
+      if (!this.bot.err) v._lines = '';
     },
     botDeliver(o) {
       const note = prompt('Gửi kèm cho khách (tài khoản, hướng dẫn…) — để trống nếu không cần:', '');

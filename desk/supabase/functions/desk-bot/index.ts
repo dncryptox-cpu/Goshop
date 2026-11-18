@@ -718,16 +718,42 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   activated: ["Bán: nhắn khi kích hoạt đơn mới", "🎉 Đã kích hoạt YouTube Premium cho {email}. Cảm ơn bạn!"],
   renewed: ["Bán: nhắn khi gia hạn xong", "✅ Đã gia hạn {email} thành công. Cảm ơn bạn!"],
   sell_info: ["Bán SP khác: hỏi thông tin nhận hàng (SP không tự giao)", "Gửi email (hoặc thông tin) để nhận {goi}."],
+  cc_email: ["Chính chủ: hỏi email (trước khi thanh toán)", "Gửi email bạn muốn nâng cấp {goi} (vd: abc@gmail.com)."],
+  cc_done: ["Chính chủ: nhắn khi admin đã mời/kích hoạt", "🎉 Đã kích hoạt {goi} cho {email}. Bạn kiểm tra email và chấp nhận lời mời nhé!"],
   delivered: ["Bán SP khác: nhắn khi giao xong", "✅ Đơn {ma} ({goi}) đã giao xong. Cảm ơn bạn!"],
   delivered_auto: ["Tự giao tài khoản (kèm tài khoản bên dưới)", "🎉 Đơn {ma} ({goi}) — tài khoản của bạn:"],
   out_stock: ["Hết hàng", "😔 {goi} tạm hết hàng. Bấm 🔔 bên dưới, có hàng bot sẽ nhắn bạn ngay."],
   wait_ok: ["Khách bấm 🔔 báo khi có hàng", "🔔 Đã ghi nhận. Khi {goi} có hàng bot sẽ nhắn bạn."],
   restock: ["Báo hàng về (gửi khách đã bấm 🔔)", "🔥 {goi} đã có hàng!\n➕ Thêm: {them}\n📦 Tồn kho hiện tại: {ton}\n💵 Giá: {gia}"],
 };
-type CusPack = { id: string; name: string; months: number; price: number; stock?: number | null; ytb?: boolean; auto?: boolean; desc?: string }; // stock null = không giới hạn; ytb = YouTube (xử lý qua Thay Fam); auto = tự giao từ kho tài khoản (tồn = số dòng trong kho)
+type CusPack = { id: string; name: string; months: number; price: number; stock?: number | null; ytb?: boolean; auto?: boolean; desc?: string; prod?: string; vlabel?: string; type?: "cap" | "cc" }; // stock null = không giới hạn; ytb = YouTube (xử lý qua Thay Fam); auto = tự giao từ kho tài khoản (tồn = số dòng trong kho)
+/* Danh mục: sản phẩm → biến thể. type "cap" = tài khoản cấp (giao từ kho), "cc" = chính chủ (xin email, admin mời).
+   Bot làm phẳng thành "pack" (id = sp.bienthe) để dùng chung luồng mua. */
+type CusVar = { id: string; label: string; months: number; type: "cap" | "cc"; price: number; stock?: number | null };
+type CusProd = { id: string; name: string; desc?: string; ytb?: boolean; on?: boolean; vars: CusVar[] };
+const VTYPE: Record<string, string> = { cap: "Cấp", cc: "Chính chủ" };
+const CATALOG_SEED: CusProd[] = [
+  { id: "yt", name: "YouTube Premium", ytb: true, desc: "Chính chủ: mời email của bạn vào gia đình YouTube Premium.", vars: [
+    { id: "1", label: "1 tháng", months: 1, type: "cc", price: 45000 }, { id: "3", label: "3 tháng", months: 3, type: "cc", price: 130000 },
+    { id: "6", label: "6 tháng", months: 6, type: "cc", price: 200000 }, { id: "12", label: "12 tháng", months: 12, type: "cc", price: 375000 },
+    { id: "24", label: "24 tháng", months: 24, type: "cc", price: 0 }] },
+  { id: "gem", name: "Gemini Pro 5TB 2 năm + YouTube (không bảo hành)", desc: "Không bảo hành.", vars: [{ id: "24", label: "2 năm", months: 24, type: "cc", price: 0 }] },
+  { id: "canva", name: "Canva Pro", vars: [{ id: "12", label: "12 tháng", months: 12, type: "cc", price: 150000 }] },
+  { id: "capcut", name: "CapCut Pro", vars: [
+    { id: "7d", label: "7 ngày", months: 0, type: "cap", price: 0 }, { id: "1", label: "1 tháng", months: 1, type: "cap", price: 85000 },
+    { id: "3", label: "3 tháng", months: 3, type: "cap", price: 150000 }, { id: "6", label: "6 tháng", months: 6, type: "cap", price: 275000 },
+    { id: "12", label: "12 tháng", months: 12, type: "cap", price: 495000 }] },
+  { id: "nf", name: "Netflix", vars: [{ id: "3", label: "3 tháng", months: 3, type: "cap", price: 0 }] },
+  { id: "gpt", name: "ChatGPT Plus dùng chung", vars: [{ id: "3", label: "3 tháng", months: 3, type: "cap", price: 300000 }] },
+];
+function flatten(cat: CusProd[]): CusPack[] {
+  const out: CusPack[] = [];
+  for (const pr of cat) { if (pr.on === false) continue; for (const v of pr.vars || []) out.push({ id: `${pr.id}.${v.id}`, name: `${pr.name} · ${v.label}${pr.vars.some((x) => x.type !== v.type) ? ` (${VTYPE[v.type]})` : ""}`, months: v.months, price: v.price, stock: v.type === "cap" ? 0 : (v.stock ?? null), ytb: !!pr.ytb && v.type === "cc", auto: v.type === "cap", desc: pr.desc, prod: pr.id, vlabel: v.label, type: v.type }); }
+  return out;
+}
 const SEPAY_KEY = Deno.env.get("SEPAY_API_KEY") || "";
 const QR_MIN = 10;
-type CusCfg = { texts: Record<string, string>; sell: { on: boolean; packs: CusPack[]; bank: { id: string; acc: string; name: string } } };
+type CusCfg = { texts: Record<string, string>; sell: { on: boolean; packs: CusPack[]; catalog?: CusProd[]; bank: { id: string; acc: string; name: string } } };
 const CUS_DEFAULT: CusCfg = { texts: {}, sell: { on: false, packs: [{ id: "p1", name: "1 tháng", months: 1, price: 0 }, { id: "p6", name: "6 tháng", months: 6, price: 0 }, { id: "p12", name: "12 tháng", months: 12, price: 0 }], bank: { id: "", acc: "", name: "" } } };
 async function docGet<T>(key: string, def: T): Promise<T> {
   const { data } = await db.from("desk_docs").select("data").eq("user_id", await owner()).eq("kind", "settings").eq("key", key).maybeSingle();
@@ -738,7 +764,10 @@ async function docPut(key: string, data: unknown) {
 }
 async function cusCfg(): Promise<CusCfg> {
   const c = await docGet<CusCfg>("cus_cfg", CUS_DEFAULT);
-  const cfg = { texts: c.texts || {}, sell: { ...CUS_DEFAULT.sell, ...(c.sell || {}), bank: { ...CUS_DEFAULT.sell.bank, ...(c.sell?.bank || {}) } } };
+  const cfg: CusCfg = { texts: c.texts || {}, sell: { ...CUS_DEFAULT.sell, ...(c.sell || {}), bank: { ...CUS_DEFAULT.sell.bank, ...(c.sell?.bank || {}) } } };
+  // chưa có danh mục → dùng danh mục mẫu (bản cũ chỉ có "packs")
+  if (!Array.isArray(cfg.sell.catalog)) cfg.sell.catalog = JSON.parse(JSON.stringify(CATALOG_SEED));
+  cfg.sell.packs = flatten(cfg.sell.catalog!);
   // SP tự giao: tồn = số tài khoản còn trong kho
   if (cfg.sell.packs.some((p) => p.auto)) { const kho = await khoGet(); for (const p of cfg.sell.packs) if (p.auto) p.stock = (kho[p.id] || []).length; }
   return cfg;
@@ -757,7 +786,7 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
 }
 
 type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" };
-type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string };
+type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string; type?: string };
 type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number; noZalo?: boolean };
 type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
@@ -793,14 +822,32 @@ const inStock = (p: CusPack) => p.stock == null || p.stock > 0;
 const packKb = (cfg: CusCfg, kind: "n" | "r") => ({ inline_keyboard: cfg.sell.packs.filter((p) => p.price > 0 && (kind === "n" || isYtb(p))).map((p) => [inStock(p)
   ? { text: `${p.name} · ${money(p.price)}${p.stock != null ? ` · còn ${p.stock}` : ""}`, callback_data: `p:${p.id}:${kind}` }
   : { text: `${p.name} · Hết hàng 🔔`, callback_data: `w:${p.id}` }]) });
+const prodKb = (cfg: CusCfg) => ({ inline_keyboard: (cfg.sell.catalog || []).filter((pr) => pr.on !== false && pr.vars.some((v) => v.price > 0)).map((pr) => {
+  const ps = cfg.sell.packs.filter((p) => p.prod === pr.id && p.price > 0), min = Math.min(...ps.map((p) => p.price)), any = ps.some(inStock);
+  return [{ text: `${pr.name} · ${ps.length > 1 ? "từ " : ""}${money(min)}${any ? "" : " · hết hàng"}`, callback_data: `g:${pr.id}` }];
+}) });
+function cusProd(cfg: CusCfg, pid: string) {
+  const pr = (cfg.sell.catalog || []).find((x) => x.id === pid); if (!pr) return null;
+  const ps = cfg.sell.packs.filter((p) => p.prod === pid && p.price > 0);
+  const lines = [`<b>${esc(pr.name)}</b>`];
+  if (pr.desc) lines.push("", esc(pr.desc));
+  const kb: any[] = [];
+  for (const t of ["cap", "cc"] as const) {
+    const g = ps.filter((p) => p.type === t); if (!g.length) continue;
+    lines.push("", t === "cap" ? "🔑 <b>Tài khoản cấp</b> — thanh toán xong bot gửi tài khoản ngay" : pr.ytb ? "👤 <b>Chính chủ</b> — mời email của bạn vào gia đình" : "👤 <b>Chính chủ</b> — nâng cấp trên email của bạn, admin kích hoạt sau khi thanh toán");
+    for (const p of g) kb.push([inStock(p) ? { text: `${t === "cap" ? "🔑" : "👤"} ${p.vlabel} · ${money(p.price)}${p.stock != null && t === "cap" ? ` · còn ${p.stock}` : ""}`, callback_data: `p:${p.id}:n` } : { text: `${p.vlabel} · Hết hàng 🔔`, callback_data: `w:${p.id}` }]);
+  }
+  kb.push([{ text: "◀️ Quay lại", callback_data: "buy" }]);
+  return { text: lines.join("\n"), kb: { inline_keyboard: kb } };
+}
 const sellReady = (cfg: CusCfg) => cfg.sell.on && cfg.sell.packs.some((p) => p.price > 0);
 const cusMenu = (cfg: CusCfg) => ({ reply_markup: { keyboard: [...(sellReady(cfg) ? [[{ text: "🛒 Mua hàng" }, { text: "📋 Đơn của tôi" }]] : []), [{ text: "🔎 Kiểm tra / báo lỗi" }, { text: "💬 Hỗ trợ" }]], resize_keyboard: true, is_persistent: true } });
 const ST_VI: Record<string, string> = { wait: "chờ thanh toán", check: "chờ shop xác nhận tiền", paid: "đã thanh toán, đang xử lý", done: "đã giao", cancel: "đã huỷ" };
 function cusDetail(_cfg: CusCfg, p: CusPack) {
-  const how = isYtb(p) ? "Mời vào gia đình YouTube qua email của bạn" : p.auto ? "Email + Mật khẩu (+2FA nếu có)" : "Shop gửi sau khi xác nhận thanh toán";
+  const how = isYtb(p) ? "Mời vào gia đình YouTube qua email của bạn" : p.auto ? "Email + Mật khẩu (+2FA nếu có)" : p.type === "cc" ? "Nâng cấp chính chủ trên email của bạn" : "Shop gửi sau khi xác nhận thanh toán";
   const lines = [`<b>${esc(p.name)}</b>`, `💰 Giá: <b>${money(p.price)}</b>`];
   if (p.stock != null) lines.push(`📊 Số lượng còn: <b>${Math.max(0, p.stock)}</b>`);
-  lines.push(`⏳ Thời hạn: <b>${p.months} tháng</b>`, "", `📦 Hình thức nhận hàng: <b>${how}</b>`);
+  lines.push(`⏳ Thời hạn: <b>${p.vlabel || p.months + " tháng"}</b>`, "", `📦 Hình thức nhận hàng: <b>${how}</b>`);
   if (p.auto) lines.push("ℹ️ Thanh toán xong bot tự động gửi tài khoản.");
   if (p.desc) lines.push("", esc(p.desc));
   const kb: any[] = [];
@@ -809,7 +856,7 @@ function cusDetail(_cfg: CusCfg, p: CusPack) {
     lines.push("", "Chọn số lượng muốn mua:");
     kb.push([1, 2, 3, 5, 10].filter((n) => n <= (p.stock ?? 0)).map((n) => ({ text: String(n), callback_data: `q:${p.id}:${n}` })));
   } else kb.push([{ text: `🛒 Mua · ${money(p.price)}`, callback_data: `b:${p.id}` }]);
-  kb.push([{ text: "◀️ Quay lại", callback_data: "buy" }]);
+  kb.push([{ text: "◀️ Quay lại", callback_data: p.prod ? `g:${p.prod}` : "buy" }]);
   return { text: lines.join("\n"), kb: { inline_keyboard: kb } };
 }
 
@@ -841,7 +888,7 @@ async function cusStartOrder(cfg: CusCfg, doc: CusDoc, chat: number, from: any, 
   if (!u.zalo && !u.noZalo) { doc.state[String(chat)] = { step: "zalo", pack: packId, kind, email, qty, at: Date.now() }; await cusPut(doc); return csay(chat, T(cfg, "ask_zalo"), askZaloKb); }
   let ma = ""; do { ma = (isYtb(p) ? "YT" : "SP") + Math.floor(10000 + Math.random() * 90000); } while (doc.orders[ma]);
   const total = p.price * qty, pname = qty > 1 ? `${p.name} × ${qty}` : p.name;
-  doc.orders[ma] = { chat, name: nameOf(from), email, pack: pname, packId: p.id, ytb: isYtb(p), months: p.months, price: total, qty, kind: isYtb(p) ? kind : "new", at: Date.now(), st: "wait", zalo: u.zalo, user: u.user };
+  doc.orders[ma] = { chat, name: nameOf(from), email, pack: pname, packId: p.id, ytb: isYtb(p), months: p.months, price: total, qty, kind: isYtb(p) ? kind : "new", at: Date.now(), st: "wait", zalo: u.zalo, user: u.user, type: p.type };
   delete doc.state[String(chat)];
   await cusPut(doc);
   const cap = T(cfg, "sell_pay", { ma, goi: pname, email, gia: money(total) }) + (SEPAY_KEY ? "\n\nChuyển đúng số tiền và nội dung — bot tự xác nhận." : "\n\nChuyển xong bấm “Tôi đã chuyển khoản”.");
@@ -875,7 +922,8 @@ async function cusCallback(q: any) {
   await ctg("answerCallbackQuery", { callback_query_id: q.id });
   // sửa ngay tin đang bấm (menu ↔ chi tiết) thay vì gửi tin mới
   const show = async (text: string, kb: any) => { const mid = q.message?.message_id; if (mid && q.message?.text) { const r = await ctg("editMessageText", { chat_id: chat, message_id: mid, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: kb }); if (r.ok || /not modified/i.test(r.description || "")) return r; } return csay(chat, text, { reply_markup: kb }); };
-  if (a === "buy") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé."); return show(T(cfg, "sell_menu"), packKb(cfg, "n")); }
+  if (a === "buy") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé."); return show(T(cfg, "sell_menu"), prodKb(cfg)); }
+  if (a === "g") { const d = cusProd(cfg, x); if (!d) return csay(chat, "Sản phẩm này không còn bán."); return show(d.text, d.kb); }
   if (a === "p") {
     if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé.");
     const prev = doc.state[String(chat)];
@@ -883,6 +931,7 @@ async function cusCallback(q: any) {
     const pk = cfg.sell.packs.find((p) => p.id === x);
     if (!pk) return csay(chat, "Sản phẩm này không còn bán.");
     if (y === "r") return cusBuy(cfg, doc, chat, q.from, x, "renew");
+    if (!pk.auto) return cusBuy(cfg, doc, chat, q.from, x, "new"); // chính chủ: hỏi email luôn
     const d = cusDetail(cfg, pk); return show(d.text, d.kb);
   }
   if (a === "b") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé."); return cusBuy(cfg, doc, chat, q.from, x, "new"); }
@@ -914,7 +963,7 @@ async function cusBuy(cfg: CusCfg, doc: CusDoc, chat: number, from: any, id: str
   if (pk.auto && !isYtb(pk)) { if (pk.stock != null && qty > pk.stock) return csay(chat, `Chỉ còn <b>${pk.stock}</b> — bạn chọn số lượng ít hơn nhé.`); return cusStartOrder(cfg, doc, chat, from, pk.id, "new", nameOf(from) || "Telegram " + chat, qty); }
   doc.state[String(chat)] = { step: "email", pack: id, kind, at: Date.now() };
   await cusPut(doc);
-  return csay(chat, !isYtb(pk) ? T(cfg, "sell_info", { goi: pk.name }) : T(cfg, "sell_email"));
+  return csay(chat, isYtb(pk) ? T(cfg, "sell_email") : pk.type === "cc" ? T(cfg, "cc_email", { goi: pk.name }) : T(cfg, "sell_info", { goi: pk.name }));
 }
 
 /* Đơn đã thanh toán (auto = SePay báo tiền về; không thì khách tự bấm "Đã chuyển khoản").
@@ -937,11 +986,11 @@ async function cusMarkPaid(cfg: CusCfg, doc: CusDoc, x: string, auto: boolean, v
     }
   }
   let low = "";
-  if (pk && pk.stock != null && !pk.auto) { pk.stock = pk.stock - 1; if (pk.stock < 0) low = "\n⚠️ <b>Hết hàng</b> — khách đã chuyển tiền, cần xử lý."; const raw = await docGet<CusCfg>("cus_cfg", CUS_DEFAULT); const rp = raw.sell?.packs?.find((p) => p.id === pk.id); if (rp) { rp.stock = pk.stock; await docPut("cus_cfg", raw); } }
+  if (pk && pk.stock != null && !pk.auto) { pk.stock = pk.stock - 1; if (pk.stock < 0) low = "\n⚠️ <b>Hết hàng</b> — khách đã chuyển tiền, cần xử lý."; const raw = await docGet<CusCfg>("cus_cfg", CUS_DEFAULT); const [pid, vid] = pk.id.split("."); const rv = raw.sell?.catalog?.find((x) => x.id === pid)?.vars.find((x) => x.id === vid); if (rv) { rv.stock = pk.stock; await docPut("cus_cfg", raw); } }
   if (pk?.auto) low = "\n⚠️ <b>Kho hết tài khoản</b> — khách đã trả tiền, giao tay.";
   if (o.ytb === false) {
     o.st = "paid"; await cusPut(doc);
-    await say(`💰 <b>Đơn ${esc(o.pack)} ${esc(x)}</b> — ${how}\nNhận hàng: <code>${esc(o.email)}</code> · <b>${money(o.price)}</b>\nKhách: ${whoOf(o)}${pk && pk.stock != null ? ` · còn ${pk.stock}` : ""}${low}\n\nGiao hàng rồi bấm "Đã giao" (hoặc gửi kèm thông tin ở tab Bot khách).`, { reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao", callback_data: `cg:${x}` }], [{ text: "Mở tab Bot khách", url: "https://godnc.com/thayfam/" }]] } });
+    await say(`💰 <b>Đơn ${esc(o.pack)} ${esc(x)}</b> — ${how}\nNhận hàng: <code>${esc(o.email)}</code> · <b>${money(o.price)}</b>\nKhách: ${whoOf(o)}${pk && pk.stock != null ? ` · còn ${pk.stock}` : ""}${low}\n\n${o.type === "cc" ? "Mời / kích hoạt cho email trên rồi bấm \"Đã kích hoạt\"." : "Giao hàng rồi bấm \"Đã giao\" (hoặc gửi kèm thông tin ở tab Bot khách)."}`, { reply_markup: { inline_keyboard: [[{ text: o.type === "cc" ? "✅ Đã kích hoạt" : "✅ Đã giao", callback_data: `cg:${x}` }], [{ text: "Mở tab Bot khách", url: "https://godnc.com/thayfam/" }]] } });
     return csay(chat, T(cfg, via === "tự động" ? "paid_auto" : "pay_ok", { ma: x, gia: money(o.got || o.price) }));
   }
   const line = o.kind === "renew"
@@ -1025,7 +1074,7 @@ async function cusHandle(u: any) {
   }
   const startKb = cusMenu(cfg);
   if (!text || /^\/(start|help)\b/i.test(text)) return csay(chat, T(cfg, "start"), startKb);
-  if (/^\/?(mua|buy)\b/i.test(text) || text === "🛒 Mua hàng") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé.", startKb); const d0 = await cusGet(); delete d0.state[String(chat)]; await cusPut(d0); return csay(chat, T(cfg, "sell_menu"), { reply_markup: packKb(cfg, "n") }); }
+  if (/^\/?(mua|buy)\b/i.test(text) || text === "🛒 Mua hàng") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé.", startKb); const d0 = await cusGet(); delete d0.state[String(chat)]; await cusPut(d0); return csay(chat, T(cfg, "sell_menu"), { reply_markup: prodKb(cfg) }); }
   if (/^\/don\b/i.test(text) || text === "📋 Đơn của tôi") return cusOrders(cfg, await cusGet(), chat);
   if (text === "💬 Hỗ trợ") return csay(chat, T(cfg, "support"), startKb);
   if (text === "🔎 Kiểm tra / báo lỗi") { const d0 = await cusGet(); delete d0.state[String(chat)]; await cusPut(d0); return csay(chat, T(cfg, "ask_email"), startKb); }
@@ -1034,6 +1083,7 @@ async function cusHandle(u: any) {
   const st = doc.state[key];
   if (st?.step === "email" && sellReady(cfg)) {
     const pk = cfg.sell.packs.find((x) => x.id === st.pack);
+    if (pk && !isYtb(pk) && pk.type === "cc") { if (!ems.length) return csay(chat, T(cfg, "cc_email", { goi: pk.name })); return cusOrderEmail(cfg, doc, chat, m.from, ems[0]); }
     if (pk && !isYtb(pk)) { if (/^\//.test(text)) return csay(chat, T(cfg, "sell_info", { goi: pk.name })); return cusOrderEmail(cfg, doc, chat, m.from, (ems[0] || text).slice(0, 200)); }
     if (!ems.length) return csay(chat, T(cfg, "sell_email"));
     return cusOrderEmail(cfg, doc, chat, m.from, ems[0]);
@@ -1097,7 +1147,7 @@ async function cusDeliver(ma: string, note = "") {
   const cfg = await cusCfg(), doc = await cusGet(), o = doc.orders[ma];
   if (!o) return { ok: false, error: "không thấy đơn " + ma };
   if (o.st === "done") return { ok: false, error: "đơn đã giao rồi" };
-  const msg = T(cfg, "delivered", { ma, goi: o.pack, email: o.email }) + (note.trim() ? `\n\n${esc(note.trim()).slice(0, 3000)}` : "");
+  const msg = T(cfg, o.type === "cc" ? "cc_done" : "delivered", { ma, goi: o.pack, email: o.email }) + (note.trim() ? `\n\n${esc(note.trim()).slice(0, 3000)}` : "");
   const r = await csay(o.chat, msg);
   if (!r.ok) return { ok: false, error: "không nhắn được khách: " + (r.description || "") };
   o.st = "done"; o.note = note.trim().slice(0, 500); await cusPut(doc);
@@ -1131,17 +1181,25 @@ async function cusAdmin(b: any) {
     const prev = await cusCfg();
     const c = b.cfg || {}, texts: Record<string, string> = {};
     for (const k of Object.keys(CUS_TEXTS)) { const v = String(c.texts?.[k] ?? "").slice(0, 1500); if (v.trim() && v.trim() !== CUS_TEXTS[k][1]) texts[k] = v; }
-    const packs: CusPack[] = (Array.isArray(c.sell?.packs) ? c.sell.packs : []).slice(0, 20).map((p: any, i: number) => ({ id: String(p.id || "p" + i).replace(/[^\w]/g, "").slice(0, 10) || "p" + i, name: String(p.name || "").slice(0, 40), months: Math.max(1, Math.min(36, Math.round(+p.months || 1))), price: Math.max(0, Math.round(+p.price || 0)), stock: p.stock === "" || p.stock == null ? null : Math.round(+p.stock || 0), ytb: p.ytb !== false, auto: p.ytb === false && !!p.auto, desc: String(p.desc || "").slice(0, 1500) })).filter((p: CusPack) => p.name);
     const bank = { id: String(c.sell?.bank?.id || "").trim().slice(0, 30), acc: String(c.sell?.bank?.acc || "").replace(/\s+/g, "").slice(0, 30), name: String(c.sell?.bank?.name || "").trim().slice(0, 60) };
-    // tồn kho không sửa trên web (bằng lúc tải) → giữ số hiện tại (bot có thể đã trừ khi khách mua)
-    const raw: any[] = Array.isArray(c.sell?.packs) ? c.sell.packs : [];
-    for (const p of packs) { const r0 = raw.find((x) => String(x.id) === p.id), o = prev.sell.packs.find((x) => x.id === p.id); if (r0 && o && "stock0" in r0 && String(r0.stock ?? "") === String(r0.stock0 ?? "")) p.stock = o.stock ?? null; }
-    const next: CusCfg = { texts, sell: { on: !!c.sell?.on, packs, bank } };
+    const sid = (x: unknown, d: string) => String(x || d).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12) || d;
+    const rawCat: any[] = Array.isArray(c.sell?.catalog) ? c.sell.catalog : [];
+    const catalog: CusProd[] = rawCat.slice(0, 30).map((pr: any, i: number) => ({
+      id: sid(pr.id, "sp" + i), name: String(pr.name || "").trim().slice(0, 80), desc: String(pr.desc || "").slice(0, 1500), ytb: !!pr.ytb, on: pr.on !== false,
+      vars: (Array.isArray(pr.vars) ? pr.vars : []).slice(0, 15).map((v: any, k: number) => {
+        const type: "cap" | "cc" = v.type === "cap" ? "cap" : "cc";
+        let stock: number | null = type === "cap" || v.stock === "" || v.stock == null ? null : Math.round(+v.stock || 0);
+        // tồn không sửa trên web → giữ số hiện tại (bot có thể đã trừ)
+        const old = prev.sell.catalog?.find((x) => x.id === sid(pr.id, "sp" + i))?.vars.find((x) => x.id === sid(v.id, "v" + k));
+        if (type === "cc" && old && "stock0" in v && String(v.stock ?? "") === String(v.stock0 ?? "")) stock = old.stock ?? null;
+        return { id: sid(v.id, "v" + k), label: String(v.label || "").trim().slice(0, 30) || `${+v.months || 1} tháng`, months: Math.max(0, Math.min(60, Math.round(+v.months || 0))), type, price: Math.max(0, Math.round(+v.price || 0)), stock };
+      }).filter((v: CusVar, k: number, a: CusVar[]) => a.findIndex((x) => x.id === v.id) === k),
+    })).filter((pr: CusProd, k: number, a: CusProd[]) => pr.name && a.findIndex((x) => x.id === pr.id) === k);
+    const next: CusCfg = { texts, sell: { on: !!c.sell?.on, packs: [], catalog, bank } };
     await docPut("cus_cfg", next);
-    // hàng về: tồn cũ ≤ 0 → mới > 0
-    let n = 0;
-    for (const p of packs) { if (p.auto) { p.stock = null; continue; } const o = prev.sell.packs.find((x) => x.id === p.id); if (o && !o.auto && o.stock != null && o.stock <= 0 && p.stock != null && p.stock > 0) n += await cusRestock(next, p, p.stock - Math.max(0, o.stock)); }
-    await docPut("cus_cfg", next);
+    // hàng về (biến thể chính chủ có giới hạn): tồn cũ ≤ 0 → mới > 0
+    let n = 0; const after = flatten(catalog);
+    for (const p of after) { if (p.auto) continue; const o = prev.sell.packs.find((x) => x.id === p.id); if (o && !o.auto && o.stock != null && o.stock <= 0 && p.stock != null && p.stock > 0) n += await cusRestock({ ...next, sell: { ...next.sell, packs: after } }, p, p.stock - Math.max(0, o.stock)); }
     if (n) note = `Đã báo hàng về cho ${n} khách`;
   }
   if (op === "setup") {
