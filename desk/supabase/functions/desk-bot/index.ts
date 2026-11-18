@@ -701,19 +701,28 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   fixed: ["Nhắn khi bấm Xong lỗi", "✅ Lỗi của {email} đã được xử lý xong."],
   invited: ["Nhắn khi thay fam mời lại", "🔄 Đã chuyển {email} sang gia đình YouTube mới và gửi lời mời."],
   limit: ["Tra quá nhiều email/ngày", "Hôm nay bạn đã tra nhiều email rồi, thử lại vào ngày mai nhé."],
-  sell_menu: ["Bán: chọn gói", "🛒 Chọn gói YouTube Premium:"],
+  sell_menu: ["Bán: chọn sản phẩm", "🛒 Chọn sản phẩm:"],
   sell_email: ["Bán: hỏi email", "Gửi email Gmail bạn muốn dùng YouTube Premium (vd: abc@gmail.com)."],
-  sell_pay: ["Bán: hướng dẫn chuyển khoản", "💳 Đơn {ma}: {goi} cho {email}\nSố tiền: {gia}\nNội dung chuyển khoản: {ma}\n\nChuyển xong bấm “Tôi đã chuyển khoản”."],
+  sell_pay: ["Bán: hướng dẫn chuyển khoản", "💳 Đơn {ma}: {goi} cho {email}\nSố tiền: {gia}\nNội dung chuyển khoản: {ma}\n⏳ Thanh toán trong 10 phút."],
+  paid_auto: ["Tự nhận tiền: đã nhận (YouTube)", "✅ Đã nhận {gia} cho đơn {ma}. Bên mình đang kích hoạt, xong bot nhắn bạn tại đây."],
+  pay_short: ["Tự nhận tiền: chuyển thiếu", "⚠️ Đơn {ma} mới nhận {da} / {gia}. Bạn chuyển thêm phần còn thiếu với cùng nội dung {ma} nhé."],
+  not_yet: ["Khách bấm kiểm tra, chưa thấy tiền", "⏳ Chưa thấy tiền về cho đơn {ma}. Bot tự xác nhận ngay khi nhận được (thường dưới 1 phút)."],
+  qr_expired: ["QR quá 10 phút chưa trả", "⌛ Đơn {ma} đã quá hạn thanh toán. Bấm 🛒 Mua hàng để tạo đơn mới (nếu bạn đã chuyển tiền, bot vẫn tự xác nhận)."],
+  support: ["Nút 💬 Hỗ trợ", "💬 Cần hỗ trợ, bạn nhắn trực tiếp người bán nhé."],
+  no_orders: ["Đơn của tôi: chưa có đơn", "Bạn chưa có đơn nào."],
   sell_paid: ["Bán: khách báo đã chuyển", "🙏 Đã nhận báo chuyển khoản đơn {ma}. Bên mình kiểm tra và kích hoạt, xong bot sẽ nhắn bạn tại đây."],
   activated: ["Bán: nhắn khi kích hoạt đơn mới", "🎉 Đã kích hoạt YouTube Premium cho {email}. Cảm ơn bạn!"],
   renewed: ["Bán: nhắn khi gia hạn xong", "✅ Đã gia hạn {email} thành công. Cảm ơn bạn!"],
-  sell_info: ["Bán SP khác: hỏi thông tin nhận hàng", "Gửi email (hoặc thông tin) để nhận {goi}."],
+  sell_info: ["Bán SP khác: hỏi thông tin nhận hàng (SP không tự giao)", "Gửi email (hoặc thông tin) để nhận {goi}."],
   delivered: ["Bán SP khác: nhắn khi giao xong", "✅ Đơn {ma} ({goi}) đã giao xong. Cảm ơn bạn!"],
+  delivered_auto: ["Tự giao tài khoản (kèm tài khoản bên dưới)", "🎉 Đơn {ma} ({goi}) — tài khoản của bạn:"],
   out_stock: ["Hết hàng", "😔 {goi} tạm hết hàng. Bấm 🔔 bên dưới, có hàng bot sẽ nhắn bạn ngay."],
   wait_ok: ["Khách bấm 🔔 báo khi có hàng", "🔔 Đã ghi nhận. Khi {goi} có hàng bot sẽ nhắn bạn."],
   restock: ["Báo hàng về (gửi khách đã bấm 🔔)", "🔥 {goi} đã có hàng!\n➕ Thêm: {them}\n📦 Tồn kho hiện tại: {ton}\n💵 Giá: {gia}"],
 };
-type CusPack = { id: string; name: string; months: number; price: number; stock?: number | null; ytb?: boolean }; // stock null = không giới hạn; ytb = YouTube (xử lý qua Thay Fam)
+type CusPack = { id: string; name: string; months: number; price: number; stock?: number | null; ytb?: boolean; auto?: boolean; desc?: string }; // stock null = không giới hạn; ytb = YouTube (xử lý qua Thay Fam); auto = tự giao từ kho tài khoản (tồn = số dòng trong kho)
+const SEPAY_KEY = Deno.env.get("SEPAY_API_KEY") || "";
+const QR_MIN = 10;
 type CusCfg = { texts: Record<string, string>; sell: { on: boolean; packs: CusPack[]; bank: { id: string; acc: string; name: string } } };
 const CUS_DEFAULT: CusCfg = { texts: {}, sell: { on: false, packs: [{ id: "p1", name: "1 tháng", months: 1, price: 0 }, { id: "p6", name: "6 tháng", months: 6, price: 0 }, { id: "p12", name: "12 tháng", months: 12, price: 0 }], bank: { id: "", acc: "", name: "" } } };
 async function docGet<T>(key: string, def: T): Promise<T> {
@@ -725,7 +734,16 @@ async function docPut(key: string, data: unknown) {
 }
 async function cusCfg(): Promise<CusCfg> {
   const c = await docGet<CusCfg>("cus_cfg", CUS_DEFAULT);
-  return { texts: c.texts || {}, sell: { ...CUS_DEFAULT.sell, ...(c.sell || {}), bank: { ...CUS_DEFAULT.sell.bank, ...(c.sell?.bank || {}) } } };
+  const cfg = { texts: c.texts || {}, sell: { ...CUS_DEFAULT.sell, ...(c.sell || {}), bank: { ...CUS_DEFAULT.sell.bank, ...(c.sell?.bank || {}) } } };
+  // SP tự giao: tồn = số tài khoản còn trong kho
+  if (cfg.sell.packs.some((p) => p.auto)) { const kho = await khoGet(); for (const p of cfg.sell.packs) if (p.auto) p.stock = (kho[p.id] || []).length; }
+  return cfg;
+}
+async function khoGet(): Promise<Record<string, string[]>> { return docGet<Record<string, string[]>>("cus_kho", {}); }
+/* "mail|pass|2fa" → dòng dễ đọc */
+function fmtAcc(line: string) {
+  const f = line.split("|").map((x) => x.trim()), lab = ["Tài khoản", "Mật khẩu", "2FA / ghi chú"];
+  return f.length > 1 ? f.map((v, i) => `${lab[i] || "•"}: <code>${esc(v)}</code>`).join("\n") : `<code>${esc(line)}</code>`;
 }
 const money = (n: number) => Number(n || 0).toLocaleString("vi-VN") + "đ";
 /* câu chữ: escape rồi thay {biến} bằng chữ đậm */
@@ -735,11 +753,11 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
 }
 
 type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" };
-type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "paid" | "done" | "cancel"; note?: string };
-type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, { name: string; at: number }> };
+type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean };
+type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, { name: string; at: number }>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
   const d = await docGet<CusDoc>("cus_bot", {} as CusDoc);
-  d.subs ||= {}; d.rate ||= {}; d.state ||= {}; d.orders ||= {}; d.wait ||= {}; d.users ||= {}; return d;
+  d.subs ||= {}; d.rate ||= {}; d.state ||= {}; d.orders ||= {}; d.wait ||= {}; d.users ||= {}; d.pays ||= []; return d;
 }
 async function cusPut(d: CusDoc) {
   const now = Date.now(), t = today();
@@ -747,6 +765,7 @@ async function cusPut(d: CusDoc) {
   for (const k of Object.keys(d.rate)) if (d.rate[k].day !== t) delete d.rate[k];
   for (const k of Object.keys(d.state)) if (now - d.state[k].at > 864e5) delete d.state[k];
   for (const k of Object.keys(d.orders)) if (now - d.orders[k].at > 90 * 864e5) delete d.orders[k];
+  d.pays = d.pays.slice(-60);
   await docPut("cus_bot", d);
 }
 const nameOf = (f: any) => [f?.first_name, f?.last_name].filter(Boolean).join(" ") + (f?.username ? ` @${f.username}` : "");
@@ -756,6 +775,14 @@ const packKb = (cfg: CusCfg, kind: "n" | "r") => ({ inline_keyboard: cfg.sell.pa
   ? { text: `${p.name} · ${money(p.price)}${p.stock != null ? ` · còn ${p.stock}` : ""}`, callback_data: `p:${p.id}:${kind}` }
   : { text: `${p.name} · Hết hàng 🔔`, callback_data: `w:${p.id}` }]) });
 const sellReady = (cfg: CusCfg) => cfg.sell.on && cfg.sell.packs.some((p) => p.price > 0);
+const cusMenu = (cfg: CusCfg) => ({ reply_markup: { keyboard: [...(sellReady(cfg) ? [[{ text: "🛒 Mua hàng" }, { text: "📋 Đơn của tôi" }]] : []), [{ text: "🔎 Kiểm tra / báo lỗi" }, { text: "💬 Hỗ trợ" }]], resize_keyboard: true, is_persistent: true } });
+const ST_VI: Record<string, string> = { wait: "chờ thanh toán", paid: "đã thanh toán, đang xử lý", done: "đã giao", cancel: "đã huỷ" };
+function cusDetail(cfg: CusCfg, p: CusPack) {
+  const head = `<b>${esc(p.name)}</b>\n💵 Giá: <b>${money(p.price)}</b>${p.stock != null ? ` · 📦 Còn: <b>${p.stock}</b>` : ""}${p.auto ? "\n⚡ Thanh toán xong bot tự gửi tài khoản" : ""}`;
+  const kb = inStock(p) ? [[{ text: `🛒 Mua · ${money(p.price)}`, callback_data: `b:${p.id}` }]] : [[{ text: "🔔 Báo khi có hàng", callback_data: `w:${p.id}` }]];
+  kb.push([{ text: "⬅️ Quay lại", callback_data: "buy" }]);
+  return { text: head + (p.desc ? `\n\n${esc(p.desc)}` : ""), kb: { inline_keyboard: kb } };
+}
 
 async function cusCheck(cfg: CusCfg, e: string, line: string, openText: string, fixed: Fixed): Promise<{ text: string; queue: boolean; renew?: boolean }> {
   const r = await tfFind(e);
@@ -784,8 +811,8 @@ async function cusStartOrder(cfg: CusCfg, doc: CusDoc, chat: number, from: any, 
   doc.orders[ma] = { chat, name: nameOf(from), email, pack: p.name, packId: p.id, ytb: isYtb(p), months: p.months, price: p.price, kind: isYtb(p) ? kind : "new", at: Date.now(), st: "wait" };
   delete doc.state[String(chat)];
   await cusPut(doc);
-  const cap = T(cfg, "sell_pay", { ma, goi: p.name, email, gia: money(p.price) });
-  const kb = { inline_keyboard: [[{ text: "✅ Tôi đã chuyển khoản", callback_data: `paid:${ma}` }], [{ text: "Huỷ đơn", callback_data: `cx:${ma}` }]] };
+  const cap = T(cfg, "sell_pay", { ma, goi: p.name, email, gia: money(p.price) }) + (SEPAY_KEY ? "\n\nChuyển đúng số tiền và nội dung — bot tự xác nhận." : "\n\nChuyển xong bấm “Tôi đã chuyển khoản”.");
+  const kb = { inline_keyboard: [[SEPAY_KEY ? { text: "🔄 Kiểm tra thanh toán", callback_data: `paid:${ma}` } : { text: "✅ Tôi đã chuyển khoản", callback_data: `paid:${ma}` }], [{ text: "Huỷ đơn", callback_data: `cx:${ma}` }]] };
   const b = cfg.sell.bank;
   if (b.id && b.acc) {
     const qr = `https://img.vietqr.io/image/${encodeURIComponent(b.id)}-${encodeURIComponent(b.acc)}-compact2.png?amount=${p.price}&addInfo=${encodeURIComponent(ma)}&accountName=${encodeURIComponent(b.name || "")}`;
@@ -820,10 +847,11 @@ async function cusCallback(q: any) {
     if (y === "r" && prev?.email) return cusStartOrder(cfg, doc, chat, q.from, x, "renew", prev.email);
     const pk = cfg.sell.packs.find((p) => p.id === x);
     if (pk && !inStock(pk)) return csay(chat, T(cfg, "out_stock", { goi: pk.name }), { reply_markup: { inline_keyboard: [[{ text: "🔔 Báo khi có hàng", callback_data: `w:${pk.id}` }]] } });
-    doc.state[String(chat)] = { step: "email", pack: x, kind: y === "r" ? "renew" : "new", at: Date.now() };
-    await cusPut(doc);
-    return csay(chat, pk && !isYtb(pk) ? T(cfg, "sell_info", { goi: pk.name }) : T(cfg, "sell_email"));
+    // xem chi tiết trước (nếu có mô tả), bấm Mua mới hỏi email
+    if (pk && y !== "r" && (pk.desc || pk.auto)) { const d = cusDetail(cfg, pk); return csay(chat, d.text, { reply_markup: d.kb }); }
+    return cusBuy(cfg, doc, chat, q.from, x, y === "r" ? "renew" : "new");
   }
+  if (a === "b") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé."); return cusBuy(cfg, doc, chat, q.from, x, "new"); }
   if (a === "w") {
     const pk = cfg.sell.packs.find((p) => p.id === x); if (!pk) return csay(chat, "Sản phẩm này không còn bán.");
     if (inStock(pk)) return csay(chat, `${esc(pk.name)} đang có hàng, bấm mua nhé.`, { reply_markup: { inline_keyboard: [[{ text: `🛒 Mua ngay · ${money(pk.price)}`, callback_data: `p:${pk.id}:n` }]] } });
@@ -834,24 +862,96 @@ async function cusCallback(q: any) {
   const o = doc.orders[x]; if (!o || o.chat !== chat) return csay(chat, "Không tìm thấy đơn này.");
   if (a === "cx") { if (o.st === "wait") { o.st = "cancel"; await cusPut(doc); } return csay(chat, `Đã huỷ đơn <b>${esc(x)}</b>.`); }
   if (a === "paid") {
-    if (o.st !== "wait") return csay(chat, o.st === "cancel" ? "Đơn này đã huỷ." : T(cfg, "sell_paid", { ma: x }));
-    const pk = cfg.sell.packs.find((p) => p.id === o.packId);
-    let low = "";
-    if (pk && pk.stock != null) { pk.stock = pk.stock - 1; if (pk.stock < 0) low = "\n⚠️ <b>Hết hàng</b> — khách đã chuyển tiền, cần xử lý."; await docPut("cus_cfg", cfg); }
-    if (o.ytb === false) {
-      o.st = "paid"; await cusPut(doc);
-      await say(`💰 <b>Đơn ${esc(o.pack)} ${esc(x)}</b> — khách báo đã chuyển khoản\nNhận hàng: <code>${esc(o.email)}</code> · <b>${money(o.price)}</b>\nKhách: ${esc(o.name || "Telegram")}${pk && pk.stock != null ? ` · còn ${pk.stock}` : ""}${low}\n\nKiểm tra tiền (nội dung ${esc(x)}), giao hàng rồi bấm "Đã giao" (hoặc gửi kèm thông tin ở tab Bot khách).`, { reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao", callback_data: `cg:${x}` }], [{ text: "Mở tab Bot khách", url: "https://godnc.com/thayfam/" }]] } });
-      return csay(chat, T(cfg, "sell_paid", { ma: x }));
-    }
-    const line = o.kind === "renew"
-      ? `${o.email} gia hạn ${o.months} tháng (đơn ${x}, ${money(o.price)}, khách lẻ báo đã CK — kiểm tra tiền)`
-      : `${o.email} ${o.months} tháng (đơn mới ${x}, ${money(o.price)}, khách lẻ báo đã CK — kiểm tra tiền)`;
-    await tf({ action: "queue", op: "add", text: line, from: CUS_FROM, src: "cusbot" });
-    o.st = "paid"; doc.subs[o.email] = { chat, name: o.name, at: Date.now(), pending: true, kind: o.kind === "renew" ? "renew" : "order" };
-    await cusPut(doc);
-    await say(`💰 <b>Đơn ${o.kind === "renew" ? "gia hạn" : "mới"} ${esc(x)}</b> — khách báo đã chuyển khoản\n${esc(o.email)} · ${esc(o.pack)} · <b>${money(o.price)}</b>\nKhách: ${esc(o.name || "Telegram")}${low}\n\nKiểm tra tiền (nội dung ${esc(x)}) rồi duyệt ở tab Lệnh — duyệt xong bot tự nhắn khách.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
-    return csay(chat, T(cfg, "sell_paid", { ma: x }));
+    if (o.st !== "wait") return csay(chat, o.st === "cancel" ? "Đơn này đã huỷ." : `Đơn <b>${esc(x)}</b>: ${ST_VI[o.st] || o.st}.`);
+    if (SEPAY_KEY) return csay(chat, Date.now() - o.at > QR_MIN * 60e3 ? T(cfg, "qr_expired", { ma: x }) : T(cfg, "not_yet", { ma: x }));
+    return cusMarkPaid(cfg, doc, x, false);
   }
+}
+
+/* bấm Mua: SP tự giao không cần hỏi gì; còn lại hỏi email / thông tin */
+async function cusBuy(cfg: CusCfg, doc: CusDoc, chat: number, from: any, id: string, kind: "new" | "renew") {
+  const pk = cfg.sell.packs.find((p) => p.id === id);
+  if (!pk) return csay(chat, "Sản phẩm này không còn bán.");
+  if (!inStock(pk)) return csay(chat, T(cfg, "out_stock", { goi: pk.name }), { reply_markup: { inline_keyboard: [[{ text: "🔔 Báo khi có hàng", callback_data: `w:${pk.id}` }]] } });
+  if (pk.auto && !isYtb(pk)) return cusStartOrder(cfg, doc, chat, from, pk.id, "new", nameOf(from) || "Telegram " + chat);
+  doc.state[String(chat)] = { step: "email", pack: id, kind, at: Date.now() };
+  await cusPut(doc);
+  return csay(chat, !isYtb(pk) ? T(cfg, "sell_info", { goi: pk.name }) : T(cfg, "sell_email"));
+}
+
+/* Đơn đã thanh toán (auto = SePay báo tiền về; không thì khách tự bấm "Đã chuyển khoản").
+   YouTube → dòng vào tab Lệnh; SP tự giao → lấy 1 tài khoản trong kho gửi luôn; SP khác → DNC bấm Đã giao. */
+async function cusMarkPaid(cfg: CusCfg, doc: CusDoc, x: string, auto: boolean) {
+  const o = doc.orders[x]; if (!o) return;
+  const chat = o.chat, pk = cfg.sell.packs.find((p) => p.id === o.packId);
+  const how = auto ? `đã nhận ${money(o.got || o.price)} (tự động)` : "khách báo đã CK — kiểm tra tiền";
+  o.auto = auto;
+  // SP tự giao
+  if (o.ytb === false && pk?.auto) {
+    const kho = await khoGet(), list = kho[pk.id] || [], acc = list.shift();
+    if (acc) {
+      kho[pk.id] = list; await docPut("cus_kho", kho);
+      const r = await csay(chat, `${T(cfg, "delivered_auto", { ma: x, goi: o.pack })}\n\n${fmtAcc(acc)}\n\nCảm ơn bạn!`);
+      o.st = r.ok ? "done" : "paid"; o.note = acc.slice(0, 300); await cusPut(doc);
+      await say(`🤖 <b>Đã tự giao ${esc(o.pack)}</b> · đơn ${esc(x)} · ${money(o.got || o.price)}\nKhách: ${esc(o.name || "Telegram")} · ${how}\nKho còn ${list.length}${list.length <= 2 ? " ⚠️ sắp hết" : ""}${r.ok ? "" : "\n⚠️ Không nhắn được khách — giao tay."}`);
+      return;
+    }
+  }
+  let low = "";
+  if (pk && pk.stock != null && !pk.auto) { pk.stock = pk.stock - 1; if (pk.stock < 0) low = "\n⚠️ <b>Hết hàng</b> — khách đã chuyển tiền, cần xử lý."; const raw = await docGet<CusCfg>("cus_cfg", CUS_DEFAULT); const rp = raw.sell?.packs?.find((p) => p.id === pk.id); if (rp) { rp.stock = pk.stock; await docPut("cus_cfg", raw); } }
+  if (pk?.auto) low = "\n⚠️ <b>Kho hết tài khoản</b> — khách đã trả tiền, giao tay.";
+  if (o.ytb === false) {
+    o.st = "paid"; await cusPut(doc);
+    await say(`💰 <b>Đơn ${esc(o.pack)} ${esc(x)}</b> — ${how}\nNhận hàng: <code>${esc(o.email)}</code> · <b>${money(o.price)}</b>\nKhách: ${esc(o.name || "Telegram")}${pk && pk.stock != null ? ` · còn ${pk.stock}` : ""}${low}\n\nGiao hàng rồi bấm "Đã giao" (hoặc gửi kèm thông tin ở tab Bot khách).`, { reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao", callback_data: `cg:${x}` }], [{ text: "Mở tab Bot khách", url: "https://godnc.com/thayfam/" }]] } });
+    return csay(chat, auto ? T(cfg, "paid_auto", { ma: x, gia: money(o.got || o.price) }) : T(cfg, "sell_paid", { ma: x }));
+  }
+  const line = o.kind === "renew"
+    ? `${o.email} gia hạn ${o.months} tháng (đơn ${x}, ${money(o.price)}, ${how})`
+    : `${o.email} ${o.months} tháng (đơn mới ${x}, ${money(o.price)}, ${how})`;
+  await tf({ action: "queue", op: "add", text: line, from: CUS_FROM, src: "cusbot" });
+  o.st = "paid"; doc.subs[o.email] = { chat, name: o.name, at: Date.now(), pending: true, kind: o.kind === "renew" ? "renew" : "order" };
+  await cusPut(doc);
+  await say(`💰 <b>Đơn ${o.kind === "renew" ? "gia hạn" : "mới"} ${esc(x)}</b> — ${how}\n${esc(o.email)} · ${esc(o.pack)} · <b>${money(o.price)}</b>\nKhách: ${esc(o.name || "Telegram")}${low}\n\n${auto ? "Tiền đã về." : "Kiểm tra tiền (nội dung " + esc(x) + ") rồi"} Duyệt ở tab Lệnh — duyệt xong bot tự nhắn khách.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
+  return csay(chat, auto ? T(cfg, "paid_auto", { ma: x, gia: money(o.got || o.price) }) : T(cfg, "sell_paid", { ma: x }));
+}
+
+/* SePay báo có tiền vào (POST ?pay=1, header Authorization: Apikey <SEPAY_API_KEY>) */
+async function cusPay(b: any) {
+  if (b.transferType && b.transferType !== "in") return { success: true };
+  const doc = await cusGet(), id = String(b.id ?? b.referenceCode ?? "");
+  if (id && doc.pays.some((p) => p.id === id)) return { success: true, dup: true };
+  const amt = Math.round(+b.transferAmount || 0), content = String(b.content || b.description || b.code || "");
+  const m = content.toUpperCase().replace(/[^A-Z0-9]/g, "").match(/(YT|SP)(\d{5})/);
+  const ma = m ? m[1] + m[2] : "", o = ma ? doc.orders[ma] : undefined;
+  let res = "không khớp đơn";
+  if (o && (o.st === "wait" || o.st === "cancel")) {
+    o.got = (o.got || 0) + amt;
+    if (o.got >= o.price) {
+      res = "đủ tiền";
+      doc.pays.push({ id, at: Date.now(), amt, content: content.slice(0, 80), ma, res });
+      if (o.st === "cancel") o.st = "wait";
+      await cusPut(doc);
+      await cusMarkPaid(await cusCfg(), await cusGet(), ma, true);
+      return { success: true };
+    }
+    res = `thiếu (${money(o.got)}/${money(o.price)})`;
+    const cfg = await cusCfg();
+    await csay(o.chat, T(cfg, "pay_short", { ma, da: money(o.got), gia: money(o.price) }));
+    await say(`⚠️ Đơn ${esc(ma)} chuyển thiếu: ${money(o.got)} / ${money(o.price)} (${esc(o.name || "")})`);
+  } else if (o) res = "đơn đã xử lý — tiền thừa?";
+  if (o && res.startsWith("đơn đã xử lý")) await say(`ℹ️ Tiền vào ${money(amt)} nội dung ${esc(content.slice(0, 60))} — đơn ${esc(ma)} đã ${ST_VI[o.st] || o.st}, kiểm tra trùng/thừa.`);
+  doc.pays.push({ id, at: Date.now(), amt, content: content.slice(0, 80), ma, res });
+  await cusPut(doc);
+  return { success: true };
+}
+
+/* Đơn của tôi */
+function cusOrders(cfg: CusCfg, doc: CusDoc, chat: number) {
+  const list = Object.entries(doc.orders).filter(([, o]) => o.chat === chat).sort((a, b) => b[1].at - a[1].at).slice(0, 10);
+  if (!list.length) return csay(chat, T(cfg, "no_orders"), cusMenu(cfg));
+  const icon: Record<string, string> = { wait: "⏳", paid: "💰", done: "✅", cancel: "✖️" };
+  const lines = list.map(([ma, o]) => `${icon[o.st] || "•"} <b>${esc(ma)}</b> · ${esc(o.pack)} · ${money(o.price)}\n   ${new Date(o.at + 7 * 3600e3).toISOString().slice(0, 16).replace("T", " ").replace(/^(\d{4})-(\d\d)-(\d\d)/, "$3/$2")} · ${ST_VI[o.st] || o.st}${o.st === "done" && o.ytb === false && o.note && o.note.includes("|") ? `\n${fmtAcc(o.note)}` : ""}`);
+  return csay(chat, "📋 <b>Đơn của bạn</b>\n\n" + lines.join("\n\n"), cusMenu(cfg));
 }
 
 async function cusHandle(u: any) {
@@ -860,9 +960,12 @@ async function cusHandle(u: any) {
   const chat = m.chat.id, text = String(m.text || m.caption || "").trim();
   const cfg = await cusCfg();
   if (/^\/start\b/i.test(text)) { try { const d0 = await cusGet(); d0.users[String(chat)] = { name: nameOf(m.from), at: Date.now() }; await cusPut(d0); } catch (_) { /* bỏ qua */ } }
-  const startKb = sellReady(cfg) ? { reply_markup: { inline_keyboard: [[{ text: "🛒 Mua / gia hạn YouTube Premium", callback_data: "buy" }]] } } : {};
+  const startKb = cusMenu(cfg);
   if (!text || /^\/(start|help)\b/i.test(text)) return csay(chat, T(cfg, "start"), startKb);
-  if (/^\/?(mua|buy)\b/i.test(text)) { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé."); return csay(chat, T(cfg, "sell_menu"), { reply_markup: packKb(cfg, "n") }); }
+  if (/^\/?(mua|buy)\b/i.test(text) || text === "🛒 Mua hàng") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé.", startKb); const d0 = await cusGet(); delete d0.state[String(chat)]; await cusPut(d0); return csay(chat, T(cfg, "sell_menu"), { reply_markup: packKb(cfg, "n") }); }
+  if (/^\/don\b/i.test(text) || text === "📋 Đơn của tôi") return cusOrders(cfg, await cusGet(), chat);
+  if (text === "💬 Hỗ trợ") return csay(chat, T(cfg, "support"), startKb);
+  if (text === "🔎 Kiểm tra / báo lỗi") { const d0 = await cusGet(); delete d0.state[String(chat)]; await cusPut(d0); return csay(chat, T(cfg, "ask_email"), startKb); }
   const ems = [...new Set((text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map((x) => x.toLowerCase()))].slice(0, 3);
   const doc = await cusGet(), key = String(chat);
   const st = doc.state[key];
@@ -951,11 +1054,19 @@ async function cusAdmin(b: any) {
   const op = String(b.op || "get");
   let note = "";
   if (op === "deliver") { const r = await cusDeliver(String(b.ma || ""), String(b.note || "")); if (!r.ok) return r; note = "Đã nhắn khách đơn " + b.ma; }
+  if (op === "kho_add" || op === "kho_clear") {
+    const id = String(b.id || ""), kho = await khoGet(), before = (kho[id] || []).length;
+    if (op === "kho_clear") kho[id] = [];
+    else { const add = String(b.lines || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 500); const cur = new Set(kho[id] || []); kho[id] = [...(kho[id] || []), ...add.filter((l) => !cur.has(l))]; }
+    await docPut("cus_kho", kho);
+    const after = kho[id].length; note = op === "kho_clear" ? "Đã xoá kho" : `Kho ${after} (+${after - before})`;
+    if (before === 0 && after > 0) { const cfg0 = await cusCfg(), p0 = cfg0.sell.packs.find((p) => p.id === id); if (p0 && p0.price > 0) { const n = await cusRestock(cfg0, p0, after); if (n) note += ` · đã báo hàng về cho ${n} khách`; } }
+  }
   if (op === "set") {
     const prev = await cusCfg();
     const c = b.cfg || {}, texts: Record<string, string> = {};
     for (const k of Object.keys(CUS_TEXTS)) { const v = String(c.texts?.[k] ?? "").slice(0, 1500); if (v.trim() && v.trim() !== CUS_TEXTS[k][1]) texts[k] = v; }
-    const packs: CusPack[] = (Array.isArray(c.sell?.packs) ? c.sell.packs : []).slice(0, 20).map((p: any, i: number) => ({ id: String(p.id || "p" + i).replace(/[^\w]/g, "").slice(0, 10) || "p" + i, name: String(p.name || "").slice(0, 40), months: Math.max(1, Math.min(36, Math.round(+p.months || 1))), price: Math.max(0, Math.round(+p.price || 0)), stock: p.stock === "" || p.stock == null ? null : Math.round(+p.stock || 0), ytb: p.ytb !== false })).filter((p: CusPack) => p.name);
+    const packs: CusPack[] = (Array.isArray(c.sell?.packs) ? c.sell.packs : []).slice(0, 20).map((p: any, i: number) => ({ id: String(p.id || "p" + i).replace(/[^\w]/g, "").slice(0, 10) || "p" + i, name: String(p.name || "").slice(0, 40), months: Math.max(1, Math.min(36, Math.round(+p.months || 1))), price: Math.max(0, Math.round(+p.price || 0)), stock: p.stock === "" || p.stock == null ? null : Math.round(+p.stock || 0), ytb: p.ytb !== false, auto: p.ytb === false && !!p.auto, desc: String(p.desc || "").slice(0, 1500) })).filter((p: CusPack) => p.name);
     const bank = { id: String(c.sell?.bank?.id || "").trim().slice(0, 30), acc: String(c.sell?.bank?.acc || "").replace(/\s+/g, "").slice(0, 30), name: String(c.sell?.bank?.name || "").trim().slice(0, 60) };
     // tồn kho không sửa trên web (bằng lúc tải) → giữ số hiện tại (bot có thể đã trừ khi khách mua)
     const raw: any[] = Array.isArray(c.sell?.packs) ? c.sell.packs : [];
@@ -964,7 +1075,8 @@ async function cusAdmin(b: any) {
     await docPut("cus_cfg", next);
     // hàng về: tồn cũ ≤ 0 → mới > 0
     let n = 0;
-    for (const p of packs) { const o = prev.sell.packs.find((x) => x.id === p.id); if (o && o.stock != null && o.stock <= 0 && p.stock != null && p.stock > 0) n += await cusRestock(next, p, p.stock - Math.max(0, o.stock)); }
+    for (const p of packs) { if (p.auto) { p.stock = null; continue; } const o = prev.sell.packs.find((x) => x.id === p.id); if (o && !o.auto && o.stock != null && o.stock <= 0 && p.stock != null && p.stock > 0) n += await cusRestock(next, p, p.stock - Math.max(0, o.stock)); }
+    await docPut("cus_cfg", next);
     if (n) note = `Đã báo hàng về cho ${n} khách`;
   }
   if (op === "setup") {
@@ -980,10 +1092,12 @@ async function cusAdmin(b: any) {
   if (CUS_TOKEN) { const [me, wh] = await Promise.all([ctg("getMe", {}), ctg("getWebhookInfo", {})]); bot = me.result?.username || null; hook = wh.result ? { url: wh.result.url, ok: wh.result.url === `${SB_URL}/functions/v1/desk-bot?cus=1`, err: wh.result.last_error_message || "", pending: wh.result.pending_update_count || 0 } : null; }
   const texts: Record<string, { label: string; def: string; val: string }> = {};
   for (const [k, [label, def]] of Object.entries(CUS_TEXTS)) texts[k] = { label, def, val: cfg.texts[k] ?? def };
-  const orders = Object.entries(doc.orders).map(([ma, o]) => ({ ma, email: o.email, pack: o.pack, price: o.price, kind: o.kind, ytb: o.ytb !== false, st: o.st, at: o.at, name: o.name, note: o.note || "" })).sort((a, b) => b.at - a.at).slice(0, 40);
+  const orders = Object.entries(doc.orders).map(([ma, o]) => ({ ma, email: o.email, pack: o.pack, price: o.price, kind: o.kind, ytb: o.ytb !== false, st: o.st, at: o.at, name: o.name, note: o.note || "", got: o.got || 0, auto: !!o.auto })).sort((a, b) => b.at - a.at).slice(0, 40);
   const waitN: Record<string, number> = {}; for (const [k, l] of Object.entries(doc.wait)) waitN[k] = l.length;
   const waiting = Object.entries(doc.subs).filter(([, s]) => s.pending).map(([e, s]) => ({ email: e, kind: s.kind || "report", at: s.at, name: s.name }));
-  return { ok: true, token: !!CUS_TOKEN, bot, hook, sell: cfg.sell, texts, orders, waiting, waitN, users: Object.keys(doc.users).length, note };
+  const kho = await khoGet(), khoN: Record<string, number> = {}; for (const [k, l] of Object.entries(kho)) khoN[k] = l.length;
+  return { ok: true, token: !!CUS_TOKEN, bot, hook, sell: cfg.sell, texts, orders, waiting, waitN, khoN, users: Object.keys(doc.users).length, note,
+    sepay: { on: !!SEPAY_KEY, url: `${SB_URL}/functions/v1/desk-bot?pay=1` }, pays: doc.pays.slice(-15).reverse() };
 }
 
 /* ---------- Đơn sản phẩm khác (GG1, CapCut, GPT, Netflix…) gõ cho @goshopassistantbot ----------
@@ -1475,6 +1589,12 @@ Deno.serve(async (req) => {
       const job = cusHandle(u).catch((e) => console.error("cus", e));
       if (typeof EdgeRuntime !== "undefined" && EdgeRuntime?.waitUntil) EdgeRuntime.waitUntil(job); else await job;
       return ok();
+    }
+    if (url.searchParams.has("pay")) {
+      const auth = req.headers.get("authorization") || "";
+      if (!SEPAY_KEY || auth.replace(/^(Bearer\s+)?Apikey\s+/i, "").trim() !== SEPAY_KEY) return new Response(JSON.stringify({ success: false }), { status: 401, headers: { "Content-Type": "application/json" } });
+      const b = await req.json().catch(() => ({}));
+      try { return ok(await cusPay(b)); } catch (e) { console.error("pay", e); return ok({ success: false, error: (e as Error).message }); }
     }
     if (url.searchParams.has("cus_admin")) {
       if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
