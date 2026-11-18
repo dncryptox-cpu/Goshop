@@ -710,6 +710,8 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   qr_expired: ["QR quá 10 phút chưa trả", "⌛ Đơn {ma} đã quá hạn thanh toán. Bấm 🛒 Mua hàng để tạo đơn mới (nếu bạn đã chuyển tiền, bot vẫn tự xác nhận)."],
   support: ["Nút 💬 Hỗ trợ", "💬 Cần hỗ trợ, bạn nhắn trực tiếp người bán nhé."],
   no_orders: ["Đơn của tôi: chưa có đơn", "Bạn chưa có đơn nào."],
+  ask_zalo: ["Xin số Zalo (lần mua đầu)", "📱 Cho shop xin số Zalo để bảo hành và hỗ trợ bạn nhé.\nBấm nút “Gửi số điện thoại” bên dưới hoặc gõ số (vd 0912345678)."],
+  bad_zalo: ["Số Zalo sai", "Số chưa đúng, bạn gõ lại dạng 09xxxxxxxx nhé."],
   sell_paid: ["Bán: khách báo đã chuyển", "🙏 Đã nhận báo chuyển khoản đơn {ma}. Bên mình kiểm tra và kích hoạt, xong bot sẽ nhắn bạn tại đây."],
   activated: ["Bán: nhắn khi kích hoạt đơn mới", "🎉 Đã kích hoạt YouTube Premium cho {email}. Cảm ơn bạn!"],
   renewed: ["Bán: nhắn khi gia hạn xong", "✅ Đã gia hạn {email} thành công. Cảm ơn bạn!"],
@@ -753,8 +755,9 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
 }
 
 type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" };
-type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number };
-type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, { name: string; at: number }>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
+type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string };
+type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number };
+type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
   const d = await docGet<CusDoc>("cus_bot", {} as CusDoc);
   d.subs ||= {}; d.rate ||= {}; d.state ||= {}; d.orders ||= {}; d.wait ||= {}; d.users ||= {}; d.pays ||= []; return d;
@@ -768,6 +771,19 @@ async function cusPut(d: CusDoc) {
   d.pays = d.pays.slice(-60);
   await docPut("cus_bot", d);
 }
+/* số Zalo VN → 0xxxxxxxxx; sai → "" */
+function normPhone(s: string) {
+  let d = String(s || "").replace(/[^\d+]/g, "");
+  if (d.startsWith("+84")) d = "0" + d.slice(3); else if (d.startsWith("84") && d.length === 11) d = "0" + d.slice(2);
+  return /^0[35789]\d{8}$/.test(d) ? d : "";
+}
+const whoOf = (o: CusOrder) => `${esc(o.name || "Telegram")}${o.user && !String(o.name || "").includes("@" + o.user) ? ` (@${esc(o.user)})` : ""} · Zalo <b>${esc(o.zalo || "chưa có")}</b>`;
+function touchUser(doc: CusDoc, chat: number, from: any) {
+  const u = doc.users[String(chat)] ||= { name: "", at: Date.now(), first: Date.now() };
+  u.name = nameOf(from) || u.name; u.user = from?.username || u.user; u.at = Date.now();
+  return u;
+}
+const askZaloKb = { reply_markup: { keyboard: [[{ text: "📱 Gửi số điện thoại", request_contact: true }]], resize_keyboard: true, one_time_keyboard: true } };
 const nameOf = (f: any) => [f?.first_name, f?.last_name].filter(Boolean).join(" ") + (f?.username ? ` @${f.username}` : "");
 const isYtb = (p: CusPack) => p.ytb !== false;
 const inStock = (p: CusPack) => p.stock == null || p.stock > 0;
@@ -817,9 +833,12 @@ async function cusStartOrder(cfg: CusCfg, doc: CusDoc, chat: number, from: any, 
   const p = cfg.sell.packs.find((x) => x.id === packId);
   if (!p || !(p.price > 0)) return csay(chat, "Gói này không còn bán, bạn chọn gói khác nhé.", { reply_markup: packKb(cfg, kind === "renew" ? "r" : "n") });
   if (!inStock(p)) { delete doc.state[String(chat)]; await cusPut(doc); return csay(chat, T(cfg, "out_stock", { goi: p.name }), { reply_markup: { inline_keyboard: [[{ text: "🔔 Báo khi có hàng", callback_data: `w:${p.id}` }]] } }); }
+  // lần mua đầu: xin Zalo trước khi tạo đơn
+  const u = touchUser(doc, chat, from);
+  if (!u.zalo) { doc.state[String(chat)] = { step: "zalo", pack: packId, kind, email, qty, at: Date.now() }; await cusPut(doc); return csay(chat, T(cfg, "ask_zalo"), askZaloKb); }
   let ma = ""; do { ma = (isYtb(p) ? "YT" : "SP") + Math.floor(10000 + Math.random() * 90000); } while (doc.orders[ma]);
   const total = p.price * qty, pname = qty > 1 ? `${p.name} × ${qty}` : p.name;
-  doc.orders[ma] = { chat, name: nameOf(from), email, pack: pname, packId: p.id, ytb: isYtb(p), months: p.months, price: total, qty, kind: isYtb(p) ? kind : "new", at: Date.now(), st: "wait" };
+  doc.orders[ma] = { chat, name: nameOf(from), email, pack: pname, packId: p.id, ytb: isYtb(p), months: p.months, price: total, qty, kind: isYtb(p) ? kind : "new", at: Date.now(), st: "wait", zalo: u.zalo, user: u.user };
   delete doc.state[String(chat)];
   await cusPut(doc);
   const cap = T(cfg, "sell_pay", { ma, goi: pname, email, gia: money(total) }) + (SEPAY_KEY ? "\n\nChuyển đúng số tiền và nội dung — bot tự xác nhận." : "\n\nChuyển xong bấm “Tôi đã chuyển khoản”.");
@@ -907,7 +926,7 @@ async function cusMarkPaid(cfg: CusCfg, doc: CusDoc, x: string, auto: boolean) {
       const body = accs.map((a, i) => (accs.length > 1 ? `<b>#${i + 1}</b>\n` : "") + fmtAcc(a)).join("\n\n");
       const r = await csay(chat, `${T(cfg, "delivered_auto", { ma: x, goi: o.pack })}\n\n${body}${accs.length < n ? `\n\n⚠️ Còn thiếu ${n - accs.length} tài khoản — shop sẽ gửi sớm.` : ""}\n\nCảm ơn bạn!`);
       o.st = r.ok && accs.length === n ? "done" : "paid"; o.note = accs.join("\n").slice(0, 1500); await cusPut(doc);
-      await say(`🤖 <b>Đã tự giao ${esc(o.pack)}</b> · đơn ${esc(x)} · ${money(o.got || o.price)}\nKhách: ${esc(o.name || "Telegram")} · ${how}\nKho còn ${list.length}${list.length <= 2 ? " ⚠️ sắp hết" : ""}${accs.length < n ? `\n⚠️ Thiếu ${n - accs.length} tài khoản — giao tay.` : ""}${r.ok ? "" : "\n⚠️ Không nhắn được khách — giao tay."}`, accs.length < n || !r.ok ? { reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao", callback_data: `cg:${x}` }]] } } : {});
+      await say(`🤖 <b>Đã tự giao ${esc(o.pack)}</b> · đơn ${esc(x)} · ${money(o.got || o.price)}\nKhách: ${whoOf(o)} · ${how}\nKho còn ${list.length}${list.length <= 2 ? " ⚠️ sắp hết" : ""}${accs.length < n ? `\n⚠️ Thiếu ${n - accs.length} tài khoản — giao tay.` : ""}${r.ok ? "" : "\n⚠️ Không nhắn được khách — giao tay."}`, accs.length < n || !r.ok ? { reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao", callback_data: `cg:${x}` }]] } } : {});
       return;
     }
   }
@@ -916,7 +935,7 @@ async function cusMarkPaid(cfg: CusCfg, doc: CusDoc, x: string, auto: boolean) {
   if (pk?.auto) low = "\n⚠️ <b>Kho hết tài khoản</b> — khách đã trả tiền, giao tay.";
   if (o.ytb === false) {
     o.st = "paid"; await cusPut(doc);
-    await say(`💰 <b>Đơn ${esc(o.pack)} ${esc(x)}</b> — ${how}\nNhận hàng: <code>${esc(o.email)}</code> · <b>${money(o.price)}</b>\nKhách: ${esc(o.name || "Telegram")}${pk && pk.stock != null ? ` · còn ${pk.stock}` : ""}${low}\n\nGiao hàng rồi bấm "Đã giao" (hoặc gửi kèm thông tin ở tab Bot khách).`, { reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao", callback_data: `cg:${x}` }], [{ text: "Mở tab Bot khách", url: "https://godnc.com/thayfam/" }]] } });
+    await say(`💰 <b>Đơn ${esc(o.pack)} ${esc(x)}</b> — ${how}\nNhận hàng: <code>${esc(o.email)}</code> · <b>${money(o.price)}</b>\nKhách: ${whoOf(o)}${pk && pk.stock != null ? ` · còn ${pk.stock}` : ""}${low}\n\nGiao hàng rồi bấm "Đã giao" (hoặc gửi kèm thông tin ở tab Bot khách).`, { reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao", callback_data: `cg:${x}` }], [{ text: "Mở tab Bot khách", url: "https://godnc.com/thayfam/" }]] } });
     return csay(chat, auto ? T(cfg, "paid_auto", { ma: x, gia: money(o.got || o.price) }) : T(cfg, "sell_paid", { ma: x }));
   }
   const line = o.kind === "renew"
@@ -925,7 +944,7 @@ async function cusMarkPaid(cfg: CusCfg, doc: CusDoc, x: string, auto: boolean) {
   await tf({ action: "queue", op: "add", text: line, from: CUS_FROM, src: "cusbot" });
   o.st = "paid"; doc.subs[o.email] = { chat, name: o.name, at: Date.now(), pending: true, kind: o.kind === "renew" ? "renew" : "order" };
   await cusPut(doc);
-  await say(`💰 <b>Đơn ${o.kind === "renew" ? "gia hạn" : "mới"} ${esc(x)}</b> — ${how}\n${esc(o.email)} · ${esc(o.pack)} · <b>${money(o.price)}</b>\nKhách: ${esc(o.name || "Telegram")}${low}\n\n${auto ? "Tiền đã về." : "Kiểm tra tiền (nội dung " + esc(x) + ") rồi"} Duyệt ở tab Lệnh — duyệt xong bot tự nhắn khách.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
+  await say(`💰 <b>Đơn ${o.kind === "renew" ? "gia hạn" : "mới"} ${esc(x)}</b> — ${how}\n${esc(o.email)} · ${esc(o.pack)} · <b>${money(o.price)}</b>\nKhách: ${whoOf(o)}${low}\n\n${auto ? "Tiền đã về." : "Kiểm tra tiền (nội dung " + esc(x) + ") rồi"} Duyệt ở tab Lệnh — duyệt xong bot tự nhắn khách.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
   return csay(chat, auto ? T(cfg, "paid_auto", { ma: x, gia: money(o.got || o.price) }) : T(cfg, "sell_paid", { ma: x }));
 }
 
@@ -973,7 +992,19 @@ async function cusHandle(u: any) {
   const m = u.message || u.edited_message; if (!m || m.chat?.type !== "private") return;
   const chat = m.chat.id, text = String(m.text || m.caption || "").trim();
   const cfg = await cusCfg();
-  if (/^\/start\b/i.test(text)) { try { const d0 = await cusGet(); d0.users[String(chat)] = { name: nameOf(m.from), at: Date.now() }; await cusPut(d0); } catch (_) { /* bỏ qua */ } }
+  if (/^\/start\b/i.test(text)) { try { const d0 = await cusGet(); touchUser(d0, chat, m.from); await cusPut(d0); } catch (_) { /* bỏ qua */ } }
+  // đang chờ số Zalo (hoặc khách gõ /zalo để đổi)
+  { const d0 = await cusGet(), st0 = d0.state[String(chat)];
+    if (/^\/zalo\b/i.test(text)) { d0.state[String(chat)] = { step: "zalo", at: Date.now() }; await cusPut(d0); return csay(chat, T(cfg, "ask_zalo"), askZaloKb); }
+    if (st0?.step === "zalo" && !/^\/(start|help|mua)\b/i.test(text) && !["🛒 Mua hàng", "📋 Đơn của tôi", "💬 Hỗ trợ", "🔎 Kiểm tra / báo lỗi"].includes(text)) {
+      const ph = normPhone(m.contact?.phone_number || text);
+      if (!ph) return csay(chat, T(cfg, "bad_zalo"), askZaloKb);
+      const u = touchUser(d0, chat, m.from); u.zalo = ph; delete d0.state[String(chat)]; await cusPut(d0);
+      await csay(chat, `✅ Đã lưu Zalo <b>${ph}</b>. Đổi số: gõ /zalo`, cusMenu(cfg));
+      if (st0.pack) return cusStartOrder(cfg, await cusGet(), chat, m.from, st0.pack, (st0.kind as "new" | "renew") || "new", st0.email || nameOf(m.from) || "Telegram " + chat, st0.qty || 1);
+      return;
+    }
+  }
   const startKb = cusMenu(cfg);
   if (!text || /^\/(start|help)\b/i.test(text)) return csay(chat, T(cfg, "start"), startKb);
   if (/^\/?(mua|buy)\b/i.test(text) || text === "🛒 Mua hàng") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé.", startKb); const d0 = await cusGet(); delete d0.state[String(chat)]; await cusPut(d0); return csay(chat, T(cfg, "sell_menu"), { reply_markup: packKb(cfg, "n") }); }
@@ -1068,6 +1099,7 @@ async function cusAdmin(b: any) {
   const op = String(b.op || "get");
   let note = "";
   if (op === "deliver") { const r = await cusDeliver(String(b.ma || ""), String(b.note || "")); if (!r.ok) return r; note = "Đã nhắn khách đơn " + b.ma; }
+  if (op === "set_zalo") { const d = await cusGet(), u = d.users[String(b.chat)]; if (!u) return { ok: false, error: "không thấy khách" }; const ph = normPhone(String(b.zalo || "")); if (b.zalo && !ph) return { ok: false, error: "số không đúng" }; u.zalo = ph || undefined; await cusPut(d); note = "Đã lưu Zalo"; }
   if (op === "kho_add" || op === "kho_clear") {
     const id = String(b.id || ""), kho = await khoGet(), before = (kho[id] || []).length;
     if (op === "kho_clear") kho[id] = [];
@@ -1098,7 +1130,7 @@ async function cusAdmin(b: any) {
     if (CUS_TOKEN === TOKEN) return { ok: false, error: "CUS_BOT_TOKEN phải là bot khác @goshopassistantbot" };
     const self = `${SB_URL}/functions/v1/desk-bot?cus=1`;
     const set = await ctg("setWebhook", { url: self, secret_token: SECRET, allowed_updates: ["message", "edited_message", "callback_query"], max_connections: 2 });
-    await ctg("setMyCommands", { commands: [{ command: "start", description: "Hướng dẫn" }, { command: "mua", description: "Mua / gia hạn" }] });
+    await ctg("setMyCommands", { commands: [{ command: "start", description: "Hướng dẫn" }, { command: "mua", description: "Mua / gia hạn" }, { command: "don", description: "Đơn của tôi" }, { command: "zalo", description: "Đổi số Zalo" }] });
     if (!set.ok) return { ok: false, error: set.description || "setWebhook lỗi" };
   }
   const cfg = await cusCfg(), doc = await cusGet();
@@ -1106,11 +1138,15 @@ async function cusAdmin(b: any) {
   if (CUS_TOKEN) { const [me, wh] = await Promise.all([ctg("getMe", {}), ctg("getWebhookInfo", {})]); bot = me.result?.username || null; hook = wh.result ? { url: wh.result.url, ok: wh.result.url === `${SB_URL}/functions/v1/desk-bot?cus=1`, err: wh.result.last_error_message || "", pending: wh.result.pending_update_count || 0 } : null; }
   const texts: Record<string, { label: string; def: string; val: string }> = {};
   for (const [k, [label, def]] of Object.entries(CUS_TEXTS)) texts[k] = { label, def, val: cfg.texts[k] ?? def };
-  const orders = Object.entries(doc.orders).map(([ma, o]) => ({ ma, email: o.email, pack: o.pack, price: o.price, kind: o.kind, ytb: o.ytb !== false, st: o.st, at: o.at, name: o.name, note: o.note || "", got: o.got || 0, auto: !!o.auto })).sort((a, b) => b.at - a.at).slice(0, 40);
+  const orders = Object.entries(doc.orders).map(([ma, o]) => ({ ma, email: o.email, pack: o.pack, price: o.price, kind: o.kind, ytb: o.ytb !== false, st: o.st, at: o.at, name: o.name, note: o.note || "", got: o.got || 0, auto: !!o.auto, zalo: o.zalo || doc.users[String(o.chat)]?.zalo || "", user: o.user || doc.users[String(o.chat)]?.user || "" })).sort((a, b) => b.at - a.at).slice(0, 40);
   const waitN: Record<string, number> = {}; for (const [k, l] of Object.entries(doc.wait)) waitN[k] = l.length;
   const waiting = Object.entries(doc.subs).filter(([, s]) => s.pending).map(([e, s]) => ({ email: e, kind: s.kind || "report", at: s.at, name: s.name }));
   const kho = await khoGet(), khoN: Record<string, number> = {}; for (const [k, l] of Object.entries(kho)) khoN[k] = l.length;
-  return { ok: true, token: !!CUS_TOKEN, bot, hook, sell: cfg.sell, texts, orders, waiting, waitN, khoN, users: Object.keys(doc.users).length, note,
+  const buyers = Object.entries(doc.users).map(([chat, u]) => {
+    const os = Object.values(doc.orders).filter((o) => String(o.chat) === chat && (o.st === "paid" || o.st === "done"));
+    return { chat, name: u.name, user: u.user || "", zalo: u.zalo || "", n: os.length, spent: os.reduce((a, o) => a + (o.price || 0), 0), last: Math.max(u.at || 0, ...os.map((o) => o.at)), emails: [...new Set(os.map((o) => o.email).filter((e) => /^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(e)))].join(", ") };
+  }).filter((b) => b.zalo || b.n).sort((a, b) => b.last - a.last).slice(0, 300);
+  return { ok: true, token: !!CUS_TOKEN, bot, hook, sell: cfg.sell, texts, orders, waiting, waitN, khoN, buyers, users: Object.keys(doc.users).length, note,
     sepay: { on: !!SEPAY_KEY, url: `${SB_URL}/functions/v1/desk-bot?pay=1` }, pays: doc.pays.slice(-15).reverse() };
 }
 

@@ -1272,13 +1272,30 @@
 
             <div class="card bk" x-show="bot.d.orders.length">
               <h3>Đơn qua bot</h3>
-              <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Mã</th><th>Email</th><th>Gói</th><th>Giá</th><th>Loại</th><th>Trạng thái</th><th>Lúc</th></tr></thead><tbody>
+              <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Mã</th><th>Khách</th><th>Email</th><th>Gói</th><th>Giá</th><th>Loại</th><th>Trạng thái</th><th>Lúc</th></tr></thead><tbody>
                 <template x-for="o in bot.d.orders" :key="o.ma"><tr>
-                  <td class="mono" x-text="o.ma"></td><td class="mono" x-text="o.email"></td><td x-text="o.pack"></td>
+                  <td class="mono" x-text="o.ma"></td>
+                  <td><span x-text="o.name"></span><div class="mono" style="font-size:12px"><a x-show="o.zalo" :href="'https://zalo.me/' + o.zalo" target="_blank" x-text="o.zalo"></a><span class="mute" x-show="!o.zalo">chưa có Zalo</span></div></td>
+                  <td class="mono" x-text="o.email"></td><td x-text="o.pack"></td>
                   <td x-text="Number(o.price).toLocaleString('vi-VN') + 'đ'"></td><td x-text="!o.ytb ? 'SP khác' : o.kind === 'renew' ? 'gia hạn' : 'mới'"></td>
                   <td><span x-text="({ wait: 'chờ CK', paid: 'đã báo CK', done: 'xong', cancel: 'huỷ' })[o.st] || o.st"></span>
                     <button class="btn sm pri" x-show="!o.ytb && o.st === 'paid'" @click="botDeliver(o)" :disabled="bot.saving">Đã giao</button></td>
                   <td x-text="new Date(o.at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })"></td>
+                </tr></template>
+              </tbody></table></div>
+            </div>
+
+            <div class="card bk" x-show="(bot.d.buyers || []).length">
+              <h3>Khách đã mua <span class="mute" style="font-size:14px" x-text="'· ' + bot.d.buyers.length"></span>
+                <button class="btn sm" style="margin-left:8px" @click="botCsv()">Copy CSV</button></h3>
+              <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Khách</th><th>Zalo</th><th>Đơn</th><th>Đã trả</th><th>Email</th><th>Gần nhất</th></tr></thead><tbody>
+                <template x-for="b in bot.d.buyers" :key="b.chat"><tr>
+                  <td x-text="b.name"></td>
+                  <td class="mono"><a x-show="b.zalo" :href="'https://zalo.me/' + b.zalo" target="_blank" x-text="b.zalo"></a>
+                    <button class="btn sm" @click="const z = prompt('Số Zalo của ' + b.name + ':', b.zalo || ''); if (z !== null) botCall('set_zalo', { chat: b.chat, zalo: z })" x-text="b.zalo ? 'Sửa' : '+ Zalo'"></button></td>
+                  <td x-text="b.n"></td><td x-text="Number(b.spent).toLocaleString('vi-VN') + 'đ'"></td>
+                  <td class="mono" style="font-size:12px" x-text="b.emails"></td>
+                  <td x-text="new Date(b.last).toLocaleDateString('vi-VN')"></td>
                 </tr></template>
               </tbody></table></div>
             </div>
@@ -1961,6 +1978,12 @@ function app() {
         b.d = r; b.msg = (op === 'set' ? 'Đã lưu ✓' : op === 'setup' ? 'Đã bật bot ✓' : '') + (r.note ? ' · ' + r.note : '');
       } catch (e) { b.err = e.message; }
       b.loading = false; b.saving = false;
+    },
+    botCsv() {
+      const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+      const rows = [['Tên', 'Telegram', 'Zalo', 'Số đơn', 'Đã trả', 'Email', 'Gần nhất']].concat(this.bot.d.buyers.map(b => [b.name, b.user ? '@' + b.user : '', b.zalo, b.n, b.spent, b.emails, new Date(b.last).toLocaleDateString('vi-VN')]));
+      const csv = rows.map(r => r.map(q).join(',')).join('\n');
+      try { navigator.clipboard.writeText(csv); this.bot.msg = 'Đã copy ' + this.bot.d.buyers.length + ' khách (dán vào Google Sheets)'; } catch (e) { this.bot.msg = 'Không copy được'; }
     },
     async botKho(p, op) {
       await this.botCall(op, { id: p.id, lines: p._lines || '' });
