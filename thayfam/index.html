@@ -182,6 +182,10 @@
   .botk .okc{color:#2e7d4f} .botk .bad{color:#b3261e}
   .botk input[type=text]{padding:6px 8px} .botk .tbl{border-collapse:collapse;white-space:nowrap;margin-bottom:8px;font-size:14px} .botk .tbl td,.botk .tbl th{padding:4px 6px 4px 0;text-align:left}
   .botk .pk{border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px}
+  .botk .txr{border-top:1px solid var(--line);padding:6px 0}
+  .botk .txh{display:flex;gap:8px;align-items:baseline;cursor:pointer;font-size:13px;min-width:0}
+  .botk .txl{font-weight:600;flex:0 0 auto;max-width:45%}
+  .botk .txp{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .botk .pv{border-top:1px dashed var(--line);padding-top:6px;margin-top:6px}
   .botk .bta{width:100%;margin-top:6px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--ink)}
   .botsave{position:sticky;bottom:0;background:var(--bg);padding:10px 0;display:flex;gap:10px;justify-content:flex-end;align-items:center}
@@ -1268,15 +1272,23 @@
             </div>
 
             <div class="card bk">
-              <h3>Câu chữ bot</h3>
-              <div class="mute" style="font-size:13px;margin-bottom:8px">Biến tự điền (in đậm): <span class="mono">{email} {hsd} {ngay} {goi} {gia} {ma}</span>. Để trống = dùng câu mặc định.</div>
-              <template x-for="k in Object.keys(bot.d.texts)" :key="k">
-                <div style="margin-bottom:10px">
-                  <div style="font-size:13px;font-weight:600;display:flex;gap:8px;align-items:center"><span x-text="bot.d.texts[k].label"></span>
-                    <button class="btn sm" x-show="bot.d.texts[k].val !== bot.d.texts[k].def" @click="bot.d.texts[k].val = bot.d.texts[k].def">Về mặc định</button></div>
-                  <textarea rows="3" x-model="bot.d.texts[k].val" style="width:100%;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--ink)"></textarea>
-                </div>
-              </template>
+              <h3 style="cursor:pointer;margin-bottom:0" @click="bot.txtOpen = !bot.txtOpen">Câu chữ bot <span class="mute" style="font-size:13px;font-weight:400" x-text="'· ' + Object.keys(bot.d.texts).length + ' câu' + (Object.values(bot.d.texts).filter(t => t.val !== t.def).length ? ', đã sửa ' + Object.values(bot.d.texts).filter(t => t.val !== t.def).length : '') + (bot.txtOpen ? ' ▾' : ' ▸')"></span></h3>
+              <div x-show="bot.txtOpen" style="margin-top:8px">
+                <div class="mute" style="font-size:12px;margin-bottom:6px">Bấm 1 dòng để sửa. Biến tự điền: <span class="mono">{email} {hsd} {ngay} {goi} {gia} {ma}</span></div>
+                <template x-for="k in Object.keys(bot.d.texts)" :key="k">
+                  <div class="txr">
+                    <div class="txh" @click="bot.txtEdit = bot.txtEdit === k ? '' : k">
+                      <span class="txl" x-text="bot.d.texts[k].label"></span>
+                      <span class="txp mute" x-show="bot.txtEdit !== k" x-text="bot.d.texts[k].val.replace(/\n+/g, ' ')"></span>
+                      <span x-show="bot.d.texts[k].val !== bot.d.texts[k].def" title="đã sửa">✏️</span>
+                    </div>
+                    <div x-show="bot.txtEdit === k">
+                      <textarea rows="3" x-model="bot.d.texts[k].val" class="bta"></textarea>
+                      <button class="btn sm" x-show="bot.d.texts[k].val !== bot.d.texts[k].def" @click="bot.d.texts[k].val = bot.d.texts[k].def">Về mặc định</button>
+                    </div>
+                  </div>
+                </template>
+              </div>
             </div>
 
             <div class="card bk" x-show="bot.d.orders.length">
@@ -1914,7 +1926,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
-    bot: { d: null, loading: false, saving: false, err: '', msg: '' },
+    bot: { d: null, loading: false, saving: false, err: '', msg: '', txtOpen: false, txtEdit: '' },
     askQ: '', askBusy: false, askErr: '', askLog: (() => { try { return JSON.parse(sessionStorage.getItem('tf_ask') || '[]'); } catch (e) { return []; } })(),
     askSamples: ['Hôm nay cần thay fam nào?', 'Fam nào đang bị chặn mời, bao giờ mời lại được?', 'Khách Tuấn hết hạn trong 3 ngày tới', 'Fam nào còn slot trống?', 'Khách nào đã mời mà chưa vào nhóm?', 'Có bao nhiêu khách đang chờ xếp fam?'],
     cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
