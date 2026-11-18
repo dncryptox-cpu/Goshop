@@ -786,7 +786,7 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
 }
 
 type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" };
-type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string; type?: string; mid?: number };
+type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string; type?: string; mid?: number; nf?: number };
 type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number; noZalo?: boolean; n?: number; emails?: string[]; last?: string };
 type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
@@ -1008,11 +1008,86 @@ async function cusMarkPaid(cfg: CusCfg, doc: CusDoc, x: string, auto: boolean, v
   const line = o.kind === "renew"
     ? `${o.email} gia hạn ${o.months} tháng (đơn ${x}, ${money(o.price)}, ${how})`
     : `${o.email} ${o.months} tháng (đơn mới ${x}, ${money(o.price)}, ${how})`;
+  if (o.kind !== "renew") {   // đơn mới YouTube → làm luôn trên bot: DNC chọn fam đã mời → ghi fam + Tài chính
+    o.st = "paid"; doc.subs[o.email] = { chat, name: o.name, at: Date.now(), pending: true, kind: "order" };
+    await cusPut(doc);
+    await nfAsk(x, how + low);
+    return csay(chat, T(cfg, via === "tự động" ? "paid_auto" : "pay_ok", { ma: x, gia: money(o.got || o.price) }));
+  }
   await tf({ action: "queue", op: "add", text: line, from: CUS_FROM, src: "cusbot" });
   o.st = "paid"; doc.subs[o.email] = { chat, name: o.name, at: Date.now(), pending: true, kind: o.kind === "renew" ? "renew" : "order" };
   await cusPut(doc);
   await say(`💰 <b>Đơn ${o.kind === "renew" ? "gia hạn" : "mới"} ${esc(x)}</b> — ${how}\n${esc(o.email)} · ${esc(o.pack)} · <b>${money(o.price)}</b>\nKhách: ${whoOf(o)}${low}\n\n${auto ? "Tiền đã về." : "Kiểm tra tiền (nội dung " + esc(x) + ") rồi"} Duyệt ở tab Lệnh — duyệt xong bot tự nhắn khách.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
   return csay(chat, T(cfg, via === "tự động" ? "paid_auto" : "pay_ok", { ma: x, gia: money(o.got || o.price) }));
+}
+
+/* ---------- Đơn mới YouTube khách lẻ: làm trên @goshopassistantbot ----------
+   Tiền về → bot hỏi "mời vào fam nào?" (nút các fam còn slot) → bấm fam → hỏi lại cho chắc → ✅ Ghi:
+   newOrder (ghi khách vào slot fam đó + ghi Tài chính, CTV Dnc) → nhắn khách. Gõ /fam YT12345 để hỏi lại. */
+const NF_CTV = "Dnc";
+async function nfOpts(months: number) {
+  const d = await tf({ action: "slots" }), out: { row: number; rn: string; days: number; reuse: boolean }[] = [];
+  for (const f of d.items || []) {
+    if (f.blockedUntil || f.days == null || f.days < 7) continue;
+    const r = (f.rows || []).find((x: any) => x.state === "free") || (f.rows || []).find((x: any) => x.state === "reuse");
+    if (r) out.push({ row: r.row, rn: f.rn, days: f.days, reuse: r.state === "reuse" });
+  }
+  const need = months * 30;   // ưu tiên fam còn đủ ngày cho gói
+  return out.sort((a, b) => (Number(b.days >= need) - Number(a.days >= need)) || (a.reuse ? 1 : 0) - (b.reuse ? 1 : 0) || b.days - a.days).slice(0, 10);
+}
+async function nfAsk(ma: string, note = "", mid?: number) {
+  const doc = await cusGet(), o = doc.orders[ma];
+  if (!o) return say("Không thấy đơn " + esc(ma));
+  const head = `💰 <b>Đơn mới ${esc(ma)}</b>${note ? " — " + note : ""}
+<code>${esc(o.email)}</code> · ${esc(o.pack)} · <b>${money(o.got || o.price)}</b>
+Khách: ${whoOf(o)}`;
+  let rows: any[] = [];
+  try {
+    const opts = await nfOpts(o.months || 1);
+    rows = opts.map((f) => [{ text: `${f.rn} · còn ${f.days} ngày${f.reuse ? " (thế slot hết hạn)" : ""}${f.days < (o.months || 1) * 30 ? " ⚠️" : ""}`, callback_data: `nf:p:${ma}:${f.row}` }]);
+  } catch (e) { rows = []; note = (e as Error).message; }
+  const text = head + (rows.length ? "\n\n👉 Mời khách vào fam rồi bấm <b>fam đã mời</b> — bot ghi khách vào fam đó + ghi Tài chính + nhắn khách."
+    : `\n\n⚠️ Không lấy được fam còn slot${note ? ": " + esc(note) : ""} → làm ở Thay Fam.`);
+  const kb = { inline_keyboard: [...rows, [{ text: "↻ Tải lại fam", callback_data: `nf:r:${ma}` }, { text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] };
+  if (mid) return tg("editMessageText", { chat_id: CHAT, message_id: mid, text, parse_mode: "HTML", reply_markup: kb });
+  return say(text, { reply_markup: kb });
+}
+async function nfCallback(q: any, a: string, ma: string, row: number) {
+  const mid = q.message.message_id, ans = (t: string) => tg("answerCallbackQuery", { callback_query_id: q.id, text: t });
+  const edit = (text: string, kb?: any) => tg("editMessageText", { chat_id: CHAT, message_id: mid, text, parse_mode: "HTML", reply_markup: kb || { inline_keyboard: [] } });
+  const doc = await cusGet(), o = doc.orders[ma];
+  if (!o) return ans("Không thấy đơn " + ma);
+  if (o.st === "done" || o.st === "cancel") return ans(o.st === "done" ? "Đơn đã xong rồi" : "Đơn đã huỷ");
+  if (a === "r") { await ans("Đang tải fam…"); return nfAsk(ma, "", mid); }
+  if (a === "p") {   // hỏi lại cho chắc
+    await ans("Kiểm tra lại rồi bấm Ghi");
+    const opts = await nfOpts(o.months || 1).catch(() => []), f = opts.find((x) => x.row === row);
+    return edit(`❓ Đã mời <code>${esc(o.email)}</code> vào <b>${esc(f ? f.rn : "dòng " + row)}</b>${f ? ` (còn ${f.days} ngày${f.reuse ? ", thế slot hết hạn" : ""})` : ""}?
+Đơn ${esc(ma)} · ${esc(o.pack)} · ${money(o.got || o.price)}
+
+Bấm Ghi → ghi khách vào fam + ghi Tài chính (CTV ${NF_CTV}) + nhắn khách.`,
+      { inline_keyboard: [[{ text: "✅ Ghi", callback_data: `nf:ok:${ma}:${row}` }, { text: "↩ Chọn fam khác", callback_data: `nf:r:${ma}` }]] });
+  }
+  if (a !== "ok") return ans("");
+  if (o.nf) return ans("Đang ghi / đã ghi rồi");
+  o.nf = Date.now(); await cusPut(doc);
+  await ans("Đang ghi…");
+  try {
+    const x = await tf({ action: "newOrder", email: o.email, toRow: row, buy: today(), months: o.months, product: "Youtube", ctv: NF_CTV, mailPhu: "", note: `bot ${ma}${o.zalo ? " · zalo " + o.zalo : ""}`, finance: true, invited: true, replace: false, price: o.got || o.price });
+    const d2 = await cusGet(); if (d2.orders[ma]) { d2.orders[ma].nf = o.nf; await cusPut(d2); }
+    const sent = await cusNotify([o.email], "order");
+    // dòng cũ trong hàng chờ tab Lệnh (đơn trước khi có tính năng này) → đánh dấu xong
+    try { const ql = await tf({ action: "queue", op: "list" }); for (const it of ql.open || []) if (String(it.text || "").includes(ma)) for (let i = 0; i < (it.lines || [it.text]).length; i++) if (String((it.lines || [it.text])[i]).includes(ma)) await tf({ action: "queue", op: "set", id: it.id, line: i, status: "xong", note: "Đơn mới " + o.email + " → " + (x.rn || "") + " (bot)" }); } catch (_) { /* không sao */ }
+    const L = [`✅ <b>Đã ghi đơn mới ${esc(ma)}</b>`, `<code>${esc(x.email || o.email)}</code> → <b>${esc(x.rn || "dòng " + row)}</b> · HSD ${esc(x.hsd || "")} · CTV ${NF_CTV}`];
+    if (x.tcRow) L.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}${x.profit != null ? `, lãi ${vnd(x.profit)}` : ""}${x.price != null && Number(x.price) !== Number(o.got || o.price) ? ` ⚠️ khách trả ${money(o.got || o.price)} — sửa giá trong sheet` : ""}`);
+    else L.push("⚠️ Không thấy dòng Tài chính trả về — kiểm tra sheet Tài chính.");
+    if (x.sync) L.push(x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
+    L.push(sent ? "Đã nhắn khách qua bot." : "⚠️ Chưa nhắn được khách.");
+    return edit(L.join("\n"));
+  } catch (e) {
+    const d2 = await cusGet(); if (d2.orders[ma]) { delete d2.orders[ma].nf; await cusPut(d2); }
+    return edit(`⚠️ Ghi đơn ${esc(ma)} lỗi: ${esc((e as Error).message)}\nChưa chắc đã ghi — xem tab Lịch sử trên Thay Fam trước khi làm lại.`, { inline_keyboard: [[{ text: "↻ Chọn fam lại", callback_data: `nf:r:${ma}` }, { text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] });
+  }
 }
 
 /* DNC xác nhận tiền (nút trên @goshopassistantbot hoặc tab Bot khách) */
@@ -1646,6 +1721,7 @@ async function handle(u: any) {
       if (r.ok) await tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao — đã nhắn khách", callback_data: "noop" }]] } });
       return;
     }
+    if (String(q.data || "").startsWith("nf:")) { const [, na, nma, nrow] = String(q.data).split(":"); return nfCallback(q, na, nma, Number(nrow) || 0); }
     if (String(q.data || "").startsWith("g:")) { const [, ga, gid] = String(q.data).split(":"); return renewCallback(q, ga, gid); }
     const [, a, sid] = String(q.data || "").split(":");
     const id = Number(sid);
@@ -1687,6 +1763,9 @@ async function handle(u: any) {
     await sendBrief(L.text);
     return;
   }
+  // /fam YT12345 → hỏi lại fam cho đơn mới YouTube khách lẻ (đã nhận tiền)
+  const fm = text.match(/^\/fam\s+(\S+)/i);
+  if (fm) return nfAsk(fm[1].toUpperCase());
   // Trợ lý Thay Fam: /hoi + câu hỏi, tin bắt đầu bằng "?", hoặc trả lời (reply) tin của trợ lý để hỏi tiếp
   const hm = text.match(/^\/(hoi|hỏi|ask)\b\s*([\s\S]*)$/i);
   if (hm || /^[?？]\s*\S/.test(text)) {
