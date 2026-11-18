@@ -186,6 +186,7 @@
   .botk .txh{display:flex;gap:8px;align-items:baseline;cursor:pointer;font-size:13px;min-width:0}
   .botk .txl{font-weight:600;flex:0 0 auto;max-width:45%}
   .botk .txp{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .botk .bcx{background:var(--chip);border-radius:8px;padding:8px;margin-top:6px}
   .botk .pv{border-top:1px dashed var(--line);padding-top:6px;margin-top:6px}
   .botk .bta{width:100%;margin-top:6px;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--card);color:var(--ink)}
   .botsave{position:sticky;bottom:0;background:var(--bg);padding:10px 0;display:flex;gap:10px;justify-content:flex-end;align-items:center}
@@ -1231,7 +1232,19 @@
                         <span x-show="v.type === 'cc'" class="mute" style="font-size:12px">tồn <input type="text" inputmode="numeric" x-model="v.stock" placeholder="∞" style="width:42px"></span>
                         <button x-show="v.type === 'cap'" class="btn sm" @click="v._kho = !v._kho" x-text="'Kho: ' + ((bot.d.khoN || {})[pr.id + '.' + v.id] || 0)"></button>
                         <span class="mute" style="font-size:12px" x-show="(bot.d.waitN || {})[pr.id + '.' + v.id]" x-text="'🔔' + (bot.d.waitN || {})[pr.id + '.' + v.id]"></span>
+                        <button class="btn sm" title="Gửi tin sản phẩm cho khách" @click="v._bc = !v._bc">📣</button>
                         <button class="btn sm" @click="pr.vars.splice(k, 1)">✕</button>
+                      </div>
+                      <div x-show="v._bc" class="bcx">
+                        <div class="mute" style="font-size:12px;margin-bottom:4px">Gửi tin dạng "🔥 <span x-text="pr.name + ' · ' + v.label"></span> đã có hàng! · Thêm · Tồn · Giá" + nút Mua ngay. Sửa mẫu ở Câu chữ bot › Báo hàng về.</div>
+                        <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
+                          <label class="mute" style="font-size:12px">Thêm <input type="text" inputmode="numeric" x-model="v._them" placeholder="(bỏ trống)" style="width:70px"></label>
+                          <input type="text" x-model="v._extra" placeholder="Lời nhắn thêm (tuỳ chọn)" style="flex:1;min-width:160px">
+                        </div>
+                        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+                          <button class="btn sm" :disabled="bot.saving || !(bot.d.waitN || {})[pr.id + '.' + v.id]" @click="botBc(pr, v, 'wait')" x-text="'Gửi khách chờ 🔔 (' + ((bot.d.waitN || {})[pr.id + '.' + v.id] || 0) + ')'"></button>
+                          <button class="btn sm pri" :disabled="bot.saving || !bot.d.users" @click="botBc(pr, v, 'all')" x-text="'Gửi tất cả khách (' + (bot.d.users || 0) + ')'"></button>
+                        </div>
                       </div>
                       <div x-show="v.type === 'cap' && v._kho" style="margin-top:6px">
                         <textarea rows="4" x-model="v._lines" placeholder="Mỗi dòng 1 tài khoản: mail|pass|2fa" class="bta mono"></textarea>
@@ -2007,6 +2020,11 @@ function app() {
       const rows = [['Tên', 'Telegram', 'Zalo', 'Số đơn', 'Đã trả', 'Email', 'Gần nhất']].concat(this.bot.d.buyers.map(b => [b.name, b.user ? '@' + b.user : '', b.zalo, b.n, b.spent, b.emails, new Date(b.last).toLocaleDateString('vi-VN')]));
       const csv = rows.map(r => r.map(q).join(',')).join('\n');
       try { navigator.clipboard.writeText(csv); this.bot.msg = 'Đã copy ' + this.bot.d.buyers.length + ' khách (dán vào Google Sheets)'; } catch (e) { this.bot.msg = 'Không copy được'; }
+    },
+    async botBc(pr, v, to) {
+      const n = to === 'all' ? this.bot.d.users : ((this.bot.d.waitN || {})[pr.id + '.' + v.id] || 0);
+      if (!confirm('Gửi tin ' + pr.name + ' ' + v.label + ' cho ' + n + ' khách? (Nhớ bấm Lưu trước nếu vừa sửa giá)')) return;
+      await this.botCall('broadcast', { id: pr.id + '.' + v.id, to: to, them: v._them || '', extra: v._extra || '' });
     },
     async botKho(id, v, op) {
       await this.botCall(op, { id: id, lines: v._lines || '' });

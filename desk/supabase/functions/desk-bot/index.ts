@@ -724,7 +724,7 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   delivered_auto: ["Tự giao tài khoản (kèm tài khoản bên dưới)", "🎉 Đơn {ma} ({goi}) — tài khoản của bạn:"],
   out_stock: ["Hết hàng", "😔 {goi} tạm hết hàng. Bấm 🔔 bên dưới, có hàng bot sẽ nhắn bạn ngay."],
   wait_ok: ["Khách bấm 🔔 báo khi có hàng", "🔔 Đã ghi nhận. Khi {goi} có hàng bot sẽ nhắn bạn."],
-  restock: ["Báo hàng về (gửi khách đã bấm 🔔)", "🔥 {goi} đã có hàng!\n➕ Thêm: {them}\n📦 Tồn kho hiện tại: {ton}\n💵 Giá: {gia}"],
+  restock: ["Báo hàng về / tin chủ động báo khách", "🔥 {goi} đã có hàng!\n➕ Thêm: {them}\n📦 Tồn kho hiện tại: {ton}\n💵 Giá: {gia}"],
 };
 type CusPack = { id: string; name: string; months: number; price: number; stock?: number | null; ytb?: boolean; auto?: boolean; desc?: string; prod?: string; vlabel?: string; type?: "cap" | "cc" }; // stock null = không giới hạn; ytb = YouTube (xử lý qua Thay Fam); auto = tự giao từ kho tài khoản (tồn = số dòng trong kho)
 /* Danh mục: sản phẩm → biến thể. type "cap" = tài khoản cấp (giao từ kho), "cc" = chính chủ (xin email, admin mời).
@@ -1165,12 +1165,36 @@ async function cusDeliver(ma: string, note = "") {
   return { ok: true };
 }
 /* hàng về (tồn 0 → >0): nhắn khách đã bấm 🔔 */
+/* tin báo hàng: bỏ dòng có biến không có giá trị (vd không ghi "Thêm" / tồn không giới hạn) */
+function restockText(cfg: CusCfg, p: CusPack, added: number | null, extra = "") {
+  const raw = ((cfg.texts.restock ?? "").trim() || CUS_TEXTS.restock[1]).split("\n")
+    .filter((l) => !(l.includes("{them}") && !added) && !(l.includes("{ton}") && p.stock == null)).join("\n");
+  const v: Record<string, string> = { goi: p.name, them: String(added ?? ""), ton: String(p.stock ?? ""), gia: money(p.price) };
+  return esc(raw).replace(/\{(\w+)\}/g, (m, k) => (k in v ? `<b>${esc(v[k])}</b>` : m)) + (extra.trim() ? `\n\n${esc(extra.trim()).slice(0, 1500)}` : "");
+}
 async function cusRestock(cfg: CusCfg, p: CusPack, added: number) {
   const doc = await cusGet(), list = doc.wait[p.id] || []; let n = 0;
-  const text = T(cfg, "restock", { goi: p.name, them: String(added), ton: String(p.stock ?? ""), gia: money(p.price) });
+  const text = restockText(cfg, p, added);
   for (const chat of list) { const r = await csay(chat, text, { reply_markup: { inline_keyboard: [[{ text: "🛒 Mua ngay", callback_data: `p:${p.id}:n` }]] } }); if (r.ok) n++; }
   delete doc.wait[p.id]; await cusPut(doc);
   return n;
+}
+/* DNC chủ động báo: gửi tin sản phẩm (+ nút Mua ngay) cho khách chờ 🔔 hoặc tất cả khách từng dùng bot */
+async function cusBroadcast(id: string, to: string, added: number | null, extra: string) {
+  const cfg = await cusCfg(), p = cfg.sell.packs.find((x) => x.id === id);
+  if (!p || !(p.price > 0)) return { ok: false, error: "sản phẩm chưa có giá / đã tắt" };
+  const doc = await cusGet();
+  const wait = doc.wait[p.id] || [];
+  const list = to === "all" ? [...new Set([...Object.keys(doc.users).map(Number), ...wait])] : wait;
+  const text = restockText(cfg, p, added, extra);
+  let n = 0, fail = 0;
+  for (const chat of list.slice(0, 1000)) {
+    const r = await csay(chat, text, { reply_markup: { inline_keyboard: [[{ text: inStock(p) ? "🛒 Mua ngay" : "🔔 Báo khi có hàng", callback_data: inStock(p) ? `p:${p.id}:n` : `w:${p.id}` }]] } });
+    if (r.ok) n++; else fail++;
+    if (n % 25 === 0) await new Promise((res) => setTimeout(res, 1100)); // giới hạn Telegram ~30 tin/giây
+  }
+  if (inStock(p)) { delete doc.wait[p.id]; await cusPut(doc); }
+  return { ok: true, msg: `Đã gửi ${n} khách${fail ? ` · ${fail} lỗi (khách chặn bot)` : ""}` };
 }
 
 /* tab "📮 Bot khách" trên Thay Fam */
@@ -1178,6 +1202,7 @@ async function cusAdmin(b: any) {
   const op = String(b.op || "get");
   let note = "";
   if (op === "deliver") { const r = await cusDeliver(String(b.ma || ""), String(b.note || "")); if (!r.ok) return r; note = "Đã nhắn khách đơn " + b.ma; }
+  if (op === "broadcast") { const r = await cusBroadcast(String(b.id || ""), String(b.to || "wait"), b.them === "" || b.them == null ? null : Math.round(+b.them) || null, String(b.extra || "")); if (!r.ok) return r; note = r.msg || ""; }
   if (op === "confirm") { const r = await cusConfirm(String(b.ma || ""), !!b.paid); if (!r.ok) return r; note = r.msg || ""; }
   if (op === "set_zalo") { const d = await cusGet(), u = d.users[String(b.chat)]; if (!u) return { ok: false, error: "không thấy khách" }; const ph = normPhone(String(b.zalo || "")); if (b.zalo && !ph) return { ok: false, error: "số không đúng" }; u.zalo = ph || undefined; await cusPut(d); note = "Đã lưu Zalo"; }
   if (op === "kho_add" || op === "kho_clear") {
