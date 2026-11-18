@@ -1208,7 +1208,7 @@ async function cusAdmin(b: any) {
   if (op === "kho_add" || op === "kho_clear") {
     const id = String(b.id || ""), kho = await khoGet(), before = (kho[id] || []).length;
     if (op === "kho_clear") kho[id] = [];
-    else { const add = String(b.lines || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 500); const cur = new Set(kho[id] || []); kho[id] = [...(kho[id] || []), ...add.filter((l) => !cur.has(l))]; }
+    else { const add = String(b.lines || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 500); const cur = new Set(kho[id] || []); kho[id] = [...(kho[id] || []), ...[...new Set(add)].filter((l) => !cur.has(l))]; }
     await docPut("cus_kho", kho);
     const after = kho[id].length; note = op === "kho_clear" ? "Đã xoá kho" : `Kho ${after} (+${after - before})`;
     if (before === 0 && after > 0) { const cfg0 = await cusCfg(), p0 = cfg0.sell.packs.find((p) => p.id === id); if (p0 && p0.price > 0) { const n = await cusRestock(cfg0, p0, after); if (n) note += ` · đã báo hàng về cho ${n} khách`; } }
