@@ -1772,6 +1772,8 @@
                     <h4 class="caption uppercase tracking-wide">AI đọc chart</h4>
                     <input x-model="cfg.gemini" type="password" autocomplete="off" placeholder="Gemini API key (AIza…)" class="field num">
                     <p class="caption">Lấy key miễn phí tại aistudio.google.com. Key chỉ lưu trong tài khoản của bạn.</p>
+                    <input x-model="cfg.claude" type="password" autocomplete="off" placeholder="Claude API key (sk-ant-…) — tuỳ chọn" class="field num">
+                    <p class="caption">Có Claude key thì Tìm case tương tự dùng Claude để đọc chart (Gemini vẫn cần cho phần so độ giống). Xoá trống để quay lại Gemini. Key này chỉ lưu trên máy này.</p>
                 </section>
                 <button @click="saveSettings()" class="btn btn-primary w-full" :disabled="busy">Lưu cài đặt</button>
                 <section class="space-y-2">
@@ -2208,6 +2210,9 @@
     const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash'];
     // Kho chart AI: đổi model embedding = toàn bộ kho tự đọc lại (vector khác model không so được với nhau)
     const EMBED_MODEL = 'gemini-embedding-001';
+    // Có Claude key (lưu trên máy này) → Claude đọc chart + tổng kết thay Gemini; vector vẫn dùng Gemini embedding nên kho không phải đọc lại khi đổi qua lại
+    const CLAUDE_MODEL = 'claude-haiku-5-5';
+    const CLAUDE_KEY_LS = 'dnc_claude_key';
     const CHART_PROMPT = `Bạn là trader price action. Đọc (các) ảnh chart và mô tả BỐI CẢNH TẠI THỜI ĐIỂM VÀO LỆNH, để sau này so sánh với chart khác.
 Quy tắc:
 - Nếu ảnh có công cụ Long/Short (vùng xanh/đỏ) thì điểm vào là cạnh chung của hai vùng. CHỈ mô tả giá TRƯỚC điểm vào; bỏ qua mọi diễn biến sau điểm vào, không nói lệnh thắng hay thua.
@@ -2251,7 +2256,7 @@ Trả về đúng 1 object JSON:
             loginOpen: false, loginHint: '', reader: null, art: null,
             inUser: '', inPass: '', inPass2: '', loginErr: '', signupMode: false,
             userId: '', username: '',
-            capital: 10000, riskPercent: 5, currency: 'USD', gemini: '',
+            capital: 10000, riskPercent: 5, currency: 'USD', gemini: '', claudeKey: (() => { try { return localStorage.getItem(CLAUDE_KEY_LS) || ''; } catch (e) { return ''; } })(),
             tab: 'home',
 
             // Nhật ký
@@ -2452,7 +2457,37 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
             // ═════════════ KHO CHART AI: tìm lệnh cũ giống chart đang định vào ═════════════
             // Lệnh nhật ký + backtest (+ chart 90 ngày) → Gemini đọc bối cảnh lúc vào lệnh → vector (bảng chart_ai, pgvector)
             // Tìm: ảnh mới → đọc y hệt → match_charts → top lệnh cũ + thống kê thắng/thua
+            async claudeGen(parts, json) {
+                const content = parts.map(p => p.inline_data
+                    ? { type: 'image', source: { type: 'base64', media_type: p.inline_data.mime_type, data: p.inline_data.data } }
+                    : { type: 'text', text: p.text });
+                let last = '';
+                for (let attempt = 0; attempt < 4; attempt++) {
+                    const r = await fetch('https://api.anthropic.com/v1/messages', {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json', 'x-api-key': this.claudeKey.trim(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+                        body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1200, temperature: json ? 0.2 : 0.4, messages: [{ role: 'user', content }] })
+                    });
+                    if (r.ok) {
+                        const d = await r.json();
+                        const text = (d.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
+                        if (!text) throw new Error('Claude không trả lời');
+                        if (!json) return text.replace(/\*\*/g, '');
+                        const m = text.match(/\{[\s\S]*\}/);
+                        if (!m) throw new Error('Claude không trả JSON');
+                        return JSON.parse(m[0]);
+                    }
+                    const err = await r.json().catch(() => ({})); last = (err.error && err.error.message) || `HTTP ${r.status}`;
+                    if (r.status === 429 || r.status === 529 || r.status >= 500) {
+                        const ra = parseFloat(r.headers.get('retry-after') || '0');
+                        await new Promise(ok => setTimeout(ok, Math.min(60000, ra ? ra * 1000 + 500 : 5000 * (attempt + 1)))); continue;
+                    }
+                    break;
+                }
+                throw new Error('Claude: ' + last);
+            },
             async aiGen(parts, json = false) {
+                if (this.claudeKey) return this.claudeGen(parts, json);
                 let last = '';
                 for (const model of GEMINI_MODELS) {
                     for (let attempt = 0; attempt < 3; attempt++) {
@@ -3762,7 +3797,7 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
             // ═════════════ CÀI ĐẶT ═════════════
             openSettings() {
-                this.cfg = { capital: String(this.capital), risk: String(this.riskPercent), currency: this.currency, gemini: this.gemini };
+                this.cfg = { capital: String(this.capital), risk: String(this.riskPercent), currency: this.currency, gemini: this.gemini, claude: this.claudeKey };
                 this.pw = { old: '', new1: '', new2: '', msg: '', ok: false, busy: false };
                 this.settingsOpen = true;
                 this.icons();
@@ -3775,7 +3810,8 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 const { error } = await sb.from('profiles').update({ capital, risk_percent: risk, currency: this.cfg.currency, gemini_api_key: this.cfg.gemini.trim() || null }).eq('id', this.userId);
                 this.busy = false;
                 if (error) return this.showToast('Lưu thất bại: ' + error.message);
-                Object.assign(this, { capital, riskPercent: risk, currency: this.cfg.currency, gemini: this.cfg.gemini.trim() });
+                Object.assign(this, { capital, riskPercent: risk, currency: this.cfg.currency, gemini: this.cfg.gemini.trim(), claudeKey: (this.cfg.claude || '').trim() });
+                try { this.claudeKey ? localStorage.setItem(CLAUDE_KEY_LS, this.claudeKey) : localStorage.removeItem(CLAUDE_KEY_LS); } catch (e) {}
                 this.settingsOpen = false;
                 this.showToast('Đã lưu cài đặt');
             },
