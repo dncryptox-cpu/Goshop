@@ -787,7 +787,7 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
 
 type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" };
 type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string; type?: string; mid?: number };
-type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number; noZalo?: boolean };
+type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number; noZalo?: boolean; n?: number; emails?: string[]; last?: string };
 type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
   const d = await docGet<CusDoc>("cus_bot", {} as CusDoc);
@@ -924,6 +924,7 @@ async function cusCallback(q: any) {
   const chat = q.message?.chat?.id; if (!chat) return;
   const [a, x, y] = String(q.data || "").split(":");
   const cfg = await cusCfg(), doc = await cusGet();
+  { const u0 = touchUser(doc, chat, q.from); u0.n = (u0.n || 0) + 1; u0.last = `[bấm] ${String(q.data || "").slice(0, 30)}`; await cusPut(doc); }
   await ctg("answerCallbackQuery", { callback_query_id: q.id });
   // sửa ngay tin đang bấm (menu ↔ chi tiết) thay vì gửi tin mới
   const show = async (text: string, kb: any) => { const mid = q.message?.message_id; if (mid && q.message?.text) { const r = await ctg("editMessageText", { chat_id: chat, message_id: mid, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: kb }); if (r.ok || /not modified/i.test(r.description || "")) return r; } return csay(chat, text, { reply_markup: kb }); };
@@ -1069,7 +1070,8 @@ async function cusHandle(u: any) {
   const m = u.message || u.edited_message; if (!m || m.chat?.type !== "private") return;
   const chat = m.chat.id, text = String(m.text || m.caption || "").trim();
   const cfg = await cusCfg();
-  if (/^\/start\b/i.test(text)) { try { const d0 = await cusGet(); touchUser(d0, chat, m.from); await cusPut(d0); } catch (_) { /* bỏ qua */ } }
+  // lưu mọi người dùng bot (tên, @, lần đầu, gần nhất, số tin, tin cuối)
+  try { const d0 = await cusGet(); const u0 = touchUser(d0, chat, m.from); u0.n = (u0.n || 0) + 1; u0.last = (text || (m.contact ? "[gửi SĐT]" : "[ảnh/tệp]")).slice(0, 80); await cusPut(d0); } catch (_) { /* bỏ qua */ }
   // đang chờ số Zalo (hoặc khách gõ /zalo để đổi)
   { const d0 = await cusGet(), st0 = d0.state[String(chat)];
     if (/^\/zalo\b/i.test(text)) { d0.state[String(chat)] = { step: "zalo", at: Date.now() }; await cusPut(d0); return csay(chat, T(cfg, "ask_zalo"), askZaloKb); }
@@ -1117,6 +1119,7 @@ async function cusHandle(u: any) {
       const r = await cusCheck(cfg, e, ln, openText, fixed);
       out.push(r.text);
       if (r.renew) renewEmail ||= e;
+      { const u0 = touchUser(doc, chat, m.from); const l = u0.emails ||= []; if (!l.includes(e)) l.push(e); if (l.length > 10) l.shift(); }
       if (r.queue || (openText.includes(e) && !STILL.test(ln))) doc.subs[e] = { chat, name, at: Date.now(), pending: true, kind: "report" };
       if (r.queue) toQ.push(/pre|lỗi|loi|mất|mat/i.test(ln) && ln.length > e.length + 3 ? ln : `${e} mất pre`);
     } catch (err) { console.error("cus", e, (err as Error).message); out.push(`⚠️ Chưa kiểm tra được <b>${esc(e)}</b>, bạn thử lại sau ít phút nhé.`); }
@@ -1266,8 +1269,9 @@ async function cusAdmin(b: any) {
   for (const [k, l] of Object.entries(kho)) { const m = new Map<string, number>(); for (const x of l) m.set(x, (m.get(x) || 0) + 1); khoList[k] = [...m].map(([line, n]) => ({ line, n })); }
   const buyers = Object.entries(doc.users).map(([chat, u]) => {
     const os = Object.values(doc.orders).filter((o) => String(o.chat) === chat && (o.st === "paid" || o.st === "done"));
-    return { chat, name: u.name, user: u.user || "", zalo: u.zalo || "", n: os.length, spent: os.reduce((a, o) => a + (o.price || 0), 0), last: Math.max(u.at || 0, ...os.map((o) => o.at)), emails: [...new Set(os.map((o) => o.email).filter((e) => /^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(e)))].join(", ") };
-  }).filter((b) => b.zalo || b.n).sort((a, b) => b.last - a.last).slice(0, 300);
+    return { chat, name: u.name, user: u.user || "", zalo: u.zalo || "", n: os.length, spent: os.reduce((a, o) => a + (o.price || 0), 0), first: u.first || u.at || 0, last: Math.max(u.at || 0, ...os.map((o) => o.at)), msgs: u.n || 0, lastText: u.last || "",
+      emails: [...new Set([...os.map((o) => o.email), ...(u.emails || [])].filter((e) => /^[\w.+-]+@[\w-]+(\.[\w-]+)+$/.test(e)))].join(", ") };
+  }).sort((a, b) => b.last - a.last).slice(0, 1000);
   return { ok: true, token: !!CUS_TOKEN, bot, hook, sell: cfg.sell, texts, orders, waiting, waitN, khoN, khoList, buyers, users: Object.keys(doc.users).length, note,
     sepay: { on: !!SEPAY_KEY, url: `${SB_URL}/functions/v1/desk-bot?pay=1` }, pays: doc.pays.slice(-15).reverse() };
 }
