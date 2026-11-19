@@ -1546,8 +1546,9 @@
                     <template x-for="p in ['Youtube','YoutubePlus']" :key="p"><button class="chip" :class="c.product===p && 'on'" @click="c.product=p" x-text="p"></button></template>
                     <template x-for="k in [1,3,6,12]" :key="k"><button class="chip" :class="c.months===k && 'on'" @click="c.months=k" x-text="k + 'th'"></button></template>
                     <span class="mute">tính từ</span>
-                    <button class="chip" :class="c.base==='old' && 'on'" @click="c.base='old'">HSD cũ</button>
-                    <button class="chip" :class="c.base==='today' && 'on'" x-show="c.cus && c.cus.daysLeft < 0" @click="c.base='today'">hôm nay</button>
+                    <button class="chip" :class="c.base==='old' && 'on'" @click="c.base='old'" x-text="'HSD cũ' + (c.cus && c.cus.hsd ? ' ' + c.cus.hsd : '')"></button>
+                    <button class="chip" :class="c.base==='date' && 'on'" @click="c.base='date'; c.from = c.from || cmdToday()">ngày cụ thể</button>
+                    <input type="date" x-show="c.base==='date'" :value="c.from" @change="c.from = $event.target.value" style="padding:2px 6px;font-size:13px">
                     <b x-text="'→ HSD mới ' + cmdNewHsd(c)"></b>
                     <span class="mute" x-show="c.end" x-text="'(tin ghi ' + c.end + ')'"></span>
                     <span class="mute">· tự ghi Tài chính</span>
@@ -2364,7 +2365,7 @@ function app() {
             if (c.cus.arch) { c.note = 'Khách đang ở vùng lưu cuối sheet: dùng Chuyển khách vào slot trước rồi gia hạn.'; }
             const hsd = this.cmdDate(c.cus.hsd), end = this.cmdDate(c.end);
             if (hsd && end && hsd >= end) c.note = 'HSD hiện tại ' + c.cus.hsd + ' ≥ ' + c.end + ': có thể đã gia hạn rồi. Kiểm tra trước khi duyệt.';
-            if (c.cus.daysLeft < 0 && c.start) { const st = this.cmdDate(c.start), td = Date.now() + 7 * 3600e3; if (st && Math.abs(st - td) < 4 * 864e5) c.base = 'today'; }
+            if (c.cus.daysLeft < 0 && c.start) { const st = this.cmdDate(c.start), td = Date.now() + 7 * 3600e3; if (st && Math.abs(st - td) < 4 * 864e5) { c.base = 'date'; c.from = new Date(st).toISOString().slice(0, 10); } }
           } else {
             c.type = 'donmoi';
             const p = found.find(x => x[1] && x[1].phuOf);
@@ -2379,8 +2380,17 @@ function app() {
     },
     cmdDate(s) { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '')); return m ? Date.UTC(+m[3], +m[2] - 1, +m[1]) : null; },
     cmdEdate(v, n) { const d = new Date(v), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d; },
+    cmdToday() { return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10); },
+    // "từ ngày cụ thể": API chỉ có mốc HSD cũ / hôm nay + cộng ngày → chọn mốc gần nhất ≤ ngày đó, bù bằng bonusDays
+    cmdRenewArgs(c) {
+      if (c.base !== 'date' || !c.from) return { base: c.base === 'today' ? 'today' : 'old', bonusDays: 0 };
+      const d = Date.parse(c.from + 'T00:00:00Z'), t = Date.parse(this.cmdToday() + 'T00:00:00Z'), h = this.cmdDate(c.cus && c.cus.hsd);
+      const c2 = [['today', t], ['old', h]].filter(x => x[1] != null);
+      const le = c2.filter(x => x[1] <= d).sort((a, b) => b[1] - a[1])[0] || c2.sort((a, b) => a[1] - b[1])[0];
+      return { base: le[0], bonusDays: Math.round((d - le[1]) / 864e5) };
+    },
     cmdNewHsd(c) {
-      let v = c.base === 'today' ? Date.parse(new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10) + 'T00:00:00Z') : this.cmdDate(c.cus && c.cus.hsd);
+      let v = c.base === 'today' ? Date.parse(this.cmdToday() + 'T00:00:00Z') : c.base === 'date' ? (c.from ? Date.parse(c.from + 'T00:00:00Z') : null) : this.cmdDate(c.cus && c.cus.hsd);
       if (!v) return '—';
       const d = this.cmdEdate(v, c.months);
       return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + d.getUTCFullYear();
@@ -2400,7 +2410,7 @@ function app() {
     },
     cmdCan(c) {
       if (c.type === 'doimail') return !!(c.cus && !c.cus.arch && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.newEmail.trim()) && c.oldRemoved);
-      if (c.type === 'giahan') return !!(c.cus && !c.cus.arch);
+      if (c.type === 'giahan') return !!(c.cus && !c.cus.arch && (c.base !== 'date' || c.from));
       if (c.type === 'donmoi') return !!(c.emails[0] && c.toRow && String(c.ctv).trim());
       if (c.type === 'huy') return !!c.cus;
       if (c.type === 'loi') return true;
@@ -2420,8 +2430,10 @@ function app() {
           r = await this.api({ action: 'swapMail', row: c.cus.row, oldEmail: c.cus.email, newEmail: c.newEmail.trim(), invited: !!c.invited, oldRemoved: !!c.oldRemoved, force: false });
           msg = 'Đổi mail ' + c.cus.email + ' → ' + c.newEmail.trim() + ' (' + c.cus.rn + ')';
         } else if (c.type === 'giahan') {
-          r = await this.api({ action: 'renewCus', row: c.cus.row, email: c.cus.email, months: c.months, bonusDays: 0, base: c.base, product: c.product });
-          msg = 'Gia hạn ' + c.cus.email + ' +' + c.months + 'th → HSD ' + (r.newHsd || r.hsd || this.cmdNewHsd(c));
+          const ra = this.cmdRenewArgs(c), want = this.cmdNewHsd(c);
+          r = await this.api({ action: 'renewCus', row: c.cus.row, email: c.cus.email, months: c.months, bonusDays: ra.bonusDays, base: ra.base, product: c.product });
+          const got = r.newHsd || r.hsd || want;
+          msg = 'Gia hạn ' + c.cus.email + ' +' + c.months + 'th' + (c.base === 'date' ? ' từ ' + c.from.split('-').reverse().join('/') : '') + ' → HSD ' + got + (c.base === 'date' && got !== want ? ' ⚠️ lệch, đúng ra ' + want + ' — sửa HSD trong sheet' : '');
         } else if (c.type === 'donmoi') {
           r = await this.api({ action: 'newOrder', email: c.emails[0], toRow: Number(c.toRow), buy: c.buy, months: c.months, product: c.product, ctv: String(c.ctv).trim(), mailPhu: '', note: c.code ? 'mã ' + c.code : '', finance: !!c.finance, invited: !!c.invited, replace: false });
           msg = 'Đơn mới ' + r.email + ' → ' + r.rn + ' · HSD ' + r.hsd;
