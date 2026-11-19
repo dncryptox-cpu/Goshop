@@ -716,6 +716,11 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   pay_ok: ["Shop xác nhận đã nhận tiền", "✅ Shop đã nhận {gia} cho đơn {ma}. Đang xử lý, xong bot nhắn bạn tại đây."],
   pay_none: ["Shop báo chưa nhận được tiền", "⚠️ Shop chưa nhận được tiền cho đơn {ma}. Bạn kiểm tra lại đã chuyển đúng số tiền {gia} với nội dung {ma} chưa, rồi bấm “Tôi đã chuyển khoản” lại nhé."],
   activated: ["Bán: nhắn khi kích hoạt đơn mới", "🎉 Đã kích hoạt YouTube Premium cho {email}. Cảm ơn bạn!"],
+  act_menu: ["Khách gửi email: hỏi cần gì", "Bạn cần gì cho email này?"],
+  mail_ask: ["Đổi mail: hỏi email mới", "✉️ Gửi email MỚI bạn muốn đổi sang (thay cho {email})."],
+  mail_ok: ["Đổi mail: đã ghi nhận", "📝 Đã ghi nhận yêu cầu đổi {email} → {moi}.\nShop đổi xong và gửi lời mời, bot sẽ nhắn bạn tại đây."],
+  mail_done: ["Đổi mail: nhắn khi xong", "✅ Đã đổi sang {email} và gửi lời mời."],
+  renew_pick: ["Gia hạn: chọn gói", "🔁 Chọn gói gia hạn cho {email}:"],
   renewed: ["Bán: nhắn khi gia hạn xong", "✅ Đã gia hạn {email} thành công. Cảm ơn bạn!"],
   sell_info: ["Bán SP khác: hỏi thông tin nhận hàng (SP không tự giao)", "Gửi email (hoặc thông tin) để nhận {goi}."],
   cc_email: ["Chính chủ: hỏi email (trước khi thanh toán)", "Gửi email bạn muốn nâng cấp {goi} (vd: abc@gmail.com)."],
@@ -785,10 +790,10 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
   return esc(raw).replace(/\{(\w+)\}/g, (m, k) => (k in v ? `<b>${esc(v[k])}</b>` : m));
 }
 
-type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" };
+type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" | "mail"; to?: string };
 type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string; type?: string; mid?: number; nf?: number };
 type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number; noZalo?: boolean; n?: number; emails?: string[]; last?: string };
-type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
+type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; emails?: string[]; line?: string; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
   const d = await docGet<CusDoc>("cus_bot", {} as CusDoc);
   d.subs ||= {}; d.rate ||= {}; d.state ||= {}; d.orders ||= {}; d.wait ||= {}; d.users ||= {}; d.pays ||= []; return d;
@@ -896,8 +901,9 @@ async function cusStartOrder(cfg: CusCfg, doc: CusDoc, chat: number, from: any, 
   const b = cfg.sell.bank;
   if (b.id && b.acc) {
     const qr = `https://img.vietqr.io/image/${encodeURIComponent(b.id)}-${encodeURIComponent(b.acc)}-compact2.png?amount=${total}&addInfo=${encodeURIComponent(ma)}&accountName=${encodeURIComponent(b.name || "")}`;
-    let r = await ctg("sendPhoto", { chat_id: chat, photo: qr, caption: cap, parse_mode: "HTML", reply_markup: kb });
-    if (!r.ok) r = await csay(chat, cap + `\n\nTK: <code>${esc(b.acc)}</code> · ${esc(b.id)}${b.name ? " · " + esc(b.name) : ""}`, { reply_markup: kb });
+    const tk = `\n\n🏦 ${esc(b.id)} · STK <code>${esc(b.acc)}</code>${b.name ? " · " + esc(b.name) : ""}`;
+    let r = await ctg("sendPhoto", { chat_id: chat, photo: qr, caption: cap + tk, parse_mode: "HTML", reply_markup: kb });
+    if (!r.ok) r = await csay(chat, cap + tk + `\n<a href="${qr}">📷 Mã QR chuyển khoản</a>`, { reply_markup: kb, link_preview_options: { url: qr, prefer_large_media: true, show_above_text: true } });
     return saveMid(ma, r);
   }
   return saveMid(ma, await csay(chat, cap + (b.acc ? `\n\nTK: <code>${esc(b.acc)}</code> · ${esc(b.id)}${b.name ? " · " + esc(b.name) : ""}` : ""), { reply_markup: kb }));
@@ -928,6 +934,18 @@ async function cusCallback(q: any) {
   await ctg("answerCallbackQuery", { callback_query_id: q.id });
   // sửa ngay tin đang bấm (menu ↔ chi tiết) thay vì gửi tin mới
   const show = async (text: string, kb: any) => { const mid = q.message?.message_id; if (mid && q.message?.text) { const r = await ctg("editMessageText", { chat_id: chat, message_id: mid, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: kb }); if (r.ok || /not modified/i.test(r.description || "")) return r; } return csay(chat, text, { reply_markup: kb }); };
+  if (a === "a") {   // nút sau khi khách gửi email: l = báo lỗi, m = đổi mail, r = gia hạn
+    const st = doc.state[String(chat)], e = st?.step === "act" ? (st.emails || [])[+y || 0] : "";
+    if (!e) return csay(chat, T(cfg, "ask_email"), cusMenu(cfg));
+    if (x === "l") { await ctg("sendChatAction", { chat_id: chat, action: "typing" }); delete doc.state[String(chat)]; return cusReport(cfg, doc, chat, q.from, [e], String(st!.line || "").toLowerCase().includes(e) ? String(st!.line) : e); }
+    if (x === "m") { doc.state[String(chat)] = { step: "newmail", email: e, at: Date.now() }; await cusPut(doc); return csay(chat, T(cfg, "mail_ask", { email: e })); }
+    if (x === "r") {
+      if (!sellReady(cfg)) return csay(chat, T(cfg, "support"));
+      doc.state[String(chat)] = { step: "renew", email: e, kind: "renew", at: Date.now() }; await cusPut(doc);
+      return csay(chat, T(cfg, "renew_pick", { email: e }), { reply_markup: packKb(cfg, "r") });
+    }
+    return;
+  }
   if (a === "buy") { if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé."); return show(T(cfg, "sell_menu"), prodKb(cfg)); }
   if (a === "g") { const d = cusProd(cfg, x); if (!d) return csay(chat, "Sản phẩm này không còn bán."); return show(d.text, d.kb); }
   if (a === "p") {
@@ -1017,8 +1035,29 @@ async function cusMarkPaid(cfg: CusCfg, doc: CusDoc, x: string, auto: boolean, v
   await tf({ action: "queue", op: "add", text: line, from: CUS_FROM, src: "cusbot" });
   o.st = "paid"; doc.subs[o.email] = { chat, name: o.name, at: Date.now(), pending: true, kind: o.kind === "renew" ? "renew" : "order" };
   await cusPut(doc);
+  if (o.kind === "renew") {   // gia hạn: thẻ ✅ Duyệt ngay trên bot (gia hạn + ghi Tài chính + nhắn khách)
+    try {
+      const cd = await cusRenewCard(o, line);
+      await say(`💰 <b>Gia hạn ${esc(x)}</b> — ${how}\n${esc(o.pack)} · <b>${money(o.got || o.price)}</b> · Khách: ${whoOf(o)}${low}\n\n${cd.text}`, cd.kb ? { reply_markup: cd.kb } : { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
+      return csay(chat, T(cfg, via === "tự động" ? "paid_auto" : "pay_ok", { ma: x, gia: money(o.got || o.price) }));
+    } catch (e) { console.error("renew card", (e as Error).message); }
+  }
   await say(`💰 <b>Đơn ${o.kind === "renew" ? "gia hạn" : "mới"} ${esc(x)}</b> — ${how}\n${esc(o.email)} · ${esc(o.pack)} · <b>${money(o.price)}</b>\nKhách: ${whoOf(o)}${low}\n\n${auto ? "Tiền đã về." : "Kiểm tra tiền (nội dung " + esc(x) + ") rồi"} Duyệt ở tab Lệnh — duyệt xong bot tự nhắn khách.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
   return csay(chat, T(cfg, via === "tự động" ? "paid_auto" : "pay_ok", { ma: x, gia: money(o.got || o.price) }));
+}
+
+/* gia hạn khách lẻ đã trả tiền → thẻ Duyệt giống tin gia hạn gõ cho bot (nối dòng hàng chờ) */
+async function cusRenewCard(o: CusOrder, line: string) {
+  let qid = "";
+  try { const q = await tf({ action: "queue", op: "list" }); const hit = (q.open || []).filter((x: any) => String(x.text || "").trim() === line.trim()).pop(); qid = hit ? String(hit.id) : ""; } catch (_) { /* bỏ qua */ }
+  const p: RenewP = { qid, li: 0, email: o.email, months: o.months, base: "old", product: "Youtube", at: Date.now() };
+  let r: any = await tfFind(o.email); if (r?.phuOf) r = { phuOf: true, c: r.c };
+  if (r?.c && r.c.daysLeft != null && r.c.daysLeft < -3) p.base = "today";   // hết hạn lâu → tính từ hôm nay
+  const cd = renewCard(p, r);
+  if (!cd.kb) return { text: cd.text, kb: null };
+  const store = await renewGet(), id = Date.now().toString(36) + "c"; store[id] = p; await renewPut(store);
+  cd.kb[0].callback_data = `g:ok:${id}`; if (cd.kb[1]) cd.kb[1].callback_data = `g:base:${id}`;
+  return { text: cd.text, kb: { inline_keyboard: [cd.kb, [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } };
 }
 
 /* ---------- Đơn mới YouTube khách lẻ: làm trên @goshopassistantbot ----------
@@ -1176,6 +1215,11 @@ async function cusHandle(u: any) {
     if (!ems.length) return csay(chat, T(cfg, "sell_email"));
     return cusOrderEmail(cfg, doc, chat, m.from, ems[0]);
   }
+  if (st?.step === "newmail" && st.email) {
+    const nw = ems.find((e) => e !== st.email);
+    if (!nw) return csay(chat, T(cfg, "mail_ask", { email: st.email }));
+    return cusMailReq(cfg, doc, chat, m.from, st.email, nw);
+  }
   if (!ems.length) return csay(chat, T(cfg, "ask_email"), startKb);
   const t = today();
   const rt = doc.rate[key]?.day === t ? doc.rate[key] : { day: t, emails: [] as string[] };
@@ -1183,6 +1227,52 @@ async function cusHandle(u: any) {
   if (rt.emails.length + fresh.length > 5) return csay(chat, T(cfg, "limit"));
   rt.emails.push(...fresh); doc.rate[key] = rt;
   await ctg("sendChatAction", { chat_id: chat, action: "typing" });
+  // chỉ gửi email (không ghi lỗi gì) → hỏi khách cần gì: Báo lỗi / Đổi mail / Gia hạn
+  if (!ERR_WORDS.test(text)) return cusActMenu(cfg, doc, chat, m.from, ems, text);
+  return cusReport(cfg, doc, chat, m.from, ems, text);
+}
+
+const ERR_WORDS = /mất\s*pre|mat\s*pre|lỗi|\bloi\b|không vào|khong vao|ko vào|k vào|bị out|bị kick|bị đá|văng|không xem|ko xem|hết pre|het pre|mất premium/i;
+/* khách gửi email → trạng thái + 3 nút */
+async function cusActMenu(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems: string[], text: string) {
+  const out: string[] = [], ok: string[] = [];
+  for (const e of ems) {
+    try {
+      const r = await tfFind(e);
+      if (!r) { out.push(T(cfg, "notfound", { email: e })); continue; }
+      const hsdRaw = String((r.arch ? r.arch.hsd : r.c.hsd) || ""), ctv = r.arch ? r.arch.ctv : r.c.ctv;
+      if (normCtv(ctv) !== "Dnc") { out.push(T(cfg, "other", { email: e })); continue; }
+      const v = pDate(hsdRaw), left = v == null ? null : daysU(v);
+      out.push(`📧 <b>${esc(e)}</b>${hsdRaw ? `\nHạn dùng: <b>${esc(hsdRaw)}</b>${left == null ? "" : left < 0 ? ` (đã hết hạn ${-left} ngày)` : ` (còn ${left} ngày)`}` : ""}`);
+      ok.push(e);
+      const u0 = touchUser(doc, chat, from); const l = u0.emails ||= []; if (!l.includes(e)) l.push(e); if (l.length > 10) l.shift();
+    } catch (err) { console.error("cus", e, (err as Error).message); out.push(`⚠️ Chưa kiểm tra được <b>${esc(e)}</b>, bạn thử lại sau ít phút nhé.`); }
+  }
+  let extra: Record<string, unknown> = {};
+  if (ok.length) {
+    doc.state[String(chat)] = { step: "act", emails: ok, line: text.slice(0, 500), at: Date.now() };
+    const tag = (i: number) => ok.length > 1 ? ` #${i + 1}` : "";
+    extra = { reply_markup: { inline_keyboard: ok.map((_, i) => [{ text: "🆘 Báo lỗi" + tag(i), callback_data: `a:l:${i}` }, { text: "✉️ Đổi mail" + tag(i), callback_data: `a:m:${i}` }, { text: "🔁 Gia hạn" + tag(i), callback_data: `a:r:${i}` }]) } };
+    out.push(T(cfg, "act_menu"));
+  }
+  await cusPut(doc);
+  return csay(chat, out.join("\n\n"), extra);
+}
+/* đổi mail → dòng vào tab Lệnh; Xong ở Thay Fam → bot nhắn khách */
+async function cusMailReq(cfg: CusCfg, doc: CusDoc, chat: number, from: any, old: string, nw: string) {
+  delete doc.state[String(chat)];
+  const line = `${old} đổi sang ${nw}`, name = nameOf(from);
+  try {
+    await tf({ action: "queue", op: "add", text: line, from: CUS_FROM, src: "cusbot" });
+    await say(`✉️ <b>Khách lẻ xin đổi mail</b> (${esc(name || "Telegram")}):\n<code>${esc(old)}</code> → <code>${esc(nw)}</code>\n\nĐã vào tab Lệnh — đổi + mời xong bấm Duyệt, bot tự nhắn khách.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
+  } catch (e) { await cusPut(doc); return csay(chat, "⚠️ Chưa ghi được yêu cầu, bạn thử lại sau ít phút nhé."); }
+  doc.subs[old] = { chat, name, at: Date.now(), pending: true, kind: "mail", to: nw };
+  await cusPut(doc);
+  return csay(chat, T(cfg, "mail_ok", { email: old, moi: nw }));
+}
+/* báo lỗi (kiểm tra fam, vào tab Lệnh, báo DNC) */
+async function cusReport(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems: string[], text: string) {
+  const key = String(chat), m = { from };
   let openText = "";
   try { const q = await tf({ action: "queue", op: "list" }); openText = (q.open || []).map((x: any) => String(x.text || "")).join("\n").toLowerCase(); } catch (_) { /* bỏ qua */ }
   let fixed: Fixed = {}; try { fixed = await tuanFixedGet(); } catch (_) { /* bỏ qua */ }
@@ -1219,6 +1309,7 @@ async function cusNotify(emails: string[], kind: string) {
     if (!s || !s.pending) continue;
     let msg: string;
     if (s.kind === "renew") msg = T(cfg, "renewed", { email: e });
+    else if (s.kind === "mail") msg = `${T(cfg, "mail_done", { email: s.to || e })}\n\n${T(cfg, "guide", { email: s.to || e })}`;
     else if (s.kind === "order") msg = `${T(cfg, "activated", { email: e })}\n\n${T(cfg, "guide", { email: e })}`;
     else msg = `${T(cfg, kind === "invited" ? "invited" : "fixed", { email: e })}\n\n${T(cfg, "guide", { email: e })}`;
     const r = await csay(s.chat, msg);
@@ -1530,6 +1621,7 @@ async function renewCallback(q: any, a: string, id: string) {
     if (x.tcRow) lines.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}, HH ${vnd(x.hh)}, lãi ${vnd(x.profit)}`);
     lines.push(x.sync && x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync?.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
     if (famBadOf(r.f) || p.base === "today") lines.push(famBadOf(r.f) ? `⚠️ Fam ${esc(r.f.rn)} đang lỗi → mời khách vào fam mới trên Thay Fam.` : `⚠️ Tính từ hôm nay (khách mua lại) → kiểm tra khách còn trong ${esc(r.f.rn)} không, không thì mời vào fam mới.`);
+    try { if (await cusNotify([r.c.email], "renew")) lines.push("Đã nhắn khách lẻ qua bot."); } catch (_) { /* không phải khách lẻ */ }
     lines.push(`\n📋 <code>${esc(msg)}</code>`);
     return edit(lines.join("\n"));
   } catch (e) {
