@@ -2536,14 +2536,19 @@ function app() {
       }
     },
     // Thay fam xong: các tin báo lỗi đang chờ của khách vừa được mời lại → tự đánh Xong (không báo nhóm lần nữa, list đã gửi)
-    async cmdCloseInvited(emails, note) {
+    // opt.tuanMsg: tin báo nhóm Tuấn (khi tin báo lỗi đến từ nhóm Tuấn) — dùng khi chuyển fam lẻ; thay fam đã gửi list riêng nên không truyền
+    async cmdCloseInvited(emails, note, opt) {
+      opt = opt || {};
       if (!this.can('queue')) return;
       const set = new Set(emails.map(e => String(e).toLowerCase()));
       try { await this.loadQueue(); } catch (e) { return; }   // luôn tải mới: trang mở lâu có thể chưa có tin mới báo
       const hit = this.cmdCards.filter(c => c.qid && c.type === 'loi' && !['done', 'skip'].includes(c.st) && (c.emails.some(e => set.has(e)) || (c.cus && set.has(String(c.cus.email).toLowerCase()))));
       let n = 0;
-      for (const c of hit) { if (['done', 'skip'].includes(c.st)) continue; c.st = 'done'; c.result = note; try { await this.queueMark(c, 'xong', note, { silent: true }); n++; } catch (e) { c.err = e.message; } }
-      if (n) this.lastDone += ' Đã đánh Xong ' + n + ' tin báo lỗi của khách vừa mời lại.';
+      let tuan = false;
+      for (const c of hit) { if (['done', 'skip'].includes(c.st)) continue; c.st = 'done'; c.result = note; c.err = ''; if (c.from === 'Nhóm Tuấn') tuan = true; try { await this.queueMark(c, 'xong', note, { silent: true }); n++; } catch (e) { c.err = e.message; } }
+      if (n) this.lastDone += ' Đã đánh Xong ' + n + ' tin báo lỗi ở tab Lệnh.';
+      if (opt.tuanMsg && tuan) this.tuanNotify(opt.tuanMsg, emails).then(ok => { this.lastDone += ok ? ' Đã báo nhóm Tuấn.' : ' (Chưa báo được nhóm Tuấn.)'; });
+      if (opt.cus) this.cusNotify(emails, 'invited').then(k => { if (k) this.lastDone += ' Bot đã nhắn khách lẻ.'; });
     },
     // Nhắn khách lẻ đã báo lỗi qua bot khách. Trả số khách đã nhắn (0 nếu không ai chờ / lỗi).
     async cusNotify(emails, kind) {
@@ -3054,6 +3059,8 @@ function app() {
           this.lastDone = '✓ Đã chuyển ' + res.email + (res.asEmail ? ' (mời bằng mail phụ ' + res.asEmail + ', mail chính lưu ở cột Mail phụ)' : '') + ': ' + res.from + ' → ' + res.to + (res.invited ? ' (đã mời)' : ' (chưa mời)') + (res.overwrote ? ', ' + res.overwrote + ' đã chép xuống cuối sheet DATA' : '') + '. Hoàn tác được ở tab Lịch sử, duyệt ở tab Đồng bộ.';
           this.mv = {};
           this.applyMove(res, r.row);
+          // chuyển fam + đã mời → tin báo lỗi của khách này ở tab Lệnh tính là xong, báo nhóm Tuấn / khách lẻ
+          if (res.invited) { this.cmdCloseInvited([res.email, res.asEmail].filter(Boolean), 'Đã chuyển ' + res.from + ' → ' + res.to + ' và mời lại', { cus: true, tuanMsg: '✅ ' + res.email + ': đã chuyển sang ' + res.to + ' và gửi lời mời mới' + (res.hsd ? ' · HSD ' + res.hsd : '') + '.\nBáo khách làm: vào https://myaccount.google.com/family/details → nếu thấy "gia đình không hoạt động" thì Rời nhóm cũ → đợi 30s vào lại → Chấp nhận lời mời.' }); }
           await this.autoSyncAfter(res);
           this.afterWrite();
         }
@@ -3444,15 +3451,17 @@ function app() {
         // Thế khách khác vào slot trống / slot vừa cất
         const subs = Object.entries(s.sub || {}).filter(([row, e]) => e);
         if (subs.length) {
-          const done = [], fail = [], donors = new Set();
+          const done = [], fail = [], donors = new Set(), moved = [];
           for (const [row, e] of subs) {
             try {
               const m = await this.api({ action: 'move', email: e, toRow: Number(row), invited: true });
               done.push(m.email + ' (' + m.from + ')');
+              moved.push(m);
               const df = this.due.find(f => f.rn === m.from); if (df) { df.customers = df.customers.filter(c => c.email.toLowerCase() !== m.email.toLowerCase()); donors.add(df); }
             } catch (err) { fail.push(e + ': ' + err.message); }
           }
           this.lastDone += ' Thế vào: ' + (done.join(', ') || 'không ai') + '.' + (fail.length ? ' LỖI: ' + fail.join('; ') : '');
+          if (moved.length) this.cmdCloseInvited(moved.map(m => m.email), 'Đã chuyển sang ' + r.rn + ' và mời lại', { cus: true, tuanMsg: '✅ Đã chuyển sang ' + r.rn + ' và gửi lời mời mới: ' + moved.map(m => m.email).join(', ') + '.\nBáo khách vào https://myaccount.google.com/family/details → Rời nhóm cũ nếu "không hoạt động" → đợi 30s → Chấp nhận lời mời.' });
           // Fam đã xoá nhóm cho hết khách còn hạn → đóng luôn
           for (const df of donors) {
             if (!(df.famState && df.famState.state === 'deleted')) continue;
