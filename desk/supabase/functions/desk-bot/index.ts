@@ -699,7 +699,8 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   expired: ["Hết hạn", "⛔ Gói của {email} đã hết hạn ngày {hsd}.\nMuốn gia hạn, bạn bấm Gia hạn bên dưới hoặc nhắn người bán nhé."],
   done_recent: ["Vừa xử lý xong (khách hỏi lại)", "✅ {email} đã được xử lý lúc {ngay}."],
   invited_recent: ["Vừa được mời lại (khách hỏi lại)", "✅ Đã gửi lời mời mới cho {email} {ngay}."],
-  guide: ["Hướng dẫn chấp nhận lời mời", "Bạn mở Gmail của {email}, tìm thư mời từ Google và bấm Chấp nhận lời mời (hoặc vào https://myaccount.google.com/family/details).\nVẫn lỗi thì gõ: {email} vẫn lỗi"],
+  guide: ["Hướng dẫn chấp nhận lời mời", "👉 Đăng nhập {email} rồi làm 3 bước:\nB1: Vào https://myaccount.google.com/family/details\nB2: Nếu thấy \"Nhóm gia đình của bạn không hoạt động\" → bấm Rời khỏi nhóm gia đình (nhóm cũ).\nB3: Đợi 30 giây, vào lại link trên → có lời mời tham gia gia đình mới → bấm Chấp nhận.\n\nVẫn lỗi thì gõ: {email} vẫn lỗi"],
+  guide_img: ["Hướng dẫn có hình (nút ❓)", "📷 Đây là màn hình \"gia đình không hoạt động\".\nThấy màn hình này: bấm Rời khỏi nhóm gia đình → đợi 30 giây → vào lại https://myaccount.google.com/family/details → bấm Chấp nhận lời mời mới."],
   waiting: ["Đã báo rồi, đang chờ", "⏳ Lỗi của {email} đã được ghi nhận, đang chờ kiểm tra. Xử lý xong bot sẽ nhắn bạn tại đây."],
   reported: ["Ghi nhận lỗi mới", "📝 Đã ghi nhận lỗi của {email}.\nBên mình sẽ kiểm tra và nhắn lại bạn ngay tại đây khi xử lý xong."],
   fixed: ["Nhắn khi bấm Xong lỗi", "✅ Lỗi của {email} đã được xử lý xong."],
@@ -938,6 +939,11 @@ async function cusCallback(q: any) {
   await ctg("answerCallbackQuery", { callback_query_id: q.id });
   // sửa ngay tin đang bấm (menu ↔ chi tiết) thay vì gửi tin mới
   const show = async (text: string, kb: any) => { const mid = q.message?.message_id; if (mid && q.message?.text) { const r = await ctg("editMessageText", { chat_id: chat, message_id: mid, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: kb }); if (r.ok || /not modified/i.test(r.description || "")) return r; } return csay(chat, text, { reply_markup: kb }); };
+  if (a === "hd") {   // hướng dẫn có hình
+    const r = await ctg("sendPhoto", { chat_id: chat, photo: GUIDE_IMG, caption: T(cfg, "guide_img"), parse_mode: "HTML" });
+    if (!r.ok) return csay(chat, T(cfg, "guide_img") + `\n${GUIDE_IMG}`);
+    return;
+  }
   if (a === "a") {   // nút sau khi khách gửi email: l = báo lỗi, m = đổi mail, r = gia hạn
     const st = doc.state[String(chat)], e = st?.step === "act" ? (st.emails || [])[+y || 0] : "";
     if (!e) return csay(chat, T(cfg, "ask_email"), cusMenu(cfg));
@@ -1362,6 +1368,11 @@ async function cusHandle(u: any) {
 }
 
 const ERR_WORDS = /mất\s*pre|mat\s*pre|lỗi|\bloi\b|không vào|khong vao|ko vào|k vào|bị out|bị kick|bị đá|văng|không xem|ko xem|hết pre|het pre|mất premium/i;
+/* nút ẩn "❓ Xem hướng dẫn có hình" dưới các tin có hướng dẫn */
+const GUIDE_IMG = "https://godnc.com/thayfam/img/gia-dinh-khong-hoat-dong.jpg";
+const GUIDE_BTN = [{ text: "❓ Chưa rõ? Xem hướng dẫn có hình", callback_data: "hd" }];
+const withGuide = (text: string, extra: Record<string, any> = {}) => /family\/details/.test(text)
+  ? { ...extra, reply_markup: { inline_keyboard: [...((extra.reply_markup?.inline_keyboard as any[]) || []), GUIDE_BTN] } } : extra;
 /* khách gửi email → trạng thái + 3 nút */
 async function cusActMenu(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems: string[], text: string) {
   const out: string[] = [], ok: string[] = [];
@@ -1385,7 +1396,7 @@ async function cusActMenu(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems
     out.push(T(cfg, "act_menu"));
   }
   await cusPut(doc);
-  return csay(chat, out.join("\n\n"), extra);
+  return csay(chat, out.join("\n\n"), withGuide(out.join("\n\n"), extra));
 }
 /* đổi mail → dòng vào tab Lệnh; Xong ở Thay Fam → bot nhắn khách */
 async function cusMailReq(cfg: CusCfg, doc: CusDoc, chat: number, from: any, old: string, nw: string) {
@@ -1427,7 +1438,7 @@ async function cusReport(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems:
   let extra: Record<string, unknown> = {};
   if (renewEmail && sellReady(cfg)) { doc.state[key] = { step: "renew", email: renewEmail, kind: "renew", at: Date.now() }; extra = { reply_markup: packKb(cfg, "r") }; }
   await cusPut(doc);
-  return csay(chat, out.join("\n\n"), extra);
+  return csay(chat, out.join("\n\n"), withGuide(out.join("\n\n"), extra));
 }
 
 /* Thay Fam gọi khi Xong / thay fam mời lại. Chỉ nhắn khách đang chờ, mỗi lần 1 tin; câu chữ theo loại (lỗi / đơn mới / gia hạn). */
@@ -1441,7 +1452,7 @@ async function cusNotify(emails: string[], kind: string) {
     else if (s.kind === "mail") msg = `${T(cfg, "mail_done", { email: s.to || e })}\n\n${T(cfg, "guide", { email: s.to || e })}`;
     else if (s.kind === "order") msg = `${T(cfg, "activated", { email: e })}\n\n${T(cfg, "guide", { email: e })}`;
     else msg = `${T(cfg, kind === "invited" ? "invited" : "fixed", { email: e })}\n\n${T(cfg, "guide", { email: e })}`;
-    const r = await csay(s.chat, msg);
+    const r = await csay(s.chat, msg, withGuide(msg));
     if (r.ok) {
       s.pending = false; s.at = Date.now(); sent++;
       for (const o of Object.values(doc.orders)) if (o.email === e && o.st === "paid") o.st = "done";
