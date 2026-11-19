@@ -2448,6 +2448,8 @@ function app() {
           : c.type === 'donmoi' ? { kind: 'donmoi', email: r.email, rn: r.rn, hsd: r.hsd, ctv: r.ctv, invited: !!c.invited } : null;
         this.lastDone = '✓ ' + msg + '. Hoàn tác được ở tab Lịch sử.';
         this._cusCache = {};
+        const tuanKind = c.type === 'giahan' && this.isTuan(c.cus.ctv) ? 'renew' : c.type === 'donmoi' && this.isTuan(c.ctv) ? 'new' : '';
+        if (tuanKind) { c.tuanSent = true; this.tuanDone({ email: c.type === 'giahan' ? c.cus.email : r.email, months: c.months, kind: tuanKind, hsd: c.type === 'giahan' ? (r.newHsd || r.hsd) : r.hsd, rn: r.rn }).then(t => { c.result = (c.result || '') + t; }); }
         if (c.qid) await this.queueMark(c, 'xong', msg);
       } catch (e) { c.err = e.message; }
       c.busy = false;
@@ -2511,7 +2513,7 @@ function app() {
         if (ems.length) this.cusNotify(ems, 'fixed').then(n => { if (n) c.result = (c.result || '') + ' · đã nhắn khách qua bot'; });
       }
       // Tin từ nhóm Tuấn: xong thì bot tự báo lại nhóm
-      if (status === 'xong' && !opt.silent && (c.from === 'Nhóm Tuấn' || dups.some(d => d.from === 'Nhóm Tuấn'))) {
+      if (status === 'xong' && !opt.silent && !c.tuanSent && (c.from === 'Nhóm Tuấn' || dups.some(d => d.from === 'Nhóm Tuấn'))) {
         const msg = '✅ ' + (c.info ? this.cmdMsg(c) : (c.emails[0] || '') + ': DNC đã xử lý xong, báo khách kiểm tra lại giúp nhé.');
         this.tuanNotify(msg, c.emails).then(ok => { c.result = (c.result || '') + (ok ? ' · đã báo nhóm Tuấn' : ' · chưa báo được nhóm Tuấn'); });
       }
@@ -2534,6 +2536,15 @@ function app() {
       } catch (e) { return 0; }
     },
     // Gửi tin vào nhóm Telegram của Tuấn (qua bot). Trả true/false, không làm hỏng thao tác chính.
+    isTuan(ctv) { return /^tu[aấ]n/i.test(String(ctv || '').trim()); },
+    // khách CTV Tuấn: gia hạn / đơn mới xong trên web → bot cộng công nợ + báo nhóm Tuấn
+    async tuanDone(done) {
+      try {
+        const r = await fetch(TUAN_BOT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, done: done }) });
+        const d = await r.json();
+        return d.price != null ? ' · báo nhóm Tuấn' + (d.ok ? '' : ' ⚠️ lỗi') + ', cộng nợ ' + Number(d.price).toLocaleString('vi-VN') + 'đ → ' + Number(d.bal).toLocaleString('vi-VN') + 'đ' : ' · ⚠️ chưa cộng công nợ Tuấn: ' + (d.error || '');
+      } catch (e) { return ' · ⚠️ chưa cộng công nợ Tuấn'; }
+    },
     async tuanNotify(text, emails) {
       try {
         const r = await fetch(TUAN_BOT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, text: text, emails: emails || [] }) });
@@ -2768,6 +2779,7 @@ function app() {
         // Dòng gửi khách: email HSD cũ + Nth → HSD mới (tự copy, có nút copy lại)
         const msg = x.email + ' HSD ' + x.oldHsd + ' + ' + g.months + 'th' + (x.bonus ? ' + ' + x.bonus + ' ngày' : '') + ' → ' + x.hsd;
         r.copyMsg = msg;
+        if (this.isTuan(r.ctv)) this.tuanDone({ email: x.email || r.email, months: g.months, kind: 'renew', hsd: x.hsd }).then(t => { r.done = (r.done || '') + t; });
         r.hsd = x.hsd; r.daysLeft = hsdDays(x.hsd); r.gh = null;
         this.lastDone = x.email + ' · ' + r.done; this.lastActionId = x.actionId || '';
         this.lastCopy = msg; this.lastCopyFor = this.lastDone;
@@ -2982,6 +2994,7 @@ function app() {
       try {
         const res = await this.api({ action: 'newOrder', email: m.email.trim(), toRow: r.row, buy: n.buy, months: n.months, product: n.product, ctv: n.ctv.trim(), mailPhu: (n.phu || '').trim(), note: n.note || '', finance: !!n.finance, invited: !!m.invited, replace: !!m.replace, replaceEmail: m.replace || '' });
         this.lastActionId = res.actionId;
+        if (this.isTuan(n.ctv)) this.tuanDone({ email: res.email, months: n.months, kind: 'new', hsd: res.hsd, rn: res.rn }).then(t => { this.lastDone = (this.lastDone || '') + t; });
         this.lastDone = '✓ Đơn mới ' + res.email + ' → ' + res.rn + ' · ' + res.sku + ' · HSD ' + res.hsd + ' · CTV ' + res.ctv + (res.tcRow ? ' · Tài chính dòng ' + res.tcRow + (res.price ? ' (giá ' + res.price.toLocaleString('vi-VN') + 'đ, lãi ' + res.profit.toLocaleString('vi-VN') + 'đ)' : '') : ' · không ghi tài chính') + (res.overwrote ? ' · ' + res.overwrote + ' đã chép xuống cuối sheet' : '') + '. Hoàn tác được ở tab Lịch sử.';
         this.mv = {};
       } catch (e) { m.error = e.message; }
