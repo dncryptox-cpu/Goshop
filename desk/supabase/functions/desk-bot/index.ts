@@ -613,11 +613,29 @@ async function tuanFixedAdd(emails: string[], msg: string) {
 }
 const fmtAt = (t: number) => { const d = new Date(t + TZ_MS); const p = (n: number) => String(n).padStart(2, "0"); return `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} ${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}`; };
 const STILL = /vẫn\s*(lỗi|chưa|ch|ko|k\b|không|mất)|van\s*(loi|chua|ko|khong)|lại lỗi|lai loi/i;
+/* dòng chi tiết dưới mỗi tin báo nhóm Tuấn: đang ở đâu · HSD khách · renew fam · xoá nhóm lúc nào */
+function tuanInfo(r: any) {
+  if (!r) return "";
+  if (r.arch) { const v = pDate(r.arch.hsd), l = v == null ? null : daysU(v); return `📍 Vùng lưu (chờ xếp fam, chưa có slot)${r.arch.hsd ? ` · HSD ${shortD(r.arch.hsd)}${l != null ? " (" + conL(l) + ")" : ""}` : ""}`; }
+  const { f, c } = r, st = f.famState;
+  const parts = [`📍 <b>${esc(f.rn)}</b>${c.row ? " dòng " + c.row : ""}`, `HSD ${shortD(c.hsd) || "—"}${c.daysLeft != null ? " (" + conL(c.daysLeft) + ")" : ""}`,
+    `fam renew ${shortD(f.renew) || "—"}${f.daysToRenew != null ? (f.daysToRenew > 0 ? " (còn " + f.daysToRenew + " ngày)" : f.daysToRenew === 0 ? " (hôm nay)" : " (quá " + -f.daysToRenew + " ngày)") : ""}`];
+  if (c.invitedAt) parts.push(`mời ${esc(c.invitedAt)}`);
+  let line = parts.join(" · ");
+  if (st?.state === "deleted") line += `\n🗑 Fam đã xoá nhóm${st.at ? " lúc " + esc(st.at) : ""} — chờ thay fam mời lại`;
+  else if (st?.state === "scanned") line += `\n⚠️ Fam bị quét${st.at ? " lúc " + esc(st.at) : ""}`;
+  return line;
+}
 async function tuanCheck(e: string, raw: string, openText: string, fixed: Fixed = {}): Promise<{ text: string; queue: boolean }> {
+  const r0 = await tfFind(e);
+  const res = await tuanCheck0(e, raw, openText, fixed, r0);
+  const info = r0 && (r0.arch ? !(r0.arch.ctv && normCtv(r0.arch.ctv) !== "Tuấn") : normCtv(r0.c.ctv) === "Tuấn") ? tuanInfo(r0) : "";
+  return info ? { ...res, text: res.text + "\n" + info } : res;
+}
+async function tuanCheck0(e: string, raw: string, openText: string, fixed: Fixed, r: any): Promise<{ text: string; queue: boolean }> {
   const fx = fixed[e], line = raw.split(/\r?\n/).find((l) => l.toLowerCase().includes(e)) || raw;
   if (fx && Date.now() - fx.at < 3 * 864e5 && !STILL.test(line))
     return { text: `✅ <b>${esc(e)}</b>: DNC đã fix lúc ${fmtAt(fx.at)}.\nBáo khách kiểm tra lại (mở Gmail bấm Chấp nhận lời mời). Khách vẫn lỗi thì gõ: <code>${esc(e)} vẫn lỗi</code>`, queue: false };
-  const r = await tfFind(e);
   if (!r) return { text: `❓ <b>${esc(e)}</b>: chưa thấy trong danh sách. ⏳ Đợi DNC check lại.`, queue: true };
   if (r.arch) {
     // khách ở vùng lưu: hết hạn thì báo hết hạn (không phải chờ xếp fam)
