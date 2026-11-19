@@ -317,7 +317,7 @@ async function listOpen() {
   return { late, dueToday, fresh, later, text: (sec("🔴 Quá hạn", late) + sec("📌 Hôm nay", dueToday) + sec("📥 Mới vào / đang làm", fresh)).trim() };
 }
 async function help() {
-  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/hoi + câu hỏi (hoặc tin bắt đầu bằng ?) — hỏi trợ lý Thay Fam: khách ở fam nào, fam nào cần thay, khách Tuấn sắp hết hạn…\n/xong 12 — đánh dấu mục #12 xong\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email khách (đổi mail, gia hạn, hủy, mất pre…) tự vào Thay Fam, không vào Desk. Muốn lưu Desk thì gõ /desk + tin.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
+  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/hoi + câu hỏi (hoặc tin bắt đầu bằng ?) — hỏi trợ lý Thay Fam: khách ở fam nào, fam nào cần thay, khách Tuấn sắp hết hạn…\n/xong 12 — đánh dấu mục #12 xong\n/tuan — công nợ CTV Tuấn (/tuan clear khi Tuấn trả hết, /tuan help xem hướng dẫn)\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email khách (đổi mail, gia hạn, hủy, mất pre…) tự vào Thay Fam, không vào Desk. Muốn lưu Desk thì gõ /desk + tin.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
 }
 async function setStatus(id: number, patch: any) {
   if (patch.status) patch.done_at = patch.status === "done" ? new Date().toISOString() : null;
@@ -1170,15 +1170,44 @@ function tdSummary(d: TDebt, n = 15) {
     since.length ? `\nĐơn từ lần trả trước (${since.length}):\n` + since.slice(-n).map(fmt).join("\n") + (since.length > n ? `\n…và ${since.length - n} đơn trước đó` : "") : ""].filter(Boolean).join("\n");
 }
 /* DNC: /tuan · /tuan tt 500k (Tuấn đã trả) · /tuan them 90k ghi chú · /tuan bot 90k ghi chú (trừ bớt) */
+const TUAN_GUIDE = `<b>Cách dùng công nợ Tuấn</b>
+• Tuấn gõ trong nhóm <code>abc@gmail.com gia hạn 6 tháng</code> / <code>abc@gmail.com đơn mới 3 tháng</code> → bạn Duyệt / chọn fam trên bot → tự cộng công nợ (3th 90k · 6th 150k · 12th 290k) + báo nhóm.
+• <code>/tuan</code> — xem công nợ + nút <b>Đã trả hết</b> (clear về 0, báo nhóm).
+• <code>/tuan tt 500k</code> — Tuấn trả 1 phần.
+• <code>/tuan clear</code> — Tuấn trả hết, công nợ về 0.
+• <code>/tuan them 90k ghi chú</code> — cộng tay (đơn làm trên web, gói 1 tháng…).
+• <code>/tuan bot 90k ghi chú</code> — trừ bớt (hoàn tiền, ghi nhầm).
+• Tuấn gõ <code>/congno</code> trong nhóm để xem.`;
+const tdKb = (d: TDebt) => tdBal(d) > 0 ? { reply_markup: { inline_keyboard: [[{ text: `💵 Tuấn đã trả hết ${money(tdBal(d))}`, callback_data: `td:c:${tdBal(d)}` }]] } } : {};
+async function tdPay(amt: number, note = "") {
+  const d = await tdGet(); d.pays.push({ at: Date.now(), amt, note }); await tdPut(d);
+  const bal = tdBal(d), msg = `💵 DNC đã nhận ${money(amt)} từ Tuấn${note ? " (" + esc(note) + ")" : ""}. Công nợ còn: <b>${money(bal)}</b>${bal === 0 ? " — đã clear ✅" : ""}`;
+  let g = false; try { g = !!(await tuanSay(msg)).ok; } catch (_) { /* chưa nối nhóm */ }
+  return msg + (g ? " · đã báo nhóm" : "");
+}
+/* nút "Đã trả hết": bấm 1 lần → hỏi lại, bấm Xác nhận → clear */
+async function tdCallback(q: any, a: string, amt: number) {
+  const ans = (t: string) => tg("answerCallbackQuery", { callback_query_id: q.id, text: t });
+  const edit = (text: string, kb: any = { inline_keyboard: [] }) => tg("editMessageText", { chat_id: CHAT, message_id: q.message.message_id, text, parse_mode: "HTML", reply_markup: kb });
+  const d = await tdGet(), bal = tdBal(d);
+  if (bal !== amt) { await ans("Công nợ đã đổi, xem lại"); return edit(tdSummary(d), tdKb(d).reply_markup || { inline_keyboard: [] }); }
+  if (a === "c") { await ans(""); return edit(`❓ Xác nhận đã nhận đủ <b>${money(amt)}</b> từ Tuấn? Công nợ sẽ về 0 và bot báo nhóm.`, { inline_keyboard: [[{ text: "✅ Xác nhận", callback_data: `td:ok:${amt}` }, { text: "Huỷ", callback_data: `td:no:${amt}` }]] }); }
+  if (a === "no") { await ans("Đã huỷ"); return edit(tdSummary(d), tdKb(d).reply_markup); }
+  if (a === "ok") { await ans("Đã clear"); return edit(await tdPay(amt, "trả hết")); }
+  return ans("");
+}
 async function tuanCmd(arg: string) {
-  const d = await tdGet(), m = arg.trim().match(/^(tt|tra|trả|them|thêm|bot|bớt)\s+(\S+)\s*([\s\S]*)$/i);
-  if (!m) return say(tdSummary(d) + "\n\n<i>/tuan tt 500k — Tuấn đã trả · /tuan them 90k ghi chú — cộng thêm · /tuan bot 90k ghi chú — trừ bớt</i>");
+  const d = await tdGet(), a0 = arg.trim().toLowerCase();
+  if (/^(clear|xong|het|hết|trả hết|tra het)$/.test(a0)) { const bal = tdBal(d); if (bal <= 0) return say("Công nợ đang 0, không cần clear."); return say(await tdPay(bal, "trả hết")); }
+  if (/^(help|hd|huongdan|hướng dẫn)$/.test(a0)) return say(TUAN_GUIDE);
+  const m = arg.trim().match(/^(tt|tra|trả|them|thêm|bot|bớt)\s+(\S+)\s*([\s\S]*)$/i);
+  if (!m) return say(tdSummary(d) + "\n\n" + TUAN_GUIDE, tdKb(d));
   const amt = parseMoney(m[2]); if (!amt) return say("Số tiền không đọc được, vd: <code>/tuan tt 500k</code>");
   const op = m[1].toLowerCase(), note = m[3].trim();
-  if (/^t(t|ra|rả)$/.test(op)) d.pays.push({ at: Date.now(), amt, note });
-  else d.items.push({ at: Date.now(), kind: "them", price: /^b/.test(op) ? -amt : amt, note: note || (/^b/.test(op) ? "trừ bớt" : "cộng thêm") });
+  if (/^t(t|ra|rả)$/.test(op)) return say(await tdPay(amt, note));
+  d.items.push({ at: Date.now(), kind: "them", price: /^b/.test(op) ? -amt : amt, note: note || (/^b/.test(op) ? "trừ bớt" : "cộng thêm") });
   await tdPut(d);
-  const msg = /^t(t|ra|rả)$/.test(op) ? `💵 DNC đã nhận ${money(amt)} từ Tuấn. Công nợ còn: <b>${money(tdBal(d))}</b>` : `📝 ${/^b/.test(op) ? "Trừ" : "Cộng"} ${money(amt)}${note ? " (" + esc(note) + ")" : ""}. Công nợ: <b>${money(tdBal(d))}</b>`;
+  const msg = `📝 ${/^b/.test(op) ? "Trừ" : "Cộng"} ${money(amt)}${note ? " (" + esc(note) + ")" : ""}. Công nợ: <b>${money(tdBal(d))}</b>`;
   let g = ""; try { const r = await tuanSay(msg); g = r.ok ? " · đã báo nhóm" : ""; } catch (_) { /* chưa nối nhóm */ }
   return say(msg + g);
 }
@@ -1895,6 +1924,7 @@ async function handle(u: any) {
       if (r.ok) await tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao — đã nhắn khách", callback_data: "noop" }]] } });
       return;
     }
+    if (String(q.data || "").startsWith("td:")) { const [, ta, tam] = String(q.data).split(":"); return tdCallback(q, ta, Number(tam) || 0); }
     if (String(q.data || "").startsWith("nf:")) { const [, na, nma, nrow] = String(q.data).split(":"); return nfCallback(q, na, nma, Number(nrow) || 0); }
     if (String(q.data || "").startsWith("g:")) { const [, ga, gid] = String(q.data).split(":"); return renewCallback(q, ga, gid); }
     const [, a, sid] = String(q.data || "").split(":");
