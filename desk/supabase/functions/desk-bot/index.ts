@@ -661,7 +661,7 @@ async function tuanHandle(m: any) {
   for (const e of ems) {
     // gia hạn / đơn mới → thẻ duyệt cho DNC (công nợ)
     const ln0 = lines.find((l) => l.toLowerCase().includes(e)) || e, k = lineKind(ln0);
-    if (k) { try { const t = await tuanOrder(m, ln0, k); if (t) { out.push(t); continue; } } catch (err) { console.error("tuan order", (err as Error).message); } }
+    if (k && TUAN_ORDER.test(ln0) && !TUAN_FIX.test(ln0)) { try { const t = await tuanOrder(m, ln0, k); if (t) { out.push(t); continue; } } catch (err) { console.error("tuan order", (err as Error).message); } }
     try {
       const r = await tuanCheck(e, text, openText, fixed);
       const ln = lines.find((l) => l.toLowerCase().includes(e)) || e;
@@ -1230,6 +1230,9 @@ async function tuanDone(x: { email?: string; months?: number; kind?: string; hsd
   if (dmid) await tg("editMessageText", { chat_id: CHAT, message_id: dmid, text: `✅ <b>${esc(e)}</b>: đã ${kind === "renew" ? "gia hạn" : "ghi đơn mới"} trên web · +${money(price)} · công nợ Tuấn ${money(bal)}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [] } }).catch(() => {});
   return { ok: !!g.ok, price, bal };
 }
+// nhóm Tuấn: chỉ coi là đơn khi ghi rõ gia hạn / đơn mới / số tháng; "fix ytb", "chưa có lời mời", "check"… là báo lỗi
+const TUAN_ORDER = /gia\s*h[aạ]n|giahan|\bgh\b|đơn\s*mới|don\s*moi|\bmua\b|\bnew\b|\d{1,2}\s*(?:th|tháng|thang)\b/i;
+const TUAN_FIX = /\bfix\b|lời mời|loi moi|\bcheck\b|kiểm tra|kiem tra|chưa có|chua co|không có|ko có|k có|vẫn lỗi|van loi|chưa vào|chưa nhận|mất|\bmat\b|lỗi|\bloi\b/i;
 /* Tuấn gõ gia hạn / đơn mới trong nhóm → thẻ duyệt cho DNC. Trả về text trả lời nhóm (null = không phải đơn, để kiểm tra lỗi như cũ) */
 async function tuanOrder(m: any, ln: string, k: NonNullable<ReturnType<typeof lineKind>>): Promise<string | null> {
   const e = k.email, price = TUAN_PRICE[k.months] || 0, pl = k.product === "YoutubePlus" ? "YTB Plus" : "YTB";
