@@ -1458,6 +1458,40 @@
 </div>
 
 <!-- ═════════════ SHEET: XEM LỆNH ═════════════ -->
+<!-- Xem lớn 1 case (ngay trong trang, không mở tab mới) -->
+<div x-show="sim.zoom" x-cloak class="fixed inset-0 z-50 bg-black/90 flex flex-col md:flex-row" @click.self="sim.zoom = null">
+    <template x-if="sim.zoom">
+        <div class="contents">
+            <div class="flex-1 min-h-0 flex items-center justify-center p-3 md:p-6 relative" @click.self="sim.zoom = null">
+                <img :src="sim.zoom.img || null" class="max-w-full max-h-full object-contain rounded-xl" alt="">
+                <button x-show="simZoomIdx > 0" @click="simZoomStep(-1)" class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 text-ink flex items-center justify-center" title="Case trước">‹</button>
+                <button x-show="simZoomIdx < (sim.results || []).length - 1" @click="simZoomStep(1)" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 text-ink flex items-center justify-center" title="Case sau">›</button>
+            </div>
+            <div class="md:w-[380px] max-h-[45vh] md:max-h-none overflow-y-auto border-t md:border-t-0 md:border-l border-line p-4 space-y-3" style="background: var(--surface)">
+                <div class="flex items-center justify-between">
+                    <span class="caption num" x-text="(simZoomIdx + 1) + '/' + (sim.results || []).length"></span>
+                    <button @click="sim.zoom = null" class="btn btn-plain !px-1">Đóng</button>
+                </div>
+                <div class="flex flex-wrap gap-1 items-center">
+                    <span class="chip chip-blue num" x-text="Math.round(sim.zoom.similarity * 100) + '% giống'"></span>
+                    <span x-show="sim.zoom.direction" class="chip" :class="sim.zoom.direction === 'LONG' ? 'chip-up' : 'chip-down'" x-text="sim.zoom.direction"></span>
+                    <span x-show="sim.zoom.result" class="chip" :class="statusChip(sim.zoom.result)" x-text="statusLabel(sim.zoom.result)"></span>
+                    <span x-show="sim.zoom.result && sim.zoom.result !== 'RUNNING'" class="num text-[14px]" :class="sim.zoom.r > 0 ? 'text-up' : (sim.zoom.r < 0 ? 'text-down' : 'text-ink-2')" x-text="fmtR(sim.zoom.r, true)"></span>
+                </div>
+                <div class="caption" x-text="[sim.zoom.pair, sim.zoom.label, fmtDate(sim.zoom.at)].filter(Boolean).join(' · ')"></div>
+                <div x-show="sim.zoom.note" class="text-[15px] font-medium whitespace-pre-line" x-text="sim.zoom.note"></div>
+                <template x-for="row in [['Setup','setup'],['Cấu trúc','structure'],['Vị trí vào','location'],['Tín hiệu','trigger'],['Khung lớn','trend'],['Bối cảnh','desc']]" :key="row[1]">
+                    <div x-show="(sim.zoom.features || {})[row[1]]">
+                        <div class="caption uppercase tracking-wide" x-text="row[0]"></div>
+                        <div class="text-[14px] text-ink-2 leading-relaxed" x-text="(sim.zoom.features || {})[row[1]]"></div>
+                    </div>
+                </template>
+                <button x-show="sim.zoom.src === 'trade'" @click="simOpenTrade(sim.zoom)" class="btn btn-gray w-full">Mở lệnh này</button>
+            </div>
+        </div>
+    </template>
+</div>
+
 <!-- ═════════════ SHEET: TÌM CASE TƯƠNG TỰ (kho chart AI) ═════════════ -->
 <div x-show="sim.open" x-cloak class="fixed inset-0 z-40 scrim flex items-end md:items-center justify-center md:p-6" @click.self="sim.open = false">
     <template x-if="sim.open">
@@ -2246,7 +2280,7 @@ Trả về đúng 1 object JSON:
         return {
             TABS, SLOTS,
             t9: { loaded: false, docs: {}, saved: '', uploading: 0, aiId: '', drag: false },
-            sim: { open: false, imgs: { HTF: '', MTF: '', LTF: '' }, slot: 'LTF', dir: '', busy: '', q: null, results: null, summary: '',
+            sim: { open: false, zoom: null, imgs: { HTF: '', MTF: '', LTF: '' }, slot: 'LTF', dir: '', busy: '', q: null, results: null, summary: '',
                    idx: { run: false, done: 0, todo: 0, total: 0, indexed: 0, failed: 0, err: '' } },
             booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false, isMember: false,
             jView: 'list', memberPage: false, gate: null, rpage: null, rpageGroup: '', planForm: null, nowTs: Date.now(),
@@ -2671,7 +2705,7 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                 this.icons();
                 this.simSync();
             },
-            simReset() { Object.assign(this.sim, { imgs: { HTF: '', MTF: '', LTF: '' }, slot: 'LTF', q: null, results: null, summary: '' }); this.icons(); },
+            simReset() { Object.assign(this.sim, { zoom: null, imgs: { HTF: '', MTF: '', LTF: '' }, slot: 'LTF', q: null, results: null, summary: '' }); this.icons(); },
             async simTake(file, key) {
                 try {
                     const url = await this.compress(await this.readFile(file), 1600, 0.85);
@@ -2715,10 +2749,14 @@ Nếu dưới 3 lệnh có kết quả thì nói rõ dữ liệu còn ít. Khôn
                 } catch (e) { this.showToast(e.daily ? 'Hết lượt Gemini miễn phí hôm nay — thử lại ngày mai hoặc dùng key khác' : 'Lỗi: ' + this.simTableErr(e), null, '', 6000); }
                 finally { S.busy = ''; this.icons(); }
             },
-            simOpen(c) {
-                const t = c.src === 'trade' && this.trades.find(x => x.id === c.src_id);
-                if (t) return this.openTrade(t);
-                if (c.img) window.open(c.img, '_blank', 'noopener');
+            simOpen(c) { this.sim.zoom = c; },
+            get simZoomIdx() { return (this.sim.results || []).indexOf(this.sim.zoom); },
+            simZoomStep(d) { const r = this.sim.results || [], i = this.simZoomIdx + d; if (i >= 0 && i < r.length) this.sim.zoom = r[i]; },
+            simOpenTrade(c) {
+                const t = this.trades.find(x => x.id === c.src_id);
+                if (!t) return this.showToast('Không tìm thấy lệnh');
+                this.sim.zoom = null;
+                this.openTrade(t);
             },
             get t9S() {
                 const start = this.t9Plan.start, today = this.t9Today;
@@ -4095,6 +4133,12 @@ Return ONLY a raw JSON object, no markdown, no explanation:
                 }
                 if (this.isLocked) return;
                 const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+                if (this.sim.zoom) {
+                    if (e.key === 'Escape') this.sim.zoom = null;
+                    else if (e.key === 'ArrowLeft') this.simZoomStep(-1);
+                    else if (e.key === 'ArrowRight') this.simZoomStep(1);
+                    return;
+                }
                 if (e.key === 'Escape') {
                     if (this.share) this.share = null; else if (this.setForm) this.setForm = null;
                     else if (this.btEdit) this.btEdit = null; else if (this.formOpen) this.closeTradeForm(); else if (this.view) this.view = null; else if (this.sim.open) this.sim.open = false; else if (this.settingsOpen) this.settingsOpen = false;
