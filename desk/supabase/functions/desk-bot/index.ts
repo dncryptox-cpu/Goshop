@@ -649,7 +649,8 @@ async function tuanHandle(m: any) {
   }
   const grp = await tuanGroup();
   if (!grp || String(m.chat.id) !== grp) return; // chỉ trả lời trong nhóm đã nối
-  if (/^\/(start|help)\b/i.test(text)) return tuanSay("Gõ email khách (1 hoặc nhiều mail, kèm mô tả lỗi nếu có). Bot báo: ✅ đã fix · ⏳ đợi DNC check · ⛔ hết hạn.");
+  if (/^\/(start|help)\b/i.test(text)) return tuanSay("Gõ email khách (1 hoặc nhiều mail, kèm mô tả lỗi nếu có). Bot báo: ✅ đã fix · ⏳ đợi DNC check · ⛔ hết hạn.\nGia hạn: <code>abc@gmail.com gia hạn 6 tháng</code> · Đơn mới: <code>abc@gmail.com đơn mới 3 tháng</code> — DNC duyệt xong bot báo, tiền cộng vào công nợ.\nXem công nợ: /congno");
+  if (/^\/?(congno|công nợ|cong no)\b/i.test(text)) return tuanSay(tdSummary(await tdGet()), { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } });
   const ems = [...new Set((text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map((x) => x.toLowerCase()))].slice(0, 8);
   if (!ems.length) return;
   let openText = "";
@@ -658,6 +659,9 @@ async function tuanHandle(m: any) {
   const out: string[] = [], toQ: string[] = [];
   const lines = text.split(/\r?\n/);
   for (const e of ems) {
+    // gia hạn / đơn mới → thẻ duyệt cho DNC (công nợ)
+    const ln0 = lines.find((l) => l.toLowerCase().includes(e)) || e, k = lineKind(ln0);
+    if (k) { try { const t = await tuanOrder(m, ln0, k); if (t) { out.push(t); continue; } } catch (err) { console.error("tuan order", (err as Error).message); } }
     try {
       const r = await tuanCheck(e, text, openText, fixed);
       const ln = lines.find((l) => l.toLowerCase().includes(e)) || e;
@@ -1074,29 +1078,37 @@ async function nfOpts(months: number) {
   const need = months * 30;   // ưu tiên fam còn đủ ngày cho gói
   return out.sort((a, b) => (Number(b.days >= need) - Number(a.days >= need)) || (a.reuse ? 1 : 0) - (b.reuse ? 1 : 0) || b.days - a.days).slice(0, 10);
 }
+/* đơn cho bước chọn fam: khách lẻ (YT…) nằm trong cus_bot, CTV Tuấn (T…) nằm trong tuan_debt */
+async function nfLoad(ma: string): Promise<{ o: any; save: () => Promise<void>; tuan: boolean } | null> {
+  if (/^T\d/.test(ma)) { const d = await tdGet(), o = d.orders[ma]; return o ? { o, save: () => tdPut(d), tuan: true } : null; }
+  const d = await cusGet(), o = d.orders[ma]; return o ? { o, save: () => cusPut(d), tuan: false } : null;
+}
 async function nfAsk(ma: string, note = "", mid?: number) {
-  const doc = await cusGet(), o = doc.orders[ma];
-  if (!o) return say("Không thấy đơn " + esc(ma));
-  const head = `💰 <b>Đơn mới ${esc(ma)}</b>${note ? " — " + note : ""}
+  const L = await nfLoad(ma);
+  if (!L) return say("Không thấy đơn " + esc(ma));
+  const o = L.o;
+  const head = `${L.tuan ? "👥" : "💰"} <b>Đơn mới ${esc(ma)}</b>${note ? " — " + note : ""}
 <code>${esc(o.email)}</code> · ${esc(o.pack)} · <b>${money(o.got || o.price)}</b>
-Khách: ${whoOf(o)}`;
+${L.tuan ? "CTV Tuấn (cộng công nợ)" : "Khách: " + whoOf(o)}`;
   let rows: any[] = [];
   try {
     const opts = await nfOpts(o.months || 1);
     rows = opts.map((f) => [{ text: `${f.rn} · còn ${f.days} ngày${f.reuse ? " (thế slot hết hạn)" : ""}${f.days < (o.months || 1) * 30 ? " ⚠️" : ""}`, callback_data: `nf:p:${ma}:${f.row}` }]);
   } catch (e) { rows = []; note = (e as Error).message; }
-  const text = head + (rows.length ? "\n\n👉 Mời khách vào fam rồi bấm <b>fam đã mời</b> — bot ghi khách vào fam đó + ghi Tài chính + nhắn khách."
+  const text = head + (rows.length ? `\n\n👉 Mời khách vào fam rồi bấm <b>fam đã mời</b> — bot ghi khách vào fam đó + ghi Tài chính + ${L.tuan ? "báo nhóm Tuấn" : "nhắn khách"}.`
     : `\n\n⚠️ Không lấy được fam còn slot${note ? ": " + esc(note) : ""} → làm ở Thay Fam.`);
-  const kb = { inline_keyboard: [...rows, [{ text: "↻ Tải lại fam", callback_data: `nf:r:${ma}` }, { text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] };
+  const kb = { inline_keyboard: [...rows, [{ text: "↻ Tải lại fam", callback_data: `nf:r:${ma}` }, { text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }], ...(L.tuan ? [[{ text: "✖️ Bỏ đơn này", callback_data: `nf:x:${ma}` }]] : [])] };
   if (mid) return tg("editMessageText", { chat_id: CHAT, message_id: mid, text, parse_mode: "HTML", reply_markup: kb });
   return say(text, { reply_markup: kb });
 }
 async function nfCallback(q: any, a: string, ma: string, row: number) {
   const mid = q.message.message_id, ans = (t: string) => tg("answerCallbackQuery", { callback_query_id: q.id, text: t });
   const edit = (text: string, kb?: any) => tg("editMessageText", { chat_id: CHAT, message_id: mid, text, parse_mode: "HTML", reply_markup: kb || { inline_keyboard: [] } });
-  const doc = await cusGet(), o = doc.orders[ma];
-  if (!o) return ans("Không thấy đơn " + ma);
+  const L = await nfLoad(ma);
+  if (!L) return ans("Không thấy đơn " + ma);
+  const o = L.o, ctv = L.tuan ? "Tuan" : NF_CTV;
   if (o.st === "done" || o.st === "cancel") return ans(o.st === "done" ? "Đơn đã xong rồi" : "Đơn đã huỷ");
+  if (a === "x" && L.tuan) { o.st = "cancel"; await L.save(); await ans("Đã bỏ"); if (o.tchat) await tuanSay(`✖️ <b>${esc(o.email)}</b>: DNC chưa nhận đơn này, liên hệ DNC.`, { reply_parameters: { message_id: o.tmid, allow_sending_without_reply: true } }).catch(() => {}); return edit(`✖️ Đã bỏ đơn ${esc(ma)} · ${esc(o.email)}`); }
   if (a === "r") { await ans("Đang tải fam…"); return nfAsk(ma, "", mid); }
   if (a === "p") {   // hỏi lại cho chắc
     await ans("Kiểm tra lại rồi bấm Ghi");
@@ -1104,29 +1116,93 @@ async function nfCallback(q: any, a: string, ma: string, row: number) {
     return edit(`❓ Đã mời <code>${esc(o.email)}</code> vào <b>${esc(f ? f.rn : "dòng " + row)}</b>${f ? ` (còn ${f.days} ngày${f.reuse ? ", thế slot hết hạn" : ""})` : ""}?
 Đơn ${esc(ma)} · ${esc(o.pack)} · ${money(o.got || o.price)}
 
-Bấm Ghi → ghi khách vào fam + ghi Tài chính (CTV ${NF_CTV}) + nhắn khách.`,
+Bấm Ghi → ghi khách vào fam + ghi Tài chính (CTV ${ctv}) + ${L.tuan ? "cộng công nợ Tuấn + báo nhóm" : "nhắn khách"}.`,
       { inline_keyboard: [[{ text: "✅ Ghi", callback_data: `nf:ok:${ma}:${row}` }, { text: "↩ Chọn fam khác", callback_data: `nf:r:${ma}` }]] });
   }
   if (a !== "ok") return ans("");
   if (o.nf) return ans("Đang ghi / đã ghi rồi");
-  o.nf = Date.now(); await cusPut(doc);
+  o.nf = Date.now(); await L.save();
   await ans("Đang ghi…");
   try {
-    const x = await tf({ action: "newOrder", email: o.email, toRow: row, buy: today(), months: o.months, product: "Youtube", ctv: NF_CTV, mailPhu: "", note: `bot ${ma}${o.zalo ? " · zalo " + o.zalo : ""}`, finance: true, invited: true, replace: false, price: o.got || o.price });
-    const d2 = await cusGet(); if (d2.orders[ma]) { d2.orders[ma].nf = o.nf; await cusPut(d2); }
-    const sent = await cusNotify([o.email], "order");
+    const x = await tf({ action: "newOrder", email: o.email, toRow: row, buy: today(), months: o.months, product: o.product || "Youtube", ctv, mailPhu: "", note: L.tuan ? `Tuấn ${ma}` : `bot ${ma}${o.zalo ? " · zalo " + o.zalo : ""}`, finance: true, invited: true, replace: false, price: o.got || o.price });
+    { const L2 = await nfLoad(ma); if (L2) { L2.o.nf = o.nf; L2.o.st = "done"; await L2.save(); } }
+    let sent = 0, bal: number | null = null;
+    if (L.tuan) {
+      bal = await tdAdd({ at: Date.now(), ma, email: o.email, kind: "new", months: o.months, price: o.price });
+      const r = await tuanSay(`✅ <b>${esc(o.email)}</b>: đã mời + ghi đơn mới ${o.months}th · HSD ${esc(x.hsd || "")}\n+${money(o.price)} · công nợ: <b>${money(bal)}</b>\nBáo khách mở Gmail bấm <b>Chấp nhận lời mời</b>.`, { reply_parameters: { message_id: o.tmid, allow_sending_without_reply: true } }).catch(() => ({ ok: false }));
+      sent = r.ok ? 1 : 0;
+    } else sent = await cusNotify([o.email], "order");
     // dòng cũ trong hàng chờ tab Lệnh (đơn trước khi có tính năng này) → đánh dấu xong
-    try { const ql = await tf({ action: "queue", op: "list" }); for (const it of ql.open || []) if (String(it.text || "").includes(ma)) for (let i = 0; i < (it.lines || [it.text]).length; i++) if (String((it.lines || [it.text])[i]).includes(ma)) await tf({ action: "queue", op: "set", id: it.id, line: i, status: "xong", note: "Đơn mới " + o.email + " → " + (x.rn || "") + " (bot)" }); } catch (_) { /* không sao */ }
-    const L = [`✅ <b>Đã ghi đơn mới ${esc(ma)}</b>`, `<code>${esc(x.email || o.email)}</code> → <b>${esc(x.rn || "dòng " + row)}</b> · HSD ${esc(x.hsd || "")} · CTV ${NF_CTV}`];
-    if (x.tcRow) L.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}${x.profit != null ? `, lãi ${vnd(x.profit)}` : ""}${x.price != null && Number(x.price) !== Number(o.got || o.price) ? ` ⚠️ khách trả ${money(o.got || o.price)} — sửa giá trong sheet` : ""}`);
-    else L.push("⚠️ Không thấy dòng Tài chính trả về — kiểm tra sheet Tài chính.");
-    if (x.sync) L.push(x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
-    L.push(sent ? "Đã nhắn khách qua bot." : "⚠️ Chưa nhắn được khách.");
-    return edit(L.join("\n"));
+    if (!L.tuan) try { const ql = await tf({ action: "queue", op: "list" }); for (const it of ql.open || []) if (String(it.text || "").includes(ma)) for (let i = 0; i < (it.lines || [it.text]).length; i++) if (String((it.lines || [it.text])[i]).includes(ma)) await tf({ action: "queue", op: "set", id: it.id, line: i, status: "xong", note: "Đơn mới " + o.email + " → " + (x.rn || "") + " (bot)" }); } catch (_) { /* không sao */ }
+    const out = [`✅ <b>Đã ghi đơn mới ${esc(ma)}</b>`, `<code>${esc(x.email || o.email)}</code> → <b>${esc(x.rn || "dòng " + row)}</b> · HSD ${esc(x.hsd || "")} · CTV ${ctv}`];
+    if (x.tcRow) out.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}${x.profit != null ? `, lãi ${vnd(x.profit)}` : ""}${x.price != null && Number(x.price) !== Number(o.got || o.price) ? ` ⚠️ giá đúng ${money(o.got || o.price)} — sửa trong sheet` : ""}`);
+    else out.push("⚠️ Không thấy dòng Tài chính trả về — kiểm tra sheet Tài chính.");
+    if (x.sync) out.push(x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
+    if (L.tuan) out.push(`Công nợ Tuấn: <b>${money(bal || 0)}</b>${sent ? " · đã báo nhóm" : " · ⚠️ chưa báo được nhóm"}`);
+    else out.push(sent ? "Đã nhắn khách qua bot." : "⚠️ Chưa nhắn được khách.");
+    return edit(out.join("\n"));
   } catch (e) {
-    const d2 = await cusGet(); if (d2.orders[ma]) { delete d2.orders[ma].nf; await cusPut(d2); }
+    const L2 = await nfLoad(ma); if (L2) { delete L2.o.nf; await L2.save(); }
     return edit(`⚠️ Ghi đơn ${esc(ma)} lỗi: ${esc((e as Error).message)}\nChưa chắc đã ghi — xem tab Lịch sử trên Thay Fam trước khi làm lại.`, { inline_keyboard: [[{ text: "↻ Chọn fam lại", callback_data: `nf:r:${ma}` }, { text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] });
   }
+}
+
+/* ---------- Công nợ CTV Tuấn: Tuấn gõ gia hạn / đơn mới trong nhóm → DNC duyệt trên bot → cộng dồn, Tuấn trả gộp ----------
+   Giá bán cho Tuấn (YouTube): 3th 90k · 6th 150k · 12th 290k. Tháng khác chưa có giá → DNC sửa bằng /tuan them. */
+const TUAN_PRICE: Record<number, number> = { 3: 90000, 6: 150000, 12: 290000 };
+type TItem = { at: number; ma?: string; email?: string; kind: "renew" | "new" | "them"; months?: number; price: number; note?: string };
+type TDebt = { items: TItem[]; pays: { at: number; amt: number; note?: string }[]; orders: Record<string, any> };
+async function tdGet(): Promise<TDebt> { const d = await docGet<TDebt>("tuan_debt", {} as TDebt); d.items ||= []; d.pays ||= []; d.orders ||= {}; return d; }
+async function tdPut(d: TDebt) { for (const k of Object.keys(d.orders)) if (Date.now() - (d.orders[k].at || 0) > 60 * 864e5) delete d.orders[k]; await docPut("tuan_debt", d); }
+const tdBal = (d: TDebt) => d.items.reduce((s, x) => s + (x.price || 0), 0) - d.pays.reduce((s, x) => s + (x.amt || 0), 0);
+async function tdAdd(it: TItem) { const d = await tdGet(); d.items.push(it); await tdPut(d); return tdBal(d); }
+function parseMoney(s: string): number | null {
+  const m = String(s).toLowerCase().replace(/,/g, ".").match(/(\d+(?:\.\d+)*)\s*(k|tr|triệu|m)?/); if (!m) return null;
+  let n = m[2] ? parseFloat(m[1]) : Number(m[1].replace(/\./g, ""));
+  if (m[2] === "k") n *= 1e3; else if (m[2]) n *= 1e6; else if (n < 10000) n *= 1e3;   // "90" = 90k
+  return isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+function tdSummary(d: TDebt, n = 15) {
+  const lastPay = d.pays[d.pays.length - 1], since = d.items.filter((x) => !lastPay || x.at > lastPay.at);
+  const fmt = (x: TItem) => `• ${fmtAt(x.at).split(" ").pop()} ${x.kind === "them" ? esc(x.note || "khoản thêm") : `${esc(x.email || "")} ${x.kind === "renew" ? "gia hạn" : "đơn mới"} ${x.months}th`} · ${money(x.price)}`;
+  return [`💼 <b>Công nợ Tuấn: ${money(tdBal(d))}</b>`,
+    lastPay ? `Trả gần nhất: ${money(lastPay.amt)} lúc ${fmtAt(lastPay.at)}` : "",
+    since.length ? `\nĐơn từ lần trả trước (${since.length}):\n` + since.slice(-n).map(fmt).join("\n") + (since.length > n ? `\n…và ${since.length - n} đơn trước đó` : "") : ""].filter(Boolean).join("\n");
+}
+/* DNC: /tuan · /tuan tt 500k (Tuấn đã trả) · /tuan them 90k ghi chú · /tuan bot 90k ghi chú (trừ bớt) */
+async function tuanCmd(arg: string) {
+  const d = await tdGet(), m = arg.trim().match(/^(tt|tra|trả|them|thêm|bot|bớt)\s+(\S+)\s*([\s\S]*)$/i);
+  if (!m) return say(tdSummary(d) + "\n\n<i>/tuan tt 500k — Tuấn đã trả · /tuan them 90k ghi chú — cộng thêm · /tuan bot 90k ghi chú — trừ bớt</i>");
+  const amt = parseMoney(m[2]); if (!amt) return say("Số tiền không đọc được, vd: <code>/tuan tt 500k</code>");
+  const op = m[1].toLowerCase(), note = m[3].trim();
+  if (/^t(t|ra|rả)$/.test(op)) d.pays.push({ at: Date.now(), amt, note });
+  else d.items.push({ at: Date.now(), kind: "them", price: /^b/.test(op) ? -amt : amt, note: note || (/^b/.test(op) ? "trừ bớt" : "cộng thêm") });
+  await tdPut(d);
+  const msg = /^t(t|ra|rả)$/.test(op) ? `💵 DNC đã nhận ${money(amt)} từ Tuấn. Công nợ còn: <b>${money(tdBal(d))}</b>` : `📝 ${/^b/.test(op) ? "Trừ" : "Cộng"} ${money(amt)}${note ? " (" + esc(note) + ")" : ""}. Công nợ: <b>${money(tdBal(d))}</b>`;
+  let g = ""; try { const r = await tuanSay(msg); g = r.ok ? " · đã báo nhóm" : ""; } catch (_) { /* chưa nối nhóm */ }
+  return say(msg + g);
+}
+/* Tuấn gõ gia hạn / đơn mới trong nhóm → thẻ duyệt cho DNC. Trả về text trả lời nhóm (null = không phải đơn, để kiểm tra lỗi như cũ) */
+async function tuanOrder(m: any, ln: string, k: NonNullable<ReturnType<typeof lineKind>>): Promise<string | null> {
+  const e = k.email, price = TUAN_PRICE[k.months] || 0, pl = k.product === "YoutubePlus" ? "YTB Plus" : "YTB";
+  const r0 = await tfFind(e);
+  if (r0 && !r0.arch && !r0.phuOf && normCtv(r0.c.ctv) !== "Tuấn") return `ℹ️ <b>${esc(e)}</b>: không phải khách của Tuấn — DNC kiểm tra.`;
+  if (!r0) {   // chưa có trong Kho → đơn mới: DNC chọn fam đã mời
+    const d = await tdGet(); let ma = ""; do { ma = "T" + Math.floor(10000 + Math.random() * 90000); } while (d.orders[ma]);
+    d.orders[ma] = { email: e, months: k.months, product: k.product, pack: `${pl} ${k.months} tháng`, price, at: Date.now(), st: "paid", tchat: m.chat.id, tmid: m.message_id, line: ln };
+    await tdPut(d);
+    await nfAsk(ma, esc(ln) + (price ? "" : " · ⚠️ chưa có giá cho gói này"));
+    return `⏳ <b>${esc(e)}</b>: đơn mới ${pl} ${k.months}th${price ? ` · ${money(price)}` : ""} — đợi DNC mời. Xong bot báo.`;
+  }
+  if (r0.arch || r0.phuOf) return null;   // vùng lưu / mail phụ → tab Lệnh như cũ
+  const p: RenewP = { qid: "", li: 0, email: e, months: k.months, base: "old", product: k.product, at: Date.now(), tuan: { mid: m.message_id, price } };
+  if (r0.c.daysLeft != null && r0.c.daysLeft < 0 && k.start) { const st = pDate(k.start); if (st != null && Math.abs(daysU(st)) < 4) p.base = "today"; }
+  const cd = renewCard(p, r0);
+  if (!cd.kb) return null;
+  const store = await renewGet(), id = Date.now().toString(36) + "t"; store[id] = p; await renewPut(store);
+  cd.kb[0].callback_data = `g:ok:${id}`; if (cd.kb[1]) cd.kb[1].callback_data = `g:base:${id}`;
+  await say(`👥 <b>Tuấn: gia hạn</b> · ${price ? money(price) + " (cộng công nợ)" : "⚠️ chưa có giá gói " + k.months + "th"}\n${cd.text}`, { reply_markup: { inline_keyboard: [cd.kb, [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
+  return `⏳ <b>${esc(e)}</b>: gia hạn ${pl} ${k.months}th${price ? ` · ${money(price)}` : ""} — đợi DNC duyệt. Xong bot báo.`;
 }
 
 /* DNC xác nhận tiền (nút trên @goshopassistantbot hoặc tab Bot khách) */
@@ -1525,7 +1601,7 @@ async function spCallback(q: any, a: string, id: string) {
 /* ---------- Gia hạn duyệt ngay trên bot ----------
    Gõ "abc@gmail.com gia hạn 12 tháng" → vào hàng chờ Lệnh như cũ + bot gửi thẻ xem trước HSD mới có nút ✅ Duyệt.
    Bấm Duyệt = đúng như Duyệt trên web (renewCus): HSD bản sao + data gốc + dòng Tài chính, rồi đánh Xong dòng lệnh. */
-type RenewP = { qid: string; li: number; email: string; months: number; base: "old" | "today"; product: string; at: number; done?: string; isNew?: boolean };
+type RenewP = { qid: string; li: number; email: string; months: number; base: "old" | "today"; product: string; at: number; done?: string; isNew?: boolean; tuan?: { mid: number; price: number } };
 function lineKind(raw: string) { // giống cmdAdd trên web
   const t = raw.toLowerCase(), ems = raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || [];
   const mm = /(\d{1,2})\s*(?:th|tháng|thang|t)\b/i.exec(raw), dates = raw.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || [];
@@ -1622,6 +1698,12 @@ async function renewCallback(q: any, a: string, id: string) {
     lines.push(x.sync && x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync?.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
     if (famBadOf(r.f) || p.base === "today") lines.push(famBadOf(r.f) ? `⚠️ Fam ${esc(r.f.rn)} đang lỗi → mời khách vào fam mới trên Thay Fam.` : `⚠️ Tính từ hôm nay (khách mua lại) → kiểm tra khách còn trong ${esc(r.f.rn)} không, không thì mời vào fam mới.`);
     try { if (await cusNotify([r.c.email], "renew")) lines.push("Đã nhắn khách lẻ qua bot."); } catch (_) { /* không phải khách lẻ */ }
+    if (p.tuan) {
+      const bal = await tdAdd({ at: Date.now(), email: r.c.email, kind: "renew", months: p.months, price: p.tuan.price });
+      const g = await tuanSay(`✅ <b>${esc(r.c.email)}</b>: đã gia hạn ${p.months}th → HSD <b>${esc(x.hsd || x.newHsd || "")}</b>\n+${money(p.tuan.price)} · công nợ: <b>${money(bal)}</b>`, { reply_parameters: { message_id: p.tuan.mid, allow_sending_without_reply: true } }).catch(() => ({ ok: false }));
+      lines.push(`Công nợ Tuấn: <b>${money(bal)}</b>${g.ok ? " · đã báo nhóm" : " · ⚠️ chưa báo được nhóm"}`);
+      if (x.price != null && Number(x.price) !== p.tuan.price) lines.push(`⚠️ Tài chính ghi ${vnd(x.price)}, giá Tuấn ${money(p.tuan.price)} — sửa trong sheet`);
+    }
     lines.push(`\n📋 <code>${esc(msg)}</code>`);
     return edit(lines.join("\n"));
   } catch (e) {
@@ -1856,6 +1938,8 @@ async function handle(u: any) {
     return;
   }
   // /fam YT12345 → hỏi lại fam cho đơn mới YouTube khách lẻ (đã nhận tiền)
+  const tm = text.match(/^\/(tuan|tuấn|congno)\b\s*([\s\S]*)$/i);
+  if (tm) return tuanCmd(tm[2] || "");
   const fm = text.match(/^\/fam\s+(\S+)/i);
   if (fm) return nfAsk(fm[1].toUpperCase());
   // Trợ lý Thay Fam: /hoi + câu hỏi, tin bắt đầu bằng "?", hoặc trả lời (reply) tin của trợ lý để hỏi tiếp
@@ -1919,7 +2003,7 @@ Deno.serve(async (req) => {
       if (info.result?.url && info.result.url !== self && url.searchParams.get("force") !== "1")
         return ok({ ok: false, error: "Bot đang gắn webhook khác, không gỡ", current: info.result.url });
       const set = await tg("setWebhook", { url: self, secret_token: SECRET, allowed_updates: ["message", "edited_message", "callback_query"], max_connections: 1 });
-      await tg("setMyCommands", { commands: [{ command: "homnay", description: "Việc shop sáng nay" }, { command: "viec", description: "Việc cần xử lý" }, { command: "xong", description: "Đánh dấu xong: /xong 12" }, { command: "tf", description: "Lệnh Thay Fam: /tf + tin của Tuấn" }, { command: "hoi", description: "Hỏi trợ lý Thay Fam" }, { command: "help", description: "Cách dùng" }] });
+      await tg("setMyCommands", { commands: [{ command: "homnay", description: "Việc shop sáng nay" }, { command: "viec", description: "Việc cần xử lý" }, { command: "xong", description: "Đánh dấu xong: /xong 12" }, { command: "tf", description: "Lệnh Thay Fam: /tf + tin của Tuấn" }, { command: "hoi", description: "Hỏi trợ lý Thay Fam" }, { command: "tuan", description: "Công nợ Tuấn (/tuan tt 500k)" }, { command: "help", description: "Cách dùng" }] });
       let who = ""; try { who = await owner(); } catch (e) { who = "LỖI: " + (e as Error).message; }
       if (set.ok) await say("✅ Desk Inbox đã bật. Từ giờ nhắn gì cho bot cũng được lưu vào godnc.com/desk. Gõ /help xem cách dùng.");
       return ok({ ok: set.ok, webhook: self, desk_user: who, telegram: set });
