@@ -2460,6 +2460,7 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
             async claudeGen(parts, json) {
                 const content = parts.map(p => p.inline_data
                     ? { type: 'image', source: { type: 'base64', media_type: p.inline_data.mime_type, data: p.inline_data.data } }
+                    : p.url_image ? { type: 'image', source: { type: 'url', url: p.url_image } }
                     : { type: 'text', text: p.text });
                 let last = '';
                 for (let attempt = 0; attempt < 4; attempt++) {
@@ -2551,8 +2552,17 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
             },
             async aiImgPart(src) {
                 let dataUrl = String(src || '');
+                // Ảnh Google Drive: link drive.google.com chặn tải từ trình duyệt (CORS) → đổi sang lh3.googleusercontent.com (cho phép)
+                const driveId = /drive\.google\.com\//.test(dataUrl) && (dataUrl.match(/[?&]id=([\w-]+)/) || dataUrl.match(/\/d\/([\w-]+)/) || [])[1];
+                if (driveId) dataUrl = `https://lh3.googleusercontent.com/d/${driveId}=w1600`;
                 if (!dataUrl.startsWith('data:')) {
-                    const b = await (await fetch(dataUrl)).blob();
+                    let res;
+                    try { res = await fetch(dataUrl); } catch (e) {
+                        // Ảnh chặn tải từ trình duyệt (vd Google Drive) → Claude tự tải qua URL; Gemini thì không làm được
+                        if (this.claudeKey && this.isAdmin) return { url_image: dataUrl };
+                        throw new Error('Ảnh không tải được từ trình duyệt (' + new URL(dataUrl).host + ')');
+                    }
+                    const b = await res.blob();
                     dataUrl = await new Promise((ok, no) => { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.onerror = () => no(new Error('Không đọc được ảnh')); fr.readAsDataURL(b); });
                 }
                 dataUrl = await this.compress(dataUrl, 1280, 0.8);
@@ -2562,7 +2572,7 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                 const parts = [{ text: CHART_PROMPT }];
                 for (const im of imgs) { parts.push({ text: `Ảnh ${im.key} (${this.slotOf(im.key).label}):` }); parts.push(await this.aiImgPart(im.src)); }
                 const f = await this.aiGen(parts, true) || {};
-                const g = k => String(f[k] || '').trim().slice(0, 600);
+                const g = k => { const v = String(f[k] || '').trim().slice(0, 600); return /^(rỗng|chuỗi rỗng|không rõ|không thấy|n\/a|none|empty|-)\.?$/i.test(v) ? '' : v; };
                 const feat = { pair: g('pair'), timeframe: g('timeframe'), side: g('side').toUpperCase(), trend: g('trend'), structure: g('structure'), setup: g('setup'), location: g('location'), trigger: g('trigger'), desc: g('desc') };
                 const text = [feat.setup, feat.structure, feat.location, feat.trigger, feat.trend && 'Xu hướng khung lớn: ' + feat.trend, feat.desc].filter(Boolean).join('. ');
                 if (!text) throw new Error('AI không đọc được chart');
@@ -2645,7 +2655,7 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                             } catch (e) {
                                 if (e.daily) { X.run = false; X.err = 'Hết lượt Gemini miễn phí hôm nay — chart đã đọc được giữ lại, mai mở lại sẽ đọc tiếp phần còn thiếu.'; break; }
                                 X.failed++; X.err = `Lỗi ${X.failed} chart: ` + this.simTableErr(e);
-                                if (/api key|api_key|permission|chart_ai|^Claude:/i.test(e.message || '') || (X.failed >= 5 && X.indexed === indexed0)) X.run = false;
+                                if (/api key|api_key|permission|chart_ai|^Claude:/i.test(e.message || '') || (X.failed >= 5 && X.indexed === indexed0 && !/Ảnh không tải/.test(e.message || ''))) X.run = false;
                             }
                             X.done++;
                         }
