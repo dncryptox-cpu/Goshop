@@ -2377,6 +2377,23 @@ function app() {
         if (!c.cus && ['doimail', 'huy', 'loi'].includes(c.type)) c.note = c.note || 'Không thấy khách trong Kho TK.';
       } catch (e) { c.err = e.message; }
       if (c.st === 'loading') c.st = 'ready';
+      // tin báo lỗi mà khách đã được mời lại SAU lúc báo (thay fam / mời lại) → tự Xong + bot nhắn khách lẻ
+      if (c.type === 'loi' && c.qid && c.st === 'ready' && c.ok && c.cus && c.cus.invitedAt) {
+        const inv = this.cmdTs(c.cus.invitedAt), rep = this.cmdTs(c.at);
+        if (inv && rep && inv > rep) {
+          const note = 'Đã mời lại ' + c.cus.invitedAt + ' (sau lúc báo) → tự Xong';
+          c.st = 'done'; c.result = note;
+          this.queueMark(c, 'xong', note, { silent: true }).catch(e => { c.err = e.message; });
+          this.cusNotify([...c.emails, c.cus.email], 'invited');
+        }
+      }
+    },
+    // "19/11 15:32", "19/11/2026 15:57", "15:57 19/11/2026" → ms (giờ VN), không đọc được → null
+    cmdTs(s) {
+      const t = String(s || ''), d = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/.exec(t), h = /(\d{1,2}):(\d{2})/.exec(t);
+      if (!d) { const iso = Date.parse(t); return isNaN(iso) ? null : iso; }
+      let y = d[3] ? +d[3] : new Date(Date.now() + 7 * 3600e3).getUTCFullYear(); if (y < 100) y += 2000;
+      return Date.UTC(y, +d[2] - 1, +d[1], h ? +h[1] : 0, h ? +h[2] : 0);
     },
     cmdDate(s) { const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(String(s || '')); return m ? Date.UTC(+m[3], +m[2] - 1, +m[1]) : null; },
     cmdEdate(v, n) { const d = new Date(v), day = d.getUTCDate(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + n); d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate())); return d; },
@@ -2522,7 +2539,7 @@ function app() {
     async cmdCloseInvited(emails, note) {
       if (!this.can('queue')) return;
       const set = new Set(emails.map(e => String(e).toLowerCase()));
-      try { if (!this.qOpen.length) await this.loadQueue(); } catch (e) { return; }
+      try { await this.loadQueue(); } catch (e) { return; }   // luôn tải mới: trang mở lâu có thể chưa có tin mới báo
       const hit = this.cmdCards.filter(c => c.qid && c.type === 'loi' && !['done', 'skip'].includes(c.st) && (c.emails.some(e => set.has(e)) || (c.cus && set.has(String(c.cus.email).toLowerCase()))));
       let n = 0;
       for (const c of hit) { if (['done', 'skip'].includes(c.st)) continue; c.st = 'done'; c.result = note; try { await this.queueMark(c, 'xong', note, { silent: true }); n++; } catch (e) { c.err = e.message; } }
