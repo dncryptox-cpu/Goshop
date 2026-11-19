@@ -2466,16 +2466,23 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                     const r = await fetch('https://api.anthropic.com/v1/messages', {
                         method: 'POST',
                         headers: { 'content-type': 'application/json', 'x-api-key': this.claudeKey.trim(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-                        body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: 1200, messages: [{ role: 'user', content }] })
+                        body: JSON.stringify(Object.assign({ model: CLAUDE_MODEL, max_tokens: 1500, messages: [{ role: 'user', content }] }, json ? {
+                            tools: [{ name: 'ket_qua', description: 'Ghi kết quả đọc chart', input_schema: { type: 'object',
+                                properties: Object.fromEntries(['pair', 'timeframe', 'side', 'trend', 'structure', 'setup', 'location', 'trigger', 'desc'].map(k => [k, { type: 'string' }])),
+                                required: ['setup', 'structure', 'desc'] } }],
+                            tool_choice: { type: 'tool', name: 'ket_qua' } } : {}))
                     });
                     if (r.ok) {
                         const d = await r.json();
+                        if (json) {
+                            const tu = (d.content || []).find(c => c.type === 'tool_use');
+                            if (tu && tu.input) return tu.input;
+                        }
                         const text = (d.content || []).filter(c => c.type === 'text').map(c => c.text).join('').trim();
-                        if (!text) throw new Error('Claude không trả lời');
-                        if (!json) return text.replace(/\*\*/g, '');
+                        if (!json && text) return text.replace(/\*\*/g, '');
                         const m = text.match(/\{[\s\S]*\}/);
-                        if (!m) throw new Error('Claude không trả JSON');
-                        return JSON.parse(m[0]);
+                        if (m) return JSON.parse(m[0]);
+                        throw new Error('Claude đọc lỗi (' + (d.stop_reason || '') + ') ' + text.slice(0, 120));
                     }
                     const err = await r.json().catch(() => ({})); last = (err.error && err.error.message) || `HTTP ${r.status}`;
                     if (r.status === 429 || r.status === 529 || r.status >= 500) {
@@ -2603,7 +2610,8 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
             async simSync() {
                 const X = this.sim.idx;
                 if (X.run || !this.gemini) return;
-                Object.assign(X, { run: true, done: 0, todo: 0, failed: 0, err: '' });
+                const token = (X.token || 0) + 1;   // lượt chạy cũ (đã bấm Dừng) không được chạy chồng lên lượt mới
+                Object.assign(X, { run: true, token, done: 0, todo: 0, failed: 0, err: '' });
                 try {
                     const items = await this.simItems();
                     const have = await this.fetchAll(() => sb.from('chart_ai').select('src,src_id,sig,model,label,img,pair,direction,result,r,note,at').order('id'));
@@ -2623,9 +2631,10 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                     for (let i = 0; i < metaOnly.length; i += 10)
                         await Promise.all(metaOnly.slice(i, i + 10).map(it => sb.from('chart_ai').update(it.meta).eq('src', it.src).eq('src_id', it.src_id)));
                     Object.assign(X, { total: items.length, todo: todo.length, indexed: items.length - todo.length });
+                    const indexed0 = X.indexed;   // 5 lỗi liên tiếp mà chưa đọc được chart nào → dừng, khỏi đốt tiền/lượt
                     let next = 0;
                     const worker = async () => {
-                        while (X.run && next < todo.length) {
+                        while (X.run && X.token === token && next < todo.length) {
                             const it = todo[next++];
                             try {
                                 const { feat, text } = await this.aiReadChart(it.imgs);
@@ -2636,7 +2645,7 @@ Không khuyên vào lệnh, không dùng markdown đậm/nghiêng.`;
                             } catch (e) {
                                 if (e.daily) { X.run = false; X.err = 'Hết lượt Gemini miễn phí hôm nay — chart đã đọc được giữ lại, mai mở lại sẽ đọc tiếp phần còn thiếu.'; break; }
                                 X.failed++; X.err = `Lỗi ${X.failed} chart: ` + this.simTableErr(e);
-                                if (/api key|api_key|permission|chart_ai|^Claude:/i.test(e.message || '')) X.run = false;
+                                if (/api key|api_key|permission|chart_ai|^Claude:/i.test(e.message || '') || (X.failed >= 5 && X.indexed === indexed0)) X.run = false;
                             }
                             X.done++;
                         }
