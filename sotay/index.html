@@ -91,10 +91,52 @@ dialog.ask::backdrop{background:rgb(10 20 25 / .45)}
 #keyBtn.on .dot{background:var(--good)}
 .empty{padding:24px;color:var(--muted)}
 .toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px}
+/* Phone: product cards ordered like a live pitch (hook → core → strengths → vs market → price) */
+.m-only{display:none}
+.cards{display:grid;gap:12px;padding:12px}
+.pcard{border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
+.pc-top{padding:14px 14px 10px;display:grid;gap:8px}
+.pc-name{font-size:17px;font-weight:700;line-height:1.3;margin:0;text-wrap:balance}
+.pc-prices{display:flex;flex-wrap:wrap;gap:8px}
+.pc-price{display:grid;gap:0;background:var(--bg);border-radius:8px;padding:6px 10px;font-variant-numeric:tabular-nums;min-width:0}
+.pc-price .lb{font-size:11.5px;color:var(--muted)}
+.pc-price .live{font-family:var(--f-mono);font-size:17px;font-weight:500;color:var(--price)}
+.pc-price s{font-size:12px;color:var(--muted)}
+.pcard details{border-top:1px solid var(--line)}
+.pcard summary{list-style:none;cursor:pointer;padding:11px 14px;display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px}
+.pcard summary::-webkit-details-marker{display:none}
+.pcard summary::after{content:"";margin-left:auto;width:8px;height:8px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .15s}
+.pcard details[open] > summary::after{transform:rotate(-135deg)}
+.step{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;flex:0 0 auto}
+.sec-body{padding:0 14px 14px 46px;font-size:15px;line-height:1.6}
+.sec-body ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.sec-body .hook{font-size:16px;margin:0 0 8px;color:var(--ink)}
+.sec-body ul.weak{padding:0;gap:8px}
+.sec-body ul.weak li{font-size:14.5px}
+.pcard .note{margin:0 14px 14px}
+.pcard .ai-wrap{padding:0 14px 14px}
+.study-on .pcard details.learn:not([open]) > summary{color:var(--muted)}
 @media (max-width:820px){
-  .layout{grid-template-columns:minmax(0,1fr)}
-  nav.rail{position:static;flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:4px}
-  nav.rail button{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;padding:6px 12px;gap:8px}
+  body{font-size:15px}
+  .m-only{display:inline-flex}
+  .d-only{display:none!important}
+  header.top{align-items:stretch}
+  .tools{width:100%}
+  input[type=search]{width:100%;flex:1 1 100%}
+  .tools button{flex:1 1 auto}
+  .stats{font-size:12.5px;gap:4px 14px}
+  .layout{grid-template-columns:minmax(0,1fr);gap:8px}
+  nav.rail{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;flex-direction:row;overflow-x:auto;gap:6px;padding-block:8px;background:var(--bg);margin-inline:-16px;padding-inline:16px;scrollbar-width:none}
+  nav.rail::-webkit-scrollbar{display:none}
+  nav.rail button{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;padding:6px 12px;gap:8px;background:var(--panel)}
+  .sub{display:none}
+  h1{font-size:20px}
+  section.brand{border:0;background:transparent;margin-bottom:12px}
+  .bhead{padding:12px 2px 4px;border-bottom:0}
+  .cards{padding:8px 0}
+  .pc-price{flex:1 1 130px}
+  .bhead h2{font-size:17px}
+  #studyBtn[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
 }
 @media (prefers-reduced-motion:no-preference){button{transition:background .15s,color .15s}}
 </style>
@@ -107,6 +149,7 @@ dialog.ask::backdrop{background:rgb(10 20 25 / .45)}
     </div>
     <div class="tools">
       <input type="search" id="q" placeholder="Tìm sản phẩm, loại, từ khóa…" aria-label="Tìm sản phẩm">
+      <button id="studyBtn" class="m-only" aria-pressed="false" title="Thu gọn các mục để tự nhớ, chạm để mở đáp án">Chế độ ôn bài</button>
       <button id="exportBtn" hidden>Tải bảng (Excel/CSV)</button>
       <button id="askOpen" hidden>Hỏi AI</button>
       <button id="keyBtn" hidden aria-haspopup="dialog"><span class="dot"></span>Cài đặt AI</button>
@@ -191,7 +234,13 @@ function detailRow(p){
     <div><h4>Thông số chính</h4><ul>${p.s.map(u => `<li>${esc(u)}</li>`).join('')}</ul></div>
     <div><h4>Câu mở live</h4><p class="hook">“${esc(p.hook)}”</p><button data-copy="${p.id}">Sao chép câu mở</button></div>
   </div>
-  ${IN_CLAUDE ? '' : `<button class="ai-hint" data-setup ${aiReady() ? 'hidden' : ''}>Bật AI để viết kịch bản cho sản phẩm này</button>`}
+  ${aiBlock(p)}</td></tr>`;
+}
+const mq = window.matchMedia('(max-width:820px)');
+let study = false;
+try { study = localStorage.getItem('study') === '1'; } catch (e) {}
+function aiBlock(p){
+  return `${IN_CLAUDE ? '' : `<button class="ai-hint" data-setup ${aiReady() ? 'hidden' : ''}>Bật AI để viết kịch bản cho sản phẩm này</button>`}
   <div class="ai-zone" ${aiReady() ? '' : 'hidden'} style="margin-top:12px">
     <div class="ai-bar">
       <select aria-label="Loại nội dung" id="kind-${p.id}">
@@ -204,16 +253,38 @@ function detailRow(p){
       <span class="muted" id="st-${p.id}"></span>
     </div>
     <div class="ai-out" id="out-${p.id}" hidden></div>
-  </div></td></tr>`;
+  </div>`;
+}
+function card(p){
+  const op = study ? '' : ' open';
+  const sec = (n, title, body, extra='') => `<details class="learn"${op}><summary><span class="step">${n}</span>${title}</summary><div class="sec-body">${body}${extra}</div></details>`;
+  return `<article class="pcard" data-id="${p.id}">
+    <div class="pc-top">
+      <div><h3 class="pc-name">${esc(p.n)}</h3><span class="cat">${esc(p.c)}</span></div>
+      <div class="pc-prices">${p.p.map(([lb,o,l]) => `<div class="pc-price"><span class="lb">${esc(lb)}</span><span class="live">${fmt(l)}</span><span><s>${fmt(o)}</s><span class="off">−${Math.round((1-l/o)*100)}%</span></span></div>`).join('')}</div>
+    </div>
+    ${sec(1, 'Câu mở live', `<p class="hook">“${esc(p.hook)}”</p>`, `<button data-copy="${p.id}">Sao chép câu mở</button>`)}
+    ${sec(2, 'Trọng tâm sản phẩm', esc(p.core))}
+    ${sec(3, 'Điểm mạnh để nhấn', `<ul>${p.usp.map(u => `<li>${esc(u)}</li>`).join('')}</ul>`)}
+    ${sec(4, 'Hàng ngoài thị trường chưa tối ưu', `<ul class="weak">${p.weak.map(([a,b]) => `<li><b>${esc(a)}:</b> ${esc(b)}</li>`).join('')}</ul>`)}
+    <details><summary><span class="step">i</span>Thông số</summary><div class="sec-body"><ul>${p.s.map(u => `<li>${esc(u)}</li>`).join('')}</ul></div></details>
+    ${p.note ? `<div class="note"><b>Lưu ý khi nói:</b> ${esc(p.note)}</div>` : ''}
+    <div class="ai-wrap">${aiBlock(p)}</div>
+  </article>`;
 }
 function render(){
   const main = document.getElementById('main');
+  document.body.classList.toggle('study-on', study);
   const list = current === 'all' ? brands : [current];
   let html = '', total = 0;
   for (const b of list){
     const ps = DATA.products.filter(p => p.b === b && matches(p));
     if (!ps.length) continue;
     total += ps.length;
+    if (mq.matches){
+      html += `<section class="brand"><div class="bhead"><h2>${esc(b)}</h2><span>${esc(DATA.brands[b])} · ${ps.length} sản phẩm</span></div><div class="cards">${ps.map(card).join('')}</div></section>`;
+      continue;
+    }
     html += `<section class="brand"><div class="bhead"><h2>${esc(b)}</h2><span>${esc(DATA.brands[b])} · ${ps.length} sản phẩm</span></div>
       <div class="scroll"><table><thead><tr><th>Sản phẩm</th><th>Giá gốc → Giá live</th><th>Trọng tâm chủ đạo</th><th>Hàng cùng loại ngoài thị trường chưa tối ưu</th><th></th></tr></thead>
       <tbody>${ps.map(row).join('')}</tbody></table></div></section>`;
@@ -315,6 +386,7 @@ document.getElementById('rail').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   current = b.dataset.b; try { localStorage.setItem('brand', current); } catch (_) {}
   renderRail(); render();
+  if (mq.matches) document.getElementById('main').scrollIntoView({ block: 'start' });
 });
 document.getElementById('q').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); render(); });
 document.getElementById('main').addEventListener('click', e => {
@@ -364,6 +436,14 @@ document.querySelectorAll('dialog').forEach(d => {
 });
 document.getElementById('askOpen').addEventListener('click', () => openDlg('askBox'));
 
+const sb = document.getElementById('studyBtn');
+sb.setAttribute('aria-pressed', String(study));
+sb.addEventListener('click', () => {
+  study = !study; sb.setAttribute('aria-pressed', String(study));
+  try { localStorage.setItem('study', study ? '1' : '0'); } catch (e) {}
+  render(); toast(study ? 'Đã thu gọn: tự nhớ trước, chạm để xem đáp án' : 'Đã mở tất cả các mục');
+});
+mq.addEventListener('change', render);
 renderStats(); renderRail(); render();
 
 if (!IN_CLAUDE){
