@@ -369,11 +369,22 @@ async function getJ(url: string, init?: RequestInit, ms = 50000) {
   const r = await fetch(url, { ...(init || {}), redirect: "follow", signal: AbortSignal.timeout(ms) });
   return await r.json();
 }
+const TF_READ = new Set(["search", "slots", "all", "week", "blocks", "log", "gg_list"]);
+const TF_WRITE_SLOW = new Set(["renewCus", "newOrder", "move"]);
+const tfCache = new Map<string, { at: number; d: any }>();
 async function tf(body: Record<string, unknown>) {
   const pass = Deno.env.get("TF_PASS"); if (!pass) throw new Error("chưa đặt secret TF_PASS");
-  const d = await getJ(TF_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, pass }) }, 60000);
-  if (!d.ok) throw new Error(d.error || "Thay Fam lỗi"); return d;
+  const act = String(body.action || ""), isRead = TF_READ.has(act) || (act === "queue" && body.op === "list");
+  const key = isRead ? JSON.stringify(body) : "";
+  if (isRead) { const c = tfCache.get(key); if (c && Date.now() - c.at < 20000) return c.d; }
+  else tfCache.clear();   // có ghi → bỏ cache để lần tra sau thấy dữ liệu mới
+  // Apps Script ghi (gia hạn / đơn mới / chuyển) có lúc chậm do khoá sheet + đồng bộ data gốc → cho lâu hơn
+  const d = await getJ(TF_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, pass }) }, TF_WRITE_SLOW.has(act) ? 95000 : 40000);
+  if (!d.ok) throw new Error(d.error || "Thay Fam lỗi");
+  if (isRead) { tfCache.set(key, { at: Date.now(), d }); if (tfCache.size > 50) tfCache.delete(tfCache.keys().next().value!); }
+  return d;
 }
+const isTimeout = (e: unknown) => /timed? ?out|abort|signal/i.test(String((e as Error)?.message || e));
 function modRows(list: any[], prod: string): Cus[] {
   const m: Record<string, Cus> = {};
   (list || []).forEach((it) => {
@@ -1148,8 +1159,15 @@ Bấm Ghi → ghi khách vào fam + ghi Tài chính (CTV ${ctv}) + ${L.tuan ? "c
   if (o.nf) return ans("Đang ghi / đã ghi rồi");
   o.nf = Date.now(); await L.save();
   await ans("Đang ghi…");
+  await edit(`⏳ <b>Đang ghi đơn mới</b> ${esc(o.email)} → dòng ${row}… (thường 5–30 giây)`).catch(() => {});
   try {
-    const x = await tf({ action: "newOrder", email: o.email, toRow: row, buy: today(), months: o.months, product: o.product || "Youtube", ctv, mailPhu: "", note: L.tuan ? `Tuấn ${ma}` : `bot ${ma}${o.zalo ? " · zalo " + o.zalo : ""}`, finance: true, invited: true, replace: false, price: o.got || o.price });
+    const x = await tf({ action: "newOrder", email: o.email, toRow: row, buy: today(), months: o.months, product: o.product || "Youtube", ctv, mailPhu: "", note: L.tuan ? `Tuấn ${ma}` : `bot ${ma}${o.zalo ? " · zalo " + o.zalo : ""}`, finance: true, invited: true, replace: false, price: o.got || o.price }).catch(async (e) => {
+      if (!isTimeout(e)) throw e;
+      await new Promise((ok) => setTimeout(ok, 8000));   // chậm quá: xem Apps Script đã ghi chưa
+      const r2 = await tfFind(String(o.email).toLowerCase()).catch(() => null);
+      if (!r2?.c || r2.arch) throw e;
+      return { email: o.email, rn: r2.f.rn, hsd: r2.c.hsd, slow: true };
+    });
     { const L2 = await nfLoad(ma); if (L2) { L2.o.nf = o.nf; L2.o.st = "done"; await L2.save(); } }
     let sent = 0, bal: number | null = null;
     if (L.tuan) {
@@ -1160,7 +1178,8 @@ Bấm Ghi → ghi khách vào fam + ghi Tài chính (CTV ${ctv}) + ${L.tuan ? "c
     // dòng cũ trong hàng chờ tab Lệnh (đơn trước khi có tính năng này) → đánh dấu xong
     if (!L.tuan) try { const ql = await tf({ action: "queue", op: "list" }); for (const it of ql.open || []) if (String(it.text || "").includes(ma)) for (let i = 0; i < (it.lines || [it.text]).length; i++) if (String((it.lines || [it.text])[i]).includes(ma)) await tf({ action: "queue", op: "set", id: it.id, line: i, status: "xong", note: "Đơn mới " + o.email + " → " + (x.rn || "") + " (bot)" }); } catch (_) { /* không sao */ }
     const out = [`✅ <b>Đã ghi đơn mới ${esc(ma)}</b>`, `<code>${esc(x.email || o.email)}</code> → <b>${esc(x.rn || "dòng " + row)}</b> · HSD ${esc(x.hsd || "")} · CTV ${ctv}`];
-    if (x.tcRow) out.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}${x.profit != null ? `, lãi ${vnd(x.profit)}` : ""}${x.price != null && Number(x.price) !== Number(o.got || o.price) ? ` ⚠️ giá đúng ${money(o.got || o.price)} — sửa trong sheet` : ""}`);
+    if (x.slow) out.push("⚠️ Thay Fam trả lời chậm nhưng khách đã vào fam → coi như đã ghi. Kiểm tra dòng Tài chính trong sheet.");
+    else if (x.tcRow) out.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}${x.profit != null ? `, lãi ${vnd(x.profit)}` : ""}${x.price != null && Number(x.price) !== Number(o.got || o.price) ? ` ⚠️ giá đúng ${money(o.got || o.price)} — sửa trong sheet` : ""}`);
     else out.push("⚠️ Không thấy dòng Tài chính trả về — kiểm tra sheet Tài chính.");
     if (x.sync) out.push(x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
     if (L.tuan) out.push(`Công nợ Tuấn: <b>${money(bal || 0)}</b>${sent ? " · đã báo nhóm" : " · ⚠️ chưa báo được nhóm"}`);
@@ -1683,7 +1702,7 @@ async function spCallback(q: any, a: string, id: string) {
 /* ---------- Gia hạn duyệt ngay trên bot ----------
    Gõ "abc@gmail.com gia hạn 12 tháng" → vào hàng chờ Lệnh như cũ + bot gửi thẻ xem trước HSD mới có nút ✅ Duyệt.
    Bấm Duyệt = đúng như Duyệt trên web (renewCus): HSD bản sao + data gốc + dòng Tài chính, rồi đánh Xong dòng lệnh. */
-type RenewP = { qid: string; li: number; email: string; months: number; base: "old" | "today"; product: string; at: number; done?: string; isNew?: boolean; tuan?: { mid: number; price: number }; hsd0?: string; dmid?: number };
+type RenewP = { qid: string; li: number; email: string; months: number; base: "old" | "today"; product: string; at: number; done?: string; isNew?: boolean; tuan?: { mid: number; price: number }; hsd0?: string; dmid?: number; busy?: number };
 function lineKind(raw: string) { // giống cmdAdd trên web
   const t = raw.toLowerCase(), ems = raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || [];
   const mm = /(\d{1,2})\s*(?:th|tháng|thang|t)\b/i.exec(raw), dates = raw.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || [];
@@ -1768,33 +1787,56 @@ async function renewCallback(q: any, a: string, id: string) {
     await tg("answerCallbackQuery", { callback_query_id: q.id, text: "Đã cộng công nợ" });
     return edit(`✅ <b>${esc(p.email)}</b>: đã cộng ${money(p.tuan.price)} · công nợ Tuấn <b>${money(bal)}</b>${g.ok ? " · đã báo nhóm" : " · ⚠️ chưa báo được nhóm"}`);
   }
+  if (p.busy && Date.now() - p.busy < 180000) return tg("answerCallbackQuery", { callback_query_id: q.id, text: "Đang gia hạn, đợi chút…" });
+  p.busy = Date.now(); await renewPut(store);
   await tg("answerCallbackQuery", { callback_query_id: q.id, text: "Đang gia hạn…" });
+  const card = String(q.message?.text || "").slice(0, 600);
+  await edit(`⏳ <b>Đang gia hạn</b> ${esc(p.email)} +${p.months}th… (Thay Fam đang ghi sheet, thường 5–30 giây)`, { inline_keyboard: [] }).catch(() => {});
+  let r: any = null;
+  const unlock = async () => { const st = await renewGet(); if (st[id]) { delete st[id].busy; await renewPut(st); } };
   try {
     // dòng lệnh đã được xử lý trên web chưa?
     if (p.qid) {
       const ql = await tf({ action: "queue", op: "list" });
       const it = (ql.open || []).find((x: any) => String(x.id) === p.qid);
-      if (!it || (it.res && it.res[p.li])) { p.done = "web"; await renewPut(store); return edit(`ℹ️ <b>${esc(p.email)}</b>: dòng này đã xử lý trên Thay Fam rồi, bot không gia hạn lần nữa.`); }
+      if (!it || (it.res && it.res[p.li])) { p.done = "web"; delete p.busy; await renewPut(store); return edit(`ℹ️ <b>${esc(p.email)}</b>: dòng này đã xử lý trên Thay Fam rồi, bot không gia hạn lần nữa.`); }
     }
     // tra lại ngay trước khi ghi (dòng trong sheet có thể đã đổi)
-    const r = await tfFind(p.email);
-    if (!r || r.arch || r.phuOf) return edit(renewCard(p, r).text + "\n\n<i>Không duyệt được trên bot → làm ở tab Lệnh.</i>");
+    tfCache.clear(); r = await tfFind(p.email);   // tra mới, không dùng cache
+    if (!r || r.arch || r.phuOf) { await unlock(); return edit(renewCard(p, r).text + "\n\n<i>Không duyệt được trên bot → làm ở tab Lệnh.</i>"); }
     // HSD đã đổi từ lúc tạo thẻ → đã gia hạn ở chỗ khác, không gia hạn lần 2
     // thẻ cũ (chưa lưu HSD lúc tạo): khách đã còn hơn thời hạn gói vừa mua → gần như chắc đã gia hạn rồi
     if (!p.hsd0 && r.c.daysLeft != null && r.c.daysLeft > p.months * 30 - 5) p.hsd0 = "(lúc tạo thẻ)";
     if (p.hsd0 && r.c.hsd && r.c.hsd !== p.hsd0) {
+      await unlock();
       return edit(`ℹ️ <b>${esc(p.email)}</b>: HSD đã đổi ${esc(p.hsd0)} → <b>${esc(r.c.hsd)}</b> (đã gia hạn trên web?). Bot <b>không</b> gia hạn lần nữa.`,
         { inline_keyboard: [...(p.tuan ? [[{ text: `➕ Chỉ cộng công nợ ${money(p.tuan.price)} + báo nhóm`, callback_data: `g:debt:${id}` }]] : []), [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] });
     }
-    const x = await tf({ action: "renewCus", row: r.c.row, email: r.c.email, months: p.months, bonusDays: 0, base: p.base, product: p.product });
+    let x: any, slow = false;
+    try { x = await tf({ action: "renewCus", row: r.c.row, email: r.c.email, months: p.months, bonusDays: 0, base: p.base, product: p.product }); }
+    catch (e) {
+      if (!isTimeout(e)) throw e;
+      // quá giờ chờ: Apps Script có thể vẫn ghi xong → tra lại HSD
+      await new Promise((ok) => setTimeout(ok, 8000));
+      const r2 = await tfFind(p.email).catch(() => null);
+      if (!r2?.c?.hsd || r2.c.hsd === r.c.hsd) throw e;
+      x = { email: r.c.email, oldHsd: r.c.hsd, hsd: r2.c.hsd }; slow = true;
+    }
     const msg = `${x.email || r.c.email} HSD ${x.oldHsd || r.c.hsd} + ${p.months}th → ${x.hsd || x.newHsd}`;
-    p.done = "bot"; await renewPut(store);
-    if (p.qid) { try { await tf({ action: "queue", op: "set", id: p.qid, line: p.li, status: "xong", note: "Gia hạn " + msg + " (duyệt trên bot)" }); } catch (e) { console.error("queue set", (e as Error).message); } }
+    { const st = await renewGet(); if (st[id]) { st[id].done = "bot"; delete st[id].busy; await renewPut(st); } }
+    // việc phụ chạy song song cho nhanh
+    const [, sent] = await Promise.all([
+      p.qid ? tf({ action: "queue", op: "set", id: p.qid, line: p.li, status: "xong", note: "Gia hạn " + msg + " (duyệt trên bot)" }).catch((e) => console.error("queue set", (e as Error).message)) : null,
+      cusNotify([r.c.email], "renew").catch(() => 0),
+    ]);
     const lines = [`✅ <b>Đã gia hạn</b> ${esc(x.sku || "")}: <code>${esc(r.c.email)}</code>`, `HSD ${esc(x.oldHsd || r.c.hsd)} → <b>${esc(x.hsd || x.newHsd || "")}</b> · ${esc(r.f.rn)}`];
-    if (x.tcRow) lines.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}, HH ${vnd(x.hh)}, lãi ${vnd(x.profit)}`);
-    lines.push(x.sync && x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync?.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
+    if (slow) lines.push("⚠️ Thay Fam trả lời chậm nhưng HSD đã đổi → coi như đã gia hạn. Kiểm tra dòng Tài chính + data gốc trong sheet.");
+    else {
+      if (x.tcRow) lines.push(`Tài chính dòng ${x.tcRow}: giá ${vnd(x.price)}, HH ${vnd(x.hh)}, lãi ${vnd(x.profit)}`);
+      lines.push(x.sync && x.sync.ok ? "Đã ghi data gốc." : `⚠️ CHƯA ghi data gốc${x.sync?.error ? ": " + esc(x.sync.error) : ""} → tab Đồng bộ đẩy lại.`);
+    }
     if (famBadOf(r.f) || p.base === "today") lines.push(famBadOf(r.f) ? `⚠️ Fam ${esc(r.f.rn)} đang lỗi → mời khách vào fam mới trên Thay Fam.` : `⚠️ Tính từ hôm nay (khách mua lại) → kiểm tra khách còn trong ${esc(r.f.rn)} không, không thì mời vào fam mới.`);
-    try { if (await cusNotify([r.c.email], "renew")) lines.push("Đã nhắn khách lẻ qua bot."); } catch (_) { /* không phải khách lẻ */ }
+    if (sent) lines.push("Đã nhắn khách lẻ qua bot.");
     if (p.tuan) {
       const bal = await tdAdd({ at: Date.now(), email: r.c.email, kind: "renew", months: p.months, price: p.tuan.price });
       const g = await tuanSay(`✅ <b>${esc(r.c.email)}</b>: đã gia hạn ${p.months}th → HSD <b>${esc(x.hsd || x.newHsd || "")}</b>\n+${money(p.tuan.price)} · công nợ: <b>${money(bal)}</b>`, { reply_parameters: { message_id: p.tuan.mid, allow_sending_without_reply: true } }).catch(() => ({ ok: false }));
@@ -1804,7 +1846,10 @@ async function renewCallback(q: any, a: string, id: string) {
     lines.push(`\n📋 <code>${esc(msg)}</code>`);
     return edit(lines.join("\n"));
   } catch (e) {
-    return edit(`⚠️ Gia hạn <b>${esc(p.email)}</b> lỗi: ${esc((e as Error).message)}\nChưa chắc đã ghi — kiểm tra tab Lịch sử trước khi làm lại.`, { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] });
+    await unlock().catch(() => {});
+    const to = isTimeout(e);
+    return edit(`⚠️ Gia hạn <b>${esc(p.email)}</b> ${to ? "chưa xong: Thay Fam trả lời quá lâu (>95 giây) và HSD chưa đổi" : "lỗi: " + esc((e as Error).message)}.\nChưa chắc đã ghi — kiểm tra tab Lịch sử trước khi bấm lại.${card ? "\n\n<i>" + esc(card.split("\n").slice(0, 3).join(" · ")) + "</i>" : ""}`,
+      { inline_keyboard: [[{ text: "↻ Thử lại", callback_data: `g:ok:${id}` }], [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] });
   }
 }
 
