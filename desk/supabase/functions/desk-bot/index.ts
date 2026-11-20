@@ -379,7 +379,7 @@ async function tf(body: Record<string, unknown>) {
   if (isRead) { const c = tfCache.get(key); if (c && Date.now() - c.at < 20000) return c.d; }
   else tfCache.clear();   // có ghi → bỏ cache để lần tra sau thấy dữ liệu mới
   // Apps Script ghi (gia hạn / đơn mới / chuyển) có lúc chậm do khoá sheet + đồng bộ data gốc → cho lâu hơn
-  const d = await getJ(TF_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, pass }) }, TF_WRITE_SLOW.has(act) ? 95000 : 40000);
+  const d = await getJ(TF_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ ...body, pass }) }, TF_WRITE_SLOW.has(act) ? 80000 : 40000);
   if (!d.ok) throw new Error(d.error || "Thay Fam lỗi");
   if (isRead) { tfCache.set(key, { at: Date.now(), d }); if (tfCache.size > 50) tfCache.delete(tfCache.keys().next().value!); }
   return d;
@@ -1307,7 +1307,7 @@ async function cusConfirm(ma: string, okPaid: boolean) {
   if (!o) return { ok: false, error: "không thấy đơn " + ma };
   if (o.st !== "check" && o.st !== "wait") return { ok: false, error: `đơn đã ${ST_VI[o.st] || o.st}` };
   if (!okPaid) { o.st = "wait"; await cusPut(doc); await csay(o.chat, T(cfg, "pay_none", { ma, gia: money(o.price) }), { reply_markup: { inline_keyboard: [[{ text: "✅ Tôi đã chuyển khoản", callback_data: `paid:${ma}` }], [{ text: "Huỷ đơn", callback_data: `cx:${ma}` }]] } }); return { ok: true, msg: "Đã báo khách chưa nhận tiền" }; }
-  o.got = o.price; await cusPut(doc);
+  o.got = o.price; o.st = "paid"; await cusPut(doc);   // khoá ngay: bấm lần 2 sẽ thấy "đã nhận tiền"
   await cusMarkPaid(cfg, await cusGet(), ma, true, "DNC xác nhận");
   return { ok: true, msg: "Đã xác nhận, đơn đang xử lý" };
 }
@@ -1824,8 +1824,13 @@ async function renewCallback(q: any, a: string, id: string) {
     catch (e) {
       if (!isTimeout(e)) throw e;
       // quá giờ chờ: Apps Script có thể vẫn ghi xong → tra lại HSD
-      await new Promise((ok) => setTimeout(ok, 8000));
-      const r2 = await tfFind(p.email).catch(() => null);
+      // Apps Script vẫn chạy tiếp sau khi bot thôi chờ → tra lại 2 lần (sau 8s, 30s)
+      let r2: any = null;
+      for (const ms of [8000, 22000]) {
+        await new Promise((ok) => setTimeout(ok, ms)); tfCache.clear();
+        r2 = await tfFind(p.email).catch(() => null);
+        if (r2?.c?.hsd && r2.c.hsd !== r.c.hsd) break;
+      }
       if (!r2?.c?.hsd || r2.c.hsd === r.c.hsd) throw e;
       x = { email: r.c.email, oldHsd: r.c.hsd, hsd: r2.c.hsd }; slow = true;
     }
@@ -1855,7 +1860,7 @@ async function renewCallback(q: any, a: string, id: string) {
   } catch (e) {
     await unlock().catch(() => {});
     const to = isTimeout(e);
-    return edit(`⚠️ Gia hạn <b>${esc(p.email)}</b> ${to ? "chưa xong: Thay Fam trả lời quá lâu (>95 giây) và HSD chưa đổi" : "lỗi: " + esc((e as Error).message)}.\nChưa chắc đã ghi — kiểm tra tab Lịch sử trước khi bấm lại.${card ? "\n\n<i>" + esc(card.split("\n").slice(0, 3).join(" · ")) + "</i>" : ""}`,
+    return edit(`⚠️ Gia hạn <b>${esc(p.email)}</b> ${to ? "chưa xong: Thay Fam chưa trả lời sau gần 2 phút và HSD chưa đổi (Apps Script có thể vẫn đang ghi)" : "lỗi: " + esc((e as Error).message)}.\nĐợi 1–2 phút rồi xem tab Lịch sử / HSD khách trước khi bấm Thử lại hay gia hạn tay — tránh gia hạn 2 lần.${card ? "\n\n<i>" + esc(card.split("\n").slice(0, 3).join(" · ")) + "</i>" : ""}`,
       { inline_keyboard: [[{ text: "↻ Thử lại", callback_data: `g:ok:${id}` }], [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" }]] });
   }
 }
@@ -2033,8 +2038,12 @@ async function handle(u: any) {
     if (q.data === "noop") return tg("answerCallbackQuery", { callback_query_id: q.id });
     if (String(q.data || "").startsWith("sp:")) { const [, sa, sid] = String(q.data).split(":"); return spCallback(q, sa, sid); }
     if (String(q.data || "").startsWith("cp:")) {
-      const [, ca, ma] = String(q.data).split(":"), r = await cusConfirm(ma, ca === "ok");
+      const [, ca, ma] = String(q.data).split(":");
+      // ẩn nút ngay để không bấm 2 lần
+      await tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[{ text: "⏳ Đang xử lý…", callback_data: "noop" }]] } }).catch(() => {});
+      const r = await cusConfirm(ma, ca === "ok");
       await tg("answerCallbackQuery", { callback_query_id: q.id, text: r.ok ? r.msg : r.error });
+      if (!r.ok) await tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[{ text: "ℹ️ " + String(r.error || "").slice(0, 50), callback_data: "noop" }]] } }).catch(() => {});
       if (r.ok) await tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[{ text: ca === "ok" ? "✅ Đã xác nhận nhận tiền" : "✖️ Đã báo khách chưa nhận", callback_data: "noop" }]] } });
       return;
     }
