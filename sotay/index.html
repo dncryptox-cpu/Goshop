@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-block:env(safe-area-inset-top,0px) env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>Sổ tay bán hàng gia dụng</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: brand rail on the left, one table per brand on the right; rail turns into chips on phones */
+:root{
+  --bg:#f3f5f6; --panel:#ffffff; --ink:#18232b; --muted:#5d6b75; --line:#dde3e7;
+  --accent:#0f6b6f; --accent-soft:#e1f0ef; --price:#b45309; --warn-bg:#fff6e6; --warn-ink:#8a4b06;
+  --bad:#b4342b; --good:#1f7a4a;
+  --f-body:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11181d; --panel:#182229; --ink:#e6edf1; --muted:#97a6b0; --line:#2a3740;
+  --accent:#4fb6b1; --accent-soft:#1c3536; --price:#f0a24a; --warn-bg:#2e2412; --warn-ink:#f2c27a;
+  --bad:#ef7d74; --good:#5cc98d; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11181d; --panel:#182229; --ink:#e6edf1; --muted:#97a6b0; --line:#2a3740;
+  --accent:#4fb6b1; --accent-soft:#1c3536; --price:#f0a24a; --warn-bg:#2e2412; --warn-ink:#f2c27a;
+  --bad:#ef7d74; --good:#5cc98d; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5}
+.wrap{max-width:1400px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+h1{font-size:22px;margin:0;font-weight:700;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0}
+.tools{display:flex;gap:8px;flex-wrap:wrap}
+input[type=search],textarea,select{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+input[type=search]{width:min(320px,100%)}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:8px 12px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stats{display:flex;flex-wrap:wrap;gap:8px 20px;color:var(--muted);margin-bottom:16px;font-size:13px}
+.stats b{color:var(--ink);font-variant-numeric:tabular-nums}
+.layout{display:grid;grid-template-columns:220px minmax(0,1fr);gap:20px;align-items:start}
+nav.rail{position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);display:flex;flex-direction:column;gap:2px}
+nav.rail button{display:flex;justify-content:space-between;align-items:center;border:0;background:transparent;text-align:left;padding:8px 10px;color:var(--muted)}
+nav.rail button .ct{font-family:var(--f-mono);font-size:12px}
+nav.rail button[aria-pressed=true]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+nav.rail button:hover{color:var(--ink)}
+section.brand{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:20px;overflow:hidden}
+.bhead{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;padding:14px 16px;border-bottom:1px solid var(--line)}
+.bhead h2{margin:0;font-size:18px}
+.bhead span{color:var(--muted)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:980px}
+th,td{text-align:left;vertical-align:top;padding:12px 14px;border-bottom:1px solid var(--line)}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td.name{width:200px}
+td.name strong{display:block}
+.cat{display:inline-block;margin-top:4px;font-size:12px;color:var(--accent);background:var(--accent-soft);padding:1px 8px;border-radius:999px}
+td.price{width:190px;font-variant-numeric:tabular-nums}
+.pr{display:grid;gap:2px;margin-bottom:6px}
+.pr .lb{font-size:12px;color:var(--muted)}
+.pr .v{font-family:var(--f-mono);font-size:13px}
+.pr s{color:var(--muted)}
+.pr .live{color:var(--price);font-weight:500}
+.off{font-size:11px;color:var(--good);margin-left:4px}
+td.core{width:26%}
+ul.weak{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+ul.weak li{font-size:13px}
+ul.weak li b{color:var(--bad);font-weight:600}
+.note{margin-top:8px;font-size:12px;background:var(--warn-bg);color:var(--warn-ink);padding:6px 8px;border-radius:6px}
+td.act{width:110px}
+td.act button{width:100%;font-size:13px;padding:6px 8px}
+.detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;padding:4px 0}
+.detail h4{margin:0 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.detail ul{margin:0;padding-left:18px}
+.hook{font-style:italic}
+.ai-out{white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:8px;font-size:13.5px;min-height:44px}
+.ai-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.ai-bar select{padding:6px 10px}
+.muted{color:var(--muted)}
+.ask{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px}
+.ask h3{margin:0 0 4px;font-size:16px}
+.ask textarea{width:100%;min-height:64px;resize:vertical;margin:8px 0}
+.empty{padding:24px;color:var(--muted)}
+.toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px}
+@media (max-width:820px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  nav.rail{position:static;flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:4px}
+  nav.rail button{flex:0 0 auto;border:1px solid var(--line);border-radius:999px;padding:6px 12px;gap:8px}
+}
+@media (prefers-reduced-motion:no-preference){button{transition:background .15s,color .15s}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Sổ tay bán hàng gia dụng</h1>
+      <p class="sub">Trọng tâm từng sản phẩm, điểm yếu của hàng cùng loại ngoài thị trường và cách lái câu chuyện về sản phẩm mình.</p>
+    </div>
+    <div class="tools">
+      <input type="search" id="q" placeholder="Tìm sản phẩm, loại, từ khóa…" aria-label="Tìm sản phẩm">
+      <button id="exportBtn" hidden>Tải bảng (Excel/CSV)</button>
+      <button id="keyBtn" hidden aria-expanded="false" aria-controls="keyBox">Cài đặt AI</button>
+    </div>
+  </header>
+
+  <div class="ask" id="keyBox" hidden>
+    <h3>Kết nối Claude API</h3>
+    <p class="muted" style="margin:0">Dán API key của bạn (bắt đầu bằng <code>sk-ant-</code>, lấy tại console.anthropic.com). Key chỉ lưu trong trình duyệt của máy này và gửi thẳng tới Anthropic, không lưu lên GitHub hay máy chủ nào khác. Máy dùng chung thì bấm “Xóa key” sau khi dùng.</p>
+    <div class="ai-bar" style="margin-top:10px">
+      <input type="password" id="keyIn" placeholder="sk-ant-..." autocomplete="off" aria-label="API key" style="flex:1 1 260px;font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px">
+      <select id="modelIn" aria-label="Model">
+        <option value="claude-opus-5-5">Claude Opus 5.5 (chất lượng cao nhất)</option>
+        <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (nhanh, rẻ hơn)</option>
+        <option value="claude-haiku-5-5">Claude Haiku 5.5 (rẻ nhất)</option>
+      </select>
+      <button class="primary" id="keySave">Lưu</button>
+      <button id="keyClear">Xóa key</button>
+      <span class="muted" id="keyState"></span>
+    </div>
+  </div>
+  <div class="stats" id="stats"></div>
+
+  <div class="ask" id="askBox" hidden>
+    <h3>Hỏi AI về danh mục</h3>
+    <p class="muted" style="margin:0">Ví dụ: “So sánh nồi lẩu Hare và Yoake để tư vấn khách 6 người”, “Gợi ý combo dưới 2 triệu cho quà tân gia”.</p>
+    <textarea id="askIn" aria-label="Câu hỏi cho AI">Gợi ý 3 combo bán kèm có tổng giá live dưới 2 triệu, kèm câu chốt cho từng combo.</textarea>
+    <div class="ai-bar"><button class="primary" id="askBtn">Hỏi AI</button><span class="muted" id="askState"></span></div>
+    <div class="ai-out" id="askOut" hidden></div>
+  </div>
+
+  <div class="layout">
+    <nav class="rail" id="rail" aria-label="Thương hiệu"></nav>
+    <main id="main"></main>
+  </div>
+</div>
+
+<script>
+const DATA = {"brands": {"Charmer": "Nồi gang tráng men cao cấp", "Hare": "Gia dụng điện & nồi chảo – dải sản phẩm rộng nhất", "Sunery": "Gia dụng phong cách Đức, giá mềm", "Fynal": "Chảo inox 316 & máy xay", "Amey": "Đồ dùng bàn ăn inox 316", "GKOCH": "Ấm đun giữ nhiệt", "Kailer": "Nồi inox dung tích lớn", "Gume": "Gia dụng Hàn Quốc", "Yoake": "Gia dụng điện & chăm sóc cá nhân"}, "products": [{"b": "Charmer", "n": "Nồi gang tráng men Charm", "c": "Nồi gang", "p": [["Size 22cm (2–5 người)", 1050000, 750000], ["Size 24cm (4–8 người)", 1250000, 850000]], "s": ["Gang đúc nguyên khối, tráng men sứ", "22×9.5cm / 24×12cm", "Bếp gas, từ, hồng ngoại, lò nướng"], "core": "Chiếc nồi “mua một lần dùng cả đời”: gang đúc nặng, giữ nhiệt như lò nung mini, nắp nặng khóa hơi nước nên món hầm mềm nhanh, ngọt nước và giữ nóng cả bữa.", "usp": ["Giữ nhiệt cực lâu: tắt bếp 30 phút vẫn còn nóng", "Nắp nặng khít, hơi nước tuần hoàn tưới lại thịt", "Men sứ bóng, không phủ hóa chất chống dính", "Không kén bếp, dùng được cả lò nướng"], "weak": [["Nồi nhôm/inox mỏng thường", "Mỏng, nhanh móp, nóng nhanh nguội nhanh; hầm lâu tốn gas mà thịt vẫn dai"], ["Nồi phủ chống dính Teflon", "Lớp phủ trầy sau 1–2 năm, sợ bong vào thức ăn, phải thay nồi định kỳ"], ["Nồi gang trần (không men)", "Dễ gỉ, phải tôi dầu, nấu đồ chua bị đen, vệ sinh cầu kỳ"], ["Nồi gang men giá rẻ không rõ nguồn", "Men mỏng dễ mẻ, đúc rỗ, nắp hở hơi nên không giữ nhiệt"]], "hook": "Nồi niêu thường dùng vài năm là xước, móp, phải vứt. Nồi gang Charm mua một lần, truyền cho con cháu.", "note": "Kịch bản gốc ghi “chất thép Đức” trong khi đây là gang, nên sửa lại. Câu “chống dính vĩnh cửu”, “đầu bếp 5 sao” là nói quá, dễ bị báo cáo. Chỉ nói “nhập khẩu chính ngạch từ Đức” khi có CO/CQ thật để chiếu lên live."}, {"b": "Hare", "n": "Nồi áp suất cơ Hare", "c": "Nồi áp suất", "p": [["6L", 2350000, 1350000], ["8L", 2650000, 1550000]], "s": ["Van khóa 3 lớp chống tắc", "Van xả tự động + van chống nổ", "Đáy dày, dùng bếp từ/gas/hồng ngoại"], "core": "“Cỗ máy thời gian” của nhà bếp: rút ngắn đến 80% thời gian hầm, gân bò 15 phút mềm, móng giò 10 phút róc xương, tiết kiệm gas điện, có 3 lớp van an toàn.", "usp": ["Hầm nhanh, tiết kiệm đến 70% gas/điện (theo kịch bản)", "3 van an toàn, chưa xả hết áp không mở được nắp", "Giữ dưỡng chất, nước dùng trong", "Một nồi thay 5 loại: hầm, cháo, súp, luộc gà, làm bánh"], "weak": [["Hầm bằng nồi thường", "Mất 2–3 tiếng, tốn gas, thịt vẫn dai"], ["Nồi áp suất đời cũ, 1 van", "Hay tắc van, xì hơi, người dùng sợ nổ"], ["Nồi áp suất giá rẻ đáy mỏng", "Khê cháy đáy, gioăng nhanh lão hóa, không dùng được bếp từ"], ["Nồi áp suất điện", "Lòng nồi phủ chống dính dễ trầy, không nấu trên bếp gas khi mất điện"]], "hook": "Ninh xương 2–3 tiếng, tiền gas tăng mà thịt vẫn dai? Nồi Hare: cơm chưa chín, xương đã nhừ.", "note": "Câu “nhập khẩu chính ngạch Nhật Bản”, “tiết kiệm 70%” cần giấy tờ hoặc số liệu hãng để đối chứng. Tránh nói “không thất thoát một giọt dưỡng chất”."}, {"b": "Hare", "n": "Nồi chiên không dầu Hare 9.2L", "c": "Nồi chiên không dầu", "p": [["9.2L", 2700000, 1590000]], "s": ["1800W, 9.2 lít", "Quạt đối lưu 360°, tự ngắt quá nhiệt", "Cửa kính + đèn, lòng tráng men gốm", "6.8kg, 43×38×39cm"], "core": "Nồi chiên cỡ lò nướng mini 9.2L: nướng nguyên con gà, tảng sườn không cần chặt, gió nóng 360° chín đều không cần lật, cửa kính nhìn thấy món ăn.", "usp": ["Dung tích lớn, không phải chia mẻ", "Đối lưu 360° nên không cần mở ra lật", "Cửa kính + đèn, theo dõi được, không lo cháy", "Lòng men gốm chống dính, lau là sạch"], "weak": [["Nồi chiên 4–5L phổ thông", "Phải chặt gà làm tư, nướng khoai chia 3 mẻ"], ["Nồi chiên dạng giỏ kéo", "Không nhìn được bên trong, phải kéo ra lật nhiều lần"], ["Giỏ phủ chống dính rẻ tiền", "Bong tróc sau vài tháng, bám dầu khó rửa"], ["Lò nướng truyền thống", "Làm nóng lâu, tốn điện, chiếm chỗ"]], "hook": "Nồi chiên bé tí, nướng con gà phải chặt làm tư? Hare 9.2L nhét vừa nguyên con.", "note": "Kịch bản ghi “bảng điều khiển nút xoay” rồi lại ghi “cảm ứng”, cần thống nhất theo máy thật. “Tốc độ ánh sáng”, “bền gấp 10 lần” là nói quá."}, {"b": "Hare", "n": "Nồi áp suất điện Hare HR-PC606", "c": "Nồi áp suất điện", "p": [["6L", 2700000, 1590000]], "s": ["6 lít, 1000W", "Núm xoay cơ, bảng tiếng Việt", "Nắp rời 2 trong 1, nút xả áp", "Bảo hành 12 tháng"], "core": "Nồi áp suất điện cho gia đình 4–6 người: bấm núm là hầm, ninh, nấu cháo, không cần canh bếp, bảng tiếng Việt dễ dùng cho người lớn tuổi.", "usp": ["Không cần đứng canh như nồi trên bếp", "Bảng tiếng Việt, núm xoay đơn giản", "Nắp rời tháo ra rửa được", "Nút xả áp tránh bỏng, kín mùi"], "weak": [["Nồi áp suất cơ trên bếp", "Phải canh lửa, canh giờ, sợ xì"], ["Nồi áp suất điện bảng tiếng Anh/cảm ứng phức tạp", "Người lớn tuổi khó dùng"], ["Nồi nắp liền", "Gioăng, nắp bám mùi, khó vệ sinh"], ["Hầm bằng nồi cơm điện/nồi thường", "Lâu, không đủ áp nên thịt không nhừ"]], "hook": "Muốn hầm xương mà không phải đứng canh bếp: cài núm, đi làm việc khác.", "note": "Kịch bản mâu thuẫn: chỗ ghi lòng nồi “hợp kim nhôm phủ chống dính”, chỗ ghi “inox 304 nguyên khối”. Cần kiểm tra hàng thật trước khi nói. Tránh “an toàn tuyệt đối”."}, {"b": "Hare", "n": "Bộ 3 nồi inox đáy từ Hare", "c": "Bộ nồi", "p": [["Bộ 3 nồi", 1350000, 790000]], "s": ["18cm 2.1L · 20cm 3.9L · 24cm 6.6L", "Inox 304, dày 0.5mm", "Đáy 5 lớp, nắp kính"], "core": "Một bộ 3 nồi đủ size cho mọi bữa cơm: đáy từ 5 lớp truyền nhiệt đều, dùng bếp từ, gas, hồng ngoại, nắp kính nhìn món ăn.", "usp": ["Đủ 3 size: mì/cháo, canh, luộc", "Đáy 5 lớp, quay cận đáy khi live", "Không kén bếp", "Nắp kính quan sát, không phải mở nắp"], "weak": [["Nồi inox 201/inox trôi nổi", "Dễ gỉ, ố vàng, không bắt từ"], ["Nồi đáy 1 lớp", "Nóng cục bộ, cháy giữa đáy, cong vênh"], ["Nồi nhôm", "Dễ móp, không dùng bếp từ, ngại thôi nhiễm"], ["Mua lẻ từng chiếc", "Tốn hơn, không đồng bộ"]], "hook": "Một bộ 3 nồi, đủ size cho mọi bữa cơm, đáy từ 5 lớp, dùng được mọi loại bếp.", "note": "Kích thước mâu thuẫn: đầu bài ghi 18/20/24cm, đoạn sau ghi 16/20/24cm. Thân 0.5mm khá mỏng, không nên nhấn “dày dặn”."}, {"b": "Hare", "n": "Ấm siêu tốc Hare HR-KE1826", "c": "Ấm đun nước", "p": [["1 chiếc", 1050000, 550000]], "s": ["1800W", "Thân 2 lớp: inox 304 + nhựa cách nhiệt", "Lưới lọc cặn, đế xoay 360°", "Tự ngắt, có chế độ giữ ấm"], "core": "Ấm siêu tốc 2 lớp chống bỏng: lòng inox 304, vỏ ngoài cách nhiệt không nóng tay, đun nhanh 1800W, tự ngắt và có nút giữ ấm.", "usp": ["Chạm vỏ không bỏng, an toàn khi có trẻ nhỏ", "Có giữ ấm, không phải đun lại", "Lưới lọc cặn, côn trùng không lọt vào", "Tự ngắt khi sôi, cạn nước, quá nhiệt"], "weak": [["Ấm inox 1 lớp", "Vỏ nóng rát tay, dễ bỏng trẻ"], ["Ấm nhựa hoàn toàn", "Mùi nhựa, lo chất độc khi đun sôi"], ["Ấm rẻ không giữ ấm", "Nước nguội phải đun đi đun lại, tốn điện"], ["Ấm không có lưới lọc", "Cặn vôi vào cốc"]], "hook": "Ấm đun thường chạm vào là bỏng tay. Hare 2 lớp: trong inox 304, ngoài cách nhiệt.", "note": ""}, {"b": "Hare", "n": "Bếp điện từ Hare HR-IC1522", "c": "Bếp từ đơn", "p": [["3000W, kèm nồi 30cm", 2650000, 1550000]], "s": ["3000W, 6 chế độ", "Mặt kính pha lê, cảm ứng tiếng Việt", "Hẹn giờ, 2 quạt tản nhiệt, chuẩn EMC", "Tặng nồi inox đáy từ 30cm"], "core": "Bếp từ đơn công suất lớn 3000W, đun cực nhanh, 6 chế độ cài sẵn, cảm ứng tiếng Việt, 2 quạt tản nhiệt, tặng kèm nồi lẩu 30cm dùng được ngay.", "usp": ["3000W, mạnh hơn hẳn bếp đơn phổ thông", "2 quạt tản nhiệt, nấu lâu vẫn ổn định", "Cảm ứng tiếng Việt", "Tặng nồi 30cm, mua về dùng luôn"], "weak": [["Bếp từ đơn 1800–2000W", "Đun nồi lẩu to lâu sôi"], ["Bếp hồng ngoại", "Nóng mặt bếp, tốn điện, dễ bỏng"], ["Bếp gas mini", "Lo cháy nổ, mùi gas, phải mua bình"], ["Bếp từ rẻ 1 quạt", "Nóng máy, tự ngắt giữa chừng"]], "hook": "3000W đun sôi nồi lẩu trong vài phút, tặng luôn nồi 30cm.", "note": "Nên ghi rõ: 3000W cần ổ điện, dây đủ tải."}, {"b": "Hare", "n": "Bếp điện từ Hare HR-IC1516", "c": "Bếp từ đơn", "p": [["2000W, kèm nồi 30cm", 2050000, 1190000]], "s": ["2000W, 6 chế độ", "Mặt kính pha lê, cảm ứng tiếng Việt", "Hẹn giờ, quạt tản nhiệt, chuẩn EMC", "Tặng nồi inox đáy từ 30cm"], "core": "Phiên bản bếp từ đơn 2000W vừa túi tiền: đủ mạnh cho bữa gia đình, 6 chế độ cài sẵn, cảm ứng tiếng Việt, tặng nồi 30cm.", "usp": ["Giá mềm hơn bản 3000W, ổ điện nào cũng cắm được", "6 chế độ: hấp, canh, sữa, chiên, lẩu, đun sôi", "Tiếng Việt dễ dùng", "Tặng nồi 30cm"], "weak": [["Bếp hồng ngoại", "Nóng, tốn điện"], ["Bếp gas mini", "Rủi ro cháy nổ, mùi gas"], ["Bếp từ không thương hiệu", "Bảo hành mơ hồ, nhanh hỏng mạch"], ["Bếp từ bảng tiếng Anh", "Người lớn tuổi khó dùng"]], "hook": "Bếp từ chuẩn EMC, tiếng Việt, tặng kèm nồi, giá chỉ hơn 1 triệu.", "note": "Khi live cạnh bản 1522 nên nói rõ khác biệt: công suất và số quạt."}, {"b": "Hare", "n": "Nồi lẩu nướng Hare HR-MT5038", "c": "Nồi lẩu điện", "p": [["4L", 1750000, 990000]], "s": ["4L, 1300W", "Lòng inox 304 tháo rời + chảo nướng chống dính", "4 mức nhiệt Warm/Low/Mid/High", "Bảo hành 12 tháng"], "core": "Một nồi 2 trong 1: vừa nấu lẩu vừa nướng thịt, thêm hầm, xào, chiên, áp chảo; lòng inox 304 tháo rời dễ rửa.", "usp": ["2 trong 1: lẩu + nướng, không cần mua thêm bếp nướng", "Lòng inox 304 tháo rời", "6 cách chế biến", "4 mức nhiệt, có giữ ấm"], "weak": [["Nồi lẩu điện liền thân", "Không tháo lòng được, khó rửa, sợ vào nước"], ["Bếp nướng than/gas", "Khói, mùi, nguy hiểm trong chung cư"], ["Lòng nồi nhôm phủ chống dính", "Trầy, bong khi nấu lẩu chua cay"], ["Mua riêng nồi lẩu + bếp nướng", "Tốn tiền, chật bếp"]], "hook": "Cuối tuần lẩu, ngày thường nướng, một nồi là đủ.", "note": ""}, {"b": "Hare", "n": "Nồi nấu chậm Hare HR-SC535", "c": "Nồi nấu chậm", "p": [["3.5L", 1150000, 650000]], "s": ["3.5L, 170W", "Lòng gốm sứ tháo rời, nắp kính", "3 chế độ: cao, thấp, giữ ấm", "38.2×26.5×23.3cm, ~3.5kg"], "core": "Nấu chậm lửa nhỏ, không phải canh: cháo cho bé, kho cá, hầm xương, chưng yến; lòng gốm sứ giữ nhiệt, an toàn, chỉ 170W rất tiết kiệm điện.", "usp": ["Chỉ 170W, để cả đêm vẫn tiết kiệm", "Lòng gốm sứ, không lo lớp phủ hóa chất", "Hợp món cho bé, chưng yến", "Núm vặn đơn giản"], "weak": [["Ninh cháo trên bếp gas", "Phải canh, dễ trào, khê đáy"], ["Nồi nấu chậm lòng nhôm phủ chống dính", "Lo bong lớp phủ vào cháo của bé"], ["Nồi áp suất", "Nấu nhanh nhưng cháo, yến không mịn, ngon bằng nấu chậm"], ["Hộp ủ, nồi ủ", "Không giữ đủ nhiệt, món không chín kỹ"]], "hook": "Tối cho gạo vào, sáng có nồi cháo nhừ cho bé, không phải canh bếp.", "note": ""}, {"b": "Hare", "n": "Bộ nồi táo inox 304 Hare H43", "c": "Bộ nồi", "p": [["Bộ nồi", 2850000, 1690000]], "s": ["Inox 304", "Thiết kế dáng quả táo", "Bề mặt sáng bóng"], "core": "Bộ nồi dáng táo độc lạ, inox 304: vừa nấu ăn hằng ngày vừa làm đẹp gian bếp, hợp làm quà tặng tân gia.", "usp": ["Thiết kế dáng táo, nổi bật, lên hình đẹp", "Inox 304 chống ăn mòn", "Sáng bóng, dễ lau", "Hợp làm quà"], "weak": [["Bộ nồi kiểu dáng phổ thông", "Nhìn đâu cũng giống nhau, không có điểm nhấn"], ["Bộ nồi inox 201 giá rẻ", "Dễ ố, gỉ chân"], ["Nồi tráng men màu", "Mẻ men là xấu, dễ gỉ chỗ mẻ"], ["Bộ nồi nhôm", "Móp méo, không dùng bếp từ"]], "hook": "Nấu ăn cũng cần cảm hứng: bộ nồi dáng táo, đặt lên bếp là đẹp.", "note": "Kịch bản thiếu số món, size, đáy từ. Cần bổ sung trước khi live."}, {"b": "Hare", "n": "Máy xay sinh tố Hare HR-BL6386", "c": "Máy xay sinh tố", "p": [["3 cối", 1950000, 1550000]], "s": ["600W", "3 cối (thủy tinh theo nhà bán lẻ)", "4 chế độ xay", "Lưỡi thép không gỉ, tháo rời vệ sinh"], "core": "Máy xay 3 cối đa năng: cối sinh tố, cối thực phẩm, cối hạt/gia vị, 4 chế độ xay, cối thủy tinh không ám mùi.", "usp": ["3 cối cho 3 việc, không lẫn mùi", "Cối thủy tinh không trầy, không ám màu", "4 chế độ", "Dễ tháo rửa"], "weak": [["Máy xay 1 cối", "Xay tỏi xong làm sinh tố bị ám mùi"], ["Cối nhựa", "Trầy, đục, ám màu, ngại nhựa với đồ nóng"], ["Máy xay mini 200–300W", "Yếu, xay đá, hạt không nhuyễn"], ["Máy không có chế độ", "Phải tự canh, dễ quá nhuyễn hoặc còn lợn cợn"]], "hook": "Một máy 3 cối: sinh tố buổi sáng, xay thịt buổi trưa, xay tỏi ớt buổi tối.", "note": "Thông số đang ghi “theo nhà bán lẻ”, cần xác nhận với hãng. Giá live chỉ giảm ~20%, ít hơn hẳn các mã khác."}, {"b": "Hare", "n": "Nồi cơm điện Hare HR-RC1206 / HR-RC1805", "c": "Nồi cơm điện", "p": [["1.2L (2–4 người)", 1550000, 890000], ["1.8L (4–6 người)", 2050000, 1190000]], "s": ["700W (bản 1.8L)", "Lòng nhôm phủ 2 lớp chống dính PFLUON", "Nút gạt Cook/Warm, nắp gài, quai xách", "Bảo hành 12 tháng"], "core": "Nồi cơm nắp gài đơn giản, bền: một nút gạt, cơm chín đều dẻo thơm, lòng chống dính 2 lớp dễ rửa, có 2 size cho nhà ít người và đông người.", "usp": ["Một nút gạt, ai cũng dùng được", "Lòng chống dính 2 lớp", "2 size", "Bảo hành chính hãng 12 tháng"], "weak": [["Nồi cơm không thương hiệu", "Lòng nồi bong tróc sau vài tháng"], ["Nồi cơm điện tử nhiều chế độ", "Đắt, nhiều nút, người lớn tuổi khó dùng, hỏng mạch tốn tiền sửa"], ["Nồi cơm nắp rời", "Hơi nước đọng, cơm nhão mặt"], ["Nồi lòng mỏng", "Cháy đáy, cơm không đều"]], "hook": "Nồi cơm không cần nhiều nút: một nút gạt, cơm dẻo, bền nhiều năm.", "note": "Tiêu đề ghi HR-RC1206 nhưng công suất chỉ ghi cho bản 1.8L. Giá trùng với nồi cơm Yoake."}, {"b": "Sunery", "n": "Nồi áp suất Sunery", "c": "Nồi áp suất", "p": [["6L", 2350000, 1390000], ["8L", 2650000, 1490000]], "s": ["Bán chung kịch bản với nồi áp suất Hare", "Van an toàn nhiều lớp", "Dùng bếp từ, gas, hồng ngoại"], "core": "Lựa chọn thay thế cho nồi áp suất Hare: cùng công năng hầm nhanh, tiết kiệm gas; bản 8L giá live còn rẻ hơn Hare.", "usp": ["Bản 8L rẻ hơn Hare 60.000đ", "Hầm nhanh, tiết kiệm gas", "Van an toàn", "Không kén bếp"], "weak": [["Hầm nồi thường", "Lâu, tốn gas, thịt dai"], ["Nồi áp suất 1 van đời cũ", "Sợ xì, sợ nổ"], ["Nồi áp suất đáy mỏng", "Khê đáy, không bắt từ"], ["Nồi áp suất điện", "Phụ thuộc điện, lòng nồi phủ chống dính"]], "hook": "Cùng công năng hầm nhanh, bản 8L Sunery giá còn mềm hơn.", "note": "File gốc gộp Hare/Sunery vào một mục, chỉ có giá live Sunery, chưa có thông số riêng. Cần bổ sung."}, {"b": "Sunery", "n": "Máy vắt cam Sunery", "c": "Máy vắt cam", "p": [["1 chiếc", 450000, 250000]], "s": ["Cần gạt đòn bẩy", "Thân inox mờ", "Động cơ lõi đồng", "Nón ép cơ khí"], "core": "Máy vắt cam cần gạt: ấn nhẹ một nhịp là ép kiệt tép, tay không dính, động cơ lõi đồng êm, không ép dập vỏ nên nước cam không đắng.", "usp": ["Cần gạt, không mỏi tay", "Ép kiệt nhưng không dập vỏ, không đắng", "Lõi đồng êm, bền", "Thân inox sang"], "weak": [["Vắt cam bằng tay", "Mỏi tay, dính tay, vắt không kiệt"], ["Máy vắt cam nhựa ấn tay", "Phải tì miết, nhựa nhanh nứt"], ["Máy ép trái cây ly tâm", "Ép cả vỏ nên đắng, nhiều bọt, rửa cực"], ["Máy lõi nhôm giá rẻ", "Kêu to, nóng máy, nhanh cháy mô-tơ"]], "hook": "Sáng ra một ly cam tươi: gạt nhẹ một cái, không đắng, tay vẫn sạch.", "note": "“Công nghệ Đức” cần nguồn để đối chứng. Giá trùng với đũa Amey (450k → 250k)."}, {"b": "Sunery", "n": "Nồi luộc gà Sunery 16L", "c": "Nồi dung tích lớn", "p": [["16L", 1550000, 790000]], "s": ["16 lít"], "core": "Nồi lớn 16L cho dịp giỗ, Tết, tiệc: luộc gà, vịt nguyên con, nấu nước dùng, hầm xương số lượng lớn.", "usp": ["Luộc gà nguyên con không phải gập", "Đa năng: nước dùng, luộc thịt, hầm", "Hợp nhà đông người, dịp cỗ", "Giá dưới 800k"], "weak": [["Nồi nhỏ 5–8L", "Gà phải gập, chặt, luộc không đều"], ["Nồi nhôm to rẻ tiền", "Móp, đen, không dùng bếp từ"], ["Thuê, mượn nồi dịp cỗ", "Bất tiện, không chủ động"], ["Nồi inox mỏng", "Cháy đáy khi hầm lâu"]], "hook": "Đừng để nồi quá nhỏ làm khó bữa cỗ nhà mình.", "note": "Thiếu chất liệu, đáy, đường kính. Nên bổ sung để so sánh với Kailer 19L."}, {"b": "Sunery", "n": "Bếp từ Sunery IC25", "c": "Bếp từ đơn", "p": [["1 chiếc", 2350000, 1350000]], "s": ["Mặt kính cao cấp", "Tản nhiệt thông minh", "Hẹn giờ + khóa an toàn", "Nhỏ gọn, dễ di chuyển"], "core": "Bếp từ đơn phong cách Đức, gọn đẹp: nấu nhanh, tiết kiệm điện, có khóa an toàn trẻ em và hẹn giờ.", "usp": ["Khóa an toàn, nhà có trẻ nhỏ yên tâm", "Hẹn giờ, nấu rảnh tay", "Tản nhiệt tốt, bền", "Thiết kế sang"], "weak": [["Bếp cũ nấu chậm", "Nóng lâu, hao điện, xuống cấp nhanh"], ["Bếp gas", "Cháy nổ, mùi gas"], ["Bếp từ không khóa trẻ em", "Trẻ nghịch bấm bật bếp"], ["Bếp hồng ngoại", "Mặt bếp nóng, dễ bỏng"]], "hook": "Bếp đẹp, bếp sang: nấu nhanh gấp đôi, có khóa an toàn.", "note": "Thiếu công suất. “Nhanh gấp đôi”, “an toàn tuyệt đối” là nói quá. Giá cao hơn Hare 1516 nên cần lý do khác biệt rõ."}, {"b": "Fynal", "n": "Máy xay thịt Fynal", "c": "Máy xay thịt", "p": [["2 cối inox", 1050000, 590000]], "s": ["500W", "2 cối inox 0.6L + 2.0L", "Lưỡi 2 tầng 4 và 6 cánh", "Chống quá nhiệt"], "core": "Máy xay thịt 2 cối inox dày: không nứt vỡ, không ám mùi như cối nhựa; lưỡi kép 2 tầng xay nhuyễn thịt, cá, hạt, đá; nhấn một nút, người già cũng dùng được.", "usp": ["Cối inox không nứt, không ám mùi tanh", "2 cối: gia vị (0.6L) + thịt, sữa hạt (2L)", "Lưỡi kép 2 tầng", "Nhấn là chạy, hợp người lớn tuổi"], "weak": [["Máy xay cối nhựa", "Nứt vỡ, ám mùi thịt cá, đục màu"], ["Cối thủy tinh", "Nặng, sợ vỡ, rơi là hỏng"], ["Máy 1 lưỡi đơn", "Xay không đều, thịt còn lợn cợn"], ["Máy công suất yếu", "Nóng máy, phải nghỉ liên tục"]], "hook": "Cối nhựa xay thịt vài lần là ám mùi, nứt. Fynal cối inox dùng bao năm vẫn như mới.", "note": "Thông số “inox dày 6mm” có thể nhầm (6mm rất dày cho cối máy xay), nên kiểm tra lại."}, {"b": "Fynal", "n": "Chảo inox 316L Fynal sâu lòng / nông lòng", "c": "Chảo inox", "p": [["Sâu lòng 26cm", 1050000, 590000], ["Nông lòng 26cm", 950000, 545000]], "s": ["Inox 316L, 3 lớp inox–nhôm–inox", "Size 22/24/26cm", "Bề mặt nano, không phủ hóa chất", "Tay cầm inox đúc, rửa máy được, BH 12 tháng"], "core": "Chảo inox 316L 3 lớp, không phủ hóa chất: chống dính tự thân bằng bề mặt nano, không thôi nhiễm kim loại kể cả nhiệt cao; bản sâu lòng xào, chiên, nấu canh, nấu mì đều được.", "usp": ["Inox 316L, cấp cao hơn inox 304", "Không có lớp phủ nên không lo bong tróc", "3 lớp truyền nhiệt đều, không cháy cạnh", "Sâu lòng: xào + nấu canh, mì"], "weak": [["Chảo chống dính phủ Teflon", "1–2 năm là trầy, bong lớp phủ, phải thay"], ["Chảo inox 1 lớp", "Nóng cục bộ, cháy giữa, dính đáy"], ["Chảo gang", "Nặng, dễ gỉ, phải bảo dưỡng"], ["Chảo inox 201/304 giá rẻ", "Dễ ố, kém kháng axit khi nấu đồ chua"]], "hook": "Chảo chống dính 1–2 năm là bong. Chảo inox 316L Fynal không có lớp phủ nào để bong.", "note": "Nên hướng dẫn khách làm nóng chảo đúng cách khi live, tránh khách về bị dính rồi phàn nàn."}, {"b": "Fynal", "n": "Chảo wok inox 316 Fynal FN-PL226", "c": "Chảo inox", "p": [["26cm", 1050000, 550000], ["28cm", 1150000, 600000], ["30cm", 1250000, 650000]], "s": ["Inox 316 tri-ply, lõi nhôm", "Dạng wok, 26/28/30cm", "Tay cầm inox", "Dùng bếp từ"], "core": "Chảo wok inox 316 ba lớp: lõi nhôm truyền nhiệt đều, sáng bóng, không cần lớp chống dính hóa học; có 3 size đến 30cm cho nhà đông người.", "usp": ["Inox 316 tri-ply, bền cả đời", "Dạng wok sâu, đảo xào thoải mái", "3 size đến 30cm", "Không có lớp phủ hóa học"], "weak": [["Chảo chống dính", "Bong tróc, không chịu được lửa lớn khi xào"], ["Chảo wok thép đen, gang", "Nặng, gỉ, phải tôi chảo"], ["Chảo inox 1 lớp", "Cháy dính, nóng không đều"], ["Chảo nhôm", "Móp, không bắt từ"]], "hook": "Xào lửa lớn mà không sợ bong lớp chống dính: chảo inox 316 ba lớp.", "note": "Khi live cùng chảo sâu lòng nên phân biệt rõ: wok để xào lửa lớn, sâu lòng để đa năng."}, {"b": "Amey", "n": "Đũa inox 316 Amey (set 10 đôi)", "c": "Đũa", "p": [["Set 10 đôi", 450000, 250000]], "s": ["Inox 316", "Thân vuông chống trượt", "Đầu khắc laser"], "core": "Bộ 10 đôi đũa inox 316: không mốc, không cong, thân vuông không trượt, đầu khắc laser gắp chuẩn; nâng tầm mâm cơm và an toàn sức khỏe.", "usp": ["Không bao giờ mốc như đũa gỗ, tre", "Inox 316 cao cấp, không gỉ", "Thân vuông, đầu nhám, không trơn", "Đẹp, sang trên mâm"], "weak": [["Đũa tre, gỗ", "Ẩm mốc đen, sinh nấm aflatoxin, phải thay liên tục"], ["Đũa nhựa melamine", "Cong, chảy khi gặp nóng, lo chất độc"], ["Đũa inox tròn trơn", "Trượt, khó gắp"], ["Đũa inox 201", "Gỉ, đen đầu đũa"]], "hook": "Đũa tre dùng vài tháng là mốc đen. Đũa inox 316 rửa sạch là như mới.", "note": ""}, {"b": "GKOCH", "n": "Ấm đun giữ nhiệt GKOCH HB-K193A", "c": "Ấm đun nước", "p": [["1.5L", 2350000, 1290000]], "s": ["1.5L, 1500W", "Lòng inox 304, giữ nhiệt chân không đến 6 giờ", "Bộ điều khiển Strix (Anh)", "Thân 2 lớp, nắp khóa chống tràn, đế xoay 360°"], "core": "Đun sôi và giữ nóng trong cùng một ấm đến 6 giờ, không cần rót sang phích; bộ điều khiển Strix Anh Quốc bền, chính xác.", "usp": ["Ấm + phích trong một", "Giữ nóng 6 giờ, không đun lại", "Bộ điều khiển Strix danh tiếng", "Nắp khóa chống tràn, an toàn"], "weak": [["Ấm siêu tốc thường", "Nước nguội nhanh, đun đi đun lại tốn điện"], ["Ấm + phích riêng", "Rót qua lại dễ bỏng, phích cũ đóng cặn"], ["Ấm rơ-le rẻ", "Hay hỏng, không ngắt, nguy hiểm"], ["Bình thủy điện", "Cồng kềnh, cắm điện cả ngày"]], "hook": "Đun một lần, nóng cả buổi: ấm kiêm phích, không phải đun đi đun lại.", "note": ""}, {"b": "Kailer", "n": "Nồi luộc gà Kailer 19L", "c": "Nồi dung tích lớn", "p": [["19L", 1650000, 800000]], "s": ["19L, Ø32cm, cao 24cm", "Inox 304, đáy từ 5 lớp", "Nắp kính, 2 tay cầm", "Bếp từ, gas, hồng ngoại"], "core": "Nồi 19L inox 304 đáy từ 5 lớp: luộc gà nguyên con, nấu nước dùng số lượng lớn cho giỗ Tết, tiệc hoặc quán ăn, dùng mọi loại bếp.", "usp": ["19L, lớn hơn Sunery 16L", "Inox 304 + đáy 5 lớp", "Dùng được bếp từ", "Hợp cả quán ăn"], "weak": [["Nồi nhôm to", "Móp, đen, không bắt từ"], ["Nồi inox đáy 1 lớp", "Cháy đáy khi hầm lâu"], ["Nồi nhỏ", "Gà phải gập, luộc không đều"], ["Nồi to inox 201", "Gỉ, ố"]], "hook": "Tết, giỗ, tiệc: nồi 19L luộc gà nguyên con, bếp từ cũng dùng được.", "note": ""}, {"b": "Gume", "n": "Máy làm sữa hạt Gume MSB03", "c": "Máy làm sữa hạt", "p": [["1.2L", 1950000, 1150000]], "s": ["1.2L, nấu 800W / xay 200W", "Cối inox 304, lưỡi 16 cánh 3D", "Cách âm đa lớp, LED cảm ứng", "Hẹn giờ, tự làm sạch, BH 12 tháng"], "core": "Tự làm sữa đậu nành, óc chó, sữa ngô tại nhà: xay và nấu tự động, lưỡi 16 cánh cho sữa mịn, có hẹn giờ và tự làm sạch.", "usp": ["Xay + nấu tự động, không đứng bếp", "Lưỡi 16 cánh 3D, sữa mịn", "Hẹn giờ: sáng dậy có sữa", "Tự làm sạch, giảm ồn"], "weak": [["Mua sữa hạt đóng chai", "Nhiều đường, chất bảo quản, đắt"], ["Xay bằng máy xay sinh tố rồi nấu", "Mất công lọc, nấu, dễ trào khê"], ["Máy sữa hạt rẻ, lưỡi ít cánh", "Sữa lợn cợn, phải lọc"], ["Máy ồn, không tự làm sạch", "Ồn sáng sớm, rửa cực"]], "hook": "Sữa hạt đóng chai nhiều đường. Tối cho hạt vào, sáng có ly sữa nóng tự làm.", "note": ""}, {"b": "Gume", "n": "Bộ nồi chảo 5 món Gume GMPPS-2201", "c": "Bộ nồi", "p": [["5 món", 2650000, 1980000]], "s": ["3 nồi 18/20/24cm (2L/4L/7L)", "Chảo 24cm chống dính vân 3D", "Đáy 5 lớp, nắp kính"], "core": "Một bộ đủ dùng cho cả căn bếp: 3 nồi inox 3 size + chảo chống dính vân 3D, đáy 5 lớp, nắp kính.", "usp": ["Đủ bộ nồi + chảo, khỏi mua lẻ", "Đáy 5 lớp", "Chảo vân 3D", "Đồng bộ, đẹp"], "weak": [["Mua lẻ từng món", "Không đồng bộ, tốn hơn"], ["Bộ nồi không kèm chảo", "Phải mua thêm chảo riêng"], ["Bộ nồi đáy 1 lớp", "Cháy đáy, không đều nhiệt"], ["Bộ nồi nhôm", "Móp, không dùng bếp từ"]], "hook": "Một bộ 5 món: từ trứng ốp buổi sáng đến nồi canh buổi tối.", "note": "Giá live chỉ giảm ~25%. Nên so sánh với Bộ 3 nồi Hare (790k) để chốt lý do vì sao đáng trả thêm."}, {"b": "Yoake", "n": "Tủ sấy quần áo Yoake YK-CD519", "c": "Tủ sấy", "p": [["1 chiếc", 2650000, 1190000]], "s": ["1800W, PTC Ceramic", "Sấy tối đa 20kg/lần, hẹn giờ 180 phút", "90×45×170cm, khung inox, bánh xe", "BH 12 tháng"], "core": "Giải pháp cho mùa mưa, nồm: sấy đến 20kg quần áo mỗi lần bằng gốm PTC, có vỏ bọc chống bụi, bánh xe di chuyển, hợp chung cư và phòng trọ.", "usp": ["20kg/lần, đủ cho nhà đông người", "Gốm PTC giữ nhiệt ổn định", "Hẹn giờ 180 phút", "Bánh xe, gọn cho chung cư"], "weak": [["Phơi tự nhiên mùa nồm", "Lâu khô, mùi ẩm mốc"], ["Máy sấy lồng giặt", "Đắt gấp nhiều lần, tốn điện, làm co vải"], ["Tủ sấy dây mayso", "Nhiệt không ổn định, dễ cháy vải"], ["Tủ sấy nhỏ", "Chỉ vài bộ, phải sấy nhiều lượt"]], "hook": "Mưa dầm, trời nồm, quần áo không khô? Tủ sấy 20kg, không phụ thuộc nắng.", "note": ""}, {"b": "Yoake", "n": "Nồi lẩu điện Yoake YK-MT860", "c": "Nồi lẩu điện", "p": [["8L", 1780000, 990000]], "s": ["8L, 2200W", "4 mức nhiệt", "Nắp kính, màu đen"], "core": "Nồi lẩu điện 8L công suất 2200W cho tiệc đông người: sôi nhanh, đầy ắp thịt, hải sản; ngoài lẩu còn nấu canh, hầm, mì.", "usp": ["8L, gấp đôi nồi lẩu thường", "2200W, sôi nhanh", "4 mức nhiệt", "Màu đen sang"], "weak": [["Nồi lẩu 3–4L", "Thả vài món đã đầy, phải chờ sôi lại"], ["Bếp gas mini + nồi", "Nguy hiểm, mùi gas"], ["Nồi lẩu điện công suất thấp", "Lâu sôi, thả rau xong nguội"], ["Bếp từ + nồi", "Phải mua 2 món"]], "hook": "Team mê lẩu: nồi 8L, 2200W, tụ họp bao nhiêu người cũng đủ.", "note": "Cùng giá với Hare MT5038 (990k). Khi live nên phân tách: Hare 4L có nướng, Yoake 8L cho tiệc đông."}, {"b": "Yoake", "n": "Nồi cơm điện Yoake YK-RC826", "c": "Nồi cơm điện", "p": [["1.2L", 1550000, 890000], ["1.8L", 2050000, 1190000]], "s": ["700W", "Nút gạt nấu/giữ ấm", "Màu kem phối nâu"], "core": "Nồi cơm đẹp tông kem nâu, nút gạt đơn giản: nấu và giữ ấm, 2 size cho gia đình.", "usp": ["Thiết kế màu kem nâu, đẹp bếp", "Nút gạt đơn giản", "Có giữ ấm", "2 size"], "weak": [["Nồi cơm kiểu dáng cũ", "Nhìn quê, không hợp bếp hiện đại"], ["Nồi cơm điện tử phức tạp", "Khó dùng, dễ hỏng mạch"], ["Nồi cơm không thương hiệu", "Lòng nồi bong, nhanh hỏng"], ["Nồi cơm lòng mỏng", "Cháy đáy"]], "hook": "Một bữa cơm ngon bắt đầu từ nồi cơm đẹp.", "note": "Thiếu chất liệu lòng nồi. Lỗi gõ “1.2/,8 lít”. Cùng giá với Hare nồi cơm, nên khác biệt bằng thiết kế."}, {"b": "Yoake", "n": "Máy sấy tóc Yoake YK-HD556", "c": "Máy sấy tóc", "p": [["1 chiếc", 550000, 279000]], "s": ["1200–1600W", "Dễ cầm", "BH 12 tháng"], "core": "Máy sấy tóc gia đình giá dưới 300k, công suất 1200–1600W, bảo hành 12 tháng: món chốt kèm đơn dễ.", "usp": ["Giá thấp nhất danh mục, hợp mua kèm", "Công suất đủ dùng", "Bảo hành 12 tháng", "Dễ cầm"], "weak": [["Máy sấy chợ không bảo hành", "Nhanh cháy, nóng khét tóc"], ["Máy sấy công suất thấp", "Sấy lâu, tóc dài mãi không khô"], ["Máy sấy salon", "Đắt, nặng, không cần cho gia đình"], ["Ra tiệm sấy", "Tốn tiền, mất thời gian"]], "hook": "Không cần ra tiệm: máy sấy dưới 300k, bảo hành 12 tháng.", "note": "Kịch bản mỏng, thiếu chế độ nhiệt/gió. Nên dùng làm sản phẩm chốt kèm."}]};
+const fmt = n => n.toLocaleString('vi-VN') + 'đ';
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const brands = Object.keys(DATA.brands);
+DATA.products.forEach((p, i) => p.id = i);
+let current = 'all', query = '', sample = null, downloads = null;
+try { current = localStorage.getItem('brand') || 'all'; } catch (e) {}
+if (current !== 'all' && !brands.includes(current)) current = 'all';
+
+function matches(p){
+  if (!query) return true;
+  const hay = [p.b,p.n,p.c,p.core,...p.usp,...p.weak.flat(),p.hook,p.note].join(' ').toLowerCase();
+  return query.split(/\s+/).every(w => hay.includes(w));
+}
+function renderStats(){
+  const ps = DATA.products;
+  const notes = ps.filter(p => p.note).length;
+  const lives = ps.flatMap(p => p.p.map(x => x[2]));
+  document.getElementById('stats').innerHTML =
+    `<span><b>${brands.length}</b> thương hiệu</span><span><b>${ps.length}</b> sản phẩm</span>` +
+    `<span>Giá live từ <b>${fmt(Math.min(...lives))}</b> đến <b>${fmt(Math.max(...lives))}</b></span>` +
+    `<span><b>${notes}</b> sản phẩm có lưu ý cần sửa kịch bản</span>`;
+}
+function renderRail(){
+  const rail = document.getElementById('rail');
+  const items = [['all','Tất cả', DATA.products.length], ...brands.map(b => [b, b, DATA.products.filter(p => p.b === b).length])];
+  rail.innerHTML = items.map(([k,l,c]) => `<button data-b="${esc(k)}" aria-pressed="${k===current}"><span>${esc(l)}</span><span class="ct">${c}</span></button>`).join('');
+}
+function priceCell(p){
+  return p.p.map(([lb,o,l]) => `<div class="pr"><span class="lb">${esc(lb)}</span><span class="v"><s>${fmt(o)}</s> → <span class="live">${fmt(l)}</span><span class="off">−${Math.round((1-l/o)*100)}%</span></span></div>`).join('');
+}
+function row(p){
+  return `<tr data-id="${p.id}">
+    <td class="name"><strong>${esc(p.n)}</strong><span class="cat">${esc(p.c)}</span></td>
+    <td class="price">${priceCell(p)}</td>
+    <td class="core">${esc(p.core)}${p.note ? `<div class="note"><b>Lưu ý:</b> ${esc(p.note)}</div>` : ''}</td>
+    <td><ul class="weak">${p.weak.map(([a,b]) => `<li><b>${esc(a)}:</b> ${esc(b)}</li>`).join('')}</ul></td>
+    <td class="act"><button data-open="${p.id}" aria-expanded="false">Chi tiết</button></td>
+  </tr>`;
+}
+function detailRow(p){
+  return `<tr class="det" data-det="${p.id}"><td colspan="5"><div class="detail">
+    <div><h4>Điểm mạnh để nhấn</h4><ul>${p.usp.map(u => `<li>${esc(u)}</li>`).join('')}</ul></div>
+    <div><h4>Thông số chính</h4><ul>${p.s.map(u => `<li>${esc(u)}</li>`).join('')}</ul></div>
+    <div><h4>Câu mở live</h4><p class="hook">“${esc(p.hook)}”</p><button data-copy="${p.id}">Sao chép câu mở</button></div>
+  </div>
+  <div class="ai-zone" ${aiReady() ? '' : 'hidden'} style="margin-top:12px">
+    <div class="ai-bar">
+      <select aria-label="Loại nội dung" id="kind-${p.id}">
+        <option value="live">Kịch bản live 60 giây</option>
+        <option value="objection">Xử lý 5 câu khách hay hỏi, chê</option>
+        <option value="post">Bài đăng Facebook ngắn</option>
+        <option value="compare">So sánh với hàng cùng loại (bảng)</option>
+      </select>
+      <button class="primary" data-ai="${p.id}">Viết bằng AI</button>
+      <span class="muted" id="st-${p.id}"></span>
+    </div>
+    <div class="ai-out" id="out-${p.id}" hidden></div>
+  </div></td></tr>`;
+}
+function render(){
+  const main = document.getElementById('main');
+  const list = current === 'all' ? brands : [current];
+  let html = '', total = 0;
+  for (const b of list){
+    const ps = DATA.products.filter(p => p.b === b && matches(p));
+    if (!ps.length) continue;
+    total += ps.length;
+    html += `<section class="brand"><div class="bhead"><h2>${esc(b)}</h2><span>${esc(DATA.brands[b])} · ${ps.length} sản phẩm</span></div>
+      <div class="scroll"><table><thead><tr><th>Sản phẩm</th><th>Giá gốc → Giá live</th><th>Trọng tâm chủ đạo</th><th>Hàng cùng loại ngoài thị trường chưa tối ưu</th><th></th></tr></thead>
+      <tbody>${ps.map(row).join('')}</tbody></table></div></section>`;
+  }
+  main.innerHTML = total ? html : `<div class="empty">Không có sản phẩm nào khớp “${esc(query)}”.</div>`;
+}
+function toast(msg){
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 1800);
+}
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); toast('Đã sao chép'); }
+  catch (e) { toast('Không sao chép được, hãy bôi đen để copy'); }
+}
+
+const PROMPTS = {
+  live: 'Viết kịch bản livestream bán hàng khoảng 60 giây: mở bằng nỗi đau của khách, nêu 3 điểm mạnh, so với hàng cùng loại chưa tối ưu (không nêu tên thương hiệu đối thủ), báo giá gốc và giá live, kêu gọi chốt đơn.',
+  objection: 'Liệt kê 5 câu khách hay hỏi hoặc chê khi xem live sản phẩm này, mỗi câu kèm câu trả lời ngắn, thật thà, thuyết phục.',
+  post: 'Viết một bài đăng Facebook bán hàng khoảng 120 chữ, giọng gần gũi, có giá live và lời kêu gọi nhắn tin.',
+  compare: 'Lập bảng so sánh dạng văn bản (dùng ký tự |) giữa sản phẩm này và 3 loại hàng cùng loại ngoài thị trường, theo 5 tiêu chí khách quan tâm nhất. Không nêu tên thương hiệu đối thủ.'
+};
+function productBrief(p){
+  return `Thương hiệu: ${p.b}\nSản phẩm: ${p.n} (${p.c})\nGiá: ${p.p.map(([l,o,v]) => `${l}: gốc ${fmt(o)}, live ${fmt(v)}`).join('; ')}\nThông số: ${p.s.join('; ')}\nTrọng tâm: ${p.core}\nĐiểm mạnh: ${p.usp.join('; ')}\nHàng cùng loại chưa tối ưu: ${p.weak.map(w => w[0]+': '+w[1]).join('; ')}\nLưu ý kịch bản: ${p.note || 'không có'}`;
+}
+const RULES = 'Bạn là trợ lý viết nội dung bán hàng gia dụng bằng tiếng Việt cho người bán livestream. Chỉ dùng thông tin được cung cấp, không bịa thông số, xuất xứ hay chứng nhận. Tránh từ tuyệt đối như "an toàn tuyệt đối", "vĩnh cửu", "số 1". Không nêu tên thương hiệu đối thủ. Trả lời bằng văn bản thuần, không dùng markdown đậm/nghiêng.';
+const ctrls = {};
+const IN_CLAUDE = !!(window.claude && window.claude.use);
+const store = {
+  get(k){ try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } },
+  set(k, v){ try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} }
+};
+let apiKey = IN_CLAUDE ? '' : store.get('anthropic_key');
+let model = store.get('anthropic_model') || 'claude-opus-5-5';
+let AnthropicSDK = null;
+const aiReady = () => !!(sample || apiKey);
+
+// Calls Claude through the official SDK with the viewer's own key (GitHub Pages version).
+async function apiGenerate(prompt, onText, signal){
+  if (!AnthropicSDK) AnthropicSDK = (await import('https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@1.3.0/+esm')).default;
+  const client = new AnthropicSDK({ apiKey, dangerouslyAllowBrowser: true });
+  const stream = client.beta.messages.stream({
+    model, max_tokens: 64000,
+    betas: ['server-side-fallback-2026-07-01'],
+    fallbacks: 'default',
+    system: RULES,
+    messages: [{ role: 'user', content: prompt }]
+  }, { signal });
+  let text = '';
+  for await (const ev of stream){
+    if (ev.type === 'content_block_delta' && ev.delta.type === 'text_delta'){ text += ev.delta.text; onText(text); }
+  }
+  const msg = await stream.finalMessage();
+  if (msg.stop_reason === 'refusal') throw Object.assign(new Error('Claude từ chối yêu cầu này. Hãy diễn đạt lại.'), { text });
+  if (msg.stop_reason === 'max_tokens') text += '\n\n[Bị cắt do quá dài]';
+  return text;
+}
+function apiErrorText(e){
+  const A = AnthropicSDK;
+  if (A && e instanceof A.AuthenticationError) return 'API key sai hoặc đã bị thu hồi. Mở “Cài đặt AI” để nhập lại.';
+  if (A && e instanceof A.PermissionDeniedError) return 'Key không có quyền dùng model này. Thử chọn model khác.';
+  if (A && e instanceof A.RateLimitError) return 'Đang vượt giới hạn tốc độ hoặc hết hạn mức, thử lại sau ít phút.';
+  if (A && e instanceof A.BadRequestError) return 'Yêu cầu không hợp lệ: ' + e.message;
+  if (A && e instanceof A.APIConnectionError) return 'Không kết nối được tới Anthropic, kiểm tra mạng.';
+  if (A && e instanceof A.APIError) return 'Lỗi từ Anthropic (' + e.status + '): ' + e.message;
+  return (e && e.message) || 'lỗi không rõ';
+}
+async function runAI(prompt, outEl, stEl, btn, key){
+  if (ctrls[key]) ctrls[key].abort();
+  const ctrl = ctrls[key] = new AbortController();
+  outEl.hidden = false; outEl.textContent = ''; stEl.textContent = 'Đang viết…'; btn.disabled = true;
+  try {
+    let text;
+    if (sample){
+      const r = await sample(`${RULES}\n\n${prompt}`, { signal: ctrl.signal, cache: false, onText: ({text}) => { outEl.textContent = text; } });
+      text = r.text;
+    } else {
+      text = await apiGenerate(prompt, t => { outEl.textContent = t; }, ctrl.signal);
+    }
+    outEl.textContent = text; stEl.textContent = '';
+    const cb = document.createElement('button'); cb.textContent = 'Sao chép';
+    cb.onclick = () => copy(text); stEl.appendChild(cb);
+  } catch (e) {
+    if (e && e.code === 'not_granted') { stEl.textContent = 'Bạn chưa cho phép trang dùng AI.'; }
+    else if (e && e.code === 'rate_limited') { stEl.textContent = 'Đang quá nhiều yêu cầu, thử lại sau ít phút.'; }
+    else if (ctrl.signal.aborted || (e && e.name === 'AbortError')) { stEl.textContent = ''; }
+    else { stEl.textContent = 'AI chưa trả lời được: ' + (sample ? ((e && e.message) || 'lỗi không rõ') : apiErrorText(e)); if (e && e.text) outEl.textContent = e.text; }
+  } finally { btn.disabled = false; }
+}
+function refreshAI(){
+  document.getElementById('askBox').hidden = !aiReady();
+  document.querySelectorAll('.ai-zone').forEach(z => z.hidden = !aiReady());
+  const kb = document.getElementById('keyBtn');
+  kb.textContent = apiKey ? 'Cài đặt AI ✓' : 'Cài đặt AI';
+}
+
+document.getElementById('rail').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  current = b.dataset.b; try { localStorage.setItem('brand', current); } catch (_) {}
+  renderRail(); render();
+});
+document.getElementById('q').addEventListener('input', e => { query = e.target.value.trim().toLowerCase(); render(); });
+document.getElementById('main').addEventListener('click', e => {
+  const o = e.target.closest('[data-open]');
+  if (o){
+    const id = +o.dataset.open, tr = o.closest('tr'), ex = document.querySelector(`[data-det="${id}"]`);
+    if (ex){ ex.remove(); o.setAttribute('aria-expanded','false'); o.textContent = 'Chi tiết'; }
+    else { tr.insertAdjacentHTML('afterend', detailRow(DATA.products[id])); o.setAttribute('aria-expanded','true'); o.textContent = 'Thu gọn'; }
+    return;
+  }
+  const c = e.target.closest('[data-copy]');
+  if (c){ copy(DATA.products[+c.dataset.copy].hook); return; }
+  const a = e.target.closest('[data-ai]');
+  if (a && aiReady()){
+    const id = +a.dataset.ai, p = DATA.products[id], kind = document.getElementById('kind-'+id).value;
+    runAI(`Thông tin sản phẩm:\n${productBrief(p)}\n\nYêu cầu: ${PROMPTS[kind]}`, document.getElementById('out-'+id), document.getElementById('st-'+id), a, 'p'+id);
+  }
+});
+document.getElementById('askBtn').addEventListener('click', e => {
+  const q = document.getElementById('askIn').value.trim(); if (!q || !aiReady()) return;
+  const cat = DATA.products.map(productBrief).join('\n---\n');
+  runAI(`Danh mục sản phẩm của shop:\n${cat}\n\nCâu hỏi: ${q}`, document.getElementById('askOut'), document.getElementById('askState'), e.currentTarget, 'ask');
+});
+document.getElementById('exportBtn').addEventListener('click', async () => {
+  const head = ['Thương hiệu','Sản phẩm','Loại','Phiên bản','Giá gốc','Giá live','Giảm %','Trọng tâm','Điểm mạnh','Thông số','Hàng cùng loại chưa tối ưu','Câu mở live','Lưu ý'];
+  const q = v => '"' + String(v).replace(/"/g,'""') + '"';
+  const rows = [head];
+  for (const p of DATA.products) for (const [lb,o,l] of p.p)
+    rows.push([p.b,p.n,p.c,lb,o,l,Math.round((1-l/o)*100),p.core,p.usp.join('\n'),p.s.join('\n'),p.weak.map(w=>w[0]+': '+w[1]).join('\n'),p.hook,p.note]);
+  const csv = '\ufeff' + rows.map(r => r.map(q).join(',')).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  if (downloads){
+    try { await downloads.save({ filename: 'so-tay-ban-hang.csv', data: blob }); } catch (e) { toast('Chưa tải được file'); }
+  } else {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'so-tay-ban-hang.csv';
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+});
+
+renderStats(); renderRail(); render();
+
+if (!IN_CLAUDE){
+  // Standalone (GitHub Pages): CSV export via plain download, AI via the viewer's own API key.
+  document.getElementById('exportBtn').hidden = false;
+  const kb = document.getElementById('keyBtn'), box = document.getElementById('keyBox');
+  kb.hidden = false;
+  document.getElementById('modelIn').value = model;
+  kb.addEventListener('click', () => { box.hidden = !box.hidden; kb.setAttribute('aria-expanded', String(!box.hidden)); });
+  document.getElementById('keySave').addEventListener('click', () => {
+    const v = document.getElementById('keyIn').value.trim();
+    model = document.getElementById('modelIn').value; store.set('anthropic_model', model);
+    if (v){
+      if (!v.startsWith('sk-ant-')) { document.getElementById('keyState').textContent = 'Key phải bắt đầu bằng sk-ant-'; return; }
+      apiKey = v; store.set('anthropic_key', v); document.getElementById('keyIn').value = '';
+    }
+    document.getElementById('keyState').textContent = apiKey ? 'Đã lưu. Mở “Chi tiết” một sản phẩm để dùng AI.' : 'Chưa có key.';
+    refreshAI();
+  });
+  document.getElementById('keyClear').addEventListener('click', () => {
+    apiKey = ''; store.set('anthropic_key', ''); document.getElementById('keyState').textContent = 'Đã xóa key khỏi máy này.'; refreshAI();
+  });
+  if (!apiKey) { box.hidden = false; kb.setAttribute('aria-expanded', 'true'); }
+  refreshAI();
+} else {
+  (async () => {
+    try {
+      const [s, d] = await Promise.all([claude.use('sample'), claude.use('downloads')]);
+      if (s){ sample = s; refreshAI(); }
+      if (d){ downloads = d; document.getElementById('exportBtn').hidden = false; }
+    } catch (e) {}
+  })();
+}
+</script>
+
+</body>
+</html>
