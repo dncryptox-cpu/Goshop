@@ -1458,6 +1458,38 @@
 </div>
 
 <!-- ═════════════ SHEET: XEM LỆNH ═════════════ -->
+<!-- ═════════════ XEM ẢNH LỚN (mọi ảnh trong bài / tài nguyên / lệnh — không mở tab mới) ═════════════ -->
+<div x-show="zm" x-cloak class="fixed inset-0 z-[80] bg-black flex flex-col md:flex-row" @click.self="zm = null">
+    <template x-if="zm">
+        <div class="contents">
+            <div class="flex-1 min-h-0 flex items-center justify-center p-3 md:p-6 relative" @click.self="zm = null">
+                <img :src="zm.list[zm.i].src" class="max-w-full max-h-full object-contain rounded-xl" alt="">
+                <button x-show="zm.i > 0" @click="zmStep(-1)" class="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 text-ink text-xl flex items-center justify-center" title="Ảnh trước">‹</button>
+                <button x-show="zm.i < zm.list.length - 1" @click="zmStep(1)" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 text-ink text-xl flex items-center justify-center" title="Ảnh sau">›</button>
+                <button @click="zm = null" class="md:hidden absolute top-3 right-3 w-9 h-9 rounded-full bg-white/10 text-ink flex items-center justify-center" title="Đóng">✕</button>
+            </div>
+            <div class="md:w-[360px] max-h-[40vh] md:max-h-none overflow-y-auto border-t md:border-t-0 md:border-l border-line p-4 space-y-3" style="background: var(--surface)">
+                <div class="flex items-center justify-between">
+                    <span class="caption num" x-text="(zm.i + 1) + '/' + zm.list.length"></span>
+                    <button @click="zm = null" class="btn btn-plain !px-1">Đóng</button>
+                </div>
+                <div x-show="zm.list[zm.i].cap" class="text-[16px] font-semibold" x-text="zm.list[zm.i].cap"></div>
+                <template x-if="zmFeat">
+                    <div class="space-y-3">
+                        <div class="caption">AI đọc chart</div>
+                        <template x-for="row in [['Setup','setup'],['Cấu trúc','structure'],['Vị trí vào','location'],['Tín hiệu','trigger'],['Khung lớn','trend'],['Bối cảnh','desc']]" :key="row[1]">
+                            <div x-show="zmFeat[row[1]]">
+                                <div class="caption uppercase tracking-wide" x-text="row[0]"></div>
+                                <div class="text-[14px] text-ink-2 leading-relaxed" x-text="zmFeat[row[1]]"></div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+</div>
+
 <!-- Xem lớn 1 case (ngay trong trang, không mở tab mới) -->
 <div x-show="sim.zoom" x-cloak class="fixed inset-0 z-50 bg-black flex flex-col md:flex-row" @click.self="sim.zoom = null">
     <template x-if="sim.zoom">
@@ -2280,6 +2312,7 @@ Trả về đúng 1 object JSON:
         return {
             TABS, SLOTS,
             t9: { loaded: false, docs: {}, saved: '', uploading: 0, aiId: '', drag: false },
+            zm: null, zmCache: {},
             sim: { open: false, zoom: null, imgs: { HTF: '', MTF: '', LTF: '' }, slot: 'LTF', dir: '', busy: '', q: null, results: null, summary: '',
                    idx: { run: false, done: 0, todo: 0, total: 0, indexed: 0, failed: 0, err: '' } },
             booting: true, isLocked: true, busy: false, syncing: false, isAdmin: false, isMember: false,
@@ -2313,6 +2346,7 @@ Trả về đúng 1 object JSON:
 
             // ═════════════ KHỞI ĐỘNG / ĐĂNG NHẬP ═════════════
             async init() {
+                document.addEventListener('click', e => this.zmClick(e));
                 window.addEventListener('beforeunload', e => {
                     if (this.trades.some(t => t._state !== 'ok') || this.bt.trades.some(t => t._state !== 'ok')) { e.preventDefault(); e.returnValue = ''; }
                 });
@@ -2750,6 +2784,31 @@ Nếu dưới 3 lệnh có kết quả thì nói rõ dữ liệu còn ít. Khôn
                 finally { S.busy = ''; this.icons(); }
             },
             simOpen(c) { this.sim.zoom = c; },
+            // Bấm ảnh (trong bài viết, tài nguyên, lệnh) → xem lớn ngay trong trang, ‹ › qua các ảnh cùng bài
+            zmClick(e) {
+                if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+                const img = e.target.closest('img'); if (!img) return;
+                const a = img.closest('a');
+                const isImgUrl = u => /\.(png|jpe?g|webp|gif)(\?|#|$)|\/trade-images\/|googleusercontent\.com|drive\.google\.com\/thumbnail/i.test(u || '');
+                const inProse = img.closest('.prose-dnc');
+                if (!inProse && !(a && a.target === '_blank' && isImgUrl(a.getAttribute('href')))) return;
+                if (a && !isImgUrl(a.getAttribute('href'))) return;   // ảnh bọc link tới trang khác → giữ nguyên
+                e.preventDefault();
+                const box = inProse || a.parentElement;
+                const imgs = [...box.querySelectorAll('img')].filter(x => x.getAttribute('src'));
+                const list = imgs.map(x => { const l = x.closest('a'); const src = l && isImgUrl(l.getAttribute('href')) ? l.href : x.src; return { src, cap: x.getAttribute('alt') && x.getAttribute('alt') !== 'Chart' ? x.getAttribute('alt') : '' }; });
+                this.zm = { list, i: Math.max(0, imgs.indexOf(img)) };
+                this.zmLoad();
+            },
+            zmStep(d) { if (!this.zm) return; const i = this.zm.i + d; if (i >= 0 && i < this.zm.list.length) { this.zm.i = i; this.zmLoad(); } },
+            get zmFeat() { const z = this.zm; const f = z && this.zmCache[z.list[z.i].src]; return f && Object.keys(f).length ? f : null; },
+            async zmLoad() {
+                const src = this.zm && this.zm.list[this.zm.i].src;
+                if (!src || this.isLocked || src in this.zmCache) return;
+                this.zmCache[src] = {};
+                const { data } = await sb.from('chart_ai').select('features').eq('img', src).limit(1);
+                if (data && data[0]) this.zmCache = { ...this.zmCache, [src]: data[0].features || {} };
+            },
             get simZoomIdx() { return (this.sim.results || []).indexOf(this.sim.zoom); },
             simZoomStep(d) { const r = this.sim.results || [], i = this.simZoomIdx + d; if (i >= 0 && i < r.length) this.sim.zoom = r[i]; },
             simOpenTrade(c) {
@@ -4122,6 +4181,12 @@ Return ONLY a raw JSON object, no markdown, no explanation:
 
             // ═════════════ PHÍM TẮT ═════════════
             onKey(e) {
+                if (this.zm) {
+                    if (e.key === 'Escape') this.zm = null;
+                    else if (e.key === 'ArrowLeft') this.zmStep(-1);
+                    else if (e.key === 'ArrowRight') this.zmStep(1);
+                    return;
+                }
                 if (e.key === 'Escape' && this.planForm) { this.planForm = null; return; }
                 if (e.key === 'Escape' && this.gate) return this.closeGate();
                 if (e.key === 'Escape' && this.rpage && !this.res.form && !this.loginOpen) return this.closeResPage();
