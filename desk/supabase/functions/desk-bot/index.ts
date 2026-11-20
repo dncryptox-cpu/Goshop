@@ -755,7 +755,7 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   mail_ok: ["Đổi mail: đã ghi nhận", "📝 Đã ghi nhận yêu cầu đổi {email} → {moi}.\nShop đổi xong và gửi lời mời, bot sẽ nhắn bạn tại đây."],
   mail_done: ["Đổi mail: nhắn khi xong", "✅ Đã đổi sang {email} và gửi lời mời."],
   renew_pick: ["Gia hạn: chọn gói", "🔁 Chọn gói gia hạn cho {email}:"],
-  renewed: ["Bán: nhắn khi gia hạn xong", "✅ Đã gia hạn {email} thành công. Cảm ơn bạn!"],
+  renewed: ["Bán: nhắn khi gia hạn xong ({hsd} = hạn mới)", "✅ Đã gia hạn {email} thành công.\nHạn dùng mới: {hsd}\n\nNếu có lỗi gì bạn nhắn lại cho mình nhé, mình luôn sẵn sàng hỗ trợ. Cảm ơn bạn!"],
   sell_info: ["Bán SP khác: hỏi thông tin nhận hàng (SP không tự giao)", "Gửi email (hoặc thông tin) để nhận {goi}."],
   cc_email: ["Chính chủ: hỏi email (trước khi thanh toán)", "Gửi email bạn muốn nâng cấp {goi} (vd: abc@gmail.com)."],
   cc_done: ["Chính chủ: nhắn khi admin đã mời/kích hoạt", "🎉 Đã kích hoạt {goi} cho {email}. Bạn kiểm tra email và chấp nhận lời mời nhé!"],
@@ -1479,13 +1479,20 @@ async function cusReport(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems:
 }
 
 /* Thay Fam gọi khi Xong / thay fam mời lại. Chỉ nhắn khách đang chờ, mỗi lần 1 tin; câu chữ theo loại (lỗi / đơn mới / gia hạn). */
-async function cusNotify(emails: string[], kind: string) {
+async function cusNotify(emails: string[], kind: string, info: { hsd?: string } = {}) {
   const cfg = await cusCfg(), doc = await cusGet(); let sent = 0;
   for (const raw of emails) {
     const e = String(raw).toLowerCase(), s = doc.subs[e];
     if (!s || !s.pending) continue;
     let msg: string;
-    if (s.kind === "renew") msg = T(cfg, "renewed", { email: e });
+    if (s.kind === "renew") {
+      let hsd = info.hsd || "";
+      if (!hsd) { try { const r = await tfFind(e); hsd = r?.arch ? r.arch.hsd : r?.c?.hsd || ""; } catch (_) { /* không tra được thì bỏ dòng hạn */ } }
+      msg = T(cfg, "renewed", { email: e, hsd: hsd || "—" });
+      const raw = String(cfg.texts.renewed || "").trim() || CUS_TEXTS.renewed[1];   // câu tự sửa không có {hsd} → vẫn thêm hạn mới
+      if (hsd && !/\{hsd\}/.test(raw)) msg += `\nHạn dùng mới: <b>${esc(hsd)}</b>\nNếu có lỗi gì bạn nhắn lại cho mình nhé, mình luôn sẵn sàng hỗ trợ.`;
+      if (!hsd) msg = msg.replace(/\n?Hạn dùng mới: —/, "");
+    }
     else if (s.kind === "mail") msg = `${T(cfg, "mail_done", { email: s.to || e })}\n\n${T(cfg, "guide", { email: s.to || e })}`;
     else if (s.kind === "order") msg = `${T(cfg, "activated", { email: e })}\n\n${T(cfg, "guide", { email: e })}`;
     else msg = `${T(cfg, kind === "invited" ? "invited" : "fixed", { email: e })}\n\n${T(cfg, "guide", { email: e })}`;
@@ -1827,7 +1834,7 @@ async function renewCallback(q: any, a: string, id: string) {
     // việc phụ chạy song song cho nhanh
     const [, sent] = await Promise.all([
       p.qid ? tf({ action: "queue", op: "set", id: p.qid, line: p.li, status: "xong", note: "Gia hạn " + msg + " (duyệt trên bot)" }).catch((e) => console.error("queue set", (e as Error).message)) : null,
-      cusNotify([r.c.email], "renew").catch(() => 0),
+      cusNotify([r.c.email], "renew", { hsd: x.hsd || x.newHsd || "" }).catch(() => 0),
     ]);
     const lines = [`✅ <b>Đã gia hạn</b> ${esc(x.sku || "")}: <code>${esc(r.c.email)}</code>`, `HSD ${esc(x.oldHsd || r.c.hsd)} → <b>${esc(x.hsd || x.newHsd || "")}</b> · ${esc(r.f.rn)}`];
     if (slow) lines.push("⚠️ Thay Fam trả lời chậm nhưng HSD đã đổi → coi như đã gia hạn. Kiểm tra dòng Tài chính + data gốc trong sheet.");
