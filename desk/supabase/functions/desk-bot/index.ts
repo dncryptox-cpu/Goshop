@@ -1119,7 +1119,6 @@ async function cusRenewCard(o: CusOrder, line: string) {
   const p: RenewP = { qid, li: 0, email: o.email, months: o.months, base: "old", product: "Youtube", at: Date.now() };
   let r: any = await tfFind(o.email); if (r?.phuOf) r = { phuOf: true, c: r.c };
   if (r?.c?.hsd) p.hsd0 = r.c.hsd;
-  if (r?.c && r.c.daysLeft != null && r.c.daysLeft < -3) p.base = "today";   // hết hạn lâu → tính từ hôm nay
   const cd = renewCard(p, r);
   if (!cd.kb) return { text: cd.text, kb: null };
   const store = await renewGet(), id = Date.now().toString(36) + "c"; store[id] = p; await renewPut(store);
@@ -1318,7 +1317,7 @@ async function tuanOrder(m: any, ln: string, k: NonNullable<ReturnType<typeof li
   }
   if (r0.arch || r0.phuOf) return null;   // vùng lưu / mail phụ → tab Lệnh như cũ
   const p: RenewP = { qid: "", li: 0, email: e, months: k.months, base: "old", product: k.product, at: Date.now(), tuan: { mid: m.message_id, price }, hsd0: r0.c.hsd };
-  if (r0.c.daysLeft != null && r0.c.daysLeft < 0 && k.start) { const st = pDate(k.start); if (st != null && Math.abs(daysU(st)) < 4) p.base = "today"; }
+  // mặc định nối HSD cũ; muốn tính từ hôm nay thì bấm nút trên thẻ
   const cd = renewCard(p, r0);
   if (!cd.kb) return null;
   const store = await renewGet(), id = Date.now().toString(36) + "t"; store[id] = p; await renewPut(store);
@@ -1835,7 +1834,7 @@ async function renewCards(body: string, from: string) {
     if (r?.phuOf) r = { phuOf: true, c: r.c };
     if (r?.c?.hsd) p.hsd0 = r.c.hsd;
     // khách hết hạn mà ngày mua ghi trong tin ≈ hôm nay → mua lại, tính từ hôm nay (giống web)
-    if (r?.c && r.c.daysLeft < 0 && k.start) { const st = pDate(k.start); if (st != null && Math.abs(daysU(st)) < 4) p.base = "today"; }
+    // mặc định nối HSD cũ; muốn tính từ hôm nay thì bấm nút "Tính từ hôm nay"
     const cd = renewCard(p, r);
     if (cd.kb) {
       const id = Date.now().toString(36) + w.i; store[id] = p;
