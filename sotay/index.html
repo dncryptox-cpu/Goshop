@@ -80,9 +80,15 @@ td.act button{width:100%;font-size:13px;padding:6px 8px}
 .ai-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .ai-bar select{padding:6px 10px}
 .muted{color:var(--muted)}
-.ask{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px}
 .ask h3{margin:0 0 4px;font-size:16px}
-.ask textarea{width:100%;min-height:64px;resize:vertical;margin:8px 0}
+.ask textarea{width:100%;min-height:80px;resize:vertical;margin:8px 0}
+dialog.ask{background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(640px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto;box-shadow:0 20px 50px rgb(0 0 0 / .25)}
+dialog.ask::backdrop{background:rgb(10 20 25 / .45)}
+.dhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.xbtn{border:0;background:transparent;font-size:20px;line-height:1;padding:4px 8px;color:var(--muted)}
+.ai-hint{margin-top:12px;border:0;background:transparent;color:var(--accent);padding:0;text-decoration:underline;text-underline-offset:3px}
+#keyBtn .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:middle}
+#keyBtn.on .dot{background:var(--good)}
 .empty{padding:24px;color:var(--muted)}
 .toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:13px}
 @media (max-width:820px){
@@ -102,12 +108,13 @@ td.act button{width:100%;font-size:13px;padding:6px 8px}
     <div class="tools">
       <input type="search" id="q" placeholder="Tìm sản phẩm, loại, từ khóa…" aria-label="Tìm sản phẩm">
       <button id="exportBtn" hidden>Tải bảng (Excel/CSV)</button>
-      <button id="keyBtn" hidden aria-expanded="false" aria-controls="keyBox">Cài đặt AI</button>
+      <button id="askOpen" hidden>Hỏi AI</button>
+      <button id="keyBtn" hidden aria-haspopup="dialog"><span class="dot"></span>Cài đặt AI</button>
     </div>
   </header>
 
-  <div class="ask" id="keyBox" hidden>
-    <h3>Kết nối Claude API</h3>
+  <dialog class="ask" id="keyBox" aria-labelledby="keyTitle">
+    <div class="dhead"><h3 id="keyTitle">Kết nối Claude API</h3><button class="xbtn" data-close aria-label="Đóng">×</button></div>
     <p class="muted" style="margin:0">Dán API key của bạn (bắt đầu bằng <code>sk-ant-</code>, lấy tại console.anthropic.com). Key chỉ lưu trong trình duyệt của máy này và gửi thẳng tới Anthropic, không lưu lên GitHub hay máy chủ nào khác. Máy dùng chung thì bấm “Xóa key” sau khi dùng.</p>
     <div class="ai-bar" style="margin-top:10px">
       <input type="password" id="keyIn" placeholder="sk-ant-..." autocomplete="off" aria-label="API key" style="flex:1 1 260px;font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 12px">
@@ -120,16 +127,16 @@ td.act button{width:100%;font-size:13px;padding:6px 8px}
       <button id="keyClear">Xóa key</button>
       <span class="muted" id="keyState"></span>
     </div>
-  </div>
+  </dialog>
   <div class="stats" id="stats"></div>
 
-  <div class="ask" id="askBox" hidden>
-    <h3>Hỏi AI về danh mục</h3>
+  <dialog class="ask" id="askBox" aria-labelledby="askTitle">
+    <div class="dhead"><h3 id="askTitle">Hỏi AI về danh mục</h3><button class="xbtn" data-close aria-label="Đóng">×</button></div>
     <p class="muted" style="margin:0">Ví dụ: “So sánh nồi lẩu Hare và Yoake để tư vấn khách 6 người”, “Gợi ý combo dưới 2 triệu cho quà tân gia”.</p>
     <textarea id="askIn" aria-label="Câu hỏi cho AI">Gợi ý 3 combo bán kèm có tổng giá live dưới 2 triệu, kèm câu chốt cho từng combo.</textarea>
     <div class="ai-bar"><button class="primary" id="askBtn">Hỏi AI</button><span class="muted" id="askState"></span></div>
     <div class="ai-out" id="askOut" hidden></div>
-  </div>
+  </dialog>
 
   <div class="layout">
     <nav class="rail" id="rail" aria-label="Thương hiệu"></nav>
@@ -184,6 +191,7 @@ function detailRow(p){
     <div><h4>Thông số chính</h4><ul>${p.s.map(u => `<li>${esc(u)}</li>`).join('')}</ul></div>
     <div><h4>Câu mở live</h4><p class="hook">“${esc(p.hook)}”</p><button data-copy="${p.id}">Sao chép câu mở</button></div>
   </div>
+  ${IN_CLAUDE ? '' : `<button class="ai-hint" data-setup ${aiReady() ? 'hidden' : ''}>Bật AI để viết kịch bản cho sản phẩm này</button>`}
   <div class="ai-zone" ${aiReady() ? '' : 'hidden'} style="margin-top:12px">
     <div class="ai-bar">
       <select aria-label="Loại nội dung" id="kind-${p.id}">
@@ -295,10 +303,12 @@ async function runAI(prompt, outEl, stEl, btn, key){
   } finally { btn.disabled = false; }
 }
 function refreshAI(){
-  document.getElementById('askBox').hidden = !aiReady();
+  document.getElementById('askOpen').hidden = !aiReady();
   document.querySelectorAll('.ai-zone').forEach(z => z.hidden = !aiReady());
+  document.querySelectorAll('.ai-hint').forEach(z => z.hidden = aiReady());
   const kb = document.getElementById('keyBtn');
-  kb.textContent = apiKey ? 'Cài đặt AI ✓' : 'Cài đặt AI';
+  kb.classList.toggle('on', !!apiKey);
+  kb.title = apiKey ? 'Đã kết nối Claude API' : 'Chưa kết nối Claude API';
 }
 
 document.getElementById('rail').addEventListener('click', e => {
@@ -315,6 +325,7 @@ document.getElementById('main').addEventListener('click', e => {
     else { tr.insertAdjacentHTML('afterend', detailRow(DATA.products[id])); o.setAttribute('aria-expanded','true'); o.textContent = 'Thu gọn'; }
     return;
   }
+  if (e.target.closest('[data-setup]')){ openDlg('keyBox'); return; }
   const c = e.target.closest('[data-copy]');
   if (c){ copy(DATA.products[+c.dataset.copy].hook); return; }
   const a = e.target.closest('[data-ai]');
@@ -344,6 +355,15 @@ document.getElementById('exportBtn').addEventListener('click', async () => {
   }
 });
 
+function openDlg(id){
+  const d = document.getElementById(id);
+  if (d.showModal) { if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+}
+document.querySelectorAll('dialog').forEach(d => {
+  d.addEventListener('click', e => { if (e.target === d || e.target.closest('[data-close]')) d.close ? d.close() : d.removeAttribute('open'); });
+});
+document.getElementById('askOpen').addEventListener('click', () => openDlg('askBox'));
+
 renderStats(); renderRail(); render();
 
 if (!IN_CLAUDE){
@@ -352,7 +372,7 @@ if (!IN_CLAUDE){
   const kb = document.getElementById('keyBtn'), box = document.getElementById('keyBox');
   kb.hidden = false;
   document.getElementById('modelIn').value = model;
-  kb.addEventListener('click', () => { box.hidden = !box.hidden; kb.setAttribute('aria-expanded', String(!box.hidden)); });
+  kb.addEventListener('click', () => openDlg('keyBox'));
   document.getElementById('keySave').addEventListener('click', () => {
     const v = document.getElementById('keyIn').value.trim();
     model = document.getElementById('modelIn').value; store.set('anthropic_model', model);
@@ -360,13 +380,13 @@ if (!IN_CLAUDE){
       if (!v.startsWith('sk-ant-')) { document.getElementById('keyState').textContent = 'Key phải bắt đầu bằng sk-ant-'; return; }
       apiKey = v; store.set('anthropic_key', v); document.getElementById('keyIn').value = '';
     }
-    document.getElementById('keyState').textContent = apiKey ? 'Đã lưu. Mở “Chi tiết” một sản phẩm để dùng AI.' : 'Chưa có key.';
+    document.getElementById('keyState').textContent = apiKey ? 'Đã lưu.' : 'Chưa có key.';
     refreshAI();
+    if (apiKey) setTimeout(() => { box.close(); toast('Đã kết nối AI. Mở “Chi tiết” một sản phẩm để dùng.'); }, 500);
   });
   document.getElementById('keyClear').addEventListener('click', () => {
     apiKey = ''; store.set('anthropic_key', ''); document.getElementById('keyState').textContent = 'Đã xóa key khỏi máy này.'; refreshAI();
   });
-  if (!apiKey) { box.hidden = false; kb.setAttribute('aria-expanded', 'true'); }
   refreshAI();
 } else {
   (async () => {
