@@ -1625,6 +1625,7 @@ async function cusBroadcast(id: string, to: string, added: number | null, extra:
 /* tab "📮 Bot khách" trên Thay Fam */
 async function cusAdmin(b: any) {
   const op = String(b.op || "get");
+  if (op === "chat") return { ok: true, log: await docGet<CLog>("cuslog_" + String(b.chat || "").replace(/\D/g, ""), []) };   // lịch sử trò chuyện 1 khách
   let note = "";
   if (op === "deliver") { const r = await cusDeliver(String(b.ma || ""), String(b.note || "")); if (!r.ok) return r; note = "Đã nhắn khách đơn " + b.ma; }
   if (op === "broadcast") { const r = await cusBroadcast(String(b.id || ""), String(b.to || "wait"), b.them === "" || b.them == null ? null : Math.round(+b.them) || null, String(b.extra || "")); if (!r.ok) return r; note = r.msg || ""; }

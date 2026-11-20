@@ -1372,9 +1372,10 @@
                 <label style="font-size:13px"><input type="checkbox" x-model="bot.uBuy"> chỉ khách đã mua</label>
                 <button class="btn sm" @click="botCsv()">Copy CSV</button>
               </div>
-              <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Khách</th><th>Zalo</th><th>Đơn</th><th>Đã trả</th><th>Email</th><th>Lần đầu</th><th>Gần nhất</th><th>Tin cuối</th></tr></thead><tbody>
-                <template x-for="b in botUsers()" :key="b.chat"><tr>
-                  <td><span x-text="b.name || ('#' + b.chat)"></span><div class="mute" style="font-size:12px"><a x-show="b.user" :href="'https://t.me/' + b.user" target="_blank" x-text="'@' + b.user"></a></div></td>
+              <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Khách</th><th>Zalo</th><th>Đơn</th><th>Đã trả</th><th>Email</th><th>Lần đầu</th><th>Gần nhất</th><th>Tin cuối</th></tr></thead>
+                <template x-for="b in botUsers()" :key="b.chat"><tbody><tr>
+                  <td><span x-text="b.name || ('#' + b.chat)"></span><div class="mute" style="font-size:12px"><a x-show="b.user" :href="'https://t.me/' + b.user" target="_blank" x-text="'@' + b.user"></a></div>
+                    <button class="btn sm" style="margin-top:3px" @click="botChat(b.chat)" x-text="bot.chatOpen === b.chat ? '✕ Đóng chat' : '💬 Xem chat'"></button></td>
                   <td class="mono"><a x-show="b.zalo" :href="'https://zalo.me/' + b.zalo" target="_blank" x-text="b.zalo"></a>
                     <button class="btn sm" @click="const z = prompt('Số Zalo của ' + b.name + ':', b.zalo || ''); if (z !== null) botCall('set_zalo', { chat: b.chat, zalo: z })" x-text="b.zalo ? 'Sửa' : '+'"></button></td>
                   <td x-text="b.n || ''"></td><td x-text="b.spent ? Number(b.spent).toLocaleString('vi-VN') + 'đ' : ''"></td>
@@ -1382,8 +1383,20 @@
                   <td x-text="b.first ? new Date(b.first).toLocaleDateString('vi-VN') : ''"></td>
                   <td x-text="new Date(b.last).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })"></td>
                   <td class="mute" style="font-size:12px;max-width:200px;white-space:normal" x-text="b.lastText"></td>
-                </tr></template>
-              </tbody></table></div>
+                </tr>
+                <tr x-show="bot.chatOpen === b.chat"><td colspan="8" style="background:var(--soft,#f6f5f2)">
+                  <div class="mute" x-show="bot.chatLoading">Đang tải…</div>
+                  <div class="mute" x-show="!bot.chatLoading && !(bot.chatLog || []).length">Chưa có lịch sử (bot lưu từ 20/11/2026).</div>
+                  <div style="max-height:420px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:6px 2px">
+                    <template x-for="(m, i) in (bot.chatLog || [])" :key="i">
+                      <div :style="'max-width:78%;padding:6px 10px;border-radius:12px;font-size:13px;word-break:break-word;' + (m.d === 'in' ? 'align-self:flex-end;background:#dcf2d8' : 'align-self:flex-start;background:#fff;border:1px solid var(--line)')">
+                        <div style="white-space:pre-wrap" x-text="m.x"></div>
+                        <div class="mute" style="font-size:11px;margin-top:2px" x-text="(m.d === 'in' ? '👤 khách · ' : '🤖 bot · ') + new Date(m.t).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })"></div>
+                      </div>
+                    </template>
+                  </div>
+                </td></tr></tbody></template>
+              </table></div>
             </div>
 
             <div class="botsave"><span class="err" x-show="bot.err" x-text="'⚠️ ' + bot.err" style="margin:0"></span><span class="mute" x-text="bot.msg"></span><button class="btn pri" @click="botCall('set')" :disabled="bot.saving" x-text="bot.saving ? 'Đang lưu…' : 'Lưu'"></button></div>
@@ -1991,7 +2004,7 @@ const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], 
 function app() {
   return {
     pass: lsGet('thayfam_pass') || '', passInput: '',
-    bot: { d: null, loading: false, saving: false, err: '', msg: '', txtOpen: false, txtEdit: '', khoOpen: '', khoLines: '', khoTimes: 1, khoMsg: '', uq: '', uBuy: false },
+    bot: { d: null, loading: false, saving: false, err: '', msg: '', txtOpen: false, txtEdit: '', khoOpen: '', khoLines: '', khoTimes: 1, khoMsg: '', uq: '', uBuy: false, chatOpen: null, chatLog: [], chatLoading: false },
     askQ: '', askBusy: false, askErr: '', askLog: (() => { try { return JSON.parse(sessionStorage.getItem('tf_ask') || '[]'); } catch (e) { return []; } })(),
     askSamples: ['Hôm nay cần thay fam nào?', 'Fam nào đang bị chặn mời, bao giờ mời lại được?', 'Khách Tuấn hết hạn trong 3 ngày tới', 'Fam nào còn slot trống?', 'Khách nào đã mời mà chưa vào nhóm?', 'Có bao nhiêu khách đang chờ xếp fam?'],
     cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
@@ -2066,6 +2079,17 @@ function app() {
         b.d = r; b.msg = (op === 'set' ? 'Đã lưu ✓' : op === 'setup' ? 'Đã bật bot ✓' : '') + (r.note ? ' · ' + r.note : '');
       } catch (e) { b.err = e.message; }
       b.loading = false; b.saving = false;
+    },
+    async botChat(chat) {
+      const b = this.bot;
+      if (b.chatOpen === chat) { b.chatOpen = null; return; }
+      b.chatOpen = chat; b.chatLog = []; b.chatLoading = true;
+      try {
+        const r = await fetch(CUS_ADMIN_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, op: 'chat', chat: chat }) }).then(x => x.json());
+        if (!r.ok) throw new Error(r.error || 'Lỗi');
+        if (b.chatOpen === chat) b.chatLog = r.log || [];
+      } catch (e) { b.err = 'Tải chat lỗi: ' + e.message; }
+      b.chatLoading = false;
     },
     botUsers() {
       const q = (this.bot.uq || '').toLowerCase().trim();
