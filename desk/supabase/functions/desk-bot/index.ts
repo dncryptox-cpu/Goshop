@@ -317,7 +317,7 @@ async function listOpen() {
   return { late, dueToday, fresh, later, text: (sec("🔴 Quá hạn", late) + sec("📌 Hôm nay", dueToday) + sec("📥 Mới vào / đang làm", fresh)).trim() };
 }
 async function help() {
-  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/hoi + câu hỏi (hoặc tin bắt đầu bằng ?) — hỏi trợ lý Thay Fam: khách ở fam nào, fam nào cần thay, khách Tuấn sắp hết hạn…\n/xong 12 — đánh dấu mục #12 xong\n/tuan — công nợ CTV Tuấn (/tuan clear khi Tuấn trả hết, /tuan help xem hướng dẫn)\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email khách (đổi mail, gia hạn, hủy, mất pre…) tự vào Thay Fam, không vào Desk. Muốn lưu Desk thì gõ /desk + tin.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
+  return say(`<b>Desk Inbox</b>\nNhắn bất cứ thứ gì cho bot — chữ, ảnh chụp, file, voice, tin chuyển tiếp — nó lưu vào <a href="${DESK}">godnc.com/desk</a> và tự đặt tiêu đề, loại, hạn.\n\n/homnay — việc shop sáng nay (YTB, Netflix, GPT, GG1, CapCut)\n/viec — xem việc cần xử lý\n/hoi + câu hỏi (hoặc tin bắt đầu bằng ?) — hỏi trợ lý Thay Fam: khách ở fam nào, fam nào cần thay, khách Tuấn sắp hết hạn…\n/xong 12 — đánh dấu mục #12 xong\n/nhac — xem khách sắp/đã đến hạn bot sẽ nhắc (/nhac gui để gửi ngay; mỗi sáng bot tự gửi) · /lich_&lt;id&gt; xem trò chuyện với khách\n/tuan — công nợ CTV Tuấn (/tuan clear khi Tuấn trả hết, /tuan help xem hướng dẫn)\n/tf + tin — đưa lệnh đổi mail / gia hạn / đơn mới / hủy vào Thay Fam. Tin có email khách (đổi mail, gia hạn, hủy, mất pre…) tự vào Thay Fam, không vào Desk. Muốn lưu Desk thì gõ /desk + tin.\nHoặc bấm nút ngay dưới mỗi tin xác nhận.`);
 }
 async function setStatus(id: number, patch: any) {
   if (patch.status) patch.done_at = patch.status === "done" ? new Date().toISOString() : null;
@@ -517,6 +517,7 @@ async function digest() {
   // Gộp: việc shop (Hôm nay) + Desk vào 1 tin buổi sáng
   const deskText = (L.late.length || L.dueToday.length || L.fresh.length) ? `${L.later ? `<i>${L.later} mục hẹn sau/đang chờ</i>\n` : ""}${L.text}` : "";
   await sendBrief(deskText);
+  try { await cusRemind(); } catch (e) { console.error("cus remind", (e as Error).message); await say(`⚠️ Nhắc đến hạn qua bot khách lỗi: ${esc((e as Error).message)}`).catch(() => {}); }
   return { sent: true };
 }
 
@@ -716,7 +717,25 @@ async function tuanHandle(m: any) {
    Không lộ RN, mail fam, CTV, tên shop. Chỉ phục vụ khách CTV Dnc. */
 const CUS_TOKEN = Deno.env.get("CUS_BOT_TOKEN") || "";
 const CUS_FROM = "Khách lẻ";
-const ctg = (method: string, body: Record<string, unknown>) => tg(method, body, CUS_TOKEN);
+const ctg = async (method: string, body: Record<string, unknown>) => {
+  const r = await tg(method, body, CUS_TOKEN);
+  if (r?.ok && (method === "sendMessage" || method === "sendPhoto") && body.chat_id) clog(body.chat_id as number, "out", String(body.text || body.caption || "[ảnh]")).catch(() => {});
+  return r;
+};
+/* lịch sử trò chuyện với khách (mỗi khách 1 bản ghi, giữ 60 dòng gần nhất) — xem bằng /lich_<chat> trên bot DNC */
+type CLog = { t: number; d: "in" | "out"; x: string }[];
+async function clog(chat: number | string, d: "in" | "out", x: string) {
+  const key = "cuslog_" + chat, l = await docGet<CLog>(key, []);
+  l.push({ t: Date.now(), d, x: x.replace(/<[^>]+>/g, "").slice(0, 400) }); if (l.length > 60) l.splice(0, l.length - 60);
+  await docPut(key, l);
+}
+async function chatHistory(chat: string, n = 30) {
+  const l = await docGet<CLog>("cuslog_" + chat, []), doc = await cusGet(), u = doc.users[chat];
+  const head = `💬 <b>Lịch sử với ${esc(u?.name || chat)}</b>${u?.zalo ? " · Zalo " + esc(u.zalo) : ""}${u?.emails?.length ? "\n" + u.emails.map(esc).join(", ") : ""}`;
+  if (!l.length) return head + "\n\n<i>Chưa có lịch sử (bot mới lưu từ bản này).</i>";
+  const body = l.slice(-n).map((m) => `<b>${fmtAt(m.t)}</b> ${m.d === "in" ? "👤" : "🤖"} ${esc(m.x.length > 220 ? m.x.slice(0, 220) + "…" : m.x)}`).join("\n");
+  return (head + "\n\n" + body).slice(0, 4000);
+}
 const csay = (chat: number | string, text: string, extra: Record<string, unknown> = {}) =>
   ctg("sendMessage", { chat_id: chat, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, ...extra });
 
@@ -755,6 +774,8 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   mail_ok: ["Đổi mail: đã ghi nhận", "📝 Đã ghi nhận yêu cầu đổi {email} → {moi}.\nShop đổi xong và gửi lời mời, bot sẽ nhắn bạn tại đây."],
   mail_done: ["Đổi mail: nhắn khi xong", "✅ Đã đổi sang {email} và gửi lời mời."],
   renew_pick: ["Gia hạn: chọn gói", "🔁 Chọn gói gia hạn cho {email}:"],
+  remind_ytb: ["Nhắc đến hạn: YouTube", "Tài khoản {email} đã đến hạn sử dụng {hsd}. Vui lòng báo lại để bên mình note gia hạn. Tránh trường hợp bị xóa nhóm gia đình sẽ không tham gia được gia đình mới trong 12 tháng (chính sách của Google)."],
+  remind_sp: ["Nhắc đến hạn: sản phẩm khác (CapCut…)", "Gói {goi} của bạn (đơn {ma}) đến hạn ngày {hsd}. Bạn muốn dùng tiếp thì bấm Gia hạn bên dưới nhé."],
   renewed: ["Bán: nhắn khi gia hạn xong ({hsd} = hạn mới)", "✅ Đã gia hạn {email} thành công.\nHạn dùng mới: {hsd}\n\nNếu có lỗi gì bạn nhắn lại cho mình nhé, mình luôn sẵn sàng hỗ trợ. Cảm ơn bạn!"],
   sell_info: ["Bán SP khác: hỏi thông tin nhận hàng (SP không tự giao)", "Gửi email (hoặc thông tin) để nhận {goi}."],
   cc_email: ["Chính chủ: hỏi email (trước khi thanh toán)", "Gửi email bạn muốn nâng cấp {goi} (vd: abc@gmail.com)."],
@@ -968,6 +989,12 @@ async function cusCallback(q: any) {
   await ctg("answerCallbackQuery", { callback_query_id: q.id });
   // sửa ngay tin đang bấm (menu ↔ chi tiết) thay vì gửi tin mới
   const show = async (text: string, kb: any) => { const mid = q.message?.message_id; if (mid && q.message?.text) { const r = await ctg("editMessageText", { chat_id: chat, message_id: mid, text, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: kb }); if (r.ok || /not modified/i.test(r.description || "")) return r; } return csay(chat, text, { reply_markup: kb }); };
+  if (a === "rn") {   // nút "Gia hạn" trong tin nhắc đến hạn
+    const e = String(q.data).slice(3).toLowerCase();
+    if (!sellReady(cfg) || !e.includes("@")) return csay(chat, T(cfg, "support"));
+    doc.state[String(chat)] = { step: "renew", email: e, kind: "renew", at: Date.now() }; await cusPut(doc);
+    return csay(chat, T(cfg, "renew_pick", { email: e }), { reply_markup: packKb(cfg, "r") });
+  }
   if (a === "hd") {   // hướng dẫn có hình
     const r = await ctg("sendPhoto", { chat_id: chat, photo: GUIDE_IMG, caption: T(cfg, "guide_img"), parse_mode: "HTML" });
     if (!r.ok) return csay(chat, T(cfg, "guide_img") + `\n${GUIDE_IMG}`);
@@ -1352,6 +1379,11 @@ function cusOrders(cfg: CusCfg, doc: CusDoc, chat: number) {
 }
 
 async function cusHandle(u: any) {
+  try {
+    const q = u.callback_query, m0 = u.message || u.edited_message;
+    if (q?.message?.chat?.id) { const btn = (q.message.reply_markup?.inline_keyboard || []).flat().find((b: any) => b.callback_data === q.data); clog(q.message.chat.id, "in", "[bấm] " + (btn?.text || q.data)).catch(() => {}); }
+    else if (m0?.chat?.type === "private") clog(m0.chat.id, "in", String(m0.text || m0.caption || (m0.contact ? "[gửi SĐT " + (m0.contact.phone_number || "") + "]" : "[ảnh/tệp]"))).catch(() => {});
+  } catch (_) { /* không sao */ }
   if (u.callback_query) return cusCallback(u.callback_query);
   const m = u.message || u.edited_message; if (!m || m.chat?.type !== "private") return;
   const chat = m.chat.id, text = String(m.text || m.caption || "").trim();
@@ -1405,6 +1437,47 @@ async function cusHandle(u: any) {
 }
 
 const ERR_WORDS = /mất\s*pre|mat\s*pre|lỗi|\bloi\b|không vào|khong vao|ko vào|k vào|bị out|bị kick|bị đá|văng|không xem|ko xem|hết pre|het pre|mất premium/i;
+/* ---------- Nhắc đến hạn qua bot khách (chạy cùng tin sáng ?digest, hoặc gõ /nhac trên bot DNC) ----------
+   YouTube: email khách đã gửi / mua qua bot, là khách CTV Dnc, HSD còn ≤ 1 ngày tới quá hạn ≤ 7 ngày → nhắn 1 lần cho mỗi HSD.
+   Sản phẩm khác (CapCut…): đơn đã giao qua bot, hạn = ngày mua + thời hạn gói. Báo DNC danh sách + /lich_<chat> xem trò chuyện. */
+async function cusRemind(dry = false) {
+  if (!CUS_TOKEN) return { sent: [] as string[] };
+  const cfg = await cusCfg(), doc = await cusGet(), rem = await docGet<Record<string, string>>("cus_remind", {});
+  const chatOf: Record<string, number> = {};   // email → chat gần nhất
+  for (const [c, u] of Object.entries(doc.users || {})) for (const e of u.emails || []) chatOf[e.toLowerCase()] = Number(c);
+  for (const o of Object.values(doc.orders || {})) if (o.ytb !== false && o.email?.includes("@") && o.st === "done") chatOf[o.email.toLowerCase()] ||= o.chat;
+  const sent: string[] = [], skip: string[] = [];
+  const list: { chat: number; key: string; text: string; kb: any; label: string }[] = [];
+  if (Object.keys(chatOf).length) {
+    const d = await tf({ action: "all" }), seen = new Set<string>();
+    for (const f of d.items || []) for (const c of f.customers || []) {
+      const e = String(c.email || "").toLowerCase(); if (!chatOf[e] || seen.has(e)) continue; seen.add(e);
+      if (normCtv(c.ctv) !== "Dnc" || c.daysLeft == null || c.daysLeft > 1 || c.daysLeft < -7) continue;
+      const key = "y:" + e; if (rem[key] === c.hsd) continue;
+      list.push({ chat: chatOf[e], key: key + "|" + c.hsd, text: T(cfg, "remind_ytb", { email: e, hsd: c.hsd }), kb: { inline_keyboard: [[{ text: "🔁 Gia hạn", callback_data: ("rn:" + e).slice(0, 64) }]] }, label: `YTB ${e} · HSD ${c.hsd} (${conL(c.daysLeft)})` });
+    }
+  }
+  for (const [ma, o] of Object.entries(doc.orders || {})) {
+    if (o.ytb !== false || o.st !== "done" || !o.months) continue;
+    const pk = cfg.sell.packs.find((p) => p.id === o.packId);
+    const end = o.months >= 1 ? addMonthsU(o.at, Math.round(o.months)) : o.at + Math.round(o.months * 30) * 864e5;
+    const hsd = dmyU(end), left = daysU(end), key = "s:" + ma;
+    if (left > 1 || left < -7 || rem[key] === hsd) continue;
+    list.push({ chat: o.chat, key: key + "|" + hsd, text: T(cfg, "remind_sp", { goi: o.pack, ma, hsd }), kb: pk && pk.price > 0 ? { inline_keyboard: [[{ text: `🔁 Gia hạn ${pk.name} · ${money(pk.price)}`, callback_data: `p:${pk.id}:n` }]] } : undefined, label: `${o.pack} · đơn ${ma} · hạn ${hsd} (${conL(left)})` });
+  }
+  for (const it of list) {
+    const u = doc.users[String(it.chat)], who = `${esc(u?.name || String(it.chat))} — /lich_${it.chat}`;
+    if (dry) { sent.push(`• ${esc(it.label)}\n  ${who}`); continue; }
+    const r = await csay(it.chat, it.text, it.kb ? { reply_markup: it.kb } : {});
+    if (r.ok) { const [k, h] = it.key.split("|"); rem[k] = h; sent.push(`• ${esc(it.label)}\n  ${who}`); }
+    else skip.push(`• ${esc(it.label)} — ${esc(r.description || "không gửi được")} (${who})`);
+  }
+  if (!dry) await docPut("cus_remind", rem);
+  if (sent.length || skip.length || dry)
+    await say(`🔔 <b>${dry ? "Xem trước — bot SẼ nhắc" : "Bot đã nhắc đến hạn"} ${sent.length} khách</b>\n${sent.join("\n") || "<i>Không có ai đến hạn.</i>"}${skip.length ? `\n\n⚠️ Không gửi được ${skip.length}:\n${skip.join("\n")}` : ""}\n\n<i>Bấm /lich_… để xem trò chuyện với khách.${dry ? " Gõ /nhac gui để gửi luôn." : ""}</i>`.slice(0, 4000));
+  return { sent, skip };
+}
+
 /* nút ẩn "❓ Xem hướng dẫn có hình" dưới các tin có hướng dẫn */
 const GUIDE_IMG = "https://godnc.com/thayfam/img/gia-dinh-khong-hoat-dong.jpg";
 const GUIDE_BTN = [{ text: "❓ Chưa rõ? Xem hướng dẫn có hình", callback_data: "hd" }];
@@ -2099,6 +2172,9 @@ async function handle(u: any) {
   // /fam YT12345 → hỏi lại fam cho đơn mới YouTube khách lẻ (đã nhận tiền)
   const tm = text.match(/^\/(tuan|tuấn|congno)\b\s*([\s\S]*)$/i);
   if (tm) return tuanCmd(tm[2] || "");
+  const lm = text.match(/^\/lich_?(\d+)/i);
+  if (lm) return say(await chatHistory(lm[1]));
+  if (/^\/nhac\b/i.test(text)) { const dry = !/\b(gui|gửi|send)\b/i.test(text), r = await cusRemind(dry); if (!dry && !r.sent.length && !(r.skip || []).length) await say("🔔 Không có khách nào cần nhắc (đã nhắc rồi hoặc chưa tới hạn)."); return; }
   const fm = text.match(/^\/fam\s+(\S+)/i);
   if (fm) return nfAsk(fm[1].toUpperCase());
   // Trợ lý Thay Fam: /hoi + câu hỏi, tin bắt đầu bằng "?", hoặc trả lời (reply) tin của trợ lý để hỏi tiếp
