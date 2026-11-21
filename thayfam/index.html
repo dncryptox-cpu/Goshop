@@ -2325,13 +2325,13 @@ function app() {
       lines.forEach((raw, i) => {
         const done = q && q.res[i];
         const emails = [...new Set((raw.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map(e => e.toLowerCase()))];
-        const t = raw.toLowerCase();
+        const t = raw.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, ' ').toLowerCase();   // bỏ email trước khi đoán loại (vd "tronghuy@…" không phải "hủy")
         const mm = /(\d{1,2})\s*(?:th|tháng|thang|t)\b/i.exec(raw);
         const months = mm && [1, 3, 6, 12].includes(+mm[1]) ? +mm[1] : 12;
         const dates = raw.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || [];
         const code = (/^\s*(\d{2,6})\b/.exec(raw) || [])[1] || '';
         let type = '';
-        if (/h[uủ]y|hoàn tiền|hoan tien|refund/.test(t)) type = 'huy';
+        if (/(^|[^a-zà-ỹ])h(?:ủy|uỷ|uy)(?![a-zà-ỹ])|hoàn tiền|hoan tien|refund/.test(t)) type = 'huy';
         else if (/đổi|doi |chuyển mail|chuyen mail/.test(t) && emails.length >= 2) type = 'doimail';
         else if (/mất\s*pre|mat\s*pre|mất premium|hết pre|lỗi|\bloi\b|không vào|ko vào|k vào|bị out|bị kick|bị đá|văng|out fam|không xem|ko xem/.test(t) && emails.length) type = 'loi';
         else if (emails.length && (mm || dates.length || /gia hạn|giahan|ytb|youtube|plus/.test(t))) type = 'order';
@@ -3013,7 +3013,8 @@ function app() {
         const res = await fetch(API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pass: this.pass }) }).then(x => x.json());
         if (res.limit) { this.error = res.error; r.force = this.me.role === 'admin'; }
         else if (!res.ok) this.error = res.error;
-        else { r.state = 'pending'; r.hours = 0; f.need--; f.pend++; f.used++; this.lastActionId = res.actionId; this.lastDone = '✓ Đã ghi mời ' + r.email + ' (' + f.rn + '). Hoàn tác được ở tab Lịch sử.'; }
+        else { r.state = 'pending'; r.hours = 0; f.need--; f.pend++; f.used++; this.lastActionId = res.actionId; this.lastDone = '✓ Đã ghi mời ' + r.email + ' (' + f.rn + '). Hoàn tác được ở tab Lịch sử.';
+          this.cmdCloseInvited([r.email], 'Đã mời lại vào ' + f.rn, { cus: true, tuanMsg: '✅ ' + r.email + ': đã mời lại vào ' + f.rn + '.\nBáo khách vào https://myaccount.google.com/family/details → Rời nhóm cũ nếu "không hoạt động" → đợi 30s → Chấp nhận lời mời.' }); }
       } catch (e) { this.error = e.message; }
       r.busy = false; r.confirm = false;
     },

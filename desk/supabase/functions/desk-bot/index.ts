@@ -691,7 +691,8 @@ async function tuanHandle(m: any) {
   for (const e of ems) {
     // gia hạn / đơn mới → thẻ duyệt cho DNC (công nợ)
     const ln0 = lines.find((l) => l.toLowerCase().includes(e)) || e, k = lineKind(ln0);
-    if (k && TUAN_ORDER.test(ln0) && !TUAN_FIX.test(ln0)) { try { const t = await tuanOrder(m, ln0, k); if (t) { out.push(t); continue; } } catch (err) { console.error("tuan order", (err as Error).message); } }
+    const ln1 = ln0.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, " ");   // bỏ email trước khi đoán (vd "new.abc@…", "loi@…")
+    if (k && TUAN_ORDER.test(ln1) && !TUAN_FIX.test(ln1)) { try { const t = await tuanOrder(m, ln0, k); if (t) { out.push(t); continue; } } catch (err) { console.error("tuan order", (err as Error).message); } }
     try {
       const r = await tuanCheck(e, text, openText, fixed);
       const ln = lines.find((l) => l.toLowerCase().includes(e)) || e;
