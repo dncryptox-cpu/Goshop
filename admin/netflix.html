@@ -309,7 +309,7 @@
                                                                 <span class="text-[9px] font-extrabold text-rose-600 bg-rose-50 px-1 rounded shrink-0" :title="'Trên sheet ghi slot ' + cell.item.slotSeq">TRÙNG SLOT</span>
                                                             </template>
                                                         </div>
-                                                        <span class="text-[10px] font-mono text-gray-400 truncate block" x-text="(cell.item.userCode || '') + ' · ' + cell.item.expiryDate"></span>
+                                                        <span class="text-[10px] font-mono text-gray-400 truncate block"><button type="button" @click="editCustomerCode(cell.item)" class="font-mono text-gray-500 hover:text-red-600 underline decoration-dotted underline-offset-2" title="Mã khách để lấy code ở godnc.com/vnetflix — bấm để sửa" x-text="'🔑 ' + (cell.item.userCode || 'chưa có mã')"></button><span x-text="' · ' + cell.item.expiryDate"></span></span>
                                                     </div>
                                                     <span class="shrink-0 text-[10px] font-extrabold font-mono px-1.5 py-0.5 rounded-md border" :class="dayPillClass(cell.item)" x-text="dayLabel(cell.item)"></span>
                                                     <div class="flex items-center gap-0.5 shrink-0">
@@ -1377,7 +1377,7 @@
                     setTimeout(() => { this.toastMessage = ''; }, 3500);
                 },
 
-                // Tin nhắn hướng dẫn khách tự lấy mã xác minh Netflix. Mã khách phải trùng cột "Mã khách" trong Sheet "Netflix xác minh – danh sách".
+                // Tin nhắn hướng dẫn khách tự lấy mã xác minh Netflix. Mã khách = cột Mã khách hàng ở trang này (vnetflix đọc thẳng từ đây).
                 copyVerifyGuide(item) {
                     if (!item) return;
                     const email = String(item.rootEmail || '').trim();
@@ -1952,6 +1952,29 @@ Lưu ý: Vui lòng không đổi mật khẩu, chỉ xem đúng Profile được
                         this.form.rootEmail = email;
                         this.form.slotSeq = slotSeq;
                     });
+                },
+
+                // Sửa mã khách (= mã khách nhập ở godnc.com/vnetflix để lấy code). Chỉ ghi cột D, không đụng ngày.
+                async editCustomerCode(item) {
+                    if (!item) return;
+                    const v = prompt(`Mã khách của ${item.userName || 'khách'} (${item.rootEmail})\nKhách nhập mã này ở godnc.com/vnetflix để lấy code.`, item.userCode || '');
+                    if (v === null) return;
+                    const code = v.trim();
+                    if (!code) return alert('Mã khách không được để trống');
+                    if (code === item.userCode) return;
+                    const dup = (this.list || []).find(i => i !== item && !i.expired && String(i.rootEmail).toLowerCase() === String(item.rootEmail).toLowerCase() && String(i.userCode).toLowerCase() === code.toLowerCase());
+                    if (dup && !confirm(`Mã "${code}" đang trùng với ${dup.userName} cùng tài khoản. Vẫn lưu?`)) return;
+                    try {
+                        const res = await fetch(this.CONFIG.WEBAPP_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                            body: JSON.stringify({ module: 'netflix', action: 'update', id: item.id, rowNum: item.rowNum, userCode: code, authToken: this.CONFIG.API_KEY })
+                        });
+                        const json = await res.json().catch(() => null);
+                        if (!json || !json.success) return alert('❌ Chưa lưu được: ' + ((json && (json.error || json.message)) || 'lỗi'));
+                        item.userCode = code;
+                        this.showToast(`🔑 Đã đổi mã ${item.userName || 'khách'} → ${code} (vnetflix nhận sau ≤ 1 phút)`);
+                    } catch (e) { alert('Lỗi: ' + e.message); }
                 },
 
                 async deleteCustomer(item) {

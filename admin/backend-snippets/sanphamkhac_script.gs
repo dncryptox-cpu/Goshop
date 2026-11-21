@@ -559,17 +559,27 @@ function doPost(e) {
           return responseJSON({ success: false, error: 'Không tìm thấy dòng tương ứng trên Sheet ' + tabName });
         }
 
-        var updActDateF = formatDate(postData.activationDate);
-        var updDurationF = parseInt(postData.duration, 10) || 1;
-        var updExpDateF = formatDate(calculateExpiry(updActDateF, updDurationF));
-        var updDaysLeftF = calculateDaysLeft(updExpDateF);
-        var updStatusF = updDaysLeftF >= 0 ? 'Active' : 'Expired';
+        // Sửa Mã KH / tên khách (vd bấm mã khách trên sơ đồ slot) — không đụng ngày tháng
+        if (postData.userCode !== undefined) {
+          if (!String(postData.userCode).trim()) return responseJSON({ success: false, error: 'Mã khách không được để trống' });
+          sheetFam.getRange(targetRowIndexF, 4).setValue(String(postData.userCode).trim());
+        }
+        if (postData.userName !== undefined) sheetFam.getRange(targetRowIndexF, 3).setValue(String(postData.userName).trim());
 
-        sheetFam.getRange(targetRowIndexF, 7).setValue(updActDateF);
-        sheetFam.getRange(targetRowIndexF, 8).setValue(updDurationF);
-        sheetFam.getRange(targetRowIndexF, 9).setValue(updExpDateF);
-        sheetFam.getRange(targetRowIndexF, 10).setValue(updStatusF);
-        sheetFam.getRange(targetRowIndexF, 11).setValue(updDaysLeftF);
+        // Chỉ tính lại ngày khi có gửi ngày (tránh xoá trắng HSD khi chỉ sửa mã)
+        if (postData.activationDate !== undefined && String(postData.activationDate).trim()) {
+          var updActDateF = formatDate(postData.activationDate);
+          var updDurationF = parseInt(postData.duration, 10) || 1;
+          var updExpDateF = formatDate(calculateExpiry(updActDateF, updDurationF));
+          var updDaysLeftF = calculateDaysLeft(updExpDateF);
+          var updStatusF = updDaysLeftF >= 0 ? 'Active' : 'Expired';
+
+          sheetFam.getRange(targetRowIndexF, 7).setValue(updActDateF);
+          sheetFam.getRange(targetRowIndexF, 8).setValue(updDurationF);
+          sheetFam.getRange(targetRowIndexF, 9).setValue(updExpDateF);
+          sheetFam.getRange(targetRowIndexF, 10).setValue(updStatusF);
+          sheetFam.getRange(targetRowIndexF, 11).setValue(updDaysLeftF);
+        }
 
         if (postData.price !== undefined) sheetFam.getRange(targetRowIndexF, 13).setValue(parseFloat(postData.price));
         if (postData.note !== undefined) sheetFam.getRange(targetRowIndexF, 14).setValue(postData.note);

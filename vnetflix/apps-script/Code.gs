@@ -16,6 +16,8 @@ var CFG = {
   REQUIRE_DKIM: true,        // chỉ nhận email có chữ ký DKIM hợp lệ của netflix.com
   SHEET_ACCOUNTS: 'Tài khoản',
   SHEET_LOG: 'Nhật ký',
+  // Mã khách Netflix lấy thẳng từ backend admin (godnc.com/admin/netflix.html, cột "Mã khách hàng"); khách hết hạn tự bị chặn
+  NF_LIST_URL: 'https://script.google.com/macros/s/AKfycbySu9evgLmqMVKSc-Z1cKUIzcfqJH9_pEFDdzOERQ1yP8uLy1hvLqJgNRkOlwDJEOba/exec?module=netflix',
   // ChatGPT 2FA — danh sách khách lấy từ backend godnc.com/admin/chatgpt.html
   GPT_LIST_URL: 'https://script.google.com/macros/s/AKfycbySu9evgLmqMVKSc-Z1cKUIzcfqJH9_pEFDdzOERQ1yP8uLy1hvLqJgNRkOlwDJEOba/exec?action=list',
   GPT_MAX_LOOKUPS: 30,       // chặn spam: số request tối đa / email / 10 phút
@@ -190,9 +192,30 @@ function findAccount_(email) {
       var pin = String(r[1] || '').trim().toLowerCase();
       if (pin) m.pins.push(pin); else m.open = true;
     });
-    cache.put('accounts', JSON.stringify(map), 60); // sửa sheet → có hiệu lực sau ≤ 1 phút
+    // Nguồn chính: khách còn hạn trong admin Netflix (mã khách = cột "Mã khách hàng")
+    netflixCustomers_().forEach(function (c) {
+      var m = map[c.email] || (map[c.email] = { pins: [], open: false });
+      if (m.pins.indexOf(c.code) < 0) m.pins.push(c.code);
+    });
+    cache.put('accounts', JSON.stringify(map), 60); // sửa ở admin / sheet → có hiệu lực sau ≤ 1 phút
   }
   return map[email] || null;
+}
+
+/** Khách Netflix CÒN HẠN từ backend admin: [{email, code}]. Lỗi → [] (vẫn dùng được tab Tài khoản). */
+function netflixCustomers_() {
+  var text = '';
+  try {
+    text = UrlFetchApp.fetch(CFG.NF_LIST_URL + '&t=' + Date.now(), { muteHttpExceptions: true, followRedirects: true }).getContentText();
+    var j = JSON.parse(text);
+    if (!j || !j.success || !Array.isArray(j.data)) throw new Error('backend trả: ' + text.slice(0, 150));
+    return j.data.filter(function (it) { return !it.expired; }).map(function (it) {
+      return { email: String(it.rootEmail || it.email || '').trim().toLowerCase(), code: String(it.userCode || '').trim().toLowerCase() };
+    }).filter(function (c) { return c.email && c.code; });
+  } catch (e) {
+    log_('(hệ thống)', 'netflix lỗi đọc danh sách admin: ' + e.message, 0);
+    return [];
+  }
 }
 
 function log_(email, what, count) {

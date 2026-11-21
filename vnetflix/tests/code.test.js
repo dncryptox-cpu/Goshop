@@ -2,7 +2,7 @@
 const fs = require('fs'), vm = require('vm'), crypto = require('crypto'), path = require('path');
 const SRC = fs.readFileSync(path.join(__dirname, '../apps-script/Code.gs'), 'utf8');
 
-function makeEnv({ accounts = [], mails = [], gpt = { success: true, data: [] }, props = {} } = {}) {
+function makeEnv({ accounts = [], mails = [], gpt = { success: true, data: [] }, props = {}, nf = { success: true, data: [] } } = {}) {
   const store = new Map(), logs = [];
   const rows = [['Email', 'Mã', 'Ghi chú', 'Bật'], ...accounts];
   const memSheet = data => ({ data,
@@ -17,7 +17,9 @@ function makeEnv({ accounts = [], mails = [], gpt = { success: true, data: [] },
     console,
     CacheService: { getScriptCache: () => ({ get: k => store.has(k) ? store.get(k) : null, put: (k, v) => store.set(k, v), remove: k => store.delete(k) }) },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => k === 'SHEET_ID' ? 'SHEET' : (props[k] ?? null), setProperty(k, v) { props[k] = v; }, deleteProperty(k) { delete props[k]; }, getProperties: () => ({ ...props }) }) },
-    UrlFetchApp: { fetch: () => { ctx.fetchCount = (ctx.fetchCount || 0) + 1; return { getContentText: () => JSON.stringify(gpt) }; } },
+    UrlFetchApp: { fetch: url => {
+      if (/module=netflix/.test(url)) return { getContentText: () => JSON.stringify(nf) };
+      ctx.fetchCount = (ctx.fetchCount || 0) + 1; return { getContentText: () => JSON.stringify(gpt) }; } },
     SpreadsheetApp: { openById: () => ({ getSheetByName: n => sheets[n] || null, insertSheet: n => (sheets[n] = memSheet([])) }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     GmailApp: { search: (q) => { ctx.lastQuery = q; return [{ getMessages: () => mails.map(mkMsg) }]; } },
@@ -126,6 +128,18 @@ t('nhiều khách chung 1 email: mỗi khách 1 mã, không phân biệt hoa th�
 t('có 1 dòng để trống mã → email đó không cần mã', () => {
   const c = makeEnv({ accounts: [[A, 'x1', '', true], [A, '', '', true]] });
   eq([c.lookup_(A, '').ok, c.lookup_(A, '').needPin], [true, false]);
+});
+t('mã khách lấy từ admin Netflix: khách còn hạn dùng được, hết hạn bị chặn, vẫn nhận mã ở tab Tài khoản', () => {
+  const nf = { success: true, data: [
+    { rootEmail: 'dnctab2024@gmail.com', userCode: 'Profile4', expired: false },
+    { rootEmail: 'dnctab2024@gmail.com', userCode: 'KH-NFLX-04', expired: true },
+  ] };
+  const c = makeEnv({ nf, accounts: [['dnctab2024@gmail.com', 'VuTaxi', '', true]], mails: [{ ...TEMP, to: 'dnctab2024@gmail.com' }] });
+  eq(c.lookup_('dnctab2024@gmail.com', 'profile4').ok, true);
+  eq(c.lookup_('dnctab2024@gmail.com', 'KH-NFLX-04').ok, false);
+  eq(c.lookup_('dnctab2024@gmail.com', 'VuTaxi').ok, true);
+  const c2 = makeEnv({ nf: { success: false } });
+  eq(c2.lookup_('dnctab2024@gmail.com', 'x').ok, false); // backend lỗi → không vỡ
 });
 t('sai mã khách 5 lần → khoá, kể cả nhập đúng', () => {
   const c = makeEnv({ accounts: [[A, '1111', '', true]] });
