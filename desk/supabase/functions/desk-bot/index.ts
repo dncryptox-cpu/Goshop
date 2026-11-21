@@ -750,8 +750,9 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   invited_recent: ["Vừa được mời lại (khách hỏi lại)", "✅ Đã gửi lời mời mới cho {email} {ngay}."],
   guide: ["Hướng dẫn chấp nhận lời mời", "👉 Đăng nhập {email} rồi làm 3 bước:\nB1: Vào https://myaccount.google.com/family/details\nB2: Nếu thấy \"Nhóm gia đình của bạn không hoạt động\" → bấm Rời khỏi nhóm gia đình (nhóm cũ).\nB3: Đợi 30 giây, vào lại link trên → có lời mời tham gia gia đình mới → bấm Chấp nhận.\n\nVẫn lỗi thì gõ: {email} vẫn lỗi"],
   guide_img: ["Hướng dẫn có hình (nút ❓)", "📷 Đây là màn hình \"gia đình không hoạt động\".\nThấy màn hình này: bấm Rời khỏi nhóm gia đình → đợi 30 giây → vào lại https://myaccount.google.com/family/details → bấm Chấp nhận lời mời mới."],
-  waiting: ["Đã báo rồi, đang chờ", "⏳ Lỗi của {email} đã được ghi nhận, đang chờ kiểm tra. Xử lý xong bot sẽ nhắn bạn tại đây."],
-  reported: ["Ghi nhận lỗi mới", "📝 Đã ghi nhận lỗi của {email}.\nBên mình sẽ kiểm tra và nhắn lại bạn ngay tại đây khi xử lý xong."],
+  waiting: ["Báo lại lần 2 (đang chờ) · {luc} = lúc báo", "⏳ Lỗi của {email} đã vào hàng chờ từ {luc}.\nBên mình xử lý theo thứ tự báo; lúc nhiều người gặp lỗi cùng lúc có thể mất vài tiếng, chậm nhất trong ngày. Xong là bot nhắn bạn ngay tại đây — bạn không cần báo lại nhé."],
+  waiting_more: ["Báo lại lần 3+ (xin thông cảm)", "🙏 Xin lỗi vì để bạn chờ lâu. Lỗi của {email} vẫn đang trong hàng chờ (báo lúc {luc}), không bị bỏ sót đâu.\nHôm nay nhiều tài khoản gặp lỗi cùng lúc nên bên mình xử lý chậm hơn bình thường — mong bạn thông cảm, chậm nhất trong ngày sẽ xong. Xong là bot nhắn bạn ngay.\nCần gấp thì bấm 💬 Hỗ trợ để nhắn trực tiếp."],
+  reported: ["Ghi nhận lỗi mới", "📝 Đã ghi nhận lỗi của {email}.\nBên mình xử lý theo thứ tự báo, thường vài tiếng (lúc đông có thể trong ngày). Xong là bot nhắn bạn ngay tại đây, bạn không cần báo lại nhé."],
   fixed: ["Nhắn khi bấm Xong lỗi", "✅ Lỗi của {email} đã được xử lý xong."],
   invited: ["Nhắn khi thay fam mời lại", "🔄 Đã chuyển {email} sang gia đình YouTube mới và gửi lời mời."],
   limit: ["Tra quá nhiều email/ngày", "Hôm nay bạn đã tra nhiều email rồi, thử lại vào ngày mai nhé."],
@@ -849,7 +850,7 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
 type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" | "mail"; to?: string };
 type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string; type?: string; mid?: number; nf?: number };
 type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number; noZalo?: boolean; n?: number; emails?: string[]; last?: string };
-type CusDoc = { subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; emails?: string[]; line?: string; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
+type CusDoc = { nag?: Record<string, { at: number; n: number }>; subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; emails?: string[]; line?: string; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
   const d = await docGet<CusDoc>("cus_bot", {} as CusDoc);
   d.subs ||= {}; d.rate ||= {}; d.state ||= {}; d.orders ||= {}; d.wait ||= {}; d.users ||= {}; d.pays ||= []; return d;
@@ -921,7 +922,7 @@ function cusDetail(_cfg: CusCfg, p: CusPack) {
   return { text: lines.join("\n"), kb: { inline_keyboard: kb } };
 }
 
-async function cusCheck(cfg: CusCfg, e: string, line: string, openText: string, fixed: Fixed): Promise<{ text: string; queue: boolean; renew?: boolean }> {
+async function cusCheck(cfg: CusCfg, e: string, line: string, openText: string, fixed: Fixed): Promise<{ text: string; queue: boolean; renew?: boolean; waiting?: boolean }> {
   const r = await tfFind(e);
   if (!r) return { text: T(cfg, "notfound", { email: e }), queue: false };
   const hsdRaw = String((r.arch ? r.arch.hsd : r.c.hsd) || ""), ctv = r.arch ? r.arch.ctv : r.c.ctv;
@@ -936,7 +937,7 @@ async function cusCheck(cfg: CusCfg, e: string, line: string, openText: string, 
     if (!famProblems(r.f, r.c).length && ago != null && ago <= 3 && !still)
       return { text: `${T(cfg, "invited_recent", { email: e, ngay: ago === 0 ? "hôm nay" : ago === 1 ? "hôm qua" : ago + " ngày trước" })}${hsd}\n\n${T(cfg, "guide", { email: e })}`, queue: false };
   }
-  if (openText.includes(e) && !still) return { text: T(cfg, "waiting", { email: e }), queue: false };
+  if (openText.includes(e)) return { text: "", queue: false, waiting: true };   // đã trong hàng chờ → không ghi trùng, câu trả lời chọn theo số lần hỏi
   return { text: T(cfg, "reported", { email: e }) + hsd, queue: true };
 }
 
@@ -1533,10 +1534,16 @@ async function cusReport(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems:
     const ln = lines.find((l) => l.toLowerCase().includes(e)) || e;
     try {
       const r = await cusCheck(cfg, e, ln, openText, fixed);
+      const nag = (doc.nag ||= {});
+      if (r.waiting) {   // khách hỏi lại khi lỗi đang chờ: lần 2 trấn an, lần 3+ xin thông cảm + báo DNC
+        const g = nag[e] ||= { at: Date.now(), n: 1 }; g.n++;
+        r.text = T(cfg, g.n >= 3 ? "waiting_more" : "waiting", { email: e, luc: fmtAt(g.at) });
+        if (g.n === 3) await say(`⏰ <b>Khách lẻ hỏi lần ${g.n}</b> — lỗi <code>${esc(e)}</code> đã chờ từ ${fmtAt(g.at)} (${esc(name || "Telegram")}). Ưu tiên xử lý giúp.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } }).catch(() => {});
+      } else if (r.queue) nag[e] = { at: Date.now(), n: 1 };
       out.push(r.text);
       if (r.renew) renewEmail ||= e;
       { const u0 = touchUser(doc, chat, m.from); const l = u0.emails ||= []; if (!l.includes(e)) l.push(e); if (l.length > 10) l.shift(); }
-      if (r.queue || (openText.includes(e) && !STILL.test(ln))) doc.subs[e] = { chat, name, at: Date.now(), pending: true, kind: "report" };
+      if (r.queue || r.waiting) doc.subs[e] = { chat, name, at: Date.now(), pending: true, kind: "report" };
       if (r.queue) toQ.push(/pre|lỗi|loi|mất|mat/i.test(ln) && ln.length > e.length + 3 ? ln : `${e} mất pre`);
     } catch (err) { console.error("cus", e, (err as Error).message); out.push(`⚠️ Chưa kiểm tra được <b>${esc(e)}</b>, bạn thử lại sau ít phút nhé.`); }
   }
@@ -1558,6 +1565,7 @@ async function cusNotify(emails: string[], kind: string, info: { hsd?: string } 
   for (const raw of emails) {
     const e = String(raw).toLowerCase(), s = doc.subs[e];
     if (!s || !s.pending) continue;
+    if (doc.nag) delete doc.nag[e];
     let msg: string;
     if (s.kind === "renew") {
       let hsd = info.hsd || "";
