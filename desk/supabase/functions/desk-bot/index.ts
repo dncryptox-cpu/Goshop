@@ -880,7 +880,7 @@ const askZaloKb = { reply_markup: { keyboard: [[{ text: "📱 Gửi số điện
 const nameOf = (f: any) => [f?.first_name, f?.last_name].filter(Boolean).join(" ") + (f?.username ? ` @${f.username}` : "");
 const isYtb = (p: CusPack) => p.ytb !== false;
 const inStock = (p: CusPack) => p.stock == null || p.stock > 0;
-const packKb = (cfg: CusCfg, kind: "n" | "r") => ({ inline_keyboard: cfg.sell.packs.filter((p) => p.price > 0 && (kind === "n" || isYtb(p))).map((p) => [inStock(p)
+const packKb = (cfg: CusCfg, kind: "n" | "r") => ({ inline_keyboard: cfg.sell.packs.filter((p) => p.price > 0 && (kind === "n" || (isYtb(p) && p.months >= 3)))   /* gia hạn: chỉ gói từ 3 tháng */.map((p) => [inStock(p)
   ? { text: `${p.name} · ${money(p.price)}${p.stock != null ? ` · còn ${p.stock}` : ""}`, callback_data: `p:${p.id}:${kind}` }
   : { text: `${p.name} · Hết hàng 🔔`, callback_data: `w:${p.id}` }]) });
 const prodKb = (cfg: CusCfg) => ({ inline_keyboard: (cfg.sell.catalog || []).filter((pr) => pr.on !== false && pr.vars.some((v) => v.price > 0)).map((pr) => {
@@ -1018,6 +1018,7 @@ async function cusCallback(q: any) {
   if (a === "p") {
     if (!sellReady(cfg)) return csay(chat, "Hiện chưa mở bán qua bot, bạn nhắn người bán nhé.");
     const prev = doc.state[String(chat)];
+    if (y === "r" && (cfg.sell.packs.find((p) => p.id === x)?.months || 0) < 3) return csay(chat, "Gia hạn nhận gói từ 3 tháng trở lên, bạn chọn lại giúp mình nhé:", { reply_markup: packKb(cfg, "r") });
     if (y === "r" && prev?.email) return cusStartOrder(cfg, doc, chat, q.from, x, "renew", prev.email);
     const pk = cfg.sell.packs.find((p) => p.id === x);
     if (!pk) return csay(chat, "Sản phẩm này không còn bán.");
