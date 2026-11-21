@@ -750,8 +750,8 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   invited_recent: ["Vừa được mời lại (khách hỏi lại)", "✅ Đã gửi lời mời mới cho {email} {ngay}."],
   guide: ["Hướng dẫn chấp nhận lời mời", "👉 Đăng nhập {email} rồi làm 3 bước:\nB1: Vào https://myaccount.google.com/family/details\nB2: Nếu thấy \"Nhóm gia đình của bạn không hoạt động\" → bấm Rời khỏi nhóm gia đình (nhóm cũ).\nB3: Đợi 30 giây, vào lại link trên → có lời mời tham gia gia đình mới → bấm Chấp nhận.\n\nVẫn lỗi thì gõ: {email} vẫn lỗi"],
   guide_img: ["Hướng dẫn có hình (nút ❓)", "📷 Đây là màn hình \"gia đình không hoạt động\".\nThấy màn hình này: bấm Rời khỏi nhóm gia đình → đợi 30 giây → vào lại https://myaccount.google.com/family/details → bấm Chấp nhận lời mời mới."],
-  waiting: ["Báo lại lần 2 (đang chờ) · {luc} = lúc báo", "⏳ Lỗi của {email} đã vào hàng chờ từ {luc}.\nBên mình xử lý theo thứ tự báo; lúc nhiều người gặp lỗi cùng lúc có thể mất vài tiếng, chậm nhất trong ngày. Xong là bot nhắn bạn ngay tại đây — bạn không cần báo lại nhé."],
-  waiting_more: ["Báo lại lần 3+ (xin thông cảm)", "🙏 Xin lỗi vì để bạn chờ lâu. Lỗi của {email} vẫn đang trong hàng chờ (báo lúc {luc}), không bị bỏ sót đâu.\nHôm nay nhiều tài khoản gặp lỗi cùng lúc nên bên mình xử lý chậm hơn bình thường — mong bạn thông cảm, chậm nhất trong ngày sẽ xong. Xong là bot nhắn bạn ngay.\nCần gấp thì bấm 💬 Hỗ trợ để nhắn trực tiếp."],
+  waiting: ["Hỏi lại khi đang chờ · {luc} = lúc báo", "⏳ Lỗi của {email} đã vào hàng chờ từ {luc}.\nBên mình xử lý theo thứ tự báo; lúc nhiều người gặp lỗi cùng lúc có thể mất vài tiếng, chậm nhất trong ngày. Xong là bot nhắn bạn ngay tại đây — bạn không cần báo lại nhé."],
+  waiting_more: ["Hỏi lại lần 3 (cách nhau ≥15 phút) hoặc đã chờ ≥2 tiếng (xin thông cảm)", "🙏 Xin lỗi vì để bạn chờ lâu. Lỗi của {email} vẫn đang trong hàng chờ (báo lúc {luc}), không bị bỏ sót đâu.\nHôm nay nhiều tài khoản gặp lỗi cùng lúc nên bên mình xử lý chậm hơn bình thường — mong bạn thông cảm, chậm nhất trong ngày sẽ xong. Xong là bot nhắn bạn ngay.\nCần gấp thì bấm 💬 Hỗ trợ để nhắn trực tiếp."],
   reported: ["Ghi nhận lỗi mới", "📝 Đã ghi nhận lỗi của {email}.\nBên mình xử lý theo thứ tự báo, thường vài tiếng (lúc đông có thể trong ngày). Xong là bot nhắn bạn ngay tại đây, bạn không cần báo lại nhé."],
   fixed: ["Nhắn khi bấm Xong lỗi", "✅ Lỗi của {email} đã được xử lý xong."],
   invited: ["Nhắn khi thay fam mời lại", "🔄 Đã chuyển {email} sang gia đình YouTube mới và gửi lời mời."],
@@ -850,7 +850,7 @@ function T(cfg: CusCfg, key: string, v: Record<string, string> = {}) {
 type CusSub = { chat: number; name: string; at: number; pending: boolean; kind?: "report" | "order" | "renew" | "mail"; to?: string };
 type CusOrder = { chat: number; name: string; email: string; pack: string; packId?: string; ytb?: boolean; months: number; price: number; kind: "new" | "renew"; at: number; st: "wait" | "check" | "paid" | "done" | "cancel"; note?: string; got?: number; auto?: boolean; qty?: number; zalo?: string; user?: string; type?: string; mid?: number; nf?: number };
 type CusUser = { name: string; at: number; user?: string; zalo?: string; first?: number; noZalo?: boolean; n?: number; emails?: string[]; last?: string };
-type CusDoc = { nag?: Record<string, { at: number; n: number }>; subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; emails?: string[]; line?: string; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
+type CusDoc = { nag?: Record<string, { at: number; n: number; last?: number; lr?: number; pinged?: boolean }>; subs: Record<string, CusSub>; rate: Record<string, { day: string; emails: string[] }>; state: Record<string, { step: string; pack?: string; kind?: string; email?: string; qty?: number; emails?: string[]; line?: string; at: number }>; orders: Record<string, CusOrder>; wait: Record<string, number[]>; users: Record<string, CusUser>; pays: { id: string; at: number; amt: number; content: string; ma: string; res: string }[] };
 async function cusGet(): Promise<CusDoc> {
   const d = await docGet<CusDoc>("cus_bot", {} as CusDoc);
   d.subs ||= {}; d.rate ||= {}; d.state ||= {}; d.orders ||= {}; d.wait ||= {}; d.users ||= {}; d.pays ||= []; return d;
@@ -1535,11 +1535,18 @@ async function cusReport(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems:
     try {
       const r = await cusCheck(cfg, e, ln, openText, fixed);
       const nag = (doc.nag ||= {});
-      if (r.waiting) {   // khách hỏi lại khi lỗi đang chờ: lần 2 trấn an, lần 3+ xin thông cảm + báo DNC
-        const g = nag[e] ||= { at: Date.now(), n: 1 }; g.n++;
-        r.text = T(cfg, g.n >= 3 ? "waiting_more" : "waiting", { email: e, luc: fmtAt(g.at) });
-        if (g.n === 3) await say(`⏰ <b>Khách lẻ hỏi lần ${g.n}</b> — lỗi <code>${esc(e)}</code> đã chờ từ ${fmtAt(g.at)} (${esc(name || "Telegram")}). Ưu tiên xử lý giúp.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } }).catch(() => {});
-      } else if (r.queue) nag[e] = { at: Date.now(), n: 1 };
+      if (r.waiting) {
+        /* khách hỏi lại khi lỗi đang chờ — tính theo THỜI GIAN, không theo số lần bấm:
+           · trong 1 phút: im lặng (khách bấm/gửi liên tục) · dưới 15 phút: nhắc lại đang chờ, không tính thêm lần
+           · từ lần hỏi cách nhau ≥15 phút thứ 3, hoặc đã chờ ≥2 tiếng mà hỏi lại → xin thông cảm + báo DNC 1 lần */
+        const now = Date.now(), g = nag[e] ||= { at: now, n: 1, last: now };
+        if (g.lr && now - g.lr < 60000) { out.push(""); continue; }
+        if (now - (g.last || g.at) >= 15 * 60000) { g.n++; g.last = now; }
+        g.lr = now;
+        const more = g.n >= 3 || (g.n >= 2 && now - g.at >= 2 * 3600e3);
+        r.text = T(cfg, more ? "waiting_more" : "waiting", { email: e, luc: fmtAt(g.at) });
+        if (more && !g.pinged) { g.pinged = true; await say(`⏰ <b>Khách lẻ hỏi lại lỗi đang chờ</b> — <code>${esc(e)}</code> báo từ ${fmtAt(g.at)}, đã hỏi ${g.n} lần (${esc(name || "Telegram")}). Ưu tiên xử lý giúp.`, { reply_markup: { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } }).catch(() => {}); }
+      } else if (r.queue) nag[e] = { at: Date.now(), n: 1, last: Date.now(), lr: Date.now() };
       out.push(r.text);
       if (r.renew) renewEmail ||= e;
       { const u0 = touchUser(doc, chat, m.from); const l = u0.emails ||= []; if (!l.includes(e)) l.push(e); if (l.length > 10) l.shift(); }
@@ -1556,7 +1563,9 @@ async function cusReport(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems:
   let extra: Record<string, unknown> = {};
   if (renewEmail && sellReady(cfg)) { doc.state[key] = { step: "renew", email: renewEmail, kind: "renew", at: Date.now() }; extra = { reply_markup: packKb(cfg, "r") }; }
   await cusPut(doc);
-  return csay(chat, out.join("\n\n"), withGuide(out.join("\n\n"), extra));
+  const txt = out.filter(Boolean).join("\n\n");
+  if (!txt) return;   // khách gửi dồn trong 1 phút → không trả lời thêm
+  return csay(chat, txt, withGuide(txt, extra));
 }
 
 /* Thay Fam gọi khi Xong / thay fam mời lại. Chỉ nhắn khách đang chờ, mỗi lần 1 tin; câu chữ theo loại (lỗi / đơn mới / gia hạn). */
