@@ -744,7 +744,7 @@ const CUS_TEXTS: Record<string, [string, string]> = { // key: [mô tả, mặc �
   start: ["Lời chào (/start)", "Chào bạn 👋 Đây là bot hỗ trợ YouTube Premium gia đình.\n\nGửi email bạn dùng để vào gia đình YouTube (vd: abc@gmail.com), có thể kèm mô tả lỗi. Bot sẽ kiểm tra và báo lại ngay tại đây."],
   ask_email: ["Khách nhắn không có email", "Bạn gửi giúp mình email dùng để vào gia đình YouTube (vd: abc@gmail.com) nhé."],
   notfound: ["Không thấy email", "❓ Chưa thấy {email} trong danh sách.\nBạn kiểm tra lại đúng email đã đăng ký khi mua nhé."],
-  other: ["Khách của đại lý khác", "ℹ️ {email} được đăng ký qua đại lý khác. Bạn liên hệ nơi đã mua để được hỗ trợ nhanh nhất nhé."],
+  other: ["Khách của đại lý khác (vẫn tra + báo lỗi được)", "ℹ️ Email này mua qua đại lý khác: bạn vẫn tra hạn và báo lỗi ở đây được. Gia hạn / đổi mail thì liên hệ nơi đã mua nhé."],
   expired: ["Hết hạn", "⛔ Gói của {email} đã hết hạn ngày {hsd}.\nMuốn gia hạn, bạn bấm Gia hạn bên dưới hoặc nhắn người bán nhé."],
   done_recent: ["Vừa xử lý xong (khách hỏi lại)", "✅ {email} đã được xử lý lúc {ngay}."],
   invited_recent: ["Vừa được mời lại (khách hỏi lại)", "✅ Đã gửi lời mời mới cho {email} {ngay}."],
@@ -926,9 +926,11 @@ async function cusCheck(cfg: CusCfg, e: string, line: string, openText: string, 
   const r = await tfFind(e);
   if (!r) return { text: T(cfg, "notfound", { email: e }), queue: false };
   const hsdRaw = String((r.arch ? r.arch.hsd : r.c.hsd) || ""), ctv = r.arch ? r.arch.ctv : r.c.ctv;
-  if (normCtv(ctv) !== "Dnc") return { text: T(cfg, "other", { email: e }), queue: false };
+  // khách đại lý khác: vẫn tra + báo lỗi được (gia hạn thì liên hệ nơi mua)
   const v = pDate(hsdRaw), left = v == null ? null : daysU(v);
-  if (left != null && left < 0) return { text: T(cfg, "expired", { email: e, hsd: hsdRaw }), queue: false, renew: true };
+  if (left != null && left < 0) return normCtv(ctv) !== "Dnc"
+    ? { text: `⛔ <b>${esc(e)}</b> đã hết hạn ${esc(hsdRaw)}. Bạn liên hệ nơi đã mua để gia hạn nhé.`, queue: false }
+    : { text: T(cfg, "expired", { email: e, hsd: hsdRaw }), queue: false, renew: true };
   const hsd = hsdRaw ? `\nHạn dùng: <b>${esc(hsdRaw)}</b>` : "";
   const still = STILL.test(line), fx = fixed[e];
   if (fx && Date.now() - fx.at < 3 * 864e5 && !still) return { text: `${T(cfg, "done_recent", { email: e, ngay: fmtAt(fx.at) })}${hsd}\n\n${T(cfg, "guide", { email: e })}`, queue: false };
@@ -1487,16 +1489,15 @@ const withGuide = (text: string, extra: Record<string, any> = {}) => /family\/de
   ? { ...extra, reply_markup: { inline_keyboard: [...((extra.reply_markup?.inline_keyboard as any[]) || []), GUIDE_BTN] } } : extra;
 /* khách gửi email → trạng thái + 3 nút */
 async function cusActMenu(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems: string[], text: string) {
-  const out: string[] = [], ok: string[] = [];
+  const out: string[] = [], ok: string[] = [], other = new Set<string>();
   for (const e of ems) {
     try {
       const r = await tfFind(e);
       if (!r) { out.push(T(cfg, "notfound", { email: e })); continue; }
       const hsdRaw = String((r.arch ? r.arch.hsd : r.c.hsd) || ""), ctv = r.arch ? r.arch.ctv : r.c.ctv;
-      if (normCtv(ctv) !== "Dnc") { out.push(T(cfg, "other", { email: e })); continue; }
-      const v = pDate(hsdRaw), left = v == null ? null : daysU(v);
-      out.push(`📧 <b>${esc(e)}</b>${hsdRaw ? `\nHạn dùng: <b>${esc(hsdRaw)}</b>${left == null ? "" : left < 0 ? ` (đã hết hạn ${-left} ngày)` : ` (còn ${left} ngày)`}` : ""}`);
-      ok.push(e);
+      const mine = normCtv(ctv) === "Dnc", v = pDate(hsdRaw), left = v == null ? null : daysU(v);
+      out.push(`📧 <b>${esc(e)}</b>${hsdRaw ? `\nHạn dùng: <b>${esc(hsdRaw)}</b>${left == null ? "" : left < 0 ? ` (đã hết hạn ${-left} ngày)` : ` (còn ${left} ngày)`}` : ""}${mine ? "" : "\n" + T(cfg, "other", { email: e })}`);
+      ok.push(e); if (!mine) other.add(e);
       const u0 = touchUser(doc, chat, from); const l = u0.emails ||= []; if (!l.includes(e)) l.push(e); if (l.length > 10) l.shift();
     } catch (err) { console.error("cus", e, (err as Error).message); out.push(`⚠️ Chưa kiểm tra được <b>${esc(e)}</b>, bạn thử lại sau ít phút nhé.`); }
   }
@@ -1504,7 +1505,8 @@ async function cusActMenu(cfg: CusCfg, doc: CusDoc, chat: number, from: any, ems
   if (ok.length) {
     doc.state[String(chat)] = { step: "act", emails: ok, line: text.slice(0, 500), at: Date.now() };
     const tag = (i: number) => ok.length > 1 ? ` #${i + 1}` : "";
-    extra = { reply_markup: { inline_keyboard: ok.map((_, i) => [{ text: "🆘 Báo lỗi" + tag(i), callback_data: `a:l:${i}` }, { text: "✉️ Đổi mail" + tag(i), callback_data: `a:m:${i}` }, { text: "🔁 Gia hạn" + tag(i), callback_data: `a:r:${i}` }]) } };
+    extra = { reply_markup: { inline_keyboard: ok.map((e, i) => other.has(e) ? [{ text: "🆘 Báo lỗi" + tag(i), callback_data: `a:l:${i}` }]   // khách đại lý khác: chỉ báo lỗi
+      : [{ text: "🆘 Báo lỗi" + tag(i), callback_data: `a:l:${i}` }, { text: "✉️ Đổi mail" + tag(i), callback_data: `a:m:${i}` }, { text: "🔁 Gia hạn" + tag(i), callback_data: `a:r:${i}` }]) } };
     out.push(T(cfg, "act_menu"));
   }
   await cusPut(doc);
