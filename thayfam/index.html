@@ -78,6 +78,8 @@
   .grow{flex:1;min-width:0}
   .ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .chips{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+  /* danh sách dài: trình duyệt bỏ qua vẽ thẻ ngoài màn hình → cuộn mượt */
+  .lazy{content-visibility:auto;contain-intrinsic-size:auto 120px}
   .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:16px;padding:4px 12px;font-size:13px}
   .chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
   .empty{text-align:center;color:var(--mute);padding:40px 0}
@@ -944,7 +946,7 @@
           </div>
         </template>
         <template x-for="f in filteredSlots()" :key="f.rn">
-          <div class="card" style="padding:0">
+          <div class="card lazy" style="padding:0">
             <div class="row" style="padding:12px 14px">
               <div class="rn" x-text="f.rn"></div>
               <div class="grow">
@@ -3582,40 +3584,46 @@ function app() {
 
     async tickOtp() {
       const sec = Math.floor(Date.now() / 1000);
-      this.otpPct = ((30 - (sec % 30)) / 30) * 100;
+      if (this.swap) this.otpPct = ((30 - (sec % 30)) / 30) * 100;   // thanh đếm chỉ có trong hộp thay fam
+      // mã 2FA chỉ đổi mỗi 30 giây → chỉ tính lại khi sang chu kỳ mới / đổi tab / có fam mới, không tính mỗi giây
+      const sig = Math.floor(sec / 30) + '|' + this.tab + '|' + (this.searchOn() ? 'S' + this.results.length : '') + '|' + (this.slots ? this.slots.length : 0) + '|' + this.cmdCards.length + '|' + this.openRows.length + '|' + this.slotFilter + '|' + (this.pick.list ? this.pick.idx : '') + '|' + (this.swap ? this.swap.f.rn + (this.frSecret() || '') + (this.swap.newTwofa || '') : '') + '|' + this.mp.items.length + '|' + (this.blocks || []).length;
+      if (sig === this._otpSig) return;
+      this._otpSig = sig;
       if (this.tab === 'slots' && !this.searchOn()) {
         const m = {};
         for (const f of this.filteredSlots()) if (f.twofa) m[f.rn] = await totp(f.twofa);
-        this.slotOtp = { ...this.slotOtp, ...m };
+        this.setOtp(m);
       }
       if (this.searchOn() || this.tab === 'due' || this.tab === 'report') {
         const m = {};
         for (const f of (this.searchOn() ? this.results : (this.tab === 'report' ? this.reported : this.due))) if (f.twofa && this.expanded(f)) m['S' + f.rn] = await totp(f.twofa);
-        this.slotOtp = { ...this.slotOtp, ...m };
+        this.setOtp(m);
       }
       if (this.tab === 'cmd') {
         const m = {};
         for (const c of this.cmdCards) if (c.st === 'ready' && c.cus && c.cus.fam && c.cus.fam.twofa) m['C' + c.cus.rn] = await totp(c.cus.fam.twofa);
-        this.slotOtp = { ...this.slotOtp, ...m };
+        this.setOtp(m);
       }
       if (this.pick.list && this.pick.list.length) {
         const t = this.cur();
-        this.slotOtp = { ...this.slotOtp, P: t.fam && t.fam.twofa ? await totp(t.fam.twofa) : '' };
+        this.setOtp({ P: t.fam && t.fam.twofa ? await totp(t.fam.twofa) : '' });
       }
       if (this.tab === 'slots' && this.slotFilter === 'mp') {
         const m = {};
         for (const f of this.mp.items) if (f.twofa) m['M' + f.rn] = await totp(f.twofa);
-        this.slotOtp = { ...this.slotOtp, ...m };
+        this.setOtp(m);
       }
       if (this.tab === 'blocks') {
         const m = {};
         for (const b of this.blocks) if (b.twofa) m['B' + b.rn] = await totp(b.twofa);
-        this.slotOtp = { ...this.slotOtp, ...m };
+        this.setOtp(m);
       }
       if (!this.swap) return;
       this.otp.old = this.swap.f.twofa ? await totp(this.swap.f.twofa) : '';
       this.otp.fr = this.frSecret() ? await totp(this.frSecret()) : '';
     },
+
+    setOtp(m) { for (const k in m) if (this.slotOtp[k] !== m[k]) this.slotOtp[k] = m[k]; },
 
     async copy(text, msg) {
       if (!text) return;
@@ -3627,7 +3635,15 @@ function app() {
 }
 
 /* ===== TOTP (mã 2FA 6 số từ secret) ===== */
+const _totpMemo = new Map();
 async function totp(secret) {
+  const ck = secret + '|' + Math.floor(Date.now() / 30000);
+  if (_totpMemo.has(ck)) return _totpMemo.get(ck);
+  const v = await totp0(secret);
+  if (_totpMemo.size > 500) _totpMemo.clear();
+  _totpMemo.set(ck, v); return v;
+}
+async function totp0(secret) {
   try {
     const key = base32(secret);
     if (!key.length) return '';
