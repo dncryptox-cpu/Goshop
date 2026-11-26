@@ -219,10 +219,14 @@
         <button class="btn sm" @click="freshUntil = Date.now() + 20000; refreshAll()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
         <a class="btn sm" href="/gg1/" x-show="me.role==='admin' || me.role==='nhanvien'" style="text-decoration:none">GG1</a>
         <label class="btn sm" x-show="me.role==='admin'" style="display:flex;gap:6px;align-items:center;cursor:pointer" :style="autoSync ? 'border-color:var(--ok);color:var(--ok)' : ''" title="Bật: mọi thao tác của admin (thay fam, chuyển khách, đổi mail, cất/kick khách, đóng fam, đã mời) ghi luôn vào data gốc"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')" style="margin:0"> Ghi luôn vào gốc</label>
-        <button class="btn sm pri" x-show="canInstall && !isApp" @click="installApp()" title="Cài Thay Fam thành app riêng: mở nhanh, cửa sổ riêng, không lẫn tab khác">📲 Cài app</button>
+        <button class="btn sm pri" x-show="!isApp" @click="installApp()" title="Cài Thay Fam thành app riêng: mở nhanh, cửa sổ riêng, không lẫn tab khác">📲 Cài app</button>
         <button class="btn sm" x-show="hasUpdate" style="border-color:var(--ok);color:var(--ok)" @click="location.reload()">↻ Có bản mới</button>
         <button class="btn sm" @click="logout()">Thoát</button>
       </header>
+      <div class="card" x-show="installHelp" style="padding:10px 14px;margin:8px 0;font-size:14px">
+        <div class="row" style="gap:8px"><b>📲 Cài Thay Fam thành app</b><span class="grow"></span><button class="btn xs" @click="installHelp=false">Đóng</button></div>
+        <div style="margin-top:6px;line-height:1.6" x-html="installHelpText()"></div>
+      </div>
 
       <div class="err" x-show="error" x-text="error"></div>
       <div class="row" x-show="checkDue().length && tab!=='slots'" style="background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn);border-radius:8px;padding:10px 12px;margin-bottom:10px">
@@ -2010,7 +2014,7 @@ function app() {
     askQ: '', askBusy: false, askErr: '', askLog: (() => { try { return JSON.parse(sessionStorage.getItem('tf_ask') || '[]'); } catch (e) { return []; } })(),
     askSamples: ['Hôm nay cần thay fam nào?', 'Fam nào đang bị chặn mời, bao giờ mời lại được?', 'Khách Tuấn hết hạn trong 3 ngày tới', 'Fam nào còn slot trống?', 'Khách nào đã mời mà chưa vào nhóm?', 'Có bao nhiêu khách đang chờ xếp fam?'],
     cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
-    hasUpdate: false, canInstall: false, isApp: false, _slotsStale: false, _reviewStale: false,
+    hasUpdate: false, canInstall: false, installHelp: false, isApp: false, _slotsStale: false, _reviewStale: false,
     tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', lastCopy: '', lastCopyFor: '', notify: null,
     slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
@@ -2060,7 +2064,14 @@ function app() {
       if (t === 'slots' && this._slotsStale && !this.slotsLoading) { this._slotsStale = false; this.bg(() => this.loadSlots()); }
       if (t === 'sync' && this._reviewStale && this.can('review')) { this._reviewStale = false; this.bg(() => this.loadReview()); }
     },
-    async installApp() { if (!this._install) return; this._install.prompt(); try { await this._install.userChoice; } catch (e) {} this._install = null; this.canInstall = false; },
+    installHelpText() {
+      const ua = navigator.userAgent;
+      if (/iPhone|iPad/.test(ua)) return 'Trên iPhone/iPad: mở trang này bằng <b>Safari</b> → bấm nút <b>Chia sẻ</b> (ô vuông có mũi tên) → <b>Thêm vào MH chính</b>.';
+      if (/Safari/.test(ua) && !/Chrome|Chromium|Edg/.test(ua)) return 'Trên Safari Mac: menu <b>Tệp</b> (File) → <b>Thêm vào Dock</b> (Add to Dock).';
+      if (/Edg\//.test(ua)) return 'Trên Edge: bấm <b>…</b> góc trên phải → <b>Ứng dụng</b> → <b>Cài đặt trang web này dưới dạng ứng dụng</b>.';
+      return 'Trên Chrome: bấm biểu tượng <b>cài đặt</b> (màn hình có mũi tên ⤓) ở cuối thanh địa chỉ, hoặc <b>⋮</b> góc trên phải → <b>Truyền, lưu và chia sẻ</b> → <b>Cài đặt trang dưới dạng ứng dụng</b>.<br>Trình duyệt khác (Comet, Cốc Cốc…) có thể không hỗ trợ cài app — mở bằng Chrome để cài, sau đó app chạy riêng, không cần mở Chrome nữa.';
+    },
+    async installApp() { if (!this._install) { this.installHelp = !this.installHelp; return; } this._install.prompt(); try { await this._install.userChoice; } catch (e) {} this._install = null; this.canInstall = false; },
     // Mở trang hiện ngay dữ liệu lần trước (lưu trong trình duyệt), rồi cập nhật khi server trả về
     // Sau 1 thao tác ghi: tải lại nền (không bắt người dùng chờ)
     afterWrite(quiet) {
