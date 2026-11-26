@@ -680,7 +680,7 @@ async function tuanHandle(m: any) {
   const grp = await tuanGroup();
   if (!grp || String(m.chat.id) !== grp) return; // chỉ trả lời trong nhóm đã nối
   if (/^\/(start|help)\b/i.test(text)) return tuanSay("Gõ email khách (1 hoặc nhiều mail, kèm mô tả lỗi nếu có). Bot báo: ✅ đã fix · ⏳ đợi DNC check · ⛔ hết hạn.\nGia hạn: <code>abc@gmail.com gia hạn 6 tháng</code> · Đơn mới: <code>abc@gmail.com đơn mới 3 tháng</code> — DNC duyệt xong bot báo, tiền cộng vào công nợ.\nXem công nợ: /congno");
-  if (/^\/?(congno|công nợ|cong no)\b/i.test(text)) return tuanSay(tdSummary(await tdGet()), { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } });
+  if (/^\/?(congno|công nợ|cong no)\b/i.test(text)) return tuanSay(tdSummary(await tdGet()) + `\n\n📒 Sổ chi tiết: ${await tuanBookUrl()}`, { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true }, link_preview_options: { is_disabled: true } });
   const ems = [...new Set((text.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g) || []).map((x) => x.toLowerCase()))].slice(0, 8);
   if (!ems.length) return;
   let openText = "";
@@ -1206,7 +1206,7 @@ Bấm Ghi → ghi khách vào fam + ghi Tài chính (CTV ${ctv}) + ${L.tuan ? "c
     { const L2 = await nfLoad(ma); if (L2) { L2.o.nf = o.nf; L2.o.st = "done"; await L2.save(); } }
     let sent = 0, bal: number | null = null;
     if (L.tuan) {
-      bal = await tdAdd({ at: Date.now(), ma, email: o.email, kind: "new", months: o.months, price: o.price });
+      bal = await tdAdd({ at: Date.now(), ma, email: o.email, kind: "new", months: o.months, price: o.price, hsd: x.hsd, rn: x.rn, via: "bot", product: o.product });
       const r = await tuanSay(`✅ <b>${esc(o.email)}</b>: đã mời + ghi đơn mới ${o.months}th · HSD ${esc(x.hsd || "")}\n+${money(o.price)} · công nợ: <b>${money(bal)}</b>\nBáo khách mở Gmail bấm <b>Chấp nhận lời mời</b>.`, { reply_parameters: { message_id: o.tmid, allow_sending_without_reply: true } }).catch(() => ({ ok: false }));
       sent = r.ok ? 1 : 0;
     } else sent = await cusNotify([o.email], "order");
@@ -1229,7 +1229,7 @@ Bấm Ghi → ghi khách vào fam + ghi Tài chính (CTV ${ctv}) + ${L.tuan ? "c
 /* ---------- Công nợ CTV Tuấn: Tuấn gõ gia hạn / đơn mới trong nhóm → DNC duyệt trên bot → cộng dồn, Tuấn trả gộp ----------
    Giá bán cho Tuấn (YouTube): 3th 90k · 6th 150k · 12th 290k. Tháng khác chưa có giá → DNC sửa bằng /tuan them. */
 const TUAN_PRICE: Record<number, number> = { 3: 90000, 6: 150000, 12: 290000 };
-type TItem = { at: number; ma?: string; email?: string; kind: "renew" | "new" | "them"; months?: number; price: number; note?: string };
+type TItem = { at: number; ma?: string; email?: string; kind: "renew" | "new" | "them"; months?: number; price: number; note?: string; old?: string; hsd?: string; rn?: string; via?: string; product?: string };
 type TDebt = { items: TItem[]; pays: { at: number; amt: number; note?: string }[]; orders: Record<string, any> };
 async function tdGet(): Promise<TDebt> { const d = await docGet<TDebt>("tuan_debt", {} as TDebt); d.items ||= []; d.pays ||= []; d.orders ||= {}; return d; }
 async function tdPut(d: TDebt) { for (const k of Object.keys(d.orders)) if (Date.now() - (d.orders[k].at || 0) > 60 * 864e5) delete d.orders[k]; await docPut("tuan_debt", d); }
@@ -1248,6 +1248,19 @@ function tdSummary(d: TDebt, n = 15) {
     lastPay ? `Trả gần nhất: ${money(lastPay.amt)} lúc ${fmtAt(lastPay.at)}` : "",
     since.length ? `\nĐơn từ lần trả trước (${since.length}):\n` + since.slice(-n).map(fmt).join("\n") + (since.length > n ? `\n…và ${since.length - n} đơn trước đó` : "") : ""].filter(Boolean).join("\n");
 }
+/* Sổ công nợ Tuấn (trang godnc.com/congno/?k=…): khoá đọc riêng, suy ra từ TF_PASS — đổi TF_PASS là link cũ hết hiệu lực */
+async function tuanBookKey() {
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("tuanbook:" + (Deno.env.get("TF_PASS") || "")));
+  return [...new Uint8Array(h)].slice(0, 9).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+const tuanBookUrl = async () => "https://godnc.com/congno/?k=" + await tuanBookKey();
+async function tuanBook() {
+  const d = await tdGet();
+  const pending = Object.entries(d.orders).filter(([, o]) => o.st === "paid").map(([ma, o]) => ({ ma, email: o.email, months: o.months, price: o.price, at: o.at, kind: "new" }));
+  const st = await renewGet();
+  for (const p of Object.values(st)) if (p.tuan && !p.done) pending.push({ ma: "", email: p.email, months: p.months, price: p.tuan.price, at: p.at, kind: "renew" } as any);
+  return { ok: true, now: Date.now(), bal: tdBal(d), items: d.items, pays: d.pays, pending, price: TUAN_PRICE };
+}
 /* DNC: /tuan · /tuan tt 500k (Tuấn đã trả) · /tuan them 90k ghi chú · /tuan bot 90k ghi chú (trừ bớt) */
 const TUAN_GUIDE = `<b>Cách dùng công nợ Tuấn</b>
 • Tuấn gõ trong nhóm <code>abc@gmail.com gia hạn 6 tháng</code> / <code>abc@gmail.com đơn mới 3 tháng</code> → bạn Duyệt / chọn fam trên bot → tự cộng công nợ (3th 90k · 6th 150k · 12th 290k) + báo nhóm.
@@ -1256,7 +1269,8 @@ const TUAN_GUIDE = `<b>Cách dùng công nợ Tuấn</b>
 • <code>/tuan clear</code> — Tuấn trả hết, công nợ về 0.
 • <code>/tuan them 90k ghi chú</code> — cộng tay (đơn làm trên web, gói 1 tháng…).
 • <code>/tuan bot 90k ghi chú</code> — trừ bớt (hoàn tiền, ghi nhầm).
-• Tuấn gõ <code>/congno</code> trong nhóm để xem.`;
+• Tuấn gõ <code>/congno</code> trong nhóm để xem.
+• <code>/tuan link</code> — link sổ chi tiết (đơn, thanh toán, công nợ, hướng dẫn) cho bạn + Tuấn.`;
 const tdKb = (d: TDebt) => tdBal(d) > 0 ? { reply_markup: { inline_keyboard: [[{ text: `💵 Tuấn đã trả hết ${money(tdBal(d))}`, callback_data: `td:c:${tdBal(d)}` }]] } } : {};
 async function tdPay(amt: number, note = "") {
   const d = await tdGet(); d.pays.push({ at: Date.now(), amt, note }); await tdPut(d);
@@ -1279,6 +1293,7 @@ async function tuanCmd(arg: string) {
   const d = await tdGet(), a0 = arg.trim().toLowerCase();
   if (/^(clear|xong|het|hết|trả hết|tra het)$/.test(a0)) { const bal = tdBal(d); if (bal <= 0) return say("Công nợ đang 0, không cần clear."); return say(await tdPay(bal, "trả hết")); }
   if (/^(help|hd|huongdan|hướng dẫn)$/.test(a0)) return say(TUAN_GUIDE);
+  if (/^(link|so|sổ|sheet)$/.test(a0)) return say(`📒 Sổ công nợ Tuấn (gửi Tuấn link này):\n${await tuanBookUrl()}`);
   const m = arg.trim().match(/^(tt|tra|trả|them|thêm|bot|bớt)\s+(\S+)\s*([\s\S]*)$/i);
   if (!m) return say(tdSummary(d) + "\n\n" + TUAN_GUIDE, tdKb(d));
   const amt = parseMoney(m[2]); if (!amt) return say("Số tiền không đọc được, vd: <code>/tuan tt 500k</code>");
@@ -1302,7 +1317,7 @@ async function tuanDone(x: { email?: string; months?: number; kind?: string; hsd
     const d = await tdGet(), k = Object.keys(d.orders).reverse().find((i) => d.orders[i].email === e && d.orders[i].st === "paid");
     if (k) { d.orders[k].st = "done"; price = d.orders[k].price || price; mid = d.orders[k].tmid || 0; dmid = d.orders[k].dmid || 0; await tdPut(d); }
   }
-  const bal = price ? await tdAdd({ at: Date.now(), email: e, kind, months, price }) : tdBal(await tdGet());
+  const bal = price ? await tdAdd({ at: Date.now(), email: e, kind, months, price, hsd: x.hsd, rn: x.rn, via: "web" }) : tdBal(await tdGet());
   const txt = `✅ <b>${esc(e)}</b>: ${kind === "renew" ? `đã gia hạn ${months}th` : `đã mời + ghi đơn mới ${months}th${x.rn ? "" : ""}`}${x.hsd ? ` → HSD <b>${esc(x.hsd)}</b>` : ""}\n${price ? `+${money(price)} · ` : "⚠️ chưa có giá gói này (DNC cộng tay) · "}công nợ: <b>${money(bal)}</b>${kind === "new" ? "\nBáo khách mở Gmail bấm <b>Chấp nhận lời mời</b>." : ""}`;
   const g = await tuanSay(txt, mid ? { reply_parameters: { message_id: mid, allow_sending_without_reply: true } } : {}).catch(() => ({ ok: false }));
   if (dmid) await tg("editMessageText", { chat_id: CHAT, message_id: dmid, text: `✅ <b>${esc(e)}</b>: đã ${kind === "renew" ? "gia hạn" : "ghi đơn mới"} trên web · +${money(price)} · công nợ Tuấn ${money(bal)}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [] } }).catch(() => {});
@@ -1915,7 +1930,7 @@ async function renewCallback(q: any, a: string, id: string) {
   }
   if (a === "debt" && p.tuan) {   // đã gia hạn ở web → chỉ cộng công nợ + báo nhóm
     p.done = "debt"; await renewPut(store);
-    const bal = await tdAdd({ at: Date.now(), email: p.email, kind: "renew", months: p.months, price: p.tuan.price });
+    const bal = await tdAdd({ at: Date.now(), email: p.email, kind: "renew", months: p.months, price: p.tuan.price, old: p.hsd0, via: "web", product: p.product });
     const g = await tuanSay(`✅ <b>${esc(p.email)}</b>: đã gia hạn ${p.months}th\n+${money(p.tuan.price)} · công nợ: <b>${money(bal)}</b>`, { reply_parameters: { message_id: p.tuan.mid, allow_sending_without_reply: true } }).catch(() => ({ ok: false }));
     await tg("answerCallbackQuery", { callback_query_id: q.id, text: "Đã cộng công nợ" });
     return edit(`✅ <b>${esc(p.email)}</b>: đã cộng ${money(p.tuan.price)} · công nợ Tuấn <b>${money(bal)}</b>${g.ok ? " · đã báo nhóm" : " · ⚠️ chưa báo được nhóm"}`);
@@ -1976,7 +1991,7 @@ async function renewCallback(q: any, a: string, id: string) {
     if (famBadOf(r.f) || p.base === "today") lines.push(famBadOf(r.f) ? `⚠️ Fam ${esc(r.f.rn)} đang lỗi → mời khách vào fam mới trên Thay Fam.` : `⚠️ Tính từ hôm nay (khách mua lại) → kiểm tra khách còn trong ${esc(r.f.rn)} không, không thì mời vào fam mới.`);
     if (sent) lines.push("Đã nhắn khách lẻ qua bot.");
     if (p.tuan) {
-      const bal = await tdAdd({ at: Date.now(), email: r.c.email, kind: "renew", months: p.months, price: p.tuan.price });
+      const bal = await tdAdd({ at: Date.now(), email: r.c.email, kind: "renew", months: p.months, price: p.tuan.price, old: x.oldHsd || r.c.hsd, hsd: x.hsd || x.newHsd, rn: r.f?.rn, via: "bot", product: p.product });
       const g = await tuanSay(`✅ Đã gia hạn ${esc(r.c.email)} | ${p.product === "YoutubePlus" ? "ytb plus" : "ytb"} ${p.months}th | ${esc(x.oldHsd || r.c.hsd || "")} → <b>${esc(x.hsd || x.newHsd || "")}</b>\n+${money(p.tuan.price)} · công nợ: <b>${money(bal)}</b>`, { reply_parameters: { message_id: p.tuan.mid, allow_sending_without_reply: true } }).catch(() => ({ ok: false }));
       lines.push(`Công nợ Tuấn: <b>${money(bal)}</b>${g.ok ? " · đã báo nhóm" : " · ⚠️ chưa báo được nhóm"}`);
       if (x.price != null && Number(x.price) !== p.tuan.price) lines.push(`⚠️ Tài chính ghi ${vnd(x.price)}, giá Tuấn ${money(p.tuan.price)} — sửa trong sheet`);
@@ -2342,6 +2357,13 @@ Deno.serve(async (req) => {
         if (sent && b.kind !== "invited") { try { await tuanFixedAdd(ems, "Khách lẻ: đã xử lý"); } catch (_) { /* bỏ qua */ } }
         return J({ ok: true, sent });
       } catch (e) { return J({ ok: false, error: (e as Error).message }); }
+    }
+    // ---- sổ công nợ Tuấn (đọc, cho trang godnc.com/congno) ----
+    if (url.searchParams.has("tuan_book")) {
+      const H = { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" };
+      if (req.method === "OPTIONS") return new Response(null, { headers: { ...H, "Access-Control-Allow-Methods": "GET, OPTIONS" } });
+      if (url.searchParams.get("k") !== await tuanBookKey()) return new Response(JSON.stringify({ ok: false, error: "Link không đúng hoặc đã đổi" }), { status: 403, headers: H });
+      return new Response(JSON.stringify(await tuanBook()), { headers: H });
     }
     // ---- bot nhóm Tuấn ----
     if (url.searchParams.has("tuan_notify")) {

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sổ công nợ DNC × Tuấn</title>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<style>
+  :root{--bg:#f6f5f1;--card:#fff;--ink:#1d1d1b;--mute:#76756d;--line:#e4e2da;--acc:#2f8a5b;--warn:#b86b16;--bad:#c0392b;--ok:#2f8a5b;--chip:#efede6;color-scheme:light dark}
+  @media (prefers-color-scheme: dark){:root{--bg:#141413;--card:#1d1d1b;--ink:#ecebe4;--mute:#9b9a92;--line:#2f2f2b;--acc:#3fa673;--warn:#e3913f;--bad:#ef6b5e;--ok:#57c08a;--chip:#262623}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px}
+  header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  h1{font-size:20px;margin:0} .sub{color:var(--mute);font-size:13px} .sp{flex:1}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:6px 11px;font:inherit;font-size:13px;cursor:pointer}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-bottom:14px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .kpi .l{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.04em} .kpi .v{font-size:24px;font-weight:700;margin-top:2px} .kpi .s{color:var(--mute);font-size:12px}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:12px;overflow-x:auto}
+  .tab{border:0;background:none;color:var(--mute);padding:9px 12px;font:inherit;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+  .tab.on{color:var(--ink);border-color:var(--ink);font-weight:600}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+  .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  input,select{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+  .tw{overflow-x:auto} table{border-collapse:collapse;width:100%;font-size:14px}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  th{color:var(--mute);font-weight:600;font-size:12px;position:sticky;top:0;background:var(--card)}
+  td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;background:var(--chip)}
+  .p-renew{background:#e3efe7;color:#21613f} .p-new{background:#e4ecf7;color:#2b4f86} .p-pay{background:#f5ead9;color:#8a5414} .p-adj{background:#eee;color:#555}
+  @media (prefers-color-scheme: dark){.p-renew{background:#1f3a28;color:#9fd9b4}.p-new{background:#1f2c40;color:#a9c3ec}.p-pay{background:#3d2e17;color:#efc488}.p-adj{background:#2b2b28;color:#bbb}}
+  .plus{color:var(--bad)} .minus{color:var(--ok)}
+  .mute{color:var(--mute)} .err{color:var(--bad);padding:20px;text-align:center}
+  .guide h3{font-size:15px;margin:14px 0 6px} .guide p,.guide li{margin:4px 0;line-height:1.55} .guide code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:13px}
+  .rowsep td{background:var(--chip);font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap" x-data="book()" x-init="load()">
+  <header>
+    <div><h1>📒 Sổ công nợ DNC × Tuấn</h1>
+      <div class="sub" x-text="d ? 'Cập nhật ' + fmt(d.now) + ' · tự lấy từ bot, không cần nhập tay' : (err ? '' : 'Đang tải…')"></div></div>
+    <div class="sp"></div>
+    <button class="btn" @click="load()" x-text="loading ? 'Đang tải…' : '↻ Tải lại'"></button>
+    <button class="btn" @click="csv()" :disabled="!d">⬇ Tải Excel (CSV)</button>
+  </header>
+  <div class="err" x-show="err" x-text="err"></div>
+
+  <template x-if="d">
+  <div>
+    <div class="kpis">
+      <div class="kpi"><div class="l">Công nợ hiện tại</div><div class="v" :style="d.bal > 0 ? 'color:var(--bad)' : 'color:var(--ok)'" x-text="money(d.bal)"></div><div class="s" x-text="d.bal > 0 ? 'Tuấn cần trả DNC' : 'Đã sạch nợ ✅'"></div></div>
+      <div class="kpi"><div class="l">Từ lần trả trước</div><div class="v" x-text="since().n + ' đơn'"></div><div class="s" x-text="'phát sinh ' + (since().sum > 0 ? '+' : '') + money(since().sum) + (lastPay() ? ' · trả gần nhất ' + fmtD(lastPay().at) : '')"></div></div>
+      <div class="kpi"><div class="l">Đã trả (tổng)</div><div class="v" x-text="money(d.pays.reduce((s, p) => s + p.amt, 0))"></div><div class="s" x-text="d.pays.length + ' lần thanh toán'"></div></div>
+      <div class="kpi"><div class="l">Đang chờ DNC duyệt</div><div class="v" x-text="d.pending.length"></div><div class="s">chưa tính vào công nợ</div></div>
+    </div>
+
+    <nav class="tabs">
+      <button class="tab" :class="tab==='so' && 'on'" @click="tab='so'">Sổ chi tiết</button>
+      <button class="tab" :class="tab==='thang' && 'on'" @click="tab='thang'">Theo tháng</button>
+      <button class="tab" :class="tab==='tra' && 'on'" @click="tab='tra'">Thanh toán</button>
+      <button class="tab" :class="tab==='cho' && 'on'" @click="tab='cho'" x-text="'Đang chờ (' + d.pending.length + ')'"></button>
+      <button class="tab" :class="tab==='hd' && 'on'" @click="tab='hd'">Hướng dẫn & bảng giá</button>
+    </nav>
+
+    <!-- SỔ: mọi phát sinh theo thời gian + số dư chạy -->
+    <section class="card" x-show="tab==='so'">
+      <div class="tools">
+        <input type="search" x-model="q" placeholder="Tìm email…" style="flex:1;min-width:180px">
+        <select x-model="month"><option value="">Tất cả tháng</option><template x-for="m in months()" :key="m"><option :value="m" x-text="'Tháng ' + m"></option></template></select>
+        <select x-model="kind"><option value="">Mọi loại</option><option value="renew">Gia hạn</option><option value="new">Đơn mới</option><option value="pay">Thanh toán</option><option value="them">Điều chỉnh</option></select>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>Ngày</th><th>Loại</th><th>Email / ghi chú</th><th>Gói</th><th>HSD cũ → mới</th><th>Fam</th><th class="n">Phát sinh</th><th class="n">Số dư</th></tr></thead>
+        <tbody>
+          <template x-for="r in rows()" :key="r.k"><tr>
+            <td class="mono" x-text="fmt(r.at)"></td>
+            <td><span class="pill" :class="'p-' + (r.kind === 'them' ? 'adj' : r.kind)" x-text="KIND[r.kind]"></span></td>
+            <td class="mono" x-text="r.email || r.note || ''"></td>
+            <td x-text="r.months ? (r.product === 'YoutubePlus' ? 'YTB Plus ' : 'YTB ') + r.months + 'th' : ''"></td>
+            <td class="mono" x-text="r.hsd ? (r.old ? r.old + ' → ' : '→ ') + r.hsd : (r.old ? r.old + ' → ?' : '')"></td>
+            <td x-text="r.rn || ''"></td>
+            <td class="n" :class="r.amt > 0 ? 'plus' : 'minus'" x-text="(r.amt > 0 ? '+' : '') + money(r.amt)"></td>
+            <td class="n" x-text="money(r.bal)"></td>
+          </tr></template>
+          <tr x-show="!rows().length"><td colspan="8" class="mute" style="text-align:center;padding:18px">Không có dòng nào.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="mute" style="font-size:12px;margin-top:8px">Phát sinh <b class="plus">+</b> = Tuấn nợ thêm (gia hạn / đơn mới) · <b class="minus">−</b> = Tuấn đã trả / trừ bớt. Dòng mới nhất ở trên.</div>
+    </section>
+
+    <!-- THEO THÁNG -->
+    <section class="card" x-show="tab==='thang'">
+      <div class="tw"><table>
+        <thead><tr><th>Tháng</th><th class="n">Gia hạn</th><th class="n">Đơn mới</th><th class="n">Tiền đơn</th><th class="n">Đã trả</th><th class="n">Điều chỉnh</th><th class="n">Số dư cuối tháng</th></tr></thead>
+        <tbody><template x-for="m in byMonth()" :key="m.m"><tr>
+          <td x-text="m.m"></td><td class="n" x-text="m.renew"></td><td class="n" x-text="m.nw"></td>
+          <td class="n plus" x-text="money(m.orders)"></td><td class="n minus" x-text="money(m.paid)"></td><td class="n" x-text="m.adj ? money(m.adj) : ''"></td><td class="n" x-text="money(m.bal)"></td>
+        </tr></template></tbody>
+      </table></div>
+    </section>
+
+    <!-- THANH TOÁN -->
+    <section class="card" x-show="tab==='tra'">
+      <div class="tw"><table>
+        <thead><tr><th>Ngày</th><th class="n">Số tiền</th><th>Ghi chú</th><th class="n">Còn nợ sau đó</th></tr></thead>
+        <tbody>
+          <template x-for="r in rows().filter(x => x.kind === 'pay')" :key="r.k"><tr>
+            <td class="mono" x-text="fmt(r.at)"></td><td class="n minus" x-text="money(-r.amt)"></td><td x-text="r.note || ''"></td><td class="n" x-text="money(r.bal)"></td>
+          </tr></template>
+          <tr x-show="!d.pays.length"><td colspan="4" class="mute" style="text-align:center;padding:18px">Chưa có lần thanh toán nào.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="mute" style="font-size:13px;margin-top:8px">Tuấn trả gộp, không trả từng đơn. DNC nhận tiền thì gõ trên bot <code>/tuan tt 500k</code> (trả 1 phần) hoặc <code>/tuan clear</code> (trả hết) — sổ tự cập nhật, bot báo nhóm.</div>
+    </section>
+
+    <!-- ĐANG CHỜ -->
+    <section class="card" x-show="tab==='cho'">
+      <div class="tw"><table>
+        <thead><tr><th>Gửi lúc</th><th>Loại</th><th>Email</th><th>Gói</th><th class="n">Sẽ cộng</th></tr></thead>
+        <tbody>
+          <template x-for="(o, i) in d.pending" :key="i"><tr>
+            <td class="mono" x-text="fmt(o.at)"></td><td><span class="pill" :class="'p-' + o.kind" x-text="KIND[o.kind]"></span></td>
+            <td class="mono" x-text="o.email"></td><td x-text="'YTB ' + o.months + 'th'"></td><td class="n" x-text="money(o.price)"></td>
+          </tr></template>
+          <tr x-show="!d.pending.length"><td colspan="5" class="mute" style="text-align:center;padding:18px">Không có đơn nào đang chờ.</td></tr>
+        </tbody>
+      </table></div>
+      <div class="mute" style="font-size:13px;margin-top:8px">Đơn Tuấn đã gõ trong nhóm, đợi DNC duyệt. Duyệt xong mới cộng vào công nợ.</div>
+    </section>
+
+    <!-- HƯỚNG DẪN -->
+    <section class="card guide" x-show="tab==='hd'">
+      <h3>💰 Bảng giá cho Tuấn (YouTube)</h3>
+      <table style="width:auto"><thead><tr><th>Gói</th><th class="n">Giá</th></tr></thead>
+        <tbody><template x-for="[m, p] in Object.entries(d.price)" :key="m"><tr><td x-text="m + ' tháng'"></td><td class="n" x-text="money(p)"></td></tr></template></tbody></table>
+      <p class="mute">Gói khác (1 tháng…) chưa có giá → DNC cộng tay.</p>
+
+      <h3>👥 Tuấn gõ trong nhóm (bot Thông báo Goshop)</h3>
+      <ul>
+        <li><b>Gia hạn:</b> <code>abc@gmail.com gia hạn 6 tháng</code> → bot trả lời <i>⏳ gia hạn abc@gmail.com | ytb 6th | HSD cũ → HSD mới · giá — đợi DNC duyệt</i>.</li>
+        <li><b>Đơn mới:</b> <code>abc@gmail.com đơn mới 3 tháng</code> → DNC mời vào fam rồi duyệt.</li>
+        <li><b>Báo lỗi:</b> <code>abc@gmail.com chưa có lời mời</code> / <code>mất pre</code> / <code>fix ytb</code> → vào hàng chờ DNC kiểm tra. Bot kèm dòng 📍 RN · HSD · renew fam · lúc mời / lúc xoá nhóm.</li>
+        <li><b>Xem công nợ:</b> <code>/congno</code> (kèm link sổ này).</li>
+        <li>DNC duyệt xong bot trả lời ngay dưới tin: <i>✅ Đã gia hạn … | ytb 6th | cũ → mới · +150.000đ · công nợ …</i></li>
+      </ul>
+
+      <h3>🛡 Bot tự kiểm để không tính nhầm</h3>
+      <ul>
+        <li>1 dòng có nhiều email (mail chính, MKP…) → chỉ tính <b>1 đơn</b>.</li>
+        <li>Tin dạng thông tin đơn (<code>… | ytb 12th | 01/08/2026 → 01/08/2027 | …</code>) mà không ghi rõ <b>gia hạn / đơn mới</b> → <b>không</b> tạo đơn.</li>
+        <li>HSD hiện tại đã tới ngày cuối ghi trong tin → báo "đã gia hạn rồi", không tạo thêm.</li>
+        <li>Thẻ duyệt đã bấm rồi / HSD đã đổi (gia hạn ở web) → không gia hạn lần 2, chỉ có nút cộng công nợ.</li>
+        <li>Chữ "fix", "lời mời", "check", "lỗi", "mất pre" → là báo lỗi, không phải đơn.</li>
+      </ul>
+
+      <h3>🧾 DNC (bot @goshopassistantbot)</h3>
+      <ul>
+        <li>Bấm <b>✅ Duyệt</b> trên thẻ gia hạn → gia hạn + ghi Tài chính + cộng công nợ + báo nhóm. Mặc định nối HSD cũ, có nút "Tính từ hôm nay".</li>
+        <li>Đơn mới: bấm fam đã mời → <b>✅ Ghi</b>. Làm trên web (tab Lệnh) cũng tự cộng công nợ + báo nhóm.</li>
+        <li><code>/tuan</code> xem công nợ + nút <b>Tuấn đã trả hết</b> · <code>/tuan tt 500k</code> trả 1 phần · <code>/tuan clear</code> trả hết</li>
+        <li><code>/tuan them 90k ghi chú</code> cộng tay · <code>/tuan bot 90k ghi chú</code> trừ bớt (hoàn tiền, ghi nhầm) · <code>/tuan link</code> lấy link sổ này</li>
+      </ul>
+      <p class="mute">Sổ chỉ đọc. Muốn sửa số thì DNC gõ lệnh trên bot (them / bot / tt) — mọi thay đổi đều để lại dòng trong sổ.</p>
+    </section>
+  </div>
+  </template>
+</div>
+<script>
+const API = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tuan_book=1';
+function book() {
+  return {
+    d: null, err: '', loading: false, tab: 'so', q: '', month: '', kind: '',
+    KIND: { renew: 'Gia hạn', new: 'Đơn mới', pay: 'Thanh toán', them: 'Điều chỉnh' },
+    async load() {
+      const k = new URLSearchParams(location.search).get('k');
+      if (!k) { this.err = 'Thiếu mã truy cập trong link. Lấy link bằng lệnh /tuan link trên bot.'; return; }
+      this.loading = true; this.err = '';
+      try {
+        const r = await fetch(API + '&k=' + encodeURIComponent(k), { cache: 'no-store' }).then(x => x.json());
+        if (!r.ok) throw new Error(r.error || 'Lỗi');
+        this.d = r;
+      } catch (e) { this.err = 'Không tải được sổ: ' + e.message; }
+      this.loading = false;
+    },
+    money(n) { return (Number(n) || 0).toLocaleString('vi-VN') + 'đ'; },
+    fmt(t) { const d = new Date(t + 7 * 3600e3); return String(d.getUTCDate()).padStart(2, '0') + '/' + String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + d.getUTCFullYear() + ' ' + String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); },
+    fmtD(t) { return this.fmt(t).slice(0, 10); },
+    ym(t) { const d = new Date(t + 7 * 3600e3); return String(d.getUTCMonth() + 1).padStart(2, '0') + '/' + d.getUTCFullYear(); },
+    // gộp đơn + thanh toán theo thời gian, tính số dư chạy
+    all() {
+      if (!this.d) return [];
+      const ev = this.d.items.map((x, i) => Object.assign({ k: 'i' + i, amt: x.price }, x))
+        .concat(this.d.pays.map((p, i) => ({ k: 'p' + i, at: p.at, kind: 'pay', amt: -p.amt, note: p.note || '' })))
+        .sort((a, b) => a.at - b.at);
+      let bal = 0; ev.forEach(e => { bal += e.amt; e.bal = bal; });
+      return ev;
+    },
+    rows() {
+      const q = this.q.trim().toLowerCase();
+      return this.all().filter(r => (!q || String(r.email || r.note || '').toLowerCase().includes(q)) && (!this.month || this.ym(r.at) === this.month) && (!this.kind || r.kind === this.kind)).reverse();
+    },
+    months() { return [...new Set(this.all().map(r => this.ym(r.at)))].reverse(); },
+    lastPay() { return this.d && this.d.pays.length ? this.d.pays[this.d.pays.length - 1] : null; },
+    since() { const lp = this.lastPay(), it = this.d.items.filter(x => !lp || x.at > lp.at); return { n: it.filter(x => x.kind !== 'them').length, sum: it.reduce((s, x) => s + x.price, 0) }; },
+    byMonth() {
+      const m = {}, order = [];
+      this.all().forEach(r => {
+        const k = this.ym(r.at); if (!m[k]) { m[k] = { m: k, renew: 0, nw: 0, orders: 0, paid: 0, adj: 0, bal: 0 }; order.push(k); }
+        const x = m[k];
+        if (r.kind === 'renew') { x.renew++; x.orders += r.amt; } else if (r.kind === 'new') { x.nw++; x.orders += r.amt; } else if (r.kind === 'pay') x.paid += -r.amt; else x.adj += r.amt;
+        x.bal = r.bal;
+      });
+      return order.reverse().map(k => m[k]);
+    },
+    csv() {
+      const head = ['Ngày', 'Loại', 'Email / ghi chú', 'Gói (tháng)', 'HSD cũ', 'HSD mới', 'Fam', 'Phát sinh', 'Số dư'];
+      const rows = this.all().map(r => [this.fmt(r.at), this.KIND[r.kind], r.email || r.note || '', r.months || '', r.old || '', r.hsd || '', r.rn || '', r.amt, r.bal]);
+      const s = [head].concat(rows).map(a => a.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + s], { type: 'text/csv;charset=utf-8' }));
+      a.download = 'cong-no-tuan-' + this.fmtD(Date.now()).replace(/\//g, '-') + '.csv'; a.click();
+    },
+  };
+}
+</script>
+</body>
+</html>
