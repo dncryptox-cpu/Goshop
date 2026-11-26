@@ -1100,7 +1100,8 @@ async function cusMarkPaid(cfg: CusCfg, doc: CusDoc, x: string, auto: boolean, v
   if (o.kind !== "renew") {   // đơn mới YouTube → làm luôn trên bot: DNC chọn fam đã mời → ghi fam + Tài chính
     o.st = "paid"; doc.subs[o.email] = { chat, name: o.name, at: Date.now(), pending: true, kind: "order" };
     await cusPut(doc);
-    await nfAsk(x, how + low);
+    const sr = await nfAsk(x, how + low);
+    if (sr?.result?.message_id) { const d2 = await cusGet(); if (d2.orders[x]) { (d2.orders[x] as any).dmid = sr.result.message_id; await cusPut(d2); } }
     return csay(chat, T(cfg, via === "tự động" ? "paid_auto" : "pay_ok", { ma: x, gia: money(o.got || o.price) }));
   }
   await tf({ action: "queue", op: "add", text: line, from: CUS_FROM, src: "cusbot" });
@@ -1646,6 +1647,24 @@ async function cusBroadcast(id: string, to: string, added: number | null, extra:
 /* tab "📮 Bot khách" trên Thay Fam */
 async function cusAdmin(b: any) {
   const op = String(b.op || "get");
+  // Đơn mới YouTube đã nhận tiền, chưa xếp fam (khách lẻ + Tuấn) → hiện ở tab Lệnh để làm trên web
+  if (op === "pending_new") {
+    const d = await cusGet(), t = await tdGet(), out: any[] = [];
+    for (const [ma, o] of Object.entries(d.orders || {})) if (o.ytb !== false && o.kind !== "renew" && o.st === "paid" && !o.nf && o.email?.includes("@"))
+      out.push({ ma, email: o.email, months: o.months, plus: /plus/i.test(o.pack || ""), from: "Khách lẻ (bot)", at: fmtAt(o.at), ctv: "Dnc", who: o.name || "", price: o.got || o.price });
+    for (const [ma, o] of Object.entries(t.orders || {})) if (o.st === "paid" && !o.nf)
+      out.push({ ma, email: o.email, months: o.months, plus: o.product === "YoutubePlus", from: "Nhóm Tuấn", at: fmtAt(o.at), ctv: "Tuan", who: "Tuấn", price: o.price });
+    return { ok: true, items: out };
+  }
+  // web đã ghi đơn mới (khách lẻ) → đóng đơn bot, sửa tin trên bot DNC, nhắn khách
+  if (op === "new_done") {
+    const ma = String(b.ma || ""), d = await cusGet(), o = d.orders[ma];
+    if (!o) return { ok: false, error: "Không thấy đơn " + ma };
+    o.st = "done"; o.nf = Date.now(); await cusPut(d);
+    if ((o as any).dmid) await tg("editMessageText", { chat_id: CHAT, message_id: (o as any).dmid, text: `✅ Đơn mới ${esc(ma)} · <code>${esc(o.email)}</code> đã ghi trên web${b.rn ? " → " + esc(String(b.rn)) : ""}${b.hsd ? " · HSD " + esc(String(b.hsd)) : ""}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    const sent = await cusNotify([o.email], "order").catch(() => 0);
+    return { ok: true, sent };
+  }
   if (op === "chat") return { ok: true, log: await docGet<CLog>("cuslog_" + String(b.chat || "").replace(/\D/g, ""), []) };   // lịch sử trò chuyện 1 khách
   let note = "";
   if (op === "deliver") { const r = await cusDeliver(String(b.ma || ""), String(b.note || "")); if (!r.ok) return r; note = "Đã nhắn khách đơn " + b.ma; }

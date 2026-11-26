@@ -219,6 +219,8 @@
         <button class="btn sm" @click="freshUntil = Date.now() + 20000; refreshAll()" :disabled="loading" x-text="loading ? 'Đang tải…' : 'Tải lại'"></button>
         <a class="btn sm" href="/gg1/" x-show="me.role==='admin' || me.role==='nhanvien'" style="text-decoration:none">GG1</a>
         <label class="btn sm" x-show="me.role==='admin'" style="display:flex;gap:6px;align-items:center;cursor:pointer" :style="autoSync ? 'border-color:var(--ok);color:var(--ok)' : ''" title="Bật: mọi thao tác của admin (thay fam, chuyển khách, đổi mail, cất/kick khách, đóng fam, đã mời) ghi luôn vào data gốc"><input type="checkbox" x-model="autoSync" @change="lsSet('thayfam_autosync', autoSync ? '1' : '0')" style="margin:0"> Ghi luôn vào gốc</label>
+        <button class="btn sm pri" x-show="canInstall && !isApp" @click="installApp()" title="Cài Thay Fam thành app riêng: mở nhanh, cửa sổ riêng, không lẫn tab khác">📲 Cài app</button>
+        <button class="btn sm" x-show="hasUpdate" style="border-color:var(--ok);color:var(--ok)" @click="location.reload()">↻ Có bản mới</button>
         <button class="btn sm" @click="logout()">Thoát</button>
       </header>
 
@@ -1505,7 +1507,7 @@
         <template x-for="g in cmdGroups()" :key="g.key">
           <div class="card" style="padding:10px 12px;margin-bottom:12px" :style="g.cards.some(c => cmdDead(c)) ? 'border:2px solid var(--bad, #c0392b);background:#fdf0ee' : ''">
             <div class="row" style="gap:8px;font-size:13px">
-              <b x-text="g.qid ? '📨 ' + (g.from || 'Bot') : '📋 Dán tay'"></b>
+              <b x-text="(g.qid || g.from) ? '📨 ' + (g.from || 'Bot') : '📋 Dán tay'"></b>
               <span x-show="g.cards.some(c => cmdDead(c))" style="background:var(--bad, #c0392b);color:#fff;border-radius:6px;padding:1px 8px;font-weight:700;font-size:12px" x-text="cmdDead(g.cards[0]) || ''"></span>
               <span class="mute" x-text="g.at || ''"></span>
               <span x-show="g.dupAt.length" style="background:#fff3cd;border-radius:6px;padding:1px 8px;font-size:12px" x-text="'Báo ' + (g.dupAt.length + 1) + ' lần · trước đó ' + g.dupAt.join(', ')"></span>
@@ -2008,6 +2010,7 @@ function app() {
     askQ: '', askBusy: false, askErr: '', askLog: (() => { try { return JSON.parse(sessionStorage.getItem('tf_ask') || '[]'); } catch (e) { return []; } })(),
     askSamples: ['Hôm nay cần thay fam nào?', 'Fam nào đang bị chặn mời, bao giờ mời lại được?', 'Khách Tuấn hết hạn trong 3 ngày tới', 'Fam nào còn slot trống?', 'Khách nào đã mời mà chưa vào nhóm?', 'Có bao nhiêu khách đang chờ xếp fam?'],
     cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
+    hasUpdate: false, canInstall: false, isApp: false, _slotsStale: false, _reviewStale: false,
     tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', lastCopy: '', lastCopyFor: '', notify: null,
     slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
@@ -2043,7 +2046,21 @@ function app() {
       });
       if (this.pass) { this.snapRestore(); this.load().then(() => { if (this.allFams) this.warmSearch(); }); }
       // Quay lại tab sau ≥60s (iPhone treo tab khi chuyển app): tự tải lại
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { this._hid = Date.now(); return; } if (this.pass && this._hid && Date.now() - this._hid > 60000) this.refreshAll(); }); setInterval(() => this.tickOtp(), 1000); },
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { this._hid = Date.now(); return; } if (this.pass && this._hid && Date.now() - this._hid > 300000) this.refreshAll(); }); setInterval(() => this.tickOtp(), 1000);
+      // Dùng như app: cache trang (mở ngay không chờ mạng) + nút cài
+      if ('serviceWorker' in navigator && location.protocol === 'https:') {
+        navigator.serviceWorker.register('/thayfam/sw.js', { scope: '/thayfam/' }).catch(() => {});
+        navigator.serviceWorker.addEventListener('message', ev => { if (ev.data === 'tf-update') this.hasUpdate = true; });
+      }
+      window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); this._install = ev; this.canInstall = true; });
+      this.isApp = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+      this.$watch('tab', t => this.onTab(t));
+    },
+    onTab(t) {
+      if (t === 'slots' && this._slotsStale && !this.slotsLoading) { this._slotsStale = false; this.bg(() => this.loadSlots()); }
+      if (t === 'sync' && this._reviewStale && this.can('review')) { this._reviewStale = false; this.bg(() => this.loadReview()); }
+    },
+    async installApp() { if (!this._install) return; this._install.prompt(); try { await this._install.userChoice; } catch (e) {} this._install = null; this.canInstall = false; },
     // Mở trang hiện ngay dữ liệu lần trước (lưu trong trình duyệt), rồi cập nhật khi server trả về
     // Sau 1 thao tác ghi: tải lại nền (không bắt người dùng chờ)
     afterWrite(quiet) {
@@ -2052,9 +2069,9 @@ function app() {
       this._aw = setTimeout(() => {
         // Tải lại nền LẦN LƯỢT (không bắn song song — backend đọc cùng 1 sheet, chạy song song chỉ làm chậm nhau)
         this.bg(() => this.load());
-        if (this.can('review')) this.bg(() => this.loadReview());
-        if (this.slotsLoaded) this.bg(() => this.loadSlots());
-        if (this.allFams) this.bg(() => this.loadAll());
+        if (this.can('review') && this.tab === 'sync') this.bg(() => this.loadReview()); else this._reviewStale = true;
+        if (this.slotsLoaded && this.tab === 'slots') this.bg(() => this.loadSlots()); else if (this.slotsLoaded) this._slotsStale = true;
+        if (this.allFams && this.searchOn()) this.bg(() => this.loadAll());
         if (!quiet && this.searchOn()) this.doSearch();
       }, 300);
     },
@@ -2311,12 +2328,31 @@ function app() {
         this.qDone = d.done || [];
         const have = new Set(this.cmdCards.filter(c => c.qid).map(c => c.qid));
         this.qOpen.filter(q => !have.has(q.id)).forEach(q => this.cmdAdd(q.lines, q));
+        this.snapSave('queue', { open: this.qOpen, done: this.qDone });
       } catch (e) { this.error = e.message; }
       this.qLoading = false;
+      this.loadBotOrders();
+    },
+    // Đơn mới YouTube đã nhận tiền qua bot (khách lẻ + Tuấn) chưa xếp fam → thẻ Đơn mới ở tab Lệnh (làm trên web hay bot đều được)
+    async loadBotOrders() {
+      try {
+        const r = await fetch(CUS_ADMIN_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, op: 'pending_new' }) }).then(x => x.json());
+        if (!r.ok) return;
+        const live = new Set(r.items.map(o => o.ma));
+        // đơn đã làm trên bot → đóng thẻ trên web
+        this.cmdCards.filter(c => c.botMa && !live.has(c.botMa) && !['done', 'skip'].includes(c.st)).forEach(c => { c.st = 'done'; c.result = 'Đã xử lý trên bot'; });
+        const have = new Set(this.cmdCards.filter(c => c.botMa).map(c => c.botMa));
+        for (const o of r.items) {
+          if (have.has(o.ma)) continue;
+          this.cmdAdd([o.email + ' đơn mới ' + o.months + ' tháng' + (o.plus ? ' plus' : '')], null);
+          const c = this.cmdCards[this.cmdCards.length - 1];
+          Object.assign(c, { key: 'bot:' + o.ma, botMa: o.ma, from: o.from + ' · đơn ' + o.ma + ' · đã nhận ' + Number(o.price || 0).toLocaleString('vi-VN') + 'đ' + (o.who && o.ctv !== 'Tuan' ? ' · ' + o.who : ''), at: o.at, ctv: o.ctv, months: o.months });
+        }
+      } catch (e) {}
     },
     cmdParse() {
       const lines = this.cmdText.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-      this.cmdCards = this.cmdCards.filter(c => c.qid);
+      this.cmdCards = this.cmdCards.filter(c => c.qid || c.botMa);
       this.cmdAdd(lines, null); this.cmdText = '';
     },
     cmdAdd(lines, q) {
@@ -2465,6 +2501,12 @@ function app() {
       }
       if (!c.confirm) { c.confirm = true; setTimeout(() => { c.confirm = false; }, 4000); return; }
       c.confirm = false; c.busy = true; c.err = '';
+      if (c.botMa) {   // đơn từ bot: có thể vừa làm trên bot → kiểm tra lại, tránh ghi 2 lần
+        try {
+          const r = await fetch(CUS_ADMIN_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, op: 'pending_new' }) }).then(x => x.json());
+          if (r.ok && !r.items.some(o => o.ma === c.botMa)) { c.st = 'done'; c.result = 'Đơn này đã được xử lý trên bot'; c.busy = false; return; }
+        } catch (e) {}
+      }
       try {
         let r, msg = '';
         if (c.type === 'doimail') {
@@ -2492,6 +2534,7 @@ function app() {
         const tuanKind = c.type === 'giahan' && this.isTuan(c.cus.ctv) ? 'renew' : c.type === 'donmoi' && this.isTuan(c.ctv) ? 'new' : '';
         if (tuanKind) { c.tuanSent = true; this.tuanDone({ email: c.type === 'giahan' ? c.cus.email : r.email, months: c.months, kind: tuanKind, hsd: c.type === 'giahan' ? (r.newHsd || r.hsd) : r.hsd, rn: r.rn }).then(t => { c.result = (c.result || '') + t; }); }
         if (c.qid) await this.queueMark(c, 'xong', msg);
+        if (c.botMa && c.type === 'donmoi' && !this.isTuan(c.ctv)) fetch(CUS_ADMIN_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, op: 'new_done', ma: c.botMa, rn: r.rn, hsd: r.hsd }) }).then(x => x.json()).then(d => { c.result = (c.result || msg) + (d.sent ? ' · bot đã nhắn khách' : ''); }).catch(() => {});
       } catch (e) { c.err = e.message; }
       c.busy = false;
     },
