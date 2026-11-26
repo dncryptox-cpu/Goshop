@@ -1317,6 +1317,62 @@ async function isTuanKey(key: string) {
   } catch (_) { /* không xác thực được */ }
   return false;
 }
+/* ---------- Màn hình đơn giản cho Tuấn (Thay Fam, key CTV): gõ email → Đơn mới / Gia hạn ----------
+   Bot làm thay bằng quyền DNC nhưng khoá chặt: chỉ khách CTV Tuấn, CTV luôn ghi "Tuan", chỉ slot đang trống. */
+async function tuanAct(b: any) {
+  const op = String(b.op || ""), e = String(b.email || "").toLowerCase().trim(), months = Number(b.months) || 0;
+  const plus = !!b.plus;
+  if (op !== "lookup" && op !== "slots" && ![3, 6, 12].includes(months)) return { ok: false, error: "Chọn gói 3 / 6 / 12 tháng" };
+  if (op !== "slots" && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(e)) return { ok: false, error: "Email không đúng" };
+  tfCache.clear();
+  const r = op === "slots" ? null : await tfFind(e);
+  const mine = (ctv: string) => !ctv || normCtv(ctv) === "Tuấn";
+  if (op === "lookup") {
+    if (!r) return { ok: true, st: "new" };
+    if (r.phuOf) return { ok: true, st: "phu", of: r.c.email, rn: r.f?.rn };
+    if (r.arch) return mine(r.arch.ctv) ? { ok: true, st: "arch", hsd: r.arch.hsd } : { ok: true, st: "other" };
+    if (!mine(r.c.ctv)) return { ok: true, st: "other" };
+    return { ok: true, st: "mine", rn: r.f.rn, hsd: r.c.hsd, daysLeft: r.c.daysLeft, famDead: r.f.famState?.state === "deleted" };
+  }
+  if (op === "slots") {
+    const d = await tf({ action: "slots" }), out: any[] = [];
+    for (const f of d.items || []) {
+      if (f.blockedUntil || f.days == null || f.days < 7) continue;
+      const row = (f.rows || []).find((x: any) => x.state === "free");
+      if (row) out.push({ rn: f.rn, owner: f.email, pass: f.pass, twofa: f.twofa, days: f.days, renew: f.renew, row: row.row, used: f.used });
+    }
+    out.sort((a, b2) => b2.days - a.days);
+    return { ok: true, items: out.slice(0, 15) };
+  }
+  const product = plus ? "YoutubePlus" : "Youtube";
+  if (op === "new") {
+    if (r) return { ok: false, error: "Email này đã có trong Kho — dùng Gia hạn" };
+    const x = await tf({ action: "newOrder", email: e, toRow: Number(b.row), buy: today(), months, product, ctv: "Tuan", mailPhu: "", note: "Tuấn tự ghi", finance: true, invited: true, replace: false });
+    const t = await tuanDone({ email: e, months, kind: "new", hsd: x.hsd, rn: x.rn });
+    await say(`👥 <b>Tuấn tự ghi đơn mới</b>: <code>${esc(e)}</code> · ${months}th → ${esc(x.rn || "")} · HSD ${esc(x.hsd || "")}\n+${money(t.price || 0)} · công nợ ${money(t.bal || 0)}`).catch(() => {});
+    return { ok: true, msg: `Đã ghi đơn mới ${e} → ${x.rn || ""} · HSD ${x.hsd || ""}`, hsd: x.hsd, rn: x.rn, bal: t.bal };
+  }
+  if (!r || r.phuOf) return { ok: false, error: "Không thấy khách này trong Kho" };
+  if (op === "back") {   // khách cũ đang ở vùng lưu mua lại: xếp vào slot + gia hạn tính từ hôm nay
+    if (!r.arch || !mine(r.arch.ctv)) return { ok: false, error: "Khách không ở vùng lưu" };
+    const mv = await tf({ action: "move", email: e, toRow: Number(b.row), invited: true });
+    tfCache.clear(); const r2 = await tfFind(e);
+    const x = await tf({ action: "renewCus", row: r2?.c?.row || Number(b.row), email: e, months, bonusDays: 0, base: "today", product });
+    const t = await tuanDone({ email: e, months, kind: "renew", hsd: x.hsd || x.newHsd, rn: mv.to });
+    await say(`👥 <b>Tuấn tự xếp lại khách cũ</b>: <code>${esc(e)}</code> vùng lưu → ${esc(mv.to || "")} · +${months}th · HSD ${esc(x.hsd || x.newHsd || "")}\n+${money(t.price || 0)} · công nợ ${money(t.bal || 0)}`).catch(() => {});
+    return { ok: true, msg: `Đã xếp ${e} vào ${mv.to || ""} + gia hạn ${months}th → HSD ${x.hsd || x.newHsd || ""}`, bal: t.bal };
+  }
+  if (op === "renew") {
+    if (r.arch) return { ok: false, error: "Khách đang ở vùng lưu (không có fam) → dùng Xếp lại" };
+    if (!mine(r.c.ctv)) return { ok: false, error: "Khách của CTV khác" };
+    const lapsed = r.c.daysLeft != null && r.c.daysLeft < -7;
+    const x = await tf({ action: "renewCus", row: r.c.row, email: r.c.email, months, bonusDays: 0, base: lapsed ? "today" : "old", product });
+    const t = await tuanDone({ email: e, months, kind: "renew", hsd: x.hsd || x.newHsd, rn: r.f.rn });
+    await say(`👥 <b>Tuấn tự gia hạn</b>: <code>${esc(e)}</code> · ${months}th · ${esc(x.oldHsd || r.c.hsd)} → ${esc(x.hsd || x.newHsd || "")}${lapsed ? " (nghỉ lâu → tính từ hôm nay)" : ""}\n+${money(t.price || 0)} · công nợ ${money(t.bal || 0)}`).catch(() => {});
+    return { ok: true, msg: `Đã gia hạn ${e} ${months}th: ${x.oldHsd || r.c.hsd} → ${x.hsd || x.newHsd || ""}`, bal: t.bal };
+  }
+  return { ok: false, error: "Lệnh không đúng" };
+}
 /* Thay Fam (web) gia hạn / đơn mới cho khách CTV Tuấn → cộng công nợ + báo nhóm (trả lời tin Tuấn nếu đang chờ) + đóng thẻ trên bot */
 async function tuanDone(x: { email?: string; months?: number; kind?: string; hsd?: string; rn?: string }) {
   const e = String(x.email || "").toLowerCase().trim(), months = Number(x.months) || 0, kind = x.kind === "new" ? "new" : "renew";
@@ -2378,6 +2434,16 @@ Deno.serve(async (req) => {
       if (req.method === "OPTIONS") return new Response(null, { headers: { ...H, "Access-Control-Allow-Methods": "GET, OPTIONS" } });
       if (url.searchParams.get("k") !== await tuanBookKey()) return new Response(JSON.stringify({ ok: false, error: "Link không đúng hoặc đã đổi" }), { status: 403, headers: H });
       return new Response(JSON.stringify(await tuanBook()), { headers: H });
+    }
+    // ---- màn hình Tuấn (Thay Fam key CTV) ----
+    if (url.searchParams.has("tuan_act")) {
+      if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+      const b = await req.json().catch(() => ({}));
+      const H = { ...CORS, "Content-Type": "application/json" };
+      const admin = b.pass && b.pass === Deno.env.get("TF_PASS");
+      if (!admin && !(await isTuanKey(String(b.pass || "")))) return new Response(JSON.stringify({ ok: false, error: "Key không đúng" }), { status: 403, headers: H });
+      try { return new Response(JSON.stringify(await tuanAct(b)), { headers: H }); }
+      catch (e) { return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), { headers: H }); }
     }
     // ---- bot nhóm Tuấn ----
     if (url.searchParams.has("tuan_notify")) {

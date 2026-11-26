@@ -238,7 +238,7 @@
       </div>
 
       <div class="err" x-show="error" x-text="error"></div>
-      <div class="row" x-show="checkDue().length && tab!=='slots'" style="background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+      <div class="row" x-show="checkDue().length && tab!=='slots' && me.role!=='ctv'" style="background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn);border-radius:8px;padding:10px 12px;margin-bottom:10px">
         <span class="grow" x-text="'🔎 ' + checkDue().length + ' fam đã mời khách ≥' + slotPendingH + 'h mà chưa kiểm tra ai vào: ' + checkDue().map(f => f.rn).slice(0, 12).join(', ') + (checkDue().length > 12 ? '…' : '')"></span>
         <button class="btn sm" @click="tab='slots'; slotFilter='late'">Kiểm tra</button>
       </div>
@@ -285,13 +285,72 @@
         </div>
       </template>
 
-      <div class="search" x-show="can('search')">
+      <div class="search" x-show="can('search') && me.role!=='ctv'">
         <div class="qbox"><input type="search" x-model="q" @focus="warmSearch()" @input.debounce.400ms="doSearch()" @keydown.escape="q=''; results=[]" placeholder="Tìm nhanh: RN, email chủ fam, email thành viên, mail phụ…" x-ref="q">
         <button type="button" class="qx" x-show="q" @click="q=''; results=[]; $refs.q.focus()" aria-label="Xoá">✕</button></div>
         <span class="mute" style="font-size:12px" x-show="searchOn()" x-text="searching ? 'Đang tìm…' : (searchTotal + ' fam' + (searchTotal>results.length ? ' (hiện ' + results.length + ')' : ''))"></span>
       </div>
 
-      <nav class="tabs" x-show="!searchOn()">
+      <!-- ===== Màn hình Tuấn (CTV): gõ email → Đơn mới / Gia hạn ===== -->
+      <section x-show="me.role==='ctv'" class="tu">
+        <div class="card" style="padding:16px">
+          <div style="font-size:15px;margin-bottom:8px"><b>Gõ email khách</b> <span class="mute">— bot tự biết là đơn mới hay gia hạn</span></div>
+          <div class="row">
+            <input type="text" x-model="tu.email" @keydown.enter="tuLook()" @paste="setTimeout(() => tuLook(), 50)" placeholder="vd: abc@gmail.com" style="flex:1;min-width:220px;font-size:17px;padding:12px" autocomplete="off" autocapitalize="off">
+            <button class="btn pri" style="padding:12px 18px;font-size:15px" @click="tuLook()" :disabled="tu.busy || !tu.email.trim()" x-text="tu.busy && !tu.st ? 'Đang xem…' : 'Kiểm tra'"></button>
+          </div>
+          <div class="err" x-show="tu.err" x-text="tu.err" style="margin-top:10px"></div>
+          <div class="okbox" x-show="tu.msg" style="margin-top:10px;font-size:15px" x-text="'✅ ' + tu.msg"></div>
+        </div>
+
+        <template x-if="tu.st">
+          <div class="card" style="padding:16px">
+            <div style="font-size:16px;margin-bottom:10px" x-html="tuHead()"></div>
+
+            <template x-if="['new','mine','arch'].includes(tu.st)">
+              <div>
+                <div class="mute" style="font-size:13px;margin-bottom:6px">Chọn gói</div>
+                <div class="row" style="gap:8px;margin-bottom:12px">
+                  <template x-for="m in [3, 6, 12]" :key="m"><button class="chip" style="padding:10px 18px;font-size:16px" :class="tu.months===m && 'on'" @click="tu.months=m" x-text="m + ' tháng'"></button></template>
+                  <label class="mute" style="font-size:14px;margin-left:6px"><input type="checkbox" x-model="tu.plus"> Plus</label>
+                </div>
+              </div>
+            </template>
+
+            <!-- Đơn mới / khách cũ xếp lại: đưa 1 fam còn slot để mời -->
+            <template x-if="['new','arch'].includes(tu.st)">
+              <div>
+                <div class="mute" x-show="!tuFam() && tu.busy">Đang tìm fam còn slot…</div>
+                <div class="err" x-show="!tuFam() && !tu.busy">Hết fam còn slot — nhắn DNC.</div>
+                <template x-if="tuFam()">
+                  <div style="border:2px solid var(--acc);border-radius:12px;padding:12px 14px;margin-bottom:12px">
+                    <div class="row"><b style="font-size:20px" x-text="tuFam().rn"></b><span class="mute" x-text="'còn ' + tuFam().days + ' ngày'"></span><span class="grow"></span>
+                      <button class="btn sm" @click="tu.si = (tu.si + 1) % tu.slots.length" x-show="tu.slots.length > 1">Fam khác</button></div>
+                    <div style="margin-top:8px;line-height:2;font-size:15px">
+                      Mail chủ fam: <b class="mono cp" @click="copy(tuFam().owner, 'Đã copy mail')" x-text="tuFam().owner"></b><br>
+                      Pass: <b class="mono cp" @click="copy(tuFam().pass, 'Đã copy pass')" x-text="tuFam().pass || '—'"></b><br>
+                      <span x-show="tuFam().twofa">Mã 2FA: <b class="mono cp" style="font-size:20px" @click="copy(tu.otp, 'Đã copy mã')" x-text="tu.otp || '……'"></b></span>
+                    </div>
+                    <div class="mute" style="font-size:13px;margin-top:6px">Đăng nhập mail chủ fam → vào <a href="https://myaccount.google.com/family/details" target="_blank" rel="noopener">Trang Gia đình ↗</a> → mời <b class="mono" x-text="tu.email.trim()"></b> → bấm nút dưới.</div>
+                  </div>
+                </template>
+                <button class="btn pri" style="padding:12px 18px;font-size:16px;width:100%" x-show="tuFam()" @click="tuDo(tu.st === 'new' ? 'new' : 'back')" :disabled="tu.busy || !tu.months" x-text="tu.busy ? 'Đang ghi…' : '✅ Đã mời xong — ghi ' + (tu.st === 'new' ? 'đơn mới ' : 'lại ') + tu.months + ' tháng'"></button>
+              </div>
+            </template>
+
+            <template x-if="tu.st === 'mine'">
+              <button class="btn pri" style="padding:12px 18px;font-size:16px;width:100%" @click="tuDo('renew')" :disabled="tu.busy || !tu.months" x-text="tu.busy ? 'Đang gia hạn…' : '🔁 Gia hạn ' + tu.months + ' tháng'"></button>
+            </template>
+          </div>
+        </template>
+
+        <div class="card" x-show="tu.log.length" style="padding:12px 16px">
+          <b style="font-size:14px">Vừa làm</b>
+          <template x-for="(l, i) in tu.log" :key="i"><div class="mute" style="font-size:13px;padding:4px 0;border-top:1px solid var(--line)" x-text="l"></div></template>
+        </div>
+      </section>
+
+      <nav class="tabs" x-show="!searchOn() && me.role!=='ctv'">
         <button class="tab" x-show="can('week')" :class="tab==='week' && 'on'" @click="tab='week'; loadWeek()">📋 Tuần này<span class="n" :class="weekLeft() && 'hot'" x-text="wk ? weekLeft() : '·'"></span></button>
         <button class="tab" x-show="can('queue')" :class="tab==='cmd' && 'on'" @click="tab='cmd'; loadQueue()">🛠 Lệnh<span class="n" :class="cmdOpen() && 'hot'" x-text="cmdOpen()"></span></button>
         <button class="tab" x-show="me.role !== 'ctv'" :class="tab==='due' && 'on'" @click="tab='due'">Đến hạn<span class="n" x-text="due.length"></span></button>
@@ -2013,6 +2072,7 @@ const ASK_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?
 const CUS_ADMIN_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?cus_admin=1';
 const CUS_BOT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?cus_notify=1';
 const TUAN_BOT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tuan_notify=1';
+const TUAN_ACT_URL = 'https://pxkwjxmrlucpoehpjbja.supabase.co/functions/v1/desk-bot?tuan_act=1';
 
 const PRICES = [['1 tháng', '30k'], ['3 tháng', '80k'], ['6 tháng', '150k'], ['12 tháng', '280k']];
 
@@ -2023,7 +2083,8 @@ function app() {
     askQ: '', askBusy: false, askErr: '', askLog: (() => { try { return JSON.parse(sessionStorage.getItem('tf_ask') || '[]'); } catch (e) { return []; } })(),
     askSamples: ['Hôm nay cần thay fam nào?', 'Fam nào đang bị chặn mời, bao giờ mời lại được?', 'Khách Tuấn hết hạn trong 3 ngày tới', 'Fam nào còn slot trống?', 'Khách nào đã mời mà chưa vào nhóm?', 'Có bao nhiêu khách đang chờ xếp fam?'],
     cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
-    hasUpdate: false, canInstall: false, installHelp: false, isApp: false, _slotsStale: false, _reviewStale: false,
+    hasUpdate: false, canInstall: false, installHelp: false,
+    tu: { email: '', st: '', info: {}, months: 6, plus: false, slots: [], si: 0, otp: '', busy: false, msg: '', err: '', log: [] }, isApp: false, _slotsStale: false, _reviewStale: false,
     tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', lastCopy: '', lastCopyFor: '', notify: null,
     slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
@@ -2068,6 +2129,8 @@ function app() {
       window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); this._install = ev; this.canInstall = true; });
       this.isApp = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
       this.$watch('tab', t => this.onTab(t));
+      setInterval(() => { if (this.me.role === 'ctv' && this.tu.st) this.tuOtp(); }, 3000);
+      this.$watch('tu.si', () => this.tuOtp());
       setInterval(() => { if (this.pass && document.visibilityState === 'visible' && this.can('all')) { this.allStale = true; this.warmSearch(); } }, 10 * 60000);
       // mở app là tải sẵn toàn bộ fam về máy (nền) để tìm tức thì
       setTimeout(() => { if (this.pass && this.can('all')) this.warmSearch(); }, 4000);
@@ -2075,6 +2138,46 @@ function app() {
     onTab(t) {
       if (t === 'slots' && this._slotsStale && !this.slotsLoading) { this._slotsStale = false; this.bg(() => this.loadSlots()); }
       if (t === 'sync' && this._reviewStale && this.can('review')) { this._reviewStale = false; this.bg(() => this.loadReview()); }
+    },
+    // ----- màn hình Tuấn -----
+    async tuCall(body) {
+      const r = await fetch(TUAN_ACT_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(Object.assign({ pass: this.pass }, body)) }).then(x => x.json());
+      if (!r.ok) throw new Error(r.error || 'Lỗi');
+      return r;
+    },
+    tuFam() { return this.tu.slots[this.tu.si] || null; },
+    tuHead() {
+      const t = this.tu, i = t.info || {}, e = '<b class="mono">' + t.email.trim() + '</b>';
+      if (t.st === 'new') return '🆕 ' + e + ' chưa có → <b>ĐƠN MỚI</b>';
+      if (t.st === 'arch') return '♻️ ' + e + ' là khách cũ (hết hạn ' + (i.hsd || '?') + ', đang chờ xếp fam) → <b>MUA LẠI</b>: chọn gói, mời vào fam dưới đây';
+      if (t.st === 'mine') return '🔁 ' + e + ' · ' + i.rn + ' · HSD <b>' + i.hsd + '</b> (' + (i.daysLeft >= 0 ? 'còn ' + i.daysLeft + ' ngày' : 'đã hết ' + (-i.daysLeft) + ' ngày') + ') → <b>GIA HẠN</b>' + (i.daysLeft < -7 ? '<br><span class="mute">Nghỉ lâu → tính từ hôm nay</span>' : '') + (i.famDead ? '<br><span style="color:var(--bad)">⚠️ Fam khách đã bị xoá nhóm — nhắn DNC xếp fam mới</span>' : '');
+      if (t.st === 'phu') return 'ℹ️ ' + e + ' là mail phụ của ' + i.of + ' — gõ mail chính.';
+      return '⛔ ' + e + ' là khách của CTV khác.';
+    },
+    async tuLook() {
+      const t = this.tu, e = t.email.trim().toLowerCase();
+      if (!e) return;
+      t.email = e; t.err = ''; t.msg = ''; t.st = ''; t.busy = true;
+      try {
+        const r = await this.tuCall({ op: 'lookup', email: e });
+        t.info = r; t.st = r.st;
+        if (['new', 'arch'].includes(r.st) && !t.slots.length) { const s = await this.tuCall({ op: 'slots' }); t.slots = s.items || []; t.si = 0; }
+        this.tuOtp();
+      } catch (err) { t.err = err.message; }
+      t.busy = false;
+    },
+    async tuOtp() { const f = this.tuFam(); const v = f && f.twofa ? await totp(f.twofa) : ''; if (this.tu.otp !== v) this.tu.otp = v; },
+    async tuDo(op) {
+      const t = this.tu, f = this.tuFam();
+      t.busy = true; t.err = ''; t.msg = '';
+      try {
+        const r = await this.tuCall({ op, email: t.email.trim(), months: t.months, plus: t.plus, row: f ? f.row : 0 });
+        t.msg = r.msg + (r.bal != null ? ' · công nợ ' + Number(r.bal).toLocaleString('vi-VN') + 'đ' : '');
+        t.log.unshift(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' · ' + r.msg);
+        if (op !== 'renew') { t.slots = []; t.si = 0; }   // slot vừa dùng → lần sau lấy danh sách mới
+        t.st = ''; t.email = '';
+      } catch (err) { t.err = err.message; }
+      t.busy = false;
     },
     installHelpText() {
       const ua = navigator.userAgent;
@@ -2234,7 +2337,7 @@ function app() {
         this.blocksOpen = d.blocksOpen || 0; this.blocksDue = d.blocksDue || 0;
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
-        if (this.me.role === 'ctv' && ['due', 'report'].includes(this.tab)) this.tab = 'slots';
+        if (this.me.role === 'ctv') { this.tab = 'tuan'; this.q = ''; }   // CTV: chỉ màn hình đơn giản
         // Tab đang mở: tải ngay. Còn lại: xếp hàng tải nền lần lượt. Tab Tuần / Tất cả: chỉ tải khi mở.
         if (this.tab === 'week' && this.can('week') && !this._wkInit) { this._wkInit = true; this.loadWeek(); }
         if (this.tab === 'slots' && this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
