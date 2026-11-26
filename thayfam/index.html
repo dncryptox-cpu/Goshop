@@ -344,9 +344,17 @@
           </div>
         </template>
 
-        <div class="card" x-show="tu.log.length" style="padding:12px 16px">
-          <b style="font-size:14px">Vừa làm</b>
-          <template x-for="(l, i) in tu.log" :key="i"><div class="mute" style="font-size:13px;padding:4px 0;border-top:1px solid var(--line)" x-text="l"></div></template>
+        <div class="card" x-show="tu.acts.length" style="padding:12px 16px">
+          <b style="font-size:14px">Vừa làm</b> <span class="mute" style="font-size:12px">— làm sai thì bấm Hoàn tác (được tới khi DNC duyệt)</span>
+          <template x-for="a in tu.acts" :key="a.id">
+            <div class="row" style="gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:14px">
+              <div class="grow" style="min-width:200px">
+                <div :style="a.st==='undo' && 'text-decoration:line-through;opacity:.6'"><span class="mute" x-text="taTime(a.at)"></span> · <b x-text="taOp(a.op)"></b> <span class="mono" x-text="a.email"></span> · <span x-text="a.months + 'th'"></span> · <span x-text="(a.old ? a.old + ' → ' : 'HSD ') + (a.hsd || '')"></span></div>
+                <div style="font-size:12px" :style="'color:' + (a.st==='ok' ? 'var(--ok)' : a.st==='undo' ? 'var(--mute)' : 'var(--warn, #b7791f)')" x-text="a.st==='ok' ? '✅ DNC đã duyệt' : a.st==='undo' ? '↩️ Đã hoàn tác' : '⏳ Chờ DNC duyệt'"></div>
+              </div>
+              <button class="btn sm" x-show="a.st==='wait'" style="color:var(--bad)" @click="taUndo(a, tu)" :disabled="!!a.busy" x-text="a.busy ? 'Đang hoàn tác…' : (a.cf ? 'Bấm lần nữa để hoàn tác' : '↩️ Hoàn tác')"></button>
+            </div>
+          </template>
         </div>
       </section>
 
@@ -1576,6 +1584,18 @@
           <span class="grow"></span>
           <button class="btn sm" @click="loadQueue()" x-text="qLoading ? 'Đang tải…' : 'Tải hàng chờ bot'"></button>
         </div>
+        <div class="card" x-show="me.role==='admin' && ta.items.some(a => a.st==='wait')" style="padding:10px 12px;margin-bottom:12px;border:2px solid var(--acc)">
+          <div class="row"><b>👥 Tuấn tự làm — chờ duyệt (<span x-text="ta.items.filter(a => a.st==='wait').length"></span>)</b><span class="grow"></span>
+            <button class="btn pri sm" @click="taOkAll()" :disabled="ta.busy" x-text="ta.cf ? 'Bấm lần nữa: duyệt hết' : 'Duyệt hết'"></button></div>
+          <div class="err" x-show="ta.err" x-text="ta.err" style="margin-top:6px"></div>
+          <template x-for="a in ta.items.filter(a => a.st==='wait')" :key="a.id">
+            <div class="row" style="gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:14px">
+              <div class="grow" style="min-width:220px"><span class="mute" x-text="taTime(a.at)"></span> · <b x-text="taOp(a.op)"></b> <span class="mono cp" @click="q = a.email" x-text="a.email"></span> · <span x-text="a.months + 'th · ' + (a.rn || '')"></span> · <span x-text="(a.old ? a.old + ' → ' : 'HSD ') + (a.hsd || '')"></span> · <span class="mute" x-text="'+' + Number(a.price).toLocaleString('vi-VN') + 'đ' + (a.tc ? ' · TC dòng ' + a.tc : '')"></span></div>
+              <button class="btn pri sm" @click="taOk(a)" :disabled="!!a.busy">✅ Duyệt</button>
+              <button class="btn sm" style="color:var(--bad)" @click="taUndo(a, ta)" :disabled="!!a.busy" x-text="a.busy ? 'Đang hoàn tác…' : (a.cf ? 'Bấm lần nữa' : '↩️ Hoàn tác')"></button>
+            </div>
+          </template>
+        </div>
         <template x-for="g in cmdGroups()" :key="g.key">
           <div class="card" style="padding:10px 12px;margin-bottom:12px" :class="g.cards.some(c => cmdDead(c)) && 'dead-card'" :style="g.cards.some(c => cmdDead(c)) ? 'border:2px solid var(--bad, #c0392b);background:#fdf0ee' : ''">
             <div class="row" style="gap:8px;font-size:13px">
@@ -2084,7 +2104,7 @@ function app() {
     askSamples: ['Hôm nay cần thay fam nào?', 'Fam nào đang bị chặn mời, bao giờ mời lại được?', 'Khách Tuấn hết hạn trong 3 ngày tới', 'Fam nào còn slot trống?', 'Khách nào đã mời mà chưa vào nhóm?', 'Có bao nhiêu khách đang chờ xếp fam?'],
     cmdText: '', cmdCards: [], qOpen: [], qDone: [], qLoading: false, _cusCache: {},
     hasUpdate: false, canInstall: false, installHelp: false,
-    tu: { email: '', st: '', info: {}, months: 6, plus: false, slots: [], si: 0, otp: '', busy: false, msg: '', err: '', log: [] }, isApp: false, _slotsStale: false, _reviewStale: false,
+    tu: { email: '', st: '', info: {}, months: 6, plus: false, slots: [], si: 0, otp: '', busy: false, msg: '', err: '', acts: [] }, ta: { items: [], busy: false, cf: false, err: '' }, isApp: false, _slotsStale: false, _reviewStale: false,
     tab: 'due', ahead: 2, dueDay: '', syncInfo: '', mpQ: '', loading: false, error: '', lastDone: '', lastCopy: '', lastCopyFor: '', notify: null,
     slots: [], slotMin: 0, slotRn: '', slotsLoading: false, slotsLoaded: false, slotFilter: '', slotLimit: 6, slotPendingH: 24, slotOtp: {}, mv: {}, em: {}, pick: { row: null, list: [] }, allFams: null, allArch: null, archHits: [], allStale: false, wk: null, wkLoading: false, wkCtv: '', wkHideDone: false, mp: { items: [], loading: false, loaded: false }, mailSel: {}, mailLog: {}, mailFrom: '', mailInfo: '', mailOpen: false, mailSubject: '', mailBody: '', mailBusy: false, mailConfirm: false, mailErr: '',
     mailTpl: {
@@ -2146,6 +2166,31 @@ function app() {
       return r;
     },
     tuFam() { return this.tu.slots[this.tu.si] || null; },
+    // việc Tuấn tự làm: Tuấn xem + hoàn tác; DNC duyệt / hoàn tác ở tab Lệnh
+    taOp(op) { return { new: 'Đơn mới', back: 'Mua lại', renew: 'Gia hạn' }[op] || op; },
+    taTime(t) { const d = new Date(t); return d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + d.getDate() + '/' + (d.getMonth() + 1); },
+    async taLoad() {
+      if (this.me.role !== 'ctv' && this.me.role !== 'admin') return;
+      try { const r = await this.tuCall({ op: 'acts' }); if (this.me.role === 'ctv') this.tu.acts = r.items; else this.ta.items = r.items; } catch (e) {}
+    },
+    async taUndo(a, box) {
+      if (!a.cf) { a.cf = true; setTimeout(() => a.cf = false, 4000); return; }
+      a.cf = false; a.busy = true; box.err = '';
+      try { const r = await this.tuCall({ op: 'undo', id: a.id }); a.st = 'undo'; if (box === this.tu) { this.tu.msg = r.msg; this.tu.slots = []; } }
+      catch (e) { box.err = e.message; }
+      a.busy = false; this.taLoad();
+    },
+    async taOk(a) {
+      a.busy = true; this.ta.err = '';
+      try { await this.tuCall({ op: 'ok', id: a.id }); a.st = 'ok'; } catch (e) { this.ta.err = e.message; }
+      a.busy = false;
+    },
+    async taOkAll() {
+      if (!this.ta.cf) { this.ta.cf = true; setTimeout(() => this.ta.cf = false, 4000); return; }
+      this.ta.cf = false; this.ta.busy = true; this.ta.err = '';
+      try { await this.tuCall({ op: 'okall' }); this.ta.items.forEach(a => { if (a.st === 'wait') a.st = 'ok'; }); } catch (e) { this.ta.err = e.message; }
+      this.ta.busy = false;
+    },
     tuHead() {
       const t = this.tu, i = t.info || {}, e = '<b class="mono">' + t.email.trim() + '</b>';
       if (t.st === 'new') return '🆕 ' + e + ' chưa có → <b>ĐƠN MỚI</b>';
@@ -2173,7 +2218,7 @@ function app() {
       try {
         const r = await this.tuCall({ op, email: t.email.trim(), months: t.months, plus: t.plus, row: f ? f.row : 0 });
         t.msg = r.msg + (r.bal != null ? ' · công nợ ' + Number(r.bal).toLocaleString('vi-VN') + 'đ' : '');
-        t.log.unshift(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' · ' + r.msg);
+        this.taLoad();
         if (op !== 'renew') { t.slots = []; t.si = 0; }   // slot vừa dùng → lần sau lấy danh sách mới
         t.st = ''; t.email = '';
       } catch (err) { t.err = err.message; }
@@ -2337,7 +2382,7 @@ function app() {
         this.blocksOpen = d.blocksOpen || 0; this.blocksDue = d.blocksDue || 0;
         if (!this.can('review') && this.tab === 'sync') this.tab = 'due';
         if (this.me.role === 'outsource' && this.tab === 'renew') this.tab = 'due';
-        if (this.me.role === 'ctv') { this.tab = 'tuan'; this.q = ''; }   // CTV: chỉ màn hình đơn giản
+        if (this.me.role === 'ctv') { this.tab = 'tuan'; this.q = ''; this.taLoad(); }   // CTV: chỉ màn hình đơn giản
         // Tab đang mở: tải ngay. Còn lại: xếp hàng tải nền lần lượt. Tab Tuần / Tất cả: chỉ tải khi mở.
         if (this.tab === 'week' && this.can('week') && !this._wkInit) { this._wkInit = true; this.loadWeek(); }
         if (this.tab === 'slots' && this.can('slots') && !this.slotsLoaded && !this.slotsLoading) this.loadSlots();
@@ -2425,7 +2470,7 @@ function app() {
       f.blocking = false;
     },
     /* ===== Lệnh: đọc tin nhắn → thẻ soạn sẵn ===== */
-    cmdOpen() { return this.qOpen.reduce((n, q) => n + q.lines.filter((l, i) => !q.res[i]).length, 0); },
+    cmdOpen() { return this.qOpen.reduce((n, q) => n + q.lines.filter((l, i) => !q.res[i]).length, 0) + this.ta.items.filter(a => a.st === 'wait').length; },
     cmdGroups() {
       const gs = [], idx = {}, byMail = {};
       // mới nhất lên trước để thẻ gộp hiện tin mới nhất
@@ -2447,7 +2492,7 @@ function app() {
     cmdDups(c) { const e = c.emails[0]; return e && c.type === 'loi' ? this.cmdCards.filter(d => d !== c && d.type === 'loi' && d.emails[0] === e && !['done', 'skip'].includes(d.st)) : []; },
     async loadQueue() {
       if (!this.can('queue')) return;
-      this.qLoading = true;
+      this.qLoading = true; this.taLoad();
       try {
         const d = await this.api({ action: 'queue', op: 'list' });
         this.qOpen = (d.open || []).map(q => Object.assign(q, { lines: q.text.split(/\r?\n/).map(x => x.trim()).filter(Boolean) }));

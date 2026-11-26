@@ -370,7 +370,7 @@ async function getJ(url: string, init?: RequestInit, ms = 50000) {
   return await r.json();
 }
 const TF_READ = new Set(["search", "slots", "all", "week", "blocks", "log", "gg_list"]);
-const TF_WRITE_SLOW = new Set(["renewCus", "newOrder", "move"]);
+const TF_WRITE_SLOW = new Set(["renewCus", "newOrder", "move", "undo", "vacate"]);
 const tfCache = new Map<string, { at: number; d: any }>();
 async function tf(body: Record<string, unknown>) {
   const pass = Deno.env.get("TF_PASS"); if (!pass) throw new Error("chưa đặt secret TF_PASS");
@@ -1229,7 +1229,7 @@ Bấm Ghi → ghi khách vào fam + ghi Tài chính (CTV ${ctv}) + ${L.tuan ? "c
 /* ---------- Công nợ CTV Tuấn: Tuấn gõ gia hạn / đơn mới trong nhóm → DNC duyệt trên bot → cộng dồn, Tuấn trả gộp ----------
    Giá bán cho Tuấn (YouTube): 3th 90k · 6th 150k · 12th 290k. Tháng khác chưa có giá → DNC sửa bằng /tuan them. */
 const TUAN_PRICE: Record<number, number> = { 3: 90000, 6: 150000, 12: 290000 };
-type TItem = { at: number; ma?: string; email?: string; kind: "renew" | "new" | "them"; months?: number; price: number; note?: string; old?: string; hsd?: string; rn?: string; via?: string; product?: string };
+type TItem = { at: number; ma?: string; email?: string; kind: "renew" | "new" | "them"; months?: number; price: number; note?: string; old?: string; hsd?: string; rn?: string; via?: string; product?: string; aid?: string };
 type TDebt = { items: TItem[]; pays: { at: number; amt: number; note?: string }[]; orders: Record<string, any> };
 async function tdGet(): Promise<TDebt> { const d = await docGet<TDebt>("tuan_debt", {} as TDebt); d.items ||= []; d.pays ||= []; d.orders ||= {}; return d; }
 async function tdPut(d: TDebt) { for (const k of Object.keys(d.orders)) if (Date.now() - (d.orders[k].at || 0) > 60 * 864e5) delete d.orders[k]; await docPut("tuan_debt", d); }
@@ -1269,6 +1269,7 @@ const TUAN_GUIDE = `<b>Cách dùng công nợ Tuấn</b>
 • <code>/tuan clear</code> — Tuấn trả hết, công nợ về 0.
 • <code>/tuan them 90k ghi chú</code> — cộng tay (đơn làm trên web, gói 1 tháng…).
 • <code>/tuan bot 90k ghi chú</code> — trừ bớt (hoàn tiền, ghi nhầm).
+• Tuấn tự làm trên Thay Fam → bot gửi thẻ <b>✅ Duyệt / ↩️ Hoàn tác</b> (cũng có ở tab Lệnh). Tuấn hoàn tác được tới khi bạn duyệt.
 • Tuấn gõ <code>/congno</code> trong nhóm để xem.
 • <code>/tuan link</code> — link sổ chi tiết (đơn, thanh toán, công nợ, hướng dẫn) cho bạn + Tuấn.`;
 const tdKb = (d: TDebt) => tdBal(d) > 0 ? { reply_markup: { inline_keyboard: [[{ text: `💵 Tuấn đã trả hết ${money(tdBal(d))}`, callback_data: `td:c:${tdBal(d)}` }]] } } : {};
@@ -1317,11 +1318,96 @@ async function isTuanKey(key: string) {
   } catch (_) { /* không xác thực được */ }
   return false;
 }
+/* ---------- Việc Tuấn tự làm: chờ DNC duyệt, Tuấn hoàn tác được tới khi DNC duyệt ---------- */
+type TAct = { id: string; at: number; op: "new" | "back" | "renew"; email: string; months: number; rn?: string; hsd?: string; old?: string; lapsed?: boolean; aids: string[]; tc?: number; price: number; st: "wait" | "ok" | "undo" | "busy"; dmid?: number; by?: string; ut?: number; note?: string };
+const taId = () => "A" + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+async function taGet() { return await docGet<Record<string, TAct>>("tuan_acts", {}); }
+async function taPut(d: Record<string, TAct>) { const ks = Object.keys(d).sort((a, b) => d[a].at - d[b].at); for (const k of ks.slice(0, Math.max(0, ks.length - 300))) delete d[k]; await docPut("tuan_acts", d); }
+const TA_OP = { new: "ghi đơn mới", back: "xếp lại khách cũ", renew: "gia hạn" };
+function taText(a: TAct) {
+  const head = a.st === "undo" ? `↩️ <s>Tuấn tự ${TA_OP[a.op]}</s> — <b>ĐÃ HOÀN TÁC</b>${a.by === "dnc" ? " (DNC)" : " (Tuấn)"}` : a.st === "ok" ? `✅ Tuấn tự ${TA_OP[a.op]} — <b>DNC đã duyệt</b>` : `👥 <b>Tuấn tự ${TA_OP[a.op]}</b> — chờ duyệt`;
+  return [head, `<code>${esc(a.email)}</code> · ${a.months}th · ${esc(a.rn || "")}`,
+    a.old ? `HSD ${esc(a.old)} → <b>${esc(a.hsd || "")}</b>${a.lapsed ? " (nghỉ lâu → tính từ hôm nay)" : ""}` : `HSD <b>${esc(a.hsd || "")}</b>`,
+    `${a.st === "undo" ? "−" : "+"}${money(a.price)} công nợ${a.tc ? ` · Tài chính dòng ${a.tc}` : ""} · ${fmtAt(a.at)}`,
+    a.note ? a.note : ""].filter(Boolean).join("\n");
+}
+const taKb = (a: TAct) => a.st === "wait" ? { inline_keyboard: [[{ text: "✅ Duyệt", callback_data: `ta:ok:${a.id}` }, { text: "↩️ Hoàn tác", callback_data: `ta:u:${a.id}` }]] } : { inline_keyboard: [] };
+async function taNew(a: TAct, bal?: number) {
+  const r = await say(taText(a) + (bal != null ? `\nCông nợ Tuấn: ${money(bal)}` : ""), { reply_markup: taKb(a) }).catch(() => null);
+  if (r?.result?.message_id) a.dmid = r.result.message_id;
+  const d = await taGet(); d[a.id] = a; await taPut(d);
+}
+async function taEdit(a: TAct) { if (a.dmid) await tg("editMessageText", { chat_id: CHAT, message_id: a.dmid, text: taText(a), parse_mode: "HTML", reply_markup: taKb(a) }).catch(() => {}); }
+async function taList(who: string) {
+  const d = await taGet(), since = Date.now() - 3 * 864e5;
+  return Object.values(d).filter((a) => a.st === "wait" || a.st === "busy" || a.at > since).sort((a, b) => b.at - a.at).slice(0, 60)
+    .map((a) => ({ id: a.id, at: a.at, op: a.op, email: a.email, months: a.months, rn: a.rn, hsd: a.hsd, old: a.old, price: a.price, tc: a.tc, st: a.st, by: a.by, note: who === "dnc" ? a.note : undefined }));
+}
+async function taOk(id: string) {
+  const d = await taGet(), list = id ? [d[id]].filter(Boolean) : Object.values(d).filter((a) => a.st === "wait");
+  if (!list.length) return { ok: false, error: id ? "Không thấy việc này" : "Không có việc chờ duyệt" };
+  for (const a of list) { if (a.st !== "wait") continue; a.st = "ok"; a.ut = Date.now(); }
+  await taPut(d);
+  for (const a of list) await taEdit(a);
+  return { ok: true, msg: `Đã duyệt ${list.length} việc` };
+}
+/* Hoàn tác: trả lại sheet bằng nhật ký Thay Fam (undo), bỏ khoản công nợ, báo nhóm + DNC. Lỗi giữa chừng → không đổi gì khác */
+async function taUndo(id: string, who: "dnc" | "tuan") {
+  const d = await taGet(), a = d[id];
+  if (!a) return { ok: false, error: "Không thấy việc này" };
+  if (a.st === "undo") return { ok: false, error: "Đã hoàn tác rồi" };
+  if (a.st === "busy" && Date.now() - (a.ut || 0) < 120000) return { ok: false, error: "Đang hoàn tác, đợi chút" };
+  if (a.st === "ok" && who === "tuan") return { ok: false, error: "DNC đã duyệt việc này — nhắn DNC để sửa" };
+  const st0 = a.st; a.st = "busy"; a.ut = Date.now(); await taPut(d);
+  const fail = async (msg: string) => { const d2 = await taGet(); if (d2[id]) { d2[id].st = st0; await taPut(d2); } return { ok: false, error: msg }; };
+  const done: string[] = [];
+  try {
+    if (a.aids.length) {
+      for (const aid of [...a.aids].reverse()) { await tf({ action: "undo", id: aid, force: false }); done.push(aid); }
+    } else if (a.op === "new") {   // không có mã nhật ký → cất khách ra khỏi slot (slot trống lại)
+      tfCache.clear(); const r = await tfFind(a.email);
+      if (!r || r.arch || r.phuOf) return fail("Không thấy khách trong fam để hoàn tác — nhắn DNC");
+      await tf({ action: "vacate", row: r.c.row, email: r.c.email, reason: "Tuấn ghi nhầm — hoàn tác" });
+    } else return fail(`Không hoàn tác tự động được — nhắn DNC sửa HSD về ${a.old || "cũ"}`);
+  } catch (e) {
+    const m = (e as Error).message;
+    if (!done.length) return fail(`Không hoàn tác được: ${m}${who === "tuan" ? " — nhắn DNC" : ""}`);
+    a.note = `⚠️ Mới hoàn tác được 1 phần (${m}) — DNC kiểm tra sheet`;
+  }
+  const td = await tdGet(); td.items = td.items.filter((x) => x.aid !== id); await tdPut(td);
+  const bal = tdBal(td), d3 = await taGet(), b = d3[id] || a;
+  b.st = "undo"; b.by = who; b.ut = Date.now(); if (a.note) b.note = a.note;
+  if (b.tc) b.note = (b.note ? b.note + "\n" : "") + `👉 DNC xoá dòng Tài chính ${b.tc}`;
+  d3[id] = b; await taPut(d3);
+  await taEdit(b);
+  await say(`↩️ <b>${who === "tuan" ? "Tuấn" : "DNC"} vừa hoàn tác</b> ${TA_OP[b.op]} <code>${esc(b.email)}</code> ${b.months}th${b.old ? ` (HSD về ${esc(b.old)})` : ""} · −${money(b.price)} · công nợ ${money(bal)}${b.tc ? `\n👉 Xoá dòng Tài chính <b>${b.tc}</b>` : ""}${a.note && !a.note.startsWith("👉") ? "\n" + a.note : ""}`, a.dmid ? { reply_parameters: { message_id: a.dmid, allow_sending_without_reply: true } } : {}).catch(() => {});
+  await tuanSay(`↩️ Đã hoàn tác ${TA_OP[b.op]} <b>${esc(b.email)}</b> ${b.months}th · −${money(b.price)} · công nợ: <b>${money(bal)}</b>`).catch(() => {});
+  return { ok: true, msg: `Đã hoàn tác ${TA_OP[b.op]} ${b.email}`, bal };
+}
+async function taCallback(q: any, a: string, id: string) {
+  const ans = (t: string) => tg("answerCallbackQuery", { callback_query_id: q.id, text: t });
+  const d = await taGet(), x = d[id];
+  if (!x) return ans("Không thấy việc này");
+  if (a === "ok") { const r = await taOk(id); return ans(r.ok ? "Đã duyệt" : r.error || ""); }
+  if (a === "u") { await ans(""); return tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[{ text: "↩️ Chắc chắn hoàn tác", callback_data: `ta:uy:${id}` }, { text: "Thôi", callback_data: `ta:no:${id}` }]] } }); }
+  if (a === "no") { await ans(""); return tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: taKb(x) }); }
+  if (a === "uy") {
+    await ans("Đang hoàn tác…");
+    await tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[{ text: "⏳ Đang hoàn tác…", callback_data: "noop" }]] } });
+    const r = await taUndo(id, "dnc");
+    if (!r.ok) { await say(`⚠️ ${esc(r.error || "")}`); const y = (await taGet())[id]; if (y) await taEdit(y); }
+    return;
+  }
+  return ans("");
+}
 /* ---------- Màn hình đơn giản cho Tuấn (Thay Fam, key CTV): gõ email → Đơn mới / Gia hạn ----------
    Bot làm thay bằng quyền DNC nhưng khoá chặt: chỉ khách CTV Tuấn, CTV luôn ghi "Tuan", chỉ slot đang trống. */
-async function tuanAct(b: any) {
+async function tuanAct(b: any, who: "dnc" | "tuan" = "tuan") {
   const op = String(b.op || ""), e = String(b.email || "").toLowerCase().trim(), months = Number(b.months) || 0;
   const plus = !!b.plus;
+  if (op === "acts") return { ok: true, items: await taList(who) };
+  if (op === "undo") return taUndo(String(b.id || ""), who);
+  if (op === "ok" || op === "okall") { if (who !== "dnc") return { ok: false, error: "Chỉ DNC duyệt" }; return taOk(op === "okall" ? "" : String(b.id || "")); }
   if (op !== "lookup" && op !== "slots" && ![3, 6, 12].includes(months)) return { ok: false, error: "Chọn gói 3 / 6 / 12 tháng" };
   if (op !== "slots" && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(e)) return { ok: false, error: "Email không đúng" };
   tfCache.clear();
@@ -1348,8 +1434,8 @@ async function tuanAct(b: any) {
   if (op === "new") {
     if (r) return { ok: false, error: "Email này đã có trong Kho — dùng Gia hạn" };
     const x = await tf({ action: "newOrder", email: e, toRow: Number(b.row), buy: today(), months, product, ctv: "Tuan", mailPhu: "", note: "Tuấn tự ghi", finance: true, invited: true, replace: false });
-    const t = await tuanDone({ email: e, months, kind: "new", hsd: x.hsd, rn: x.rn });
-    await say(`👥 <b>Tuấn tự ghi đơn mới</b>: <code>${esc(e)}</code> · ${months}th → ${esc(x.rn || "")} · HSD ${esc(x.hsd || "")}\n+${money(t.price || 0)} · công nợ ${money(t.bal || 0)}`).catch(() => {});
+    const aid = taId(), t = await tuanDone({ email: e, months, kind: "new", hsd: x.hsd, rn: x.rn, aid });
+    await taNew({ id: aid, at: Date.now(), op: "new", email: e, months, rn: x.rn, hsd: x.hsd, aids: [x.actionId].filter(Boolean), tc: x.tcRow, price: t.price || 0, st: "wait" }, t.bal);
     return { ok: true, msg: `Đã ghi đơn mới ${e} → ${x.rn || ""} · HSD ${x.hsd || ""}`, hsd: x.hsd, rn: x.rn, bal: t.bal };
   }
   if (!r || r.phuOf) return { ok: false, error: "Không thấy khách này trong Kho" };
@@ -1358,8 +1444,8 @@ async function tuanAct(b: any) {
     const mv = await tf({ action: "move", email: e, toRow: Number(b.row), invited: true });
     tfCache.clear(); const r2 = await tfFind(e);
     const x = await tf({ action: "renewCus", row: r2?.c?.row || Number(b.row), email: e, months, bonusDays: 0, base: "today", product });
-    const t = await tuanDone({ email: e, months, kind: "renew", hsd: x.hsd || x.newHsd, rn: mv.to });
-    await say(`👥 <b>Tuấn tự xếp lại khách cũ</b>: <code>${esc(e)}</code> vùng lưu → ${esc(mv.to || "")} · +${months}th · HSD ${esc(x.hsd || x.newHsd || "")}\n+${money(t.price || 0)} · công nợ ${money(t.bal || 0)}`).catch(() => {});
+    const aid = taId(), t = await tuanDone({ email: e, months, kind: "renew", hsd: x.hsd || x.newHsd, rn: mv.to, aid });
+    await taNew({ id: aid, at: Date.now(), op: "back", email: e, months, rn: mv.to, hsd: x.hsd || x.newHsd, old: r.arch.hsd, aids: [mv.actionId, x.actionId].filter(Boolean), tc: x.tcRow, price: t.price || 0, st: "wait" }, t.bal);
     return { ok: true, msg: `Đã xếp ${e} vào ${mv.to || ""} + gia hạn ${months}th → HSD ${x.hsd || x.newHsd || ""}`, bal: t.bal };
   }
   if (op === "renew") {
@@ -1367,14 +1453,14 @@ async function tuanAct(b: any) {
     if (!mine(r.c.ctv)) return { ok: false, error: "Khách của CTV khác" };
     const lapsed = r.c.daysLeft != null && r.c.daysLeft < -7;
     const x = await tf({ action: "renewCus", row: r.c.row, email: r.c.email, months, bonusDays: 0, base: lapsed ? "today" : "old", product });
-    const t = await tuanDone({ email: e, months, kind: "renew", hsd: x.hsd || x.newHsd, rn: r.f.rn });
-    await say(`👥 <b>Tuấn tự gia hạn</b>: <code>${esc(e)}</code> · ${months}th · ${esc(x.oldHsd || r.c.hsd)} → ${esc(x.hsd || x.newHsd || "")}${lapsed ? " (nghỉ lâu → tính từ hôm nay)" : ""}\n+${money(t.price || 0)} · công nợ ${money(t.bal || 0)}`).catch(() => {});
+    const aid = taId(), t = await tuanDone({ email: e, months, kind: "renew", hsd: x.hsd || x.newHsd, rn: r.f.rn, aid });
+    await taNew({ id: aid, at: Date.now(), op: "renew", email: e, months, rn: r.f.rn, hsd: x.hsd || x.newHsd, old: x.oldHsd || r.c.hsd, lapsed, aids: [x.actionId].filter(Boolean), tc: x.tcRow, price: t.price || 0, st: "wait" }, t.bal);
     return { ok: true, msg: `Đã gia hạn ${e} ${months}th: ${x.oldHsd || r.c.hsd} → ${x.hsd || x.newHsd || ""}`, bal: t.bal };
   }
   return { ok: false, error: "Lệnh không đúng" };
 }
 /* Thay Fam (web) gia hạn / đơn mới cho khách CTV Tuấn → cộng công nợ + báo nhóm (trả lời tin Tuấn nếu đang chờ) + đóng thẻ trên bot */
-async function tuanDone(x: { email?: string; months?: number; kind?: string; hsd?: string; rn?: string }) {
+async function tuanDone(x: { email?: string; months?: number; kind?: string; hsd?: string; rn?: string; aid?: string }) {
   const e = String(x.email || "").toLowerCase().trim(), months = Number(x.months) || 0, kind = x.kind === "new" ? "new" : "renew";
   if (!e) return { ok: false, error: "thiếu email" };
   let price = TUAN_PRICE[months] || 0, mid = 0, dmid = 0;
@@ -1385,7 +1471,7 @@ async function tuanDone(x: { email?: string; months?: number; kind?: string; hsd
     const d = await tdGet(), k = Object.keys(d.orders).reverse().find((i) => d.orders[i].email === e && d.orders[i].st === "paid");
     if (k) { d.orders[k].st = "done"; price = d.orders[k].price || price; mid = d.orders[k].tmid || 0; dmid = d.orders[k].dmid || 0; await tdPut(d); }
   }
-  const bal = price ? await tdAdd({ at: Date.now(), email: e, kind, months, price, hsd: x.hsd, rn: x.rn, via: "web" }) : tdBal(await tdGet());
+  const bal = price ? await tdAdd({ at: Date.now(), email: e, kind, months, price, hsd: x.hsd, rn: x.rn, via: x.aid ? "tuan" : "web", aid: x.aid }) : tdBal(await tdGet());
   const txt = `✅ <b>${esc(e)}</b>: ${kind === "renew" ? `đã gia hạn ${months}th` : `đã mời + ghi đơn mới ${months}th${x.rn ? "" : ""}`}${x.hsd ? ` → HSD <b>${esc(x.hsd)}</b>` : ""}\n${price ? `+${money(price)} · ` : "⚠️ chưa có giá gói này (DNC cộng tay) · "}công nợ: <b>${money(bal)}</b>${kind === "new" ? "\nBáo khách mở Gmail bấm <b>Chấp nhận lời mời</b>." : ""}`;
   const g = await tuanSay(txt, mid ? { reply_parameters: { message_id: mid, allow_sending_without_reply: true } } : {}).catch(() => ({ ok: false }));
   if (dmid) await tg("editMessageText", { chat_id: CHAT, message_id: dmid, text: `✅ <b>${esc(e)}</b>: đã ${kind === "renew" ? "gia hạn" : "ghi đơn mới"} trên web · +${money(price)} · công nợ Tuấn ${money(bal)}`, parse_mode: "HTML", reply_markup: { inline_keyboard: [] } }).catch(() => {});
@@ -2264,6 +2350,7 @@ async function handle(u: any) {
       if (r.ok) await tg("editMessageReplyMarkup", { chat_id: CHAT, message_id: q.message.message_id, reply_markup: { inline_keyboard: [[{ text: "✅ Đã giao — đã nhắn khách", callback_data: "noop" }]] } });
       return;
     }
+    if (String(q.data || "").startsWith("ta:")) { const [, aa, aid] = String(q.data).split(":"); return taCallback(q, aa, aid); }
     if (String(q.data || "").startsWith("td:")) { const [, ta, tam] = String(q.data).split(":"); return tdCallback(q, ta, Number(tam) || 0); }
     if (String(q.data || "").startsWith("nf:")) { const [, na, nma, nrow] = String(q.data).split(":"); return nfCallback(q, na, nma, Number(nrow) || 0); }
     if (String(q.data || "").startsWith("g:")) { const [, ga, gid] = String(q.data).split(":"); return renewCallback(q, ga, gid); }
@@ -2442,7 +2529,7 @@ Deno.serve(async (req) => {
       const H = { ...CORS, "Content-Type": "application/json" };
       const admin = b.pass && b.pass === Deno.env.get("TF_PASS");
       if (!admin && !(await isTuanKey(String(b.pass || "")))) return new Response(JSON.stringify({ ok: false, error: "Key không đúng" }), { status: 403, headers: H });
-      try { return new Response(JSON.stringify(await tuanAct(b)), { headers: H }); }
+      try { return new Response(JSON.stringify(await tuanAct(b, admin ? "dnc" : "tuan")), { headers: H }); }
       catch (e) { return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), { headers: H }); }
     }
     // ---- bot nhóm Tuấn ----
