@@ -688,11 +688,14 @@ async function tuanHandle(m: any) {
   let fixed: Fixed = {}; try { fixed = await tuanFixedGet(); } catch (_) { /* bỏ qua */ }
   const out: string[] = [], toQ: string[] = [];
   const lines = text.split(/\r?\n/);
+  const doneLines = new Set<string>();
   for (const e of ems) {
     // gia hạn / đơn mới → thẻ duyệt cho DNC (công nợ)
     const ln0 = lines.find((l) => l.toLowerCase().includes(e)) || e, k = lineKind(ln0);
     const ln1 = ln0.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, " ");   // bỏ email trước khi đoán (vd "new.abc@…", "loi@…")
-    if (k && TUAN_ORDER.test(ln1) && !TUAN_FIX.test(ln1)) { try { const t = await tuanOrder(m, ln0, k); if (t) { out.push(t); continue; } } catch (err) { console.error("tuan order", (err as Error).message); } }
+    if (k && TUAN_ORDER.test(ln1) && !TUAN_FIX.test(ln1)) {
+      if (doneLines.has(ln0)) continue;   // 1 dòng nhiều email (mail chính / MKP…) → chỉ 1 đơn
+      doneLines.add(ln0); try { const t = await tuanOrder(m, ln0, k); if (t) { out.push(t); continue; } } catch (err) { console.error("tuan order", (err as Error).message); } }
     try {
       const r = await tuanCheck(e, text, openText, fixed);
       const ln = lines.find((l) => l.toLowerCase().includes(e)) || e;
@@ -1312,6 +1315,15 @@ const TUAN_FIX = /\bfix\b|lời mời|loi moi|\bcheck\b|kiểm tra|kiem tra|chư
 async function tuanOrder(m: any, ln: string, k: NonNullable<ReturnType<typeof lineKind>>): Promise<string | null> {
   const e = k.email, price = TUAN_PRICE[k.months] || 0, pl = k.product === "YoutubePlus" ? "YTB Plus" : "YTB";
   const r0 = await tfFind(e);
+  /* tự kiểm trước khi tạo đơn:
+     · dòng dạng bản ghi "… | ytb 12th | 01/08/2026 → 01/08/2027 | …" mà KHÔNG ghi rõ "gia hạn / đơn mới" → chỉ là thông tin, không tạo đơn
+     · HSD hiện tại đã ≥ ngày cuối ghi trong tin → đã gia hạn rồi, không tạo thêm */
+  const lnNoMail = ln.replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, " ");
+  const explicit = /gia\s*h[aạ]n|giahan|\bgh\b|đơn\s*mới|don\s*moi|\bmua\b/i.test(lnNoMail);
+  const range = lnNoMail.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})\s*(?:→|->|=>|đến|-)\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+  const curHsd = r0 ? (r0.arch ? r0.arch.hsd : r0.c.hsd) : "";
+  if (range && !explicit) return `ℹ️ <b>${esc(e)}</b>: tin giống thông tin đơn (${esc(range[1])} → ${esc(range[2])}), bot <b>không</b> tạo gia hạn.${curHsd ? ` HSD hiện tại: <b>${esc(curHsd)}</b>.` : ""}\nCần gia hạn thì gõ: <code>${esc(e)} gia hạn ${k.months} tháng</code>`;
+  if (range && r0 && curHsd) { const end = pDate(range[2]), cur = pDate(curHsd); if (end != null && cur != null && cur >= end - 3 * 864e5) return `ℹ️ <b>${esc(e)}</b>: HSD hiện tại <b>${esc(curHsd)}</b> đã tới ${esc(range[2])} như trong tin → đã gia hạn rồi, bot không gia hạn thêm. Sai thì nhắn DNC.`; }
   if (r0 && !r0.arch && !r0.phuOf && normCtv(r0.c.ctv) !== "Tuấn") return `ℹ️ <b>${esc(e)}</b>: không phải khách của Tuấn — DNC kiểm tra.`;
   if (!r0) {   // chưa có trong Kho → đơn mới: DNC chọn fam đã mời
     const d = await tdGet(); let ma = ""; do { ma = "T" + Math.floor(10000 + Math.random() * 90000); } while (d.orders[ma]);
@@ -1328,9 +1340,10 @@ async function tuanOrder(m: any, ln: string, k: NonNullable<ReturnType<typeof li
   if (!cd.kb) return null;
   const store = await renewGet(), id = Date.now().toString(36) + "t"; store[id] = p; await renewPut(store);
   cd.kb[0].callback_data = `g:ok:${id}`; if (cd.kb[1]) cd.kb[1].callback_data = `g:base:${id}`;
-  const sr = await say(`👥 <b>Tuấn: gia hạn</b> · ${price ? money(price) + " (cộng công nợ)" : "⚠️ chưa có giá gói " + k.months + "th"}\n${cd.text}`, { reply_markup: { inline_keyboard: [cd.kb, [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
+  const sum = `gia hạn ${esc(e)} | ${pl.toLowerCase()} ${k.months}th | ${esc(r0.c.hsd || "?")} → ${esc(newHsdOf(r0.c.hsd, k.months, "old"))}`;
+  const sr = await say(`👥 <b>Tuấn: gia hạn</b> · ${price ? money(price) + " (cộng công nợ)" : "⚠️ chưa có giá gói " + k.months + "th"}\n<code>${sum}</code>\n📝 Tin Tuấn: <i>${esc(ln.slice(0, 200))}</i>\n\n${cd.text}`, { reply_markup: { inline_keyboard: [cd.kb, [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
   if (sr?.result?.message_id) { const st2 = await renewGet(); if (st2[id]) { st2[id].dmid = sr.result.message_id; await renewPut(st2); } }
-  return `⏳ <b>${esc(e)}</b>: gia hạn ${pl} ${k.months}th${price ? ` · ${money(price)}` : ""} — đợi DNC duyệt. Xong bot báo.`;
+  return `⏳ ${sum}${price ? ` · ${money(price)}` : ""} — đợi DNC duyệt. Xong bot báo.`;
 }
 
 /* DNC xác nhận tiền (nút trên @goshopassistantbot hoặc tab Bot khách) */
@@ -1964,7 +1977,7 @@ async function renewCallback(q: any, a: string, id: string) {
     if (sent) lines.push("Đã nhắn khách lẻ qua bot.");
     if (p.tuan) {
       const bal = await tdAdd({ at: Date.now(), email: r.c.email, kind: "renew", months: p.months, price: p.tuan.price });
-      const g = await tuanSay(`✅ <b>${esc(r.c.email)}</b>: đã gia hạn ${p.months}th → HSD <b>${esc(x.hsd || x.newHsd || "")}</b>\n+${money(p.tuan.price)} · công nợ: <b>${money(bal)}</b>`, { reply_parameters: { message_id: p.tuan.mid, allow_sending_without_reply: true } }).catch(() => ({ ok: false }));
+      const g = await tuanSay(`✅ Đã gia hạn ${esc(r.c.email)} | ${p.product === "YoutubePlus" ? "ytb plus" : "ytb"} ${p.months}th | ${esc(x.oldHsd || r.c.hsd || "")} → <b>${esc(x.hsd || x.newHsd || "")}</b>\n+${money(p.tuan.price)} · công nợ: <b>${money(bal)}</b>`, { reply_parameters: { message_id: p.tuan.mid, allow_sending_without_reply: true } }).catch(() => ({ ok: false }));
       lines.push(`Công nợ Tuấn: <b>${money(bal)}</b>${g.ok ? " · đã báo nhóm" : " · ⚠️ chưa báo được nhóm"}`);
       if (x.price != null && Number(x.price) !== p.tuan.price) lines.push(`⚠️ Tài chính ghi ${vnd(x.price)}, giá Tuấn ${money(p.tuan.price)} — sửa trong sheet`);
     }
