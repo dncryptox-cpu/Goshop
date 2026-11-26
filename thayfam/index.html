@@ -2059,6 +2059,9 @@ function app() {
       window.addEventListener('beforeinstallprompt', ev => { ev.preventDefault(); this._install = ev; this.canInstall = true; });
       this.isApp = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
       this.$watch('tab', t => this.onTab(t));
+      setInterval(() => { if (this.pass && document.visibilityState === 'visible' && this.can('all')) { this.allStale = true; this.warmSearch(); } }, 10 * 60000);
+      // mở app là tải sẵn toàn bộ fam về máy (nền) để tìm tức thì
+      setTimeout(() => { if (this.pass && this.can('all')) this.warmSearch(); }, 4000);
     },
     onTab(t) {
       if (t === 'slots' && this._slotsStale && !this.slotsLoading) { this._slotsStale = false; this.bg(() => this.loadSlots()); }
@@ -2082,7 +2085,7 @@ function app() {
         this.bg(() => this.load());
         if (this.can('review') && this.tab === 'sync') this.bg(() => this.loadReview()); else this._reviewStale = true;
         if (this.slotsLoaded && this.tab === 'slots') this.bg(() => this.loadSlots()); else if (this.slotsLoaded) this._slotsStale = true;
-        if (this.allFams && this.searchOn()) this.bg(() => this.loadAll());
+        if (this.allFams) this.bg(() => this.loadAll());   // giữ bản tìm kiếm trong máy luôn mới (chạy nền, không chờ)
         if (!quiet && this.searchOn()) this.doSearch();
       }, 300);
     },
@@ -3394,7 +3397,8 @@ function app() {
     async doSearch() {
       const q = this.q.trim();
       if (q.length < 2) { this.results = []; this.archHits = []; return; }
-      if (this.allFams && this.allArch && !this.allStale) {
+      // Tìm ngay trên bản đã lưu trong máy (kể cả bản cũ) → gõ là ra; bản cũ thì cập nhật nền rồi tìm lại
+      if (this.allFams && this.allArch) {
         const lq = q.toLowerCase(), lc = x => String(x || '').toLowerCase(), items = [];
         this.allFams.forEach(f => {
           const rn = lc(f.rn);
@@ -3405,7 +3409,9 @@ function app() {
         });
         this.results = items.slice(0, 30); this.searchTotal = items.length;
         this.archHits = this.allArch.filter(a => lc(a.email).indexOf(lq) >= 0 || lc(a.mailPhu).indexOf(lq) >= 0).slice(0, 20);
-        return;
+        if (this.allStale) this.warmSearch();
+        if (items.length || this.archHits.length) return;
+        // bản trong máy không có (fam / khách mới) → hỏi server
       }
       this.searching = true;
       try { const d = await this.api({ action: 'search', q }); if (this.q.trim() === q) { this.results = d.items; this.searchTotal = d.total; this.archHits = d.archived || []; } }
