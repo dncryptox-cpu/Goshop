@@ -1305,6 +1305,18 @@ async function tuanCmd(arg: string) {
   let g = ""; try { const r = await tuanSay(msg); g = r.ok ? " · đã báo nhóm" : ""; } catch (_) { /* chưa nối nhóm */ }
   return say(msg + g);
 }
+/* key Thay Fam của Tuấn (vai trò CTV): hỏi Apps Script 1 lần rồi nhớ trong ngày */
+const tuanKeyOk = new Map<string, number>();
+async function isTuanKey(key: string) {
+  if (!key || key.length < 6) return false;
+  const c = tuanKeyOk.get(key); if (c && Date.now() - c < 864e5) return true;
+  try {
+    const d = await getJ(TF_API, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({ action: "dashboard", ahead: 0, pass: key }) }, 30000);
+    const me = d?.me || {};
+    if (d?.ok && me.role === "ctv" && (!me.ctv || normCtv(me.ctv) === "Tuấn")) { tuanKeyOk.set(key, Date.now()); return true; }
+  } catch (_) { /* không xác thực được */ }
+  return false;
+}
 /* Thay Fam (web) gia hạn / đơn mới cho khách CTV Tuấn → cộng công nợ + báo nhóm (trả lời tin Tuấn nếu đang chờ) + đóng thẻ trên bot */
 async function tuanDone(x: { email?: string; months?: number; kind?: string; hsd?: string; rn?: string }) {
   const e = String(x.email || "").toLowerCase().trim(), months = Number(x.months) || 0, kind = x.kind === "new" ? "new" : "renew";
@@ -1350,12 +1362,14 @@ async function tuanOrder(m: any, ln: string, k: NonNullable<ReturnType<typeof li
   }
   if (r0.arch || r0.phuOf) return null;   // vùng lưu / mail phụ → tab Lệnh như cũ
   const p: RenewP = { qid: "", li: 0, email: e, months: k.months, base: "old", product: k.product, at: Date.now(), tuan: { mid: m.message_id, price }, hsd0: r0.c.hsd };
-  // mặc định nối HSD cũ; muốn tính từ hôm nay thì bấm nút trên thẻ
+  // mặc định nối HSD cũ; khách nghỉ >7 ngày rồi mua lại = như đơn mới → tính từ hôm nay (vẫn đổi được trên thẻ)
+  const lapsed = r0.c.daysLeft != null && r0.c.daysLeft < -7;
+  if (lapsed) p.base = "today";
   const cd = renewCard(p, r0);
   if (!cd.kb) return null;
   const store = await renewGet(), id = Date.now().toString(36) + "t"; store[id] = p; await renewPut(store);
   cd.kb[0].callback_data = `g:ok:${id}`; if (cd.kb[1]) cd.kb[1].callback_data = `g:base:${id}`;
-  const sum = `gia hạn ${esc(e)} | ${pl.toLowerCase()} ${k.months}th | ${esc(r0.c.hsd || "?")} → ${esc(newHsdOf(r0.c.hsd, k.months, "old"))}`;
+  const sum = `${lapsed ? "mua lại" : "gia hạn"} ${esc(e)} | ${pl.toLowerCase()} ${k.months}th | ${lapsed ? "hôm nay (hết hạn " + esc(r0.c.hsd) + ")" : esc(r0.c.hsd || "?")} → ${esc(newHsdOf(r0.c.hsd, k.months, p.base))}`;
   const sr = await say(`👥 <b>Tuấn: gia hạn</b> · ${price ? money(price) + " (cộng công nợ)" : "⚠️ chưa có giá gói " + k.months + "th"}\n<code>${sum}</code>\n📝 Tin Tuấn: <i>${esc(ln.slice(0, 200))}</i>\n\n${cd.text}`, { reply_markup: { inline_keyboard: [cd.kb, [{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/#lenh" }]] } });
   if (sr?.result?.message_id) { const st2 = await renewGet(); if (st2[id]) { st2[id].dmid = sr.result.message_id; await renewPut(st2); } }
   return `⏳ ${sum}${price ? ` · ${money(price)}` : ""} — đợi DNC duyệt. Xong bot báo.`;
@@ -2371,8 +2385,19 @@ Deno.serve(async (req) => {
       if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
       const b = await req.json().catch(() => ({}));
       const pass = Deno.env.get("TF_PASS") || "";
-      if (!pass || b.pass !== pass) return new Response(JSON.stringify({ ok: false, error: "sai mật khẩu" }), { status: 403, headers: { ...CORS, "Content-Type": "application/json" } });
-      if (b.done && typeof b.done === "object") { try { return new Response(JSON.stringify(await tuanDone(b.done)), { headers: { ...CORS, "Content-Type": "application/json" } }); } catch (e) { return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), { headers: { ...CORS, "Content-Type": "application/json" } }); } }
+      // Tuấn tự làm trên Thay Fam (key CTV): chỉ được gọi "done" (cộng công nợ + báo nhóm), DNC được báo lại
+      let who = "dnc";
+      if (!pass || b.pass !== pass) {
+        if (b.done && typeof b.done === "object" && await isTuanKey(String(b.pass || ""))) who = "tuan";
+        else return new Response(JSON.stringify({ ok: false, error: "sai mật khẩu" }), { status: 403, headers: { ...CORS, "Content-Type": "application/json" } });
+      }
+      if (b.done && typeof b.done === "object") {
+        try {
+          const r = await tuanDone(b.done);
+          if (who === "tuan") await say(`👥 <b>Tuấn tự ${b.done.kind === "new" ? "ghi đơn mới" : "gia hạn"}</b> trên Thay Fam: <code>${esc(String(b.done.email || ""))}</code> · ${Number(b.done.months) || "?"}th${b.done.rn ? " · " + esc(String(b.done.rn)) : ""}${b.done.hsd ? " · HSD " + esc(String(b.done.hsd)) : ""}\n+${money(r.price || 0)} · công nợ ${money(r.bal || 0)}`).catch(() => {});
+          return new Response(JSON.stringify(r), { headers: { ...CORS, "Content-Type": "application/json" } });
+        } catch (e) { return new Response(JSON.stringify({ ok: false, error: (e as Error).message }), { headers: { ...CORS, "Content-Type": "application/json" } }); }
+      }
       const t = String(b.text || "").trim().slice(0, 3500);
       let r: any = { ok: false, error: "trống" };
       if (t) { try { r = await tuanSay(esc(t)); } catch (e) { r = { ok: false, error: (e as Error).message }; } }
