@@ -1608,7 +1608,7 @@
                 <button class="btn xs" x-show="g.cards.filter(c => c.st === 'done' && c.info && c.info.ctv === cv).length > 1" @click="copy(g.cards.filter(c => c.st === 'done' && c.info && c.info.ctv === cv).map(c => cmdMsg(c)).join('\n'), 'Đã copy tin gửi ' + cv)" x-text="'Copy hết gửi ' + cv"></button>
               </template>
               <button class="btn xs" x-show="g.qid && (qOpen.find(q => q.id === g.qid) || { lines: [] }).lines.length <= 1" @click="queueDrop(g)">Bỏ cả tin</button>
-              <button class="btn xs" x-show="!g.qid" @click="cmdCards = cmdCards.filter(c => c.key !== g.key)">Đóng</button>
+              <button class="btn xs" x-show="!g.qid" @click="g.cards.forEach(c => botSkip(c)); cmdCards = cmdCards.filter(c => c.key !== g.key)">Đóng</button>
             </div>
             <template x-for="c in g.cards" :key="c.key">
               <div style="border-top:1px solid var(--line);padding:8px 0;font-size:13px" :style="['done','skip'].includes(c.st) ? 'opacity:.55' : ''">
@@ -2746,6 +2746,12 @@ function app() {
     async cmdSkip(c) {
       c.st = 'skip';
       if (c.qid) { try { await this.queueMark(c, 'bỏ', ''); } catch (e) { c.err = e.message; } }
+      this.botSkip(c);
+    },
+    // thẻ đơn mới từ bot: báo server bỏ đơn, không thì lần tải sau hiện lại
+    botSkip(c) {
+      if (!c.botMa || c.st === 'done') return;
+      fetch(CUS_ADMIN_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ pass: this.pass, op: 'new_skip', ma: c.botMa }) }).then(x => x.json()).then(r => { if (!r.ok) c.err = r.error || 'Bỏ đơn lỗi'; }).catch(e => { c.err = e.message; });
     },
     // lỡ bấm Bỏ qua: mở lại thẻ để duyệt. Tách khỏi dòng hàng chờ (đã ghi "bỏ") để Duyệt không ghi đè hàng chờ / không lỗi.
     cmdUndo(c) { c.st = 'ready'; c.result = ''; c.err = ''; c.confirm = false; c.qid = null; c.from = (c.from || '') + ' (mở lại)'; this.toast = 'Đã mở lại — bấm Duyệt'; setTimeout(() => this.toast = '', 1800); },

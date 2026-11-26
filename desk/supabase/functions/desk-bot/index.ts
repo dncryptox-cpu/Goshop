@@ -1840,6 +1840,14 @@ async function cusAdmin(b: any) {
       out.push({ ma, email: o.email, months: o.months, plus: o.product === "YoutubePlus", from: "Nhóm Tuấn", at: fmtAt(o.at), ctv: "Tuan", who: "Tuấn", price: o.price });
     return { ok: true, items: out };
   }
+  // web bấm Bỏ qua / Đóng thẻ đơn mới → không hiện lại ở tab Lệnh (không nhắn khách, không ghi sheet)
+  if (op === "new_skip") {
+    const ma = String(b.ma || ""), d = await cusGet();
+    if (d.orders?.[ma]) { (d.orders[ma] as any).st = "skip"; await cusPut(d); return { ok: true }; }
+    const t = await tdGet();
+    if (t.orders?.[ma]) { (t.orders[ma] as any).st = "skip"; await tdPut(t); return { ok: true }; }
+    return { ok: false, error: "Không thấy đơn " + ma };
+  }
   // web đã ghi đơn mới (khách lẻ) → đóng đơn bot, sửa tin trên bot DNC, nhắn khách
   if (op === "new_done") {
     const ma = String(b.ma || ""), d = await cusGet(), o = d.orders[ma];
