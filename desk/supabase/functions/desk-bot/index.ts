@@ -2420,9 +2420,9 @@ async function claudeLoop(sys: string, decls: any[], fns: Record<string, (a: any
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST", signal: AbortSignal.timeout(90000),
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model, max_tokens: 2500, system: sys, tools, messages, temperature: 0.2 }),
+      body: JSON.stringify({ model, max_tokens: 2500, system: sys, tools, messages }),
     });
-    if (!r.ok) { const t = (await r.text()).slice(0, 300); console.error("brain claude", r.status, t); throw new Error(r.status === 401 ? "ANTHROPIC_API_KEY sai" : r.status === 429 ? "Claude hết hạn mức, thử lại sau hoặc chọn Gemini" : `Claude lỗi ${r.status}`); }
+    if (!r.ok) { const t = (await r.text()).slice(0, 300); console.error("brain claude", r.status, t); throw new Error(r.status === 401 ? "ANTHROPIC_API_KEY sai" : r.status === 429 ? "Claude hết hạn mức, thử lại sau hoặc chọn Gemini" : `Claude lỗi ${r.status}: ${t.slice(0, 160)}`); }
     const j = await r.json();
     messages.push({ role: "assistant", content: j.content });
     const calls = (j.content || []).filter((b: any) => b.type === "tool_use");
