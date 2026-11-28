@@ -1,6 +1,6 @@
 // DNC Desk — Edge Function "desk-bot": nhận MỌI tin nhắn của @goshopassistantbot và lưu vào bảng desk_inbox.
 // Webhook Telegram trỏ thẳng vào đây (luôn trả 200 → Telegram không bao giờ kẹt hàng đợi).
-// Tắt "Verify JWT" cho function này. Secrets: TG_BOT_TOKEN, TG_SECRET, GEMINI_API_KEY (tuỳ chọn: TG_CHAT_ID, DESK_USER_ID, GEMINI_MODEL, TF_PASS)
+// Tắt "Verify JWT" cho function này. Secrets: TG_BOT_TOKEN, TG_SECRET, GEMINI_API_KEY (tuỳ chọn: TG_CHAT_ID, DESK_USER_ID, GEMINI_MODEL, TF_PASS, ANTHROPIC_API_KEY, ANTHROPIC_MODEL)
 // Cài webhook 1 lần: mở  https://<project>.supabase.co/functions/v1/desk-bot?setup=<TG_SECRET>
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
@@ -2250,41 +2250,146 @@ function agentTools(ctx: { all?: any; queued: string[] }) {
   return { fns, decls };
 }
 
-function agentPrompt() {
+type Turn = { role: "user" | "model"; text: string };
+
+/* ---------- BRAIN (tab Brain trên godnc.com/desk): 1 trợ lý, nhiều ngăn ----------
+   Ngăn = dữ liệu + công cụ tra + quy tắc nhắc. Thêm khía cạnh mới (trading, tiền, sức khoẻ…) = thêm ngăn ở brainTools + 1 dòng ở brainPrompt.
+   Chỉ ĐỌC. Ghi sheet → dua_vao_lenh (tab Lệnh, DNC duyệt). Thêm việc vào Inbox Desk thì được (việc của chính DNC).
+   2 model: Gemini (mặc định, GEMINI_API_KEY) và Claude (ANTHROPIC_API_KEY, tuỳ chọn ANTHROPIC_MODEL). */
+const FAMRENEW_SHEET = "1lNKH9cvPteYbG1qtBhq9zRAxFI4qfaDhFqtM3DlMHtc";
+const CAUCHUOT_SHEET = "1oGN1BsHSXtF8XJfM9py_tz8Lu9_zfo5lE1gfobTnWy4";
+const SECRET_COL = /pass|mật ?khẩu|mat ?khau|^mk|mkp|2fa|otp|secret|token|khôi phục|khoi phuc|recovery|cookie/i;
+const unHtml = (s: string) => String(s || "").replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+async function gvizRows(id: string, tab?: string) {
+  const u = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv${tab ? "&sheet=" + encodeURIComponent(tab) : ""}`;
+  const r = await fetch(u, { signal: AbortSignal.timeout(30000) });
+  const txt = await r.text();
+  if (!r.ok || /^\s*<(!doctype|html)/i.test(txt)) throw new Error("sheet chưa chia sẻ 'ai có link cũng xem được' hoặc sai tên tab");
+  return csvRows(txt);
+}
+/* đọc 1 tab bất kỳ, tự bỏ cột nhạy cảm (pass/2FA/mail khôi phục…) theo tiêu đề cột */
+async function sheetSafe(id: string, tab?: string, max = 300) {
+  const rows = (await gvizRows(id, tab)).filter((r) => r && r.some((x) => String(x || "").trim()));
+  if (!rows.length) return { cot: [], dong: [], tong: 0 };
+  const hdr = rows[0].map((h, i) => String(h || "").trim() || `cot${i + 1}`);
+  const keep = hdr.map((h, i) => (SECRET_COL.test(h) ? -1 : i)).filter((i) => i >= 0);
+  const dong = rows.slice(1).map((r) => Object.fromEntries(keep.map((i) => [hdr[i], r[i]]).filter(([, v]) => String(v ?? "").trim())));
+  return { cot: keep.map((i) => hdr[i]), tong: dong.length, dong: dong.slice(-max) };
+}
+/* FamRenew / KHO_RENEW: A email · B pass · C mail khôi phục · D 2FA · E ngày renew · F ngày nhập · G trạng thái · I ghi chú */
+async function khoFamMoi() {
+  const rows = (await gvizRows(FAMRENEW_SHEET, "KHO_RENEW")).filter((r) => r && /@/.test(String(r[0] || "")));
+  const fams = rows.map((r) => ({ email: String(r[0]).trim(), renew: r[4] || "", nhap: r[5] || "", trang_thai: String(r[6] || "").trim() || "Sẵn sàng", ghi_chu: r[8] || "" }));
+  const dem: Record<string, number> = {}; fams.forEach((f) => (dem[f.trang_thai] = (dem[f.trang_thai] || 0) + 1));
+  return { tong: fams.length, theo_trang_thai: dem, chua_dung: fams.filter((f) => f.trang_thai !== "Đã dùng").slice(0, 150) };
+}
+let briefCache: { at: number; d: any } | null = null;
+async function shopBriefCached() {
+  if (briefCache && Date.now() - briefCache.at < 5 * 60e3) return briefCache.d;
+  const B = await shopBrief();
+  const d = { gap: B.gap.map(unHtml), nay: B.nay.map(unHtml), tuan: B.tuan.map(unHtml), loi: B.err };
+  briefCache = { at: Date.now(), d };
+  return d;
+}
+async function deskOpen() {
+  const { data } = await db.from("desk_inbox").select("id,title,raw,kind,due,status").in("status", ["inbox", "todo", "waiting"]).order("created_at", { ascending: false }).limit(300);
   const t = today();
-  return `Bạn là trợ lý Thay Fam của DNC (DNL) — shop bán slot YouTube Premium gia đình (fam). Trả lời tiếng Việt, ngắn, thẳng, đúng số liệu.
-Hôm nay ${t} (${WD[new Date(t + "T00:00:00Z").getUTCDay()]}), GMT+7.
-Kiến thức nghiệp vụ:
-- RN = fam đang dùng để mời khách; FR = fam chờ, được nâng lên thay RN khi RN tới ngày renew. Thay fam: RN cũ → Banned, FR mới thành RN, mời lại khách còn hạn (khách hết hạn không mời, trừ khi CTV báo đang gia hạn). Ngày renew mới = ngày này tháng sau.
-- Fam còn khách hết hạn không mời lại → trạng thái "Còn slot" (slot trống cần lấp), không phải FULL.
-- Google giới hạn ~6-7 lời mời/tuần/fam; bị chặn thì 4-5 ngày sau mới mời lại được. Mời xong phải kiểm tra lại sau vài ngày xem khách đã vào chưa.
-- "Mất pre" = khách chưa được mời lại hoặc fam hỏng → cần fix (chuyển fam còn slot + mời).
-- CTV: Dnc (khách của DNC), Tuấn, Vương, Lộc. Khách ở "vùng lưu" = chưa có slot, chưa được mời.
-- Data gốc (Kho TK) không sửa trực tiếp; webapp sửa bản sao, admin duyệt rồi đồng bộ.
-Cách làm:
-- LUÔN gọi công cụ lấy dữ liệu thật trước khi trả lời về khách/fam; không đoán. Câu hỏi đếm/lọc → dùng loc_khach / loc_fam. Có email/RN → tim.
-- Bạn chỉ đọc. Nếu DNC bảo làm việc ghi, dùng dua_vao_lenh rồi nói rõ "đã vào tab Lệnh, anh duyệt". Không tự đưa lệnh khi DNC chỉ hỏi.
-- Không bao giờ nêu mật khẩu, MKP, 2FA.
-- Định dạng: chữ thường, gạch đầu dòng "• ", không markdown (không **, #, bảng). Ngày dạng dd/mm. Danh sách dài thì nêu tổng + tối đa ~15 dòng quan trọng nhất. Cuối câu trả lời có việc cần làm thì ghi 1 dòng "→ ...".`;
+  return (data || []).map((r: any) => ({ id: r.id, viec: r.title || String(r.raw || "").split("\n")[0].slice(0, 90) || "Tệp đính kèm", mang: KIND[r.kind] || r.kind, han: r.due, tre: !!(r.due && r.due < t), trang_thai: r.status }));
 }
 
-type Turn = { role: "user" | "model"; text: string };
-async function askTF(q: string, hist: Turn[] = []): Promise<{ text: string; used: string[]; queued: string[] }> {
+function brainTools(ctx: { all?: any; queued: string[]; added: string[] }) {
+  const shop = agentTools(ctx);
+  const S = (props: Record<string, unknown>, req: string[] = []) => ({ type: "object", properties: props, required: req });
+  const str = (d: string) => ({ type: "string", description: d }), num = (d: string) => ({ type: "number", description: d });
+  const modList = async (url: string, prod: string, a: any) => {
+    const j = await getJ(url); if (!j?.success) throw new Error(j?.error || "không đọc được");
+    let r = modRows(j.data, prod).map((c) => ({ khach: c.who, ctv: c.ctv, hsd: c.hsd, con_ngay: c.days }));
+    if (a.con_ngay_den != null) r = r.filter((c) => c.con_ngay <= +a.con_ngay_den);
+    if (a.ctv) { const k = noAcc(a.ctv); r = r.filter((c) => noAcc(c.ctv).startsWith(k)); }
+    if (a.q) { const k = noAcc(a.q); r = r.filter((c) => noAcc(c.khach).includes(k)); }
+    r.sort((x, y) => x.con_ngay - y.con_ngay);
+    return { tong: r.length, khach: r.slice(0, 120) };
+  };
+  const fns: Record<string, (a: any) => Promise<unknown>> = {
+    ...shop.fns,
+    sang_nay: async () => shopBriefCached(),
+    netflix: (a) => modList(`${MOD_API}?module=netflix`, "nf", a),
+    chatgpt: (a) => modList(`${MOD_API}?action=list`, "gpt", a),
+    capcut: async (a) => { let r = (await capcutRows()).map((c) => ({ khach: c.who, ctv: c.ctv, hsd: c.hsd, con_ngay: c.days })); if (a.con_ngay_den != null) r = r.filter((c) => c.con_ngay <= +a.con_ngay_den); r.sort((x, y) => x.con_ngay - y.con_ngay); return { tong: r.length, khach: r.slice(0, 120) }; },
+    cong_no_tuan: async () => { const b: any = await tuanBook(); return { con_no: b.bal, cho_ghi: b.pending, gan_day: (b.items || []).slice(-30), da_tra: (b.pays || []).slice(-15), bang_gia: b.price }; },
+    kho_fam_moi: async () => khoFamMoi(),
+    cau_chuot: async (a) => sheetSafe(CAUCHUOT_SHEET, a.tab || undefined),
+    viec_desk: async (a) => { let r = await deskOpen(); if (a.mang) { const k = noAcc(a.mang); r = r.filter((x) => noAcc(x.mang).startsWith(k)); } return { tong: r.length, viec: r.slice(0, 80) }; },
+    tim_desk: async (a) => {
+      const k = noAcc(a.q || ""); if (!k) return { loi: "trống" };
+      const { data: inb } = await db.from("desk_inbox").select("id,title,raw,memo,kind,due,status,created_at").order("created_at", { ascending: false }).limit(800);
+      const { data: docs } = await db.from("desk_docs").select("kind,key,data,updated_at").in("kind", ["note", "research"]).limit(300);
+      const hitI = (inb || []).filter((r: any) => noAcc(`${r.title} ${r.raw} ${r.memo}`).includes(k)).slice(0, 25).map((r: any) => ({ id: r.id, viec: r.title, noi_dung: String(r.raw || "").slice(0, 400), ghi_chu: r.memo, mang: KIND[r.kind], han: r.due, trang_thai: r.status, ngay: String(r.created_at).slice(0, 10) }));
+      const hitD = (docs || []).filter((d: any) => noAcc(JSON.stringify(d.data)).includes(k)).slice(0, 10).map((d: any) => ({ loai: d.kind === "note" ? "Ghi chú" : "Research", key: d.key, noi_dung: JSON.stringify(d.data).slice(0, 1500) }));
+      return { inbox: hitI, ghi_chu: hitD };
+    },
+    them_viec: async (a) => {
+      const t = String(a.viec || "").trim(); if (!t) return { loi: "trống" };
+      const kind = ["shop", "personal", "trading", "crypto", "remind"].includes(a.mang) ? a.mang : "remind";
+      const due = /^\d{4}-\d{2}-\d{2}$/.test(String(a.han || "")) ? a.han : null;
+      const { data, error } = await db.from("desk_inbox").insert({ user_id: await owner(), src: "web", raw: t, title: t.slice(0, 120), kind, due, status: "todo", memo: "Brain thêm" }).select("id").single();
+      if (error) throw new Error(error.message);
+      ctx.added.push(`#${data.id} ${t}`); return { ok: true, id: data.id };
+    },
+  };
+  const decls = [
+    ...shop.decls,
+    { name: "sang_nay", description: "Việc shop cần làm hôm nay, gom từ YTB, GG1, Netflix, ChatGPT, CapCut: gấp / sáng nay / tuần này (fam đến hạn, báo lỗi, chuẩn bị FR, mời lại, khách cần nhắc gia hạn theo CTV).", parameters: S({}) },
+    { name: "netflix", description: "Khách Netflix (thiết bị Netflix). con_ngay âm = đã hết hạn.", parameters: S({ con_ngay_den: num("chỉ lấy khách còn ≤ N ngày"), ctv: str("lọc CTV"), q: str("tìm theo tên/email/mã khách") }) },
+    { name: "chatgpt", description: "Khách ChatGPT dùng chung (thiết bị GPT, mã KH). con_ngay âm = đã hết hạn.", parameters: S({ con_ngay_den: num("chỉ lấy khách còn ≤ N ngày"), ctv: str("lọc CTV"), q: str("tìm theo tên/email/mã khách") }) },
+    { name: "capcut", description: "Khách CapCut (từ sheet Tài chính).", parameters: S({ con_ngay_den: num("chỉ lấy khách còn ≤ N ngày") }) },
+    { name: "cong_no_tuan", description: "Công nợ CTV Tuấn: còn nợ bao nhiêu, đơn/gia hạn đang chờ ghi, lịch sử gần đây, các lần đã trả.", parameters: S({}) },
+    { name: "kho_fam_moi", description: "Kho fam mới trong FamRenew (KHO_RENEW): tổng, đếm theo trạng thái (Sẵn sàng / Đã dùng / đang nâng cấp…), danh sách fam chưa dùng.", parameters: S({}) },
+    { name: "cau_chuot", description: "Sheet 'DNC x Cậu Chuột': fam gửi Cậu Chuột nâng cấp (đã gửi, đã xong, chưa trả…). Không truyền tab thì đọc tab đầu.", parameters: S({ tab: str("tên tab, bỏ trống = tab đầu") }) },
+    { name: "viec_desk", description: "Việc đang mở trong Inbox Desk của DNC (mọi mảng: shop, cá nhân, trading, crypto, nhớ), có hạn / trễ hạn.", parameters: S({ mang: str("Shop, Cá nhân, Trading, Crypto, Nhớ") }) },
+    { name: "tim_desk", description: "Tìm trong toàn bộ Inbox (cả việc đã xong) và Ghi chú / Research của Desk theo từ khoá.", parameters: S({ q: str("từ khoá") }, ["q"]) },
+    { name: "them_viec", description: "CHỈ khi DNC bảo rõ 'nhắc tôi…', 'thêm việc…', 'ghi lại…'. Thêm 1 việc vào Inbox Desk.", parameters: S({ viec: str("nội dung việc, ngắn gọn"), mang: str("shop | personal | trading | crypto | remind"), han: str("YYYY-MM-DD nếu có hạn") }, ["viec"]) },
+  ];
+  return { fns, decls };
+}
+
+function brainPrompt() {
+  const t = today();
+  return `Bạn là Brain — trợ lý thứ hai của DNC (Dnc, chủ shop Goshop ở Nha Trang). Đầu DNC đang bận nhiều việc khác (đang dồn sức trade crypto), việc của bạn là nhớ giùm toàn bộ hệ thống, tra dữ liệu thật và gợi ý việc nên làm.
+Trả lời tiếng Việt, ngắn, thẳng, đúng số liệu. Hôm nay ${t} (${WD[new Date(t + "T00:00:00Z").getUTCDay()]}), GMT+7.
+
+BẢN ĐỒ HỆ THỐNG
+Ngăn SHOP (bán slot dùng chung YouTube Premium, Netflix, ChatGPT, GG1/Google One, CapCut, Canva…):
+- Kho TK "Kho TK | new - ytbdnc" = data gốc, chỉ để lưu. Thay Fam (godnc.com/thayfam) làm việc trên "Bản sao của Kho TK" → admin duyệt mới đồng bộ sang gốc. Công cụ tim / loc_khach / loc_fam / tong_quan / tuan_nay / con_slot / chan_moi / lich_su / hang_cho / gg1 đọc bản sao này.
+- Luồng fam: fam mới (chưa nâng cấp) nằm ở FamRenew (KHO_RENEW) → gửi sang sheet "DNC x Cậu Chuột" để nâng cấp → trả về FamRenew, sẵn sàng → dùng trên Thay Fam làm FR thay RN tới hạn hoặc fam lỗi.
+- RN = fam đang mời khách; FR = fam chờ thay. Thay fam: RN cũ → Banned, FR thành RN, mời lại khách còn hạn. Fam có khách hết hạn không mời lại → "Còn slot". Google giới hạn ~6-7 lời mời/tuần/fam, bị chặn thì 4-5 ngày sau mời lại; mời xong phải kiểm tra lại khách đã vào chưa.
+- "Mất pre" = khách chưa được mời lại hoặc fam hỏng → cần fix.
+- Khách báo lỗi / mua qua bot khách lẻ @trolygoshopbot và nhóm Telegram của CTV Tuấn (Tuấn có công nợ cộng dồn). CTV: Dnc (khách của DNC), Tuấn, Vương, Lộc.
+- Netflix và ChatGPT: khách tự lấy mã ở godnc.com/vnetflix, godnc.com/vgpt. Đơn/doanh thu ở sheet Tài chính Goshop.
+Ngăn DESK: Inbox (mọi thứ DNC nhắn cho bot @goshopassistantbot, có mảng + hạn), Ghi chú, Research.
+(Các ngăn trading, tiền cá nhân, sức khoẻ sẽ thêm sau — nếu hỏi tới thì nói chưa nối dữ liệu.)
+
+CÁCH LÀM
+- LUÔN gọi công cụ lấy dữ liệu thật trước khi trả lời về khách/fam/việc; không đoán. Hỏi chung "hôm nay làm gì" → sang_nay + viec_desk.
+- Chỉ đọc. DNC bảo làm việc ghi sheet (đổi mail, gia hạn, đơn mới, hủy, báo lỗi) → dua_vao_lenh rồi nói "đã vào tab Lệnh Thay Fam, anh duyệt". DNC bảo nhắc/ghi lại việc → them_viec. Không tự làm khi DNC chỉ hỏi.
+- Không bao giờ nêu mật khẩu, MKP, 2FA, mail khôi phục.
+- Định dạng: gạch đầu dòng "• ", không markdown (không **, #, bảng). Ngày dd/mm. Danh sách dài thì nêu tổng + tối đa ~15 dòng quan trọng nhất.
+- Kết thúc bằng 1-3 việc nên làm tiếp (ngắn), nếu có.`;
+}
+
+async function geminiLoop(sys: string, decls: any[], fns: Record<string, (a: any) => Promise<unknown>>, hist: Turn[], q: string, used: string[]) {
   const key = Deno.env.get("GEMINI_API_KEY"); if (!key) throw new Error("chưa có GEMINI_API_KEY");
-  const ctx: { all?: any; queued: string[] } = { queued: [] };
-  const { fns, decls } = agentTools(ctx);
   const contents: any[] = [...hist.slice(-8).map((h) => ({ role: h.role, parts: [{ text: h.text }] })), { role: "user", parts: [{ text: q }] }];
-  const used: string[] = [];
   let model = MODELS[0];
-  for (let round = 0; round < 7; round++) {
+  for (let round = 0; round < 8; round++) {
     let j: any = null, lastErr = "";
     for (const m of round === 0 ? MODELS : [model, ...MODELS.filter((x) => x !== model)]) {
       try {
         const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${key}`, {
           method: "POST", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(45000),
-          body: JSON.stringify({ systemInstruction: { parts: [{ text: agentPrompt() }] }, contents, tools: [{ functionDeclarations: decls }], generationConfig: { temperature: 0.2 } }),
+          body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, tools: [{ functionDeclarations: decls }], generationConfig: { temperature: 0.2 } }),
         });
-        if (!r.ok) { lastErr = `${m} ${r.status}`; console.error("agent", m, r.status, (await r.text()).slice(0, 200)); if (r.status === 429) lastErr = "Gemini hết hạn mức, thử lại sau"; continue; }
+        if (!r.ok) { lastErr = `${m} ${r.status}`; console.error("brain gemini", m, r.status, (await r.text()).slice(0, 200)); if (r.status === 429) lastErr = "Gemini hết hạn mức, thử lại sau hoặc chọn Claude"; continue; }
         j = await r.json(); model = m; break;
       } catch (e) { lastErr = `${m}: ${(e as Error).message}`; }
     }
@@ -2293,21 +2398,59 @@ async function askTF(q: string, hist: Turn[] = []): Promise<{ text: string; used
     if (!content?.parts?.length) throw new Error("AI trả về rỗng" + (j.candidates?.[0]?.finishReason ? ` (${j.candidates[0].finishReason})` : ""));
     contents.push(content);
     const calls = content.parts.filter((p: any) => p.functionCall);
-    if (!calls.length) {
-      const text = content.parts.map((p: any) => (p.thought ? "" : p.text || "")).join("").trim();
-      return { text: text.replace(/\*\*/g, "") || "(không có câu trả lời)", used, queued: ctx.queued };
-    }
+    if (!calls.length) return content.parts.map((p: any) => (p.thought ? "" : p.text || "")).join("").trim();
     const resp: any[] = [];
     for (const p of calls) {
       const { name, args } = p.functionCall; used.push(name);
-      let out: string;
-      try { const f = fns[name]; out = f ? cutJ(await f(args || {})) : JSON.stringify({ loi: "không có công cụ " + name }); }
-      catch (e) { out = JSON.stringify({ loi: (e as Error).message }); }
-      resp.push({ functionResponse: { name, response: { ket_qua: out } } });
+      resp.push({ functionResponse: { name, response: { ket_qua: await runTool(fns, name, args) } } });
     }
     contents.push({ role: "user", parts: resp });
   }
-  return { text: "Câu hỏi cần tra quá nhiều bước — hỏi hẹp hơn giúp mình (vd theo CTV, RN hoặc 1 email).", used, queued: ctx.queued };
+  return null;
+}
+async function claudeLoop(sys: string, decls: any[], fns: Record<string, (a: any) => Promise<unknown>>, hist: Turn[], q: string, used: string[]) {
+  const key = Deno.env.get("ANTHROPIC_API_KEY"); if (!key) throw new Error("chưa có ANTHROPIC_API_KEY (thêm trong Supabase → Edge Functions → Secrets)");
+  const model = Deno.env.get("ANTHROPIC_MODEL") || "claude-sonnet-5-5";
+  const tools = decls.map((d) => ({ name: d.name, description: d.description, input_schema: d.parameters }));
+  const messages: any[] = [...hist.slice(-8).map((h) => ({ role: h.role === "model" ? "assistant" : "user", content: h.text })), { role: "user", content: q }];
+  // Claude bắt buộc user/assistant xen kẽ → gộp tin liền nhau cùng vai
+  for (let i = messages.length - 1; i > 0; i--) if (messages[i].role === messages[i - 1].role) { messages[i - 1].content += "\n\n" + messages[i].content; messages.splice(i, 1); }
+  if (messages[0]?.role === "assistant") messages.shift();
+  for (let round = 0; round < 8; round++) {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST", signal: AbortSignal.timeout(90000),
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model, max_tokens: 2500, system: sys, tools, messages, temperature: 0.2 }),
+    });
+    if (!r.ok) { const t = (await r.text()).slice(0, 300); console.error("brain claude", r.status, t); throw new Error(r.status === 401 ? "ANTHROPIC_API_KEY sai" : r.status === 429 ? "Claude hết hạn mức, thử lại sau hoặc chọn Gemini" : `Claude lỗi ${r.status}`); }
+    const j = await r.json();
+    messages.push({ role: "assistant", content: j.content });
+    const calls = (j.content || []).filter((b: any) => b.type === "tool_use");
+    if (!calls.length || j.stop_reason !== "tool_use") return (j.content || []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
+    const results: any[] = [];
+    for (const c of calls) { used.push(c.name); results.push({ type: "tool_result", tool_use_id: c.id, content: await runTool(fns, c.name, c.input) }); }
+    messages.push({ role: "user", content: results });
+  }
+  return null;
+}
+async function runTool(fns: Record<string, (a: any) => Promise<unknown>>, name: string, args: any) {
+  try { const f = fns[name]; return f ? cutJ(await f(args || {})) : JSON.stringify({ loi: "không có công cụ " + name }); }
+  catch (e) { return JSON.stringify({ loi: (e as Error).message }); }
+}
+async function askBrain(q: string, hist: Turn[] = [], model: "gemini" | "claude" = "gemini") {
+  const ctx: { all?: any; queued: string[]; added: string[] } = { queued: [], added: [] };
+  const { fns, decls } = brainTools(ctx);
+  const used: string[] = [];
+  const text = await (model === "claude" ? claudeLoop : geminiLoop)(brainPrompt(), decls, fns, hist, q, used);
+  return { text: (text ?? "Câu hỏi cần tra quá nhiều bước — hỏi hẹp hơn giúp mình (vd theo CTV, RN hoặc 1 email).").replace(/\*\*/g, "") || "(không có câu trả lời)", used, queued: ctx.queued, added: ctx.added, model };
+}
+/* Telegram /hoi và tab Hỏi cũ trên Thay Fam dùng chung Brain (Gemini) */
+const askTF = (q: string, hist: Turn[] = []) => askBrain(q, hist, "gemini");
+/* Khối "Brain nhắc" trên tab Hôm nay của Desk — không dùng AI, chỉ gom quy tắc */
+async function brainToday() {
+  const [shop, desk] = await Promise.all([shopBriefCached().catch((e) => ({ gap: [], nay: [], tuan: [], loi: [(e as Error).message] })), deskOpen()]);
+  const t = today();
+  return { shop, desk: { tre: desk.filter((x) => x.tre), hom_nay: desk.filter((x) => x.han === t), moi: desk.filter((x) => !x.han && x.trang_thai !== "waiting").slice(0, 15) } };
 }
 
 /* Telegram: hội thoại gần nhất lưu ở desk_docs settings/tf_chat (hết hạn sau 2 tiếng) */
@@ -2321,12 +2464,13 @@ async function tfChatSave(d: { hist: Turn[]; ids: number[] }) {
 async function tgAsk(m: any, q: string, cont: boolean) {
   const prev = cont ? await tfChatGet() : null;
   await tg("sendChatAction", { chat_id: CHAT, action: "typing" });
-  const wait = await say("🤖 Đang tra Thay Fam…", { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } });
+  const wait = await say("🧠 Brain đang tra…", { reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } });
   let text: string, r: Awaited<ReturnType<typeof askTF>> | null = null;
   try { r = await askTF(q, prev?.hist || []); text = r.text; }
   catch (e) { text = "⚠️ Trợ lý lỗi: " + (e as Error).message; }
   let body = esc(text).slice(0, 3900);
   if (r?.queued.length) body += `\n\n<i>🛠 Đã đưa ${r.queued.length} lệnh vào tab Lệnh — chưa ghi sheet.</i>`;
+  if (r?.added.length) body += `\n\n<i>📥 Đã thêm vào Desk: ${esc(r.added.join(" · "))}</i>`;
   const kbd = { inline_keyboard: [[{ text: "Mở Thay Fam", url: "https://godnc.com/thayfam/" + (r?.queued.length ? "#lenh" : "") }]] };
   let id = wait.ok ? wait.result.message_id : 0;
   if (id) { const e2 = await tg("editMessageText", { chat_id: CHAT, message_id: id, text: body, parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: kbd }); if (!e2.ok) id = 0; }
@@ -2565,6 +2709,24 @@ Deno.serve(async (req) => {
       const ems = Array.isArray(b.emails) ? b.emails.filter((x: unknown) => typeof x === "string" && x.includes("@")).slice(0, 50) : [];
       if (ems.length) { try { await tuanFixedAdd(ems, t); } catch (e) { console.error("tuan_fixed", (e as Error).message); } }
       return new Response(JSON.stringify({ ok: !!r.ok, error: r.ok ? undefined : (r.error || r.description) }), { headers: { ...CORS, "Content-Type": "application/json" } });
+    }
+    // ---- BRAIN (tab Brain + khối Brain nhắc trên godnc.com/desk) — đăng nhập bằng tài khoản Desk ----
+    if (url.searchParams.has("brain")) {
+      const H = { "Access-Control-Allow-Origin": "https://godnc.com", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "content-type, authorization, apikey, x-client-info", "Content-Type": "application/json" };
+      if (req.method === "OPTIONS") return new Response(null, { headers: H });
+      const J = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: H });
+      const jwt = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
+      const { data: au } = jwt ? await db.auth.getUser(jwt) : { data: null as any };
+      if (!au?.user || (au.user.email || "").toLowerCase() !== OWNER_EMAIL) return J({ ok: false, error: "Chỉ chủ Desk dùng được Brain" }, 403);
+      const b = await req.json().catch(() => ({}));
+      try {
+        if (b.op === "models") return J({ ok: true, gemini: !!Deno.env.get("GEMINI_API_KEY"), claude: !!Deno.env.get("ANTHROPIC_API_KEY") });
+        if (b.op === "today") { if (b.fresh) briefCache = null; return J({ ok: true, ...(await brainToday()) }); }
+        const q = String(b.q || "").trim().slice(0, 3000); if (!q) return J({ ok: false, error: "trống" });
+        const hist: Turn[] = (Array.isArray(b.history) ? b.history : []).filter((h: any) => (h.role === "user" || h.role === "model") && typeof h.text === "string").map((h: any) => ({ role: h.role, text: h.text.slice(0, 4000) }));
+        const r = await askBrain(q, hist, b.model === "claude" ? "claude" : "gemini");
+        return J({ ok: true, answer: r.text, used: r.used, queued: r.queued, added: r.added, model: r.model });
+      } catch (e) { return J({ ok: false, error: (e as Error).message }); }
     }
     // ---- Trợ lý Thay Fam (tab Hỏi trên godnc.com/thayfam) ----
     if (url.searchParams.has("tf_ask")) {
